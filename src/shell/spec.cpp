@@ -286,7 +286,7 @@ SpecArena::~SpecArena() {
 }
 
 void SpecArena::ReleasePolicies() {
-    for (int i = 0; i < policies.len; i++) PolicyRelease(policies[i]);
+    for (int i = 0; i < len(policies); i++) PolicyRelease(policies[i]);
     VecClear(policies);
 }
 
@@ -385,7 +385,7 @@ SpecId SpecArena::Push(const Component& component) {
     VecAppend(claimed, 0);
     VecAppend(holders, kNoHolder);
     VecAppend(heights, (uint8_t)1);
-    return (SpecId)(nodes.len - 1);
+    return (SpecId)(len(nodes) - 1);
 }
 
 bool SpecArena::PushChildView(const Component& component, SpecId* out,
@@ -394,7 +394,7 @@ bool SpecArena::PushChildView(const Component& component, SpecId* out,
         SetSpecError(error, SpecErrorKind::Expired);
         return false;
     }
-    for (int i = 0; i < mountedViews.len; i++) {
+    for (int i = 0; i < len(mountedViews); i++) {
         if (mountedViews[i] == component.handle) {
             SetSpecError(error, SpecErrorKind::DuplicateChildView);
             return false;
@@ -407,7 +407,7 @@ bool SpecArena::PushChildView(const Component& component, SpecId* out,
 }
 
 bool SpecArena::PushDockArea(uint64_t handle, SpecId* out, SpecError* error) {
-    for (int i = 0; i < mountedViews.len; i++) {
+    for (int i = 0; i < len(mountedViews); i++) {
         if (mountedViews[i] == handle) {
             SetSpecError(error, SpecErrorKind::DuplicateChildView);
             return false;
@@ -423,11 +423,11 @@ bool SpecArena::PushDockArea(uint64_t handle, SpecId* out, SpecError* error) {
 }
 
 const SpecNode* SpecArena::Node(SpecId id) const {
-    return id < (SpecId)nodes.len ? nodes[(int)id] : nullptr;
+    return id < (SpecId)len(nodes) ? nodes[(int)id] : nullptr;
 }
 
 bool SpecArena::CheckLive(SpecId id, SpecError* error) const {
-    if (id >= (SpecId)nodes.len || !nodes[(int)id]) {
+    if (id >= (SpecId)len(nodes) || !nodes[(int)id]) {
         SetSpecError(error, SpecErrorKind::Expired);
         return false;
     }
@@ -444,7 +444,7 @@ bool SpecArena::CheckHold(bool hasHolder, SpecId holder, const SpecId* elements,
     uint32_t height = 0;
     for (int i = 0; i < count; i++) {
         SpecId element = elements ? elements[i] : 0;
-        if (element >= (SpecId)heights.len) {
+        if (element >= (SpecId)len(heights)) {
             SetSpecError(error, SpecErrorKind::Expired);
             return false;
         }
@@ -456,7 +456,7 @@ bool SpecArena::CheckHold(bool hasHolder, SpecId holder, const SpecId* elements,
         return false;
     }
     if (!hasHolder) return true;
-    if (holder >= (SpecId)heights.len) {
+    if (holder >= (SpecId)len(heights)) {
         SetSpecError(error, SpecErrorKind::Expired);
         return false;
     }
@@ -484,13 +484,13 @@ bool SpecArena::CheckHold(bool hasHolder, SpecId holder, const SpecId* elements,
 void SpecArena::Hold(SpecId holder, const SpecId* elements, int count) {
     uint32_t height = 0;
     for (int i = 0; i < count; i++) {
-        if (!elements || elements[i] >= (SpecId)holders.len) continue;
+        if (!elements || elements[i] >= (SpecId)len(holders)) continue;
         holders[(int)elements[i]] = holder;
         uint32_t next = (uint32_t)heights[(int)elements[i]] + 1;
         if (next > height) height = next;
     }
     SpecId node = holder;
-    while (node < (SpecId)heights.len && height > heights[(int)node]) {
+    while (node < (SpecId)len(heights) && height > heights[(int)node]) {
         heights[(int)node] = (uint8_t)height;
         SpecId next = holders[(int)node];
         if (next == kNoHolder) break;
@@ -606,10 +606,10 @@ static ComponentPayload CopyPayload(Arena* arena, const ComponentPayload& from,
 }
 
 SpecId SpecArena::Graft(const Template& tmpl) {
-    SpecId base = (SpecId)nodes.len;
+    SpecId base = (SpecId)len(nodes);
     const SpecArena* source = tmpl.arena;
     if (!source) return base;
-    for (int i = 0; i < source->nodes.len; i++) {
+    for (int i = 0; i < len(source->nodes); i++) {
         const SpecNode* from = source->nodes[i];
         SpecNode* node = ArenaNew<SpecNode>(arena);
         node->component = CopyComponent(from->component);
@@ -632,17 +632,17 @@ SpecId SpecArena::Graft(const Template& tmpl) {
         VecAppend(parented, source->parented[i]);
         VecAppend(claimed, source->claimed[i]);
         SpecId held = kNoHolder;
-        if (i < source->holders.len && source->holders[i] != kNoHolder) {
+        if (i < len(source->holders) && source->holders[i] != kNoHolder) {
             held = source->holders[i] + base;
         }
         VecAppend(holders, held);
         VecAppend(heights,
-                  i < source->heights.len ? source->heights[i] : (uint8_t)1);
+                  i < len(source->heights) ? source->heights[i] : (uint8_t)1);
     }
     // The root arrives with no parent so the caller can attach it, whatever it
     // was in the template.
     parented[(int)(tmpl.root + base)] = 0;
-    if ((int)(tmpl.root + base) < holders.len) {
+    if ((int)(tmpl.root + base) < len(holders)) {
         holders[(int)(tmpl.root + base)] = kNoHolder;
     }
 
@@ -657,7 +657,7 @@ SpecId SpecArena::Graft(const Template& tmpl) {
 bool SpecArena::WriteSlot(SpecId base, const Slot& slot, const SlotValue& value,
                           SpecError* error) {
     SpecId target = slot.node + base;
-    if (target >= (SpecId)nodes.len || !nodes[(int)target]) {
+    if (target >= (SpecId)len(nodes) || !nodes[(int)target]) {
         SetSpecError(error, SpecErrorKind::Expired);
         return false;
     }
@@ -670,7 +670,7 @@ bool SpecArena::WriteSlot(SpecId base, const Slot& slot, const SlotValue& value,
     }
     if (slot.site.kind == SlotSiteKind::Argument &&
         value.kind == SlotValueKind::Value) {
-        if ((int)slot.site.op >= node->ops.len) {
+        if ((int)slot.site.op >= len(node->ops)) {
             SetSpecError(error, SpecErrorKind::Expired);
             return false;
         }
@@ -689,7 +689,7 @@ bool SpecArena::WriteSlot(SpecId base, const Slot& slot, const SlotValue& value,
     }
     if (slot.site.kind == SlotSiteKind::Handler &&
         value.kind == SlotValueKind::Handler) {
-        if ((int)slot.site.op >= node->ops.len ||
+        if ((int)slot.site.op >= len(node->ops) ||
             node->ops[slot.site.op].kind != SpecOpKind::Callback) {
             SetSpecError(error, SpecErrorKind::Expired);
             return false;

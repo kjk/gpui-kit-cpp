@@ -155,7 +155,7 @@ static bool OnComposerPaste(void* data, const ClipboardItem& item, App* app,
 
 static void OnRemovePasted(TextareaStory* self, Ctx* cx, const ClickEvent*,
                            int64_t id) {
-    for (int i = 0; i < self->attachments.len; i++) {
+    for (int i = 0; i < len(self->attachments); i++) {
         if (self->attachments[i].id == (uint64_t)id) {
             StrFree(self->attachments[i].title);
             StrFree(self->attachments[i].detail);
@@ -272,7 +272,7 @@ El* TextareaStory::Render(TextareaStory* self, Ctx* cx) {
     StorySectionBody(chat)->W(560);
     El* chatCol = Div(a)->FlexCol()->Gap(8)->W(kFill);
     El* msgs = Div(a)->FlexCol()->Gap(4);
-    for (int i = 0; i < self->chatMessages.len; i++) {
+    for (int i = 0; i < len(self->chatMessages); i++) {
         msgs->Child(
             Div(a)->PadX(8)->PadY(4)->Radius(th.radius)->Bg(th.muted)->Child(
                 StoryTxt(cx, self->chatMessages[i], 16, th.foreground)));
@@ -291,10 +291,10 @@ El* TextareaStory::Render(TextareaStory* self, Ctx* cx) {
         "Paste a screenshot, it lands as an attachment pill above.");
     StorySectionBody(paste)->W(560);
     El* pasteCol = Div(a)->FlexCol()->Gap(8)->W(kFill);
-    if (self->attachments.len > 0) {
+    if (len(self->attachments) > 0) {
         component::AttachmentGroup* group =
             component::AttachmentGroup::New(cx, StrL("composer-attachments"));
-        for (int i = 0; i < self->attachments.len; i++) {
+        for (int i = 0; i < len(self->attachments); i++) {
             const ComposerAttachment& att = self->attachments[i];
             component::Attachment* pill =
                 component::Attachment::New(cx)

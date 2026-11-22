@@ -192,10 +192,10 @@ El* DescriptionList::IntoEl() {
         root->Border(1, th.border)->Radius(th.radius);
     }
 
-    int* rowCounts = (int*)Alloc(a, (int)sizeof(int) * (items.len + 1));
+    int* rowCounts = (int*)Alloc(a, (int)sizeof(int) * (len(items) + 1));
     DescriptionItem* flatItems = items.Flatten(a);
-    int rows = DescriptionGroupRows(flatItems, items.len, columns, rowCounts,
-                                    items.len + 1);
+    int rows = DescriptionGroupRows(flatItems, len(items), columns, rowCounts,
+                                    len(items) + 1);
     int itemAt = 0;
     for (int rowIx = 0; rowIx < rows; rowIx++) {
         int count = rowCounts ? rowCounts[rowIx] : 0;

@@ -40,7 +40,7 @@ void PaneNode::Walk(Func1<const PaneNode*> visit) const {
         visit.Call(this);
     }
     if (paneKind == PaneKind::Split) {
-        for (int i = 0; i < children.len; i++) {
+        for (int i = 0; i < len(children); i++) {
             children[i]->Walk(visit);
         }
     }
@@ -48,13 +48,13 @@ void PaneNode::Walk(Func1<const PaneNode*> visit) const {
 
 bool PaneNode::Empty() const {
     if (paneKind == PaneKind::Split) {
-        return children.len == 0;
+        return len(children) == 0;
     }
-    return panels.len == 0;
+    return len(panels) == 0;
 }
 
 PaneNode::~PaneNode() {
-    for (int i = 0; i < children.len; i++) {
+    for (int i = 0; i < len(children); i++) {
         delete children[i];
     }
     VecReset(children);
@@ -108,7 +108,7 @@ static PaneNode* FindNodeRec(PaneNode* node, NodeId id) {
         return node;
     }
     if (node->paneKind == PaneKind::Split) {
-        for (int i = 0; i < node->children.len; i++) {
+        for (int i = 0; i < len(node->children); i++) {
             if (PaneNode* found = FindNodeRec(node->children[i], id)) {
                 return found;
             }
@@ -130,7 +130,7 @@ static bool FindPanelNodeRec(const PaneNode* node, PanelId panel, NodeId* out) {
         return false;
     }
     if (node->paneKind == PaneKind::Tabs) {
-        for (int i = 0; i < node->panels.len; i++) {
+        for (int i = 0; i < len(node->panels); i++) {
             if (node->panels[i] == panel) {
                 if (out) {
                     *out = node->nodeId;
@@ -139,7 +139,7 @@ static bool FindPanelNodeRec(const PaneNode* node, PanelId panel, NodeId* out) {
             }
         }
     } else {
-        for (int i = 0; i < node->children.len; i++) {
+        for (int i = 0; i < len(node->children); i++) {
             if (FindPanelNodeRec(node->children[i], panel, out)) {
                 return true;
             }
@@ -168,11 +168,11 @@ void PaneTree::NodeIds(Vec<NodeId>* out) const {
 
 static void CollectPanelsRec(const PaneNode* node, Vec<PanelId>* out) {
     if (node->paneKind == PaneKind::Tabs) {
-        for (int i = 0; i < node->panels.len; i++) {
+        for (int i = 0; i < len(node->panels); i++) {
             VecAppend(*out, node->panels[i]);
         }
     } else {
-        for (int i = 0; i < node->children.len; i++) {
+        for (int i = 0; i < len(node->children); i++) {
             CollectPanelsRec(node->children[i], out);
         }
     }
@@ -242,7 +242,7 @@ static bool FindParentRec(PaneNode* node, NodeId id, PaneNode** parent,
     if (!node || node->paneKind != PaneKind::Split) {
         return false;
     }
-    for (int i = 0; i < node->children.len; i++) {
+    for (int i = 0; i < len(node->children); i++) {
         if (node->children[i]->nodeId == id) {
             if (parent) {
                 *parent = node;
@@ -260,10 +260,10 @@ static bool FindParentRec(PaneNode* node, NodeId id, PaneNode** parent,
 }
 
 static void RemoveAt(Vec<PanelId>* values, int ix) {
-    for (int i = ix; i + 1 < values->len; i++) {
+    for (int i = ix; i + 1 < len(*values); i++) {
         (*values)[i] = (*values)[i + 1];
     }
-    if (values->len > 0) {
+    if (len(*values) > 0) {
         values->len--;
     }
 }
@@ -275,7 +275,7 @@ bool PaneTree::DetachPanel(PanelId panel) {
     }
     PaneNode* node = FindNode(nodeId);
     if (node->paneKind == PaneKind::Tabs) {
-        for (int i = 0; i < node->panels.len; i++) {
+        for (int i = 0; i < len(node->panels); i++) {
             if (node->panels[i] != panel) {
                 continue;
             }
@@ -298,14 +298,14 @@ bool PaneTree::ApplyInsert(PanelId panel, InsertTarget target) {
         if (node->paneKind != PaneKind::Tabs) {
             return false;
         }
-        int at = target.ix < 0 ? node->panels.len
-                               : std::min(target.ix, node->panels.len);
+        int at = target.ix < 0 ? len(node->panels)
+                               : std::min(target.ix, len(node->panels));
         if (!VecInsertAt(node->panels, at, panel)) {
             return false;
         }
         if (target.activate) {
             node->activeIx = at;
-        } else if (at <= node->activeIx && node->panels.len > 1) {
+        } else if (at <= node->activeIx && len(node->panels) > 1) {
             node->activeIx++;
         }
         return true;
@@ -362,8 +362,8 @@ static bool NormalizeNode(PaneNode* node) {
     bool changed = false;
     if (node->paneKind == PaneKind::Tabs) {
         int clamped =
-            node->panels.len > 0
-                ? std::max(0, std::min(node->activeIx, node->panels.len - 1))
+            len(node->panels) > 0
+                ? std::max(0, std::min(node->activeIx, len(node->panels) - 1))
                 : 0;
         if (node->activeIx != clamped) {
             node->activeIx = clamped;
@@ -375,18 +375,18 @@ static bool NormalizeNode(PaneNode* node) {
         return false;
     }
 
-    for (int i = 0; i < node->children.len; i++) {
+    for (int i = 0; i < len(node->children); i++) {
         changed |= NormalizeNode(node->children[i]);
     }
 
     // Rule 1: remove empty containers from their parent.
-    for (int i = 0; i < node->children.len;) {
+    for (int i = 0; i < len(node->children);) {
         if (!node->children[i]->Empty()) {
             i++;
             continue;
         }
         delete node->children[i];
-        for (int k = i; k + 1 < node->children.len; k++) {
+        for (int k = i; k + 1 < len(node->children); k++) {
             node->children[k] = node->children[k + 1];
             node->sizes[k] = node->sizes[k + 1];
             node->sizeKnown[k] = node->sizeKnown[k + 1];
@@ -399,9 +399,9 @@ static bool NormalizeNode(PaneNode* node) {
 
     // Rule 2: replace a one-child split child with that child, preserving the
     // outer slot and the replacement child's own stable id.
-    for (int i = 0; i < node->children.len; i++) {
+    for (int i = 0; i < len(node->children); i++) {
         PaneNode* split = node->children[i];
-        if (split->paneKind != PaneKind::Split || split->children.len != 1) {
+        if (split->paneKind != PaneKind::Split || len(split->children) != 1) {
             continue;
         }
         PaneNode* replacement = split->children[0];
@@ -414,7 +414,7 @@ static bool NormalizeNode(PaneNode* node) {
     // Rule 3: splice same-axis splits into their parent. Build new parallel
     // arrays once so every pointer and optional size remains aligned.
     bool hasSameAxis = false;
-    for (int i = 0; i < node->children.len; i++) {
+    for (int i = 0; i < len(node->children); i++) {
         PaneNode* child = node->children[i];
         hasSameAxis |=
             child->paneKind == PaneKind::Split && child->axis == node->axis;
@@ -460,7 +460,7 @@ void PaneTree::Normalize() {
     for (int pass = 0; pass < 64; pass++) {
         bool changed = NormalizeNode(root);
         if (rootKind == RootKind::Any && root->paneKind == PaneKind::Split &&
-            root->children.len == 1) {
+            len(root->children) == 1) {
             PaneNode* old = root;
             root = old->children[0];
             old->children.len = 0;
@@ -481,18 +481,18 @@ void PaneTree::Normalize() {
 
 static bool NormalizedNode(const PaneNode* node, NodeId rootId) {
     if (node->paneKind == PaneKind::Tabs) {
-        return (node->panels.len == 0 ||
-                (node->activeIx >= 0 && node->activeIx < node->panels.len)) &&
-               (node->nodeId == rootId || node->panels.len > 0);
+        return (len(node->panels) == 0 ||
+                (node->activeIx >= 0 && node->activeIx < len(node->panels))) &&
+               (node->nodeId == rootId || len(node->panels) > 0);
     }
-    if (node->children.len != node->sizes.len ||
-        node->children.len != node->sizeKnown.len) {
+    if (len(node->children) != len(node->sizes) ||
+        len(node->children) != len(node->sizeKnown)) {
         return false;
     }
-    if (node->nodeId != rootId && node->children.len <= 1) {
+    if (node->nodeId != rootId && len(node->children) <= 1) {
         return false;
     }
-    for (int i = 0; i < node->children.len; i++) {
+    for (int i = 0; i < len(node->children); i++) {
         const PaneNode* child = node->children[i];
         if ((child->paneKind == PaneKind::Split && child->axis == node->axis) ||
             child->Empty() || !NormalizedNode(child, rootId)) {
@@ -510,7 +510,7 @@ bool PaneTree::IsNormalized() const {
         return false;
     }
     if (rootKind == RootKind::Any && root->paneKind == PaneKind::Split &&
-        root->children.len == 1) {
+        len(root->children) == 1) {
         return false;
     }
     return NormalizedNode(root, root->nodeId);
@@ -556,7 +556,7 @@ EditResult PaneTree::SetSizes(NodeId id, const float* values,
                               const uint8_t* known, int count) {
     PaneNode* node = FindNode(id);
     if (!node || node->paneKind != PaneKind::Split || !values ||
-        count != node->children.len) {
+        count != len(node->children)) {
         Normalize();
         return {};
     }
@@ -615,7 +615,7 @@ DockLayout* DockLayout::ActiveIndex(int ix) {
 }
 
 DockLayout::~DockLayout() {
-    for (int i = 0; i < children.len; i++) {
+    for (int i = 0; i < len(children); i++) {
         delete children[i];
     }
     VecReset(children);
@@ -630,7 +630,7 @@ static PaneNode* BuildLayoutNode(PaneTree* tree, const DockLayout* layout,
     NodeId id = tree->AllocateNodeId();
     if (layout->kind == PaneKind::Split) {
         PaneNode* node = PaneNode::Split(id, layout->axis);
-        for (int i = 0; i < layout->children.len; i++) {
+        for (int i = 0; i < len(layout->children); i++) {
             PaneNode* child =
                 BuildLayoutNode(tree, layout->children[i], collected);
             const float* size =
@@ -642,9 +642,9 @@ static PaneNode* BuildLayoutNode(PaneTree* tree, const DockLayout* layout,
     if (layout->kind == PaneKind::Tabs) {
         PaneNode* node = PaneNode::Tabs(id);
         node->activeIx = layout->activeIx;
-        for (int i = 0; i < layout->panelIds.len; i++) {
+        for (int i = 0; i < len(layout->panelIds); i++) {
             VecAppend(node->panels, layout->panelIds[i]);
-            if (collected && i < layout->panelViews.len) {
+            if (collected && i < len(layout->panelViews)) {
                 VecAppend(*collected, layout->panelViews[i]);
             }
         }
@@ -676,17 +676,17 @@ static void CollectTabPanels(const DockAreaState* st, int ix,
 
 static PaneNode* BuildStateNode(PaneTree* tree, const DockAreaState* st, int ix,
                                 const PaneBuilder& builder) {
-    if (!st || ix < 0 || ix >= st->nodes.len) {
+    if (!st || ix < 0 || ix >= len(st->nodes)) {
         return PaneNode::Tabs(tree->AllocateNodeId());
     }
     const PanelStateNode& sn = st->nodes[ix];
     NodeId id = tree->AllocateNodeId();
     if (sn.kind == PanelInfoKind::Stack) {
         PaneNode* node = PaneNode::Split(id, sn.axis);
-        for (int i = 0; i < sn.children.len; i++) {
+        for (int i = 0; i < len(sn.children); i++) {
             PaneNode* child = BuildStateNode(tree, st, sn.children[i], builder);
             const float* size =
-                i < sn.sizes.len && sn.sizes[i] > 0 ? &sn.sizes[i] : nullptr;
+                i < len(sn.sizes) && sn.sizes[i] > 0 ? &sn.sizes[i] : nullptr;
             AppendChild(node, child, size);
         }
         return node;
@@ -715,13 +715,13 @@ static PaneNode* BuildStateNode(PaneTree* tree, const DockAreaState* st, int ix,
 
 static void CollectTabPanels(const DockAreaState* st, int ix,
                              const PaneBuilder& builder, Vec<PanelId>* out) {
-    if (!st || !out || ix < 0 || ix >= st->nodes.len) {
+    if (!st || !out || ix < 0 || ix >= len(st->nodes)) {
         return;
     }
     const PanelStateNode& sn = st->nodes[ix];
-    for (int i = 0; i < sn.children.len; i++) {
+    for (int i = 0; i < len(sn.children); i++) {
         int childIx = sn.children[i];
-        if (childIx < 0 || childIx >= st->nodes.len) {
+        if (childIx < 0 || childIx >= len(st->nodes)) {
             continue;
         }
         const PanelStateNode& child = st->nodes[childIx];

@@ -133,7 +133,7 @@ static El* Render(MaterializeRequest* request, const Payload* payload,
     // of them, in the same order.
     Str selected = {};
     bool hasSelected = false;
-    if (state->state.selected.len > 0) {
+    if (len(state->state.selected) > 0) {
         int ix = state->state.selected[0];
         if (ix >= 0 && ix < len(host->rows.items)) {
             selected = StrDup(cx->a, host->rows.items[ix].value);

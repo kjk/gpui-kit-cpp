@@ -287,8 +287,8 @@ El* AvatarGroup::IntoEl() {
     // item_ml = -avatar_size * 0.3, so each avatar past the first overlaps
     // the one before it by that much; the ⋯ chip sits ml_1 past the last.
     float step = sz - sz * 0.3f;
-    int shown = avatars.len < limit ? avatars.len : limit;
-    bool more = ellipsis && avatars.len > limit;
+    int shown = len(avatars) < limit ? len(avatars) : limit;
+    bool more = ellipsis && len(avatars) > limit;
     float chipLeft = (float)shown * step + Rems(cx, 0.25f);
     float w =
         more ? chipLeft + sz : sz + (shown > 0 ? (float)(shown - 1) * step : 0);

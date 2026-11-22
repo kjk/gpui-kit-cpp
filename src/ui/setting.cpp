@@ -72,7 +72,7 @@ bool SettingItemMatches(const SettingItem* it, Str query) {
                            base::StrContainsI(it->description, query))) {
         return true;
     }
-    for (int i = 0; i < it->keywords.len; i++) {
+    for (int i = 0; i < len(it->keywords); i++) {
         if (base::StrContainsI(it->keywords[i], query)) {
             return true;
         }
@@ -124,11 +124,11 @@ static bool PageHasMatchingGroup(const SettingPage& p, Str query) {
 SelectIndex SettingsResolveSelectedIndex(const ArenaVec<SettingPage>& pages,
                                          Str query, SelectIndex selected) {
     int pageIx = -1;
-    if (selected.pageIx >= 0 && selected.pageIx < pages.len &&
+    if (selected.pageIx >= 0 && selected.pageIx < len(pages) &&
         PageHasMatchingGroup(pages[selected.pageIx], query)) {
         pageIx = selected.pageIx;
     } else {
-        for (int i = 0; i < pages.len; i++) {
+        for (int i = 0; i < len(pages); i++) {
             if (PageHasMatchingGroup(pages[i], query)) {
                 pageIx = i;
                 break;
@@ -145,7 +145,7 @@ SelectIndex SettingsResolveSelectedIndex(const ArenaVec<SettingPage>& pages,
     out.groupIx = -1;
     if (selected.groupIx >= 0 && pageIx == selected.pageIx) {
         const SettingPage& p = pages[pageIx];
-        if (selected.groupIx < p.groups.len &&
+        if (selected.groupIx < len(p.groups) &&
             SettingGroupMatches(&p.groups[selected.groupIx], query)) {
             out.groupIx = selected.groupIx;
         }
@@ -368,8 +368,8 @@ static void SettingsContainerPrePaint(PaintCtx* ctx, El* e, void* user) {
     if (!q->settings) {
         return;
     }
-    if (st->fields.len > q->fieldsLen) {
-        VecRemoveAtN(st->fields, q->fieldsLen, st->fields.len - q->fieldsLen);
+    if (len(st->fields) > q->fieldsLen) {
+        VecRemoveAtN(st->fields, q->fieldsLen, len(st->fields) - q->fieldsLen);
     }
     e->first = nullptr;
     e->last = nullptr;
@@ -383,11 +383,11 @@ static void SettingsContainerPrePaint(PaintCtx* ctx, El* e, void* user) {
 // The one selected index, or -1. A setting dropdown is single-select, which
 // is what Rust's `SettingField<SharedString>::dropdown` is.
 static int DropdownIndex(const SearchableListState* st) {
-    return st && st->selected.len > 0 ? st->selected[0] : -1;
+    return st && len(st->selected) > 0 ? st->selected[0] : -1;
 }
 
 static SettingBinding* FieldAt(SettingsState* self, int64_t ix) {
-    if (!self || ix < 0 || ix >= self->fields.len) {
+    if (!self || ix < 0 || ix >= len(self->fields)) {
         return nullptr;
     }
     return &self->fields[(int)ix];
@@ -475,7 +475,7 @@ void SettingsState::OnResetPage(SettingsState* self, Ctx* cx,
     if (!self) {
         return;
     }
-    for (int i = 0; i < self->fields.len; i++) {
+    for (int i = 0; i < len(self->fields); i++) {
         ResetBinding(self, cx, ev, (int64_t)i);
     }
 }
@@ -531,10 +531,10 @@ Settings* Settings::Page(Str title, IconName icon, Str description) {
 }
 
 Settings* Settings::Group(Str title, Str description) {
-    if (pages.len == 0) {
+    if (len(pages) == 0) {
         Page(StrL("Settings"));
     }
-    SettingPage& p = pages[pages.len - 1];
+    SettingPage& p = pages[len(pages) - 1];
     SettingGroup g;
     g.title = title;
     g.description = description;
@@ -543,24 +543,24 @@ Settings* Settings::Group(Str title, Str description) {
 }
 
 Settings* Settings::GroupVariant(GroupBoxVariant variant) {
-    if (pages.len == 0) {
+    if (len(pages) == 0) {
         return this;
     }
-    SettingPage& p = pages[pages.len - 1];
-    if (p.groups.len > 0) {
-        p.groups[p.groups.len - 1].variant = variant;
-        p.groups[p.groups.len - 1].hasVariant = true;
+    SettingPage& p = pages[len(pages) - 1];
+    if (len(p.groups) > 0) {
+        p.groups[len(p.groups) - 1].variant = variant;
+        p.groups[len(p.groups) - 1].hasVariant = true;
     }
     return this;
 }
 
 Settings* Settings::GroupFooter(El* footer) {
-    if (pages.len == 0) {
+    if (len(pages) == 0) {
         return this;
     }
-    SettingPage& p = pages[pages.len - 1];
-    if (p.groups.len > 0) {
-        p.groups[p.groups.len - 1].footer = footer;
+    SettingPage& p = pages[len(pages) - 1];
+    if (len(p.groups) > 0) {
+        p.groups[len(p.groups) - 1].footer = footer;
     }
     return this;
 }
@@ -568,14 +568,14 @@ Settings* Settings::GroupFooter(El* footer) {
 static SettingItem* LastItem(Settings* s);
 
 Settings* Settings::Item(Str title, Str description, El* control) {
-    if (pages.len == 0) {
+    if (len(pages) == 0) {
         Group({});
     }
-    SettingPage& p = pages[pages.len - 1];
-    if (p.groups.len == 0) {
+    SettingPage& p = pages[len(pages) - 1];
+    if (len(p.groups) == 0) {
         Group({});
     }
-    SettingGroup& g = p.groups[p.groups.len - 1];
+    SettingGroup& g = p.groups[len(p.groups) - 1];
     SettingItem it;
     it.title = title;
     it.description = description;
@@ -613,15 +613,15 @@ Settings* Settings::FieldElement(SettingFieldElement element) {
 
 // The item last added, which is what every modifier below reads.
 static SettingItem* LastItem(Settings* s) {
-    if (s->pages.len == 0) {
+    if (len(s->pages) == 0) {
         return nullptr;
     }
-    SettingPage& p = s->pages[s->pages.len - 1];
-    if (p.groups.len == 0) {
+    SettingPage& p = s->pages[len(s->pages) - 1];
+    if (len(p.groups) == 0) {
         return nullptr;
     }
-    SettingGroup& g = p.groups[p.groups.len - 1];
-    return g.items.len > 0 ? &g.items[g.items.len - 1] : nullptr;
+    SettingGroup& g = p.groups[len(p.groups) - 1];
+    return len(g.items) > 0 ? &g.items[len(g.items) - 1] : nullptr;
 }
 
 Settings* Settings::Keywords(Str a1, Str a2, Str a3) {
@@ -732,22 +732,22 @@ Settings* Settings::DropdownField(Entity<SearchableListState> list,
 }
 
 Settings* Settings::PageResettable(bool v) {
-    if (pages.len > 0) {
-        pages[pages.len - 1].resettable = v;
+    if (len(pages) > 0) {
+        pages[len(pages) - 1].resettable = v;
     }
     return this;
 }
 
 Settings* Settings::PageDefaultOpen(bool v) {
-    if (pages.len > 0) {
-        pages[pages.len - 1].defaultOpen = v;
+    if (len(pages) > 0) {
+        pages[len(pages) - 1].defaultOpen = v;
     }
     return this;
 }
 
 Settings* Settings::PageTitleSuffix(El* e) {
-    if (pages.len > 0) {
-        pages[pages.len - 1].titleSuffix = e;
+    if (len(pages) > 0) {
+        pages[len(pages) - 1].titleSuffix = e;
     }
     return this;
 }
@@ -873,7 +873,7 @@ static FieldEl RenderField(Ctx* cx, Settings* s, const SettingItem& it, Str id,
     b.hasDefault = it.hasDefault;
     // SettingField::on_reset wins over default_value, as reset_handler does.
     b.onReset = it.onReset;
-    int64_t ix = (int64_t)st->fields.len;
+    int64_t ix = (int64_t)len(st->fields);
     VecAppend(st->fields, b);
 
     Listener click = ListenTo(s->state, &SettingsState::OnFieldClick, ix);
@@ -1083,7 +1083,7 @@ static void SettingsBuildPage(Ctx* cx, Settings* s, El* pane, int selected,
     scroll->state = state;
     scroll->userScrolled = userScrolled;
     scroll->selectedGroup = st ? st->group : -1;
-    int nGroups = p.groups.len;
+    int nGroups = len(p.groups);
     if (nGroups > 0) {
         scroll->groups = (SettingsGroupRow*)Alloc(
             a, nGroups * (int)sizeof(SettingsGroupRow));
@@ -1413,7 +1413,7 @@ El* Settings::IntoEl() {
     query_->layout = pageLayout;
     pane->prePaint = &SettingsContainerPrePaint;
     pane->customUser = query_;
-    if (selected >= 0 && selected < pages.len &&
+    if (selected >= 0 && selected < len(pages) &&
         PageHasMatchingGroup(pages[selected], query)) {
         // The page's list state is its own and starts over whenever the page
         // or the groups the query leaves on it change; the group to scroll
@@ -1459,7 +1459,7 @@ El* Settings::IntoEl() {
         query_->selected = selected;
         query_->query = query;
         query_->scrollGroup = scrollGroup;
-        query_->fieldsLen = st ? st->fields.len : 0;
+        query_->fieldsLen = st ? len(st->fields) : 0;
         query_->userScrolled = userScrolled;
         SettingsBuildPage(cx, this, pane, selected, query, pageLayout,
                           scrollGroup, userScrolled);

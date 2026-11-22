@@ -25,7 +25,7 @@ static void TheBuilderCarriesVariantLoadingAndSlots() {
     utassert(marker->variant == MarkerVariant::Separator);
     utassert(marker->loading);
     utassert(marker->loadingStyle == MarkerLoadingStyle::Shimmer);
-    utassert(marker->children.len == 1);
+    utassert(len(marker->children) == 1);
     utassert(Marker::New(&cx)->variant == MarkerVariant::Plain);
     utassert(!Marker::New(&cx)->loading);
     utassert(Marker::New(&cx)->loadingStyle == MarkerLoadingStyle::Spinner);
@@ -49,7 +49,7 @@ static void TheBuilderCarriesVariantLoadingAndSlots() {
             ->Loading(true)
             ->Icon(MarkerIcon::New(&cx)->Child(TextEl(a, StrL("custom"))))
             ->Content(MarkerContent::New(&cx)->Text(StrL("Loading")));
-    utassert(customIcon->children.len == 2);
+    utassert(len(customIcon->children) == 2);
     utassert(customIcon->children[0].icon != nullptr);
     // The spinner slot is only added when nothing else filled the icon slot.
     El* customRow = customIcon->IntoEl();
@@ -88,16 +88,16 @@ static void TheBuilderCarriesVariantLoadingAndSlots() {
                          ->Child(TextEl(a, StrL("Details")));
     utassert((styled->styleSet & StyleFieldOpacity) != 0);
     utassertnear(styled->style.opacity, 0.37f);
-    utassert(styled->children.len == 2);
+    utassert(len(styled->children) == 2);
 
     MarkerIcon* icon = MarkerIcon::New(&cx)->Child(TextEl(a, StrL("icon")));
-    utassert(icon->children.len == 1);
+    utassert(len(icon->children) == 1);
 
     MarkerContent* content = MarkerContent::New(&cx)
                                  ->Text(StrL("Thinking"))
                                  ->Child(TextEl(a, StrL("…")))
                                  ->Text(StrL("正在思考"));
-    utassert(content->children.len == 3);
+    utassert(len(content->children) == 3);
     utassert(content->children[0].isText);
     utassert(!content->children[1].isText);
     utassert(content->children[2].isText);

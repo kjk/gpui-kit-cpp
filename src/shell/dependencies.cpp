@@ -323,7 +323,7 @@ void MaterializedDependency::Free() {
 }
 
 const MaterializedDependency* MaterializedDependencies::Find(Str name) const {
-    for (int i = 0; i < items.len; i++) {
+    for (int i = 0; i < len(items); i++) {
         if (StrEq(items[i].name, name)) return &items[i];
     }
     return nullptr;
@@ -331,7 +331,7 @@ const MaterializedDependency* MaterializedDependencies::Find(Str name) const {
 
 bool MaterializedDependencies::CopyFrom(const MaterializedDependencies& other) {
     Free();
-    for (int i = 0; i < other.items.len; i++) {
+    for (int i = 0; i < len(other.items); i++) {
         MaterializedDependency copy;
         copy.name = StrDup(other.items[i].name);
         copy.root = StrDup(other.items[i].root);
@@ -351,7 +351,7 @@ bool MaterializedDependencies::CopyFrom(const MaterializedDependencies& other) {
 }
 
 void MaterializedDependencies::Free() {
-    for (int i = 0; i < items.len; i++) items[i].Free();
+    for (int i = 0; i < len(items); i++) items[i].Free();
     VecReset(items);
 }
 
@@ -575,7 +575,7 @@ bool GitDependencyStore::MaterializeAll(const PluginManifest& manifest,
                                         Str* error) {
     if (!out) return false;
     out->Free();
-    for (int i = 0; i < manifest.dependencies.len; i++) {
+    for (int i = 0; i < len(manifest.dependencies); i++) {
         const GitDependency& dependency = manifest.dependencies[i];
         MaterializedDependency materialized;
         if (!Materialize(dependency.name, dependency, &materialized, error)) {
@@ -645,13 +645,13 @@ bool GitDependencyStore::LinkForEditor(
     int* linked, Str* error) {
     if (linked) *linked = 0;
     Str modules = PathJoin(applicationRoot, Str(kEditorModuleDirectory));
-    if (dependencies.items.len == 0 && !PlatDirExists(modules.s)) {
+    if (len(dependencies.items) == 0 && !PlatDirExists(modules.s)) {
         StrFree(modules);
         return true;
     }
     bool ok = DependencyMakeDirectories(modules, error);
     Vec<Str> declared;
-    for (int i = 0; ok && i < dependencies.items.len; i++) {
+    for (int i = 0; ok && i < len(dependencies.items); i++) {
         const MaterializedDependency& dependency = dependencies.items[i];
         Str link = PathJoin(modules, dependency.name);
         VecAppend(declared, link);
@@ -767,7 +767,7 @@ bool ShellWriteDependencyLinks(Str applicationRoot, int* linked, Str* error) {
         return false;
     }
     ShellErrorClear(&manifestError);
-    if (manifest.dependencies.len == 0) return true;
+    if (len(manifest.dependencies) == 0) return true;
     GitDependencyStore store;
     MaterializedDependencies materialized;
     bool ok = store.MaterializeAll(manifest, &materialized, error) &&

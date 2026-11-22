@@ -243,14 +243,14 @@ El* Stepper::IntoEl() {
     if (itemsCenter) {
         root->ItemsCenter();
     }
-    for (int i = 0; i < items.len; i++) {
+    for (int i = 0; i < len(items); i++) {
         StepperItem* it = items[i];
         it->step = i;
         it->checkedStep = step;
         it->layout = layout;
         it->size = size;
         it->textCenter = textCenter;
-        it->isLast = i + 1 == items.len;
+        it->isLast = i + 1 == len(items);
         // A stepper-level disabled turns every step off; a step can also say
         // so for itself, which Rust lets override the stepper's.
         it->disabled = it->disabled || disabled;

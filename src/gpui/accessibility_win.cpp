@@ -297,7 +297,7 @@ struct WinAccessibility
         if (!win) {
             return -1;
         }
-        for (int i = 0; i < win->accessibility.len; i++) {
+        for (int i = 0; i < len(win->accessibility); i++) {
             if (win->accessibility[i].id == id) {
                 return i;
             }
@@ -535,7 +535,7 @@ struct WinAccessibilityPart
 };
 
 IRawElementProviderFragment* WinAccessibility::NewNode(int index) {
-    if (!win || index < 0 || index >= win->accessibility.len) {
+    if (!win || index < 0 || index >= len(win->accessibility)) {
         return nullptr;
     }
     return static_cast<IRawElementProviderFragment*>(
@@ -543,7 +543,7 @@ IRawElementProviderFragment* WinAccessibility::NewNode(int index) {
 }
 
 IRawElementProviderFragment* WinAccessibility::NewPart(int index, int part) {
-    if (!win || index < 0 || index >= win->accessibility.len) {
+    if (!win || index < 0 || index >= len(win->accessibility)) {
         return nullptr;
     }
     const AccessibilityNode& node = win->accessibility[index];
@@ -569,11 +569,11 @@ static void AccessibilityScreenRect(const WinAccessibility* root,
 static int AccessibilityAncestor(const WinAccessibility* root, int index,
                                  AccessibilityRole role, bool includeSelf) {
     if (!root || !root->win || index < 0 ||
-        index >= root->win->accessibility.len) {
+        index >= len(root->win->accessibility)) {
         return -1;
     }
     int at = includeSelf ? index : root->win->accessibility[index].parent;
-    while (at >= 0 && at < root->win->accessibility.len) {
+    while (at >= 0 && at < len(root->win->accessibility)) {
         if (root->win->accessibility[at].info.role == role) {
             return at;
         }
@@ -587,7 +587,7 @@ static int AccessibilityGridRow(const WinAccessibility* root, int index) {
         return -1;
     }
     int at = index;
-    while (at >= 0 && at < root->win->accessibility.len) {
+    while (at >= 0 && at < len(root->win->accessibility)) {
         const AccessibilityInfo& info = root->win->accessibility[at].info;
         if (info.hasRowIndex) {
             return std::max(0, info.rowIndex - 1);
@@ -599,7 +599,7 @@ static int AccessibilityGridRow(const WinAccessibility* root, int index) {
 
 static int AccessibilityGridColumn(const WinAccessibility* root, int index) {
     if (!root || !root->win || index < 0 ||
-        index >= root->win->accessibility.len) {
+        index >= len(root->win->accessibility)) {
         return -1;
     }
     const AccessibilityInfo& info = root->win->accessibility[index].info;
@@ -646,7 +646,7 @@ static HRESULT AccessibilityProviderArray(WinAccessibility* root,
         return UIA_E_ELEMENTNOTAVAILABLE;
     }
     int count = 0;
-    for (int i = 0; i < root->win->accessibility.len; i++) {
+    for (int i = 0; i < len(root->win->accessibility); i++) {
         const AccessibilityNode& node = root->win->accessibility[i];
         if (node.info.role == role &&
             AccessibilityAncestor(root, i, AccessibilityRole::Table, false) ==
@@ -660,7 +660,7 @@ static HRESULT AccessibilityProviderArray(WinAccessibility* root,
         return E_OUTOFMEMORY;
     }
     LONG at = 0;
-    for (int i = 0; i < root->win->accessibility.len; i++) {
+    for (int i = 0; i < len(root->win->accessibility); i++) {
         const AccessibilityNode& node = root->win->accessibility[i];
         if (node.info.role != role ||
             AccessibilityAncestor(root, i, AccessibilityRole::Table, false) !=
@@ -790,7 +790,7 @@ HRESULT WinAccessibility::Navigate(NavigateDirection direction,
         return S_OK;
     }
     int found = -1;
-    for (int i = 0; i < win->accessibility.len; i++) {
+    for (int i = 0; i < len(win->accessibility); i++) {
         if (win->accessibility[i].parent != -1) {
             continue;
         }
@@ -871,7 +871,7 @@ HRESULT WinAccessibility::ElementProviderFromPoint(
     float px = (float)point.x / scale;
     float py = (float)point.y / scale;
     int found = -1;
-    for (int i = 0; i < win->accessibility.len; i++) {
+    for (int i = 0; i < len(win->accessibility); i++) {
         const Bounds& b = win->accessibility[i].bounds;
         if (px >= b.x && px <= b.Right() && py >= b.y && py <= b.Bottom()) {
             // The tree is preorder; a later containing node is a deeper child
@@ -906,7 +906,7 @@ HRESULT WinAccessibility::GetFocus(IRawElementProviderFragment** out) {
     if (!win) {
         return UIA_E_ELEMENTNOTAVAILABLE;
     }
-    for (int i = 0; i < win->accessibility.len; i++) {
+    for (int i = 0; i < len(win->accessibility); i++) {
         const AccessibilityNode& node = win->accessibility[i];
         if (node.focusId && node.focusId == win->focusId) {
             *out = NewNode(i);
@@ -1109,7 +1109,7 @@ HRESULT WinAccessibilityNode::Navigate(NavigateDirection direction,
     if (direction == NavigateDirection_FirstChild ||
         direction == NavigateDirection_LastChild) {
         int child = -1;
-        for (int i = 0; i < root->win->accessibility.len; i++) {
+        for (int i = 0; i < len(root->win->accessibility); i++) {
             if (root->win->accessibility[i].parent != index) {
                 continue;
             }
@@ -1131,7 +1131,7 @@ HRESULT WinAccessibilityNode::Navigate(NavigateDirection direction,
     }
     int sibling = -1;
     if (direction == NavigateDirection_NextSibling) {
-        for (int i = index + 1; i < root->win->accessibility.len; i++) {
+        for (int i = index + 1; i < len(root->win->accessibility); i++) {
             if (root->win->accessibility[i].parent == node.parent) {
                 sibling = i;
                 break;
@@ -1433,7 +1433,7 @@ static bool AccessibilityDescendsFrom(const Window* win, int index,
         return false;
     }
     int at = win->accessibility[index].parent;
-    while (at >= 0 && at < win->accessibility.len) {
+    while (at >= 0 && at < len(win->accessibility)) {
         if (at == ancestor) {
             return true;
         }
@@ -1469,7 +1469,7 @@ HRESULT WinAccessibilityNode::GetSelection(SAFEARRAY** out) {
     }
     int ancestor = root->NodeIndex(id);
     int count = 0;
-    for (int i = 0; i < root->win->accessibility.len; i++) {
+    for (int i = 0; i < len(root->win->accessibility); i++) {
         const AccessibilityNode& candidate = root->win->accessibility[i];
         if (candidate.info.hasSelected && candidate.info.selected &&
             AccessibilityDescendsFrom(root->win, i, ancestor)) {
@@ -1481,7 +1481,7 @@ HRESULT WinAccessibilityNode::GetSelection(SAFEARRAY** out) {
         return E_OUTOFMEMORY;
     }
     LONG at = 0;
-    for (int i = 0; i < root->win->accessibility.len; i++) {
+    for (int i = 0; i < len(root->win->accessibility); i++) {
         const AccessibilityNode& candidate = root->win->accessibility[i];
         if (!candidate.info.hasSelected || !candidate.info.selected ||
             !AccessibilityDescendsFrom(root->win, i, ancestor)) {
@@ -1712,7 +1712,7 @@ HRESULT WinAccessibilityNode::GetItem(int row, int column,
         column >= table->info.columnCount) {
         return E_INVALIDARG;
     }
-    for (int i = 0; i < root->win->accessibility.len; i++) {
+    for (int i = 0; i < len(root->win->accessibility); i++) {
         const AccessibilityNode& candidate = root->win->accessibility[i];
         if (candidate.info.role == AccessibilityRole::Cell &&
             AccessibilityAncestor(root, i, AccessibilityRole::Table, false) ==
@@ -2322,7 +2322,7 @@ HRESULT WinAccessibilityPart::Navigate(NavigateDirection direction,
         }
         // the node's last element child comes before its first part
         int child = -1;
-        for (int i = index + 1; i < root->win->accessibility.len; i++) {
+        for (int i = index + 1; i < len(root->win->accessibility); i++) {
             if (root->win->accessibility[i].parent == index) {
                 child = i;
             }
@@ -2503,7 +2503,7 @@ void AccessibilityWinFocusChanged(WinAccessibility* accessibility,
         !UiaClientsAreListening()) {
         return;
     }
-    for (int i = 0; i < accessibility->win->accessibility.len; i++) {
+    for (int i = 0; i < len(accessibility->win->accessibility); i++) {
         if (accessibility->win->accessibility[i].focusId != focusId) {
             continue;
         }
@@ -2660,7 +2660,7 @@ bool AccessibilityWinSmokeTest(Window* win, uint32_t nodeId) {
              rows == expected->info.rowCount &&
              columns == expected->info.columnCount;
         int cellIndex = -1;
-        for (int i = 0; ok && i < root->win->accessibility.len; i++) {
+        for (int i = 0; ok && i < len(root->win->accessibility); i++) {
             if (root->win->accessibility[i]
                         .info.role == AccessibilityRole::Cell &&
                 AccessibilityAncestor(root, i, AccessibilityRole::Table,
@@ -2895,7 +2895,7 @@ bool AccessibilityWinPartsSmokeTest(Window* win, uint32_t nodeId) {
         ok = first && SUCCEEDED(first->Navigate(
                           NavigateDirection_PreviousSibling, &before));
         bool hasChild = false;
-        for (int i = 0; i < win->accessibility.len; i++) {
+        for (int i = 0; i < len(win->accessibility); i++) {
             hasChild = hasChild || win->accessibility[i].parent == index;
         }
         ok = ok && (before != nullptr) == hasChild;

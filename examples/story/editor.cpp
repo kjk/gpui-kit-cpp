@@ -423,7 +423,7 @@ El* EditorStory::Render(EditorStory* self, Ctx* cx) {
             }
             TextSpan& sp = runs[n];
             sp.lo = at;
-            sp.hi = sp.lo + kWords[i].len;
+            sp.hi = sp.lo + len(kWords[i]);
             sp.bg = Rgba8(0, 0, 0, 0);
             sp.underline = false;
             switch (i) {

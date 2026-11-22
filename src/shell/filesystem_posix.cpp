@@ -176,7 +176,7 @@ static bool ReadFile(int root, Str rootName, Str relative, FsResult* result,
     }
     StrBuilder output;
     bool ok = true;
-    while (output.len <= kFsMaxReadBytes) {
+    while (len(output) <= kFsMaxReadBytes) {
         char bytes[8192];
         ssize_t count = read(file, bytes, sizeof(bytes));
         if (count > 0) {
@@ -265,7 +265,7 @@ static bool ReadDirectory(int root, Str rootName, Str relative,
         if (StrEq(name, StrL(".")) || StrEq(name, StrL(".."))) continue;
         int nameLen = len(name);
         nameBytes += nameLen;
-        if (result->entries.len >= kFsMaxDirectoryEntries ||
+        if (len(result->entries) >= kFsMaxDirectoryEntries ||
             nameBytes > kFsMaxDirectoryNameBytes) {
             ErrorOutSet(error,
                         fmt("directory exceeded the %d-entry or %d-name-byte "
@@ -287,9 +287,9 @@ static bool ReadDirectory(int root, Str rootName, Str relative,
         }
     }
     closedir(directory);
-    if (ok && result->entries.len > 1) {
-        qsort(result->entries.els, (size_t)result->entries.len, sizeof(FsEntry),
-              CompareEntry);
+    if (ok && len(result->entries) > 1) {
+        qsort(result->entries.els, (size_t)len(result->entries),
+              sizeof(FsEntry), CompareEntry);
     }
     return ok;
 }

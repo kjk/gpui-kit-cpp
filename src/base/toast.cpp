@@ -28,14 +28,14 @@ bool ToastPush(ToastStackState* s, int id, int timeoutMs) {
 }
 
 static void ToastEraseAt(ToastStackState* s, int i) {
-    for (int j = i; j < s->entries.len - 1; j++) {
+    for (int j = i; j < len(s->entries) - 1; j++) {
         s->entries[j] = s->entries[j + 1];
     }
     s->entries.len--;
 }
 
 bool ToastRemove(ToastStackState* s, int id) {
-    for (int i = 0; i < s->entries.len; i++) {
+    for (int i = 0; i < len(s->entries); i++) {
         if (s->entries[i].id == id) {
             ToastEraseAt(s, i);
             return true;
@@ -46,7 +46,7 @@ bool ToastRemove(ToastStackState* s, int id) {
 
 bool ToastStackAdvance(ToastStackState* s, int deltaMs, bool paused) {
     bool changed = false;
-    for (int i = 0; i < s->entries.len; i++) {
+    for (int i = 0; i < len(s->entries); i++) {
         ToastEntry* e = &s->entries[i];
         switch (e->status) {
             case ToastStatus::Starting:
@@ -77,7 +77,7 @@ bool ToastStackAdvance(ToastStackState* s, int deltaMs, bool paused) {
         }
     }
     int i = 0;
-    while (i < s->entries.len) {
+    while (i < len(s->entries)) {
         if (s->entries[i].status == ToastStatus::Ending &&
             s->entries[i].elapsedMs >= s->exitMs) {
             ToastEraseAt(s, i);
@@ -146,7 +146,7 @@ static bool ToastStackBottom(Anchor anchor) {
 
 static ToastMeasurement* ToastStackMeasurement(ToastStackState* state,
                                                uint32_t id, bool create) {
-    for (int i = 0; i < state->heights.len; i++) {
+    for (int i = 0; i < len(state->heights); i++) {
         if (state->heights[i].id == id) {
             return &state->heights[i];
         }
@@ -159,7 +159,7 @@ static ToastMeasurement* ToastStackMeasurement(ToastStackState* state,
     if (!VecAppend(state->heights, measurement)) {
         return nullptr;
     }
-    return &state->heights[state->heights.len - 1];
+    return &state->heights[len(state->heights) - 1];
 }
 
 ToastStack* ToastStack::New(Ctx* context, Str value,
@@ -187,7 +187,7 @@ ToastStack* ToastStack::Item(Str value, El* child) {
 
 ToastStack* ToastStack::Child(El* child) {
     Str childId = ElementIdNamed(arena, StrL("toast-stack-child"),
-                                 (uint64_t)children.len);
+                                 (uint64_t)len(children));
     return Item(childId, child);
 }
 
@@ -214,7 +214,7 @@ ToastStack* ToastStack::Refine(const Style& value, uint32_t fields) {
 }
 
 static bool ToastStackHasItem(const ToastStack* stack, uint32_t id) {
-    for (int i = 0; i < stack->children.len; i++) {
+    for (int i = 0; i < len(stack->children); i++) {
         if (stack->children[i].key == id) {
             return true;
         }
@@ -228,11 +228,11 @@ El* ToastStack::IntoEl() {
     }
     // Measurements are retained by stable item id, and disappear with their
     // item. Bounds are one frame old, like Rust's prepaint callback state.
-    for (int i = state->heights.len - 1; i >= 0; i--) {
+    for (int i = len(state->heights) - 1; i >= 0; i--) {
         if (ToastStackHasItem(this, state->heights[i].id)) {
             continue;
         }
-        for (int j = i; j < state->heights.len - 1; j++) {
+        for (int j = i; j < len(state->heights) - 1; j++) {
             state->heights[j] = state->heights[j + 1];
         }
         state->heights.len--;
@@ -244,7 +244,7 @@ El* ToastStack::IntoEl() {
     state->focused = hasFocus && FocusHandleContainsFocused(cx->win, focus);
     bool expanded = state->IsExpanded();
     bool bottom = ToastStackBottom(placement);
-    int count = children.len;
+    int count = len(children);
     float* heights =
         count ? (float*)Alloc(arena, (int)sizeof(float) * count) : nullptr;
     float* collapsed =

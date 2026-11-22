@@ -46,9 +46,10 @@ State RawFlowStart(Tokenizer* t) {
 
 State RawFlowBeforeSequenceOpen(Tokenizer* t) {
     int32_t prefix = 0;
-    if (t->events.len > 0 && t->events[t->events.len - 1]
-                                     .name == Name::SpaceOrTab) {
-        Position position = PositionFromExitEvent(t->events, t->events.len - 1);
+    if (len(t->events) > 0 && t->events[len(t->events) - 1]
+                                      .name == Name::SpaceOrTab) {
+        Position position =
+            PositionFromExitEvent(t->events, len(t->events) - 1);
         prefix = SliceFromPosition(t->parseState->bytes, position).Len();
     }
 
@@ -296,8 +297,9 @@ State RawTextStart(Tokenizer* t) {
         t->parseState->options->constructs.codeText && t->current == '`';
     bool math =
         t->parseState->options->constructs.mathText && t->current == '$';
-    bool afterEscape = t->events.len > 0 && t->events[t->events.len - 1].name ==
-                                                Name::CharacterEscape;
+    bool afterEscape =
+        len(t->events) > 0 && t->events[len(t->events) - 1]
+                                      .name == Name::CharacterEscape;
     if ((code || math) && (t->previous != t->current || afterEscape)) {
         uint8_t marker = (uint8_t)t->current;
         if (marker == '`') {

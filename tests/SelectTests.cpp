@@ -172,10 +172,10 @@ static void SelectStateOwnsCommittedSelectionAndEvents() {
     s->Searchable(true);
     InputSetValue(&s->queryInput, StrL("Swift"));
     SearchableListSearch(s->List(), items, 3, InputValue(&s->queryInput));
-    utassert(s->state.matches.len == 1);
+    utassert(len(s->state.matches) == 1);
     s->SetSelectedValue(StrL("rust"), &cx);
     utassert(len(InputValue(&s->queryInput)) == 0);
-    utassert(s->state.matches.len == 3);
+    utassert(len(s->state.matches) == 3);
 
     Entity<SelectEventSink> sink = EntityNewState<SelectEventSink>(&app);
     SubscribeTo(&app, state, sink, &SelectEventSink::OnConfirm);
@@ -217,10 +217,10 @@ static void ClosingASearchableSelectClearsItsQueryAndRestoresItsCursor() {
     InputSetValue(&s->queryInput, StrL("hun"));
     SearchableListSearch(s->List(), items, 4, InputValue(&s->queryInput));
     s->state.list.selected = 0;
-    utassert(s->state.matches.len == 1 && s->state.matches[0] == 3);
+    utassert(len(s->state.matches) == 1 && s->state.matches[0] == 3);
     s->SetOpen(false, &cx);
     utassert(len(InputValue(&s->queryInput)) == 0);
-    utassert(s->state.matches.len == 4);
+    utassert(len(s->state.matches) == 4);
     utassert(s->state.list.selected == 2);
 
     // Confirming a filtered row commits the source item, then resolves its
@@ -231,7 +231,7 @@ static void ClosingASearchableSelectClearsItsQueryAndRestoresItsCursor() {
     SearchableListState::OnRowClick(s->List(), &cx, nullptr, 0);
     utassert(base::StrEq(s->SelectedValue(), StrL("hu")));
     utassert(len(InputValue(&s->queryInput)) == 0);
-    utassert(s->state.matches.len == 4);
+    utassert(len(s->state.matches) == 4);
     utassert(s->state.list.selected == 3);
 
     delete win;
@@ -414,7 +414,7 @@ static void RedirectConfirm(void* user,
                             IndexPath, bool) {
     RedirectUser* redirect = (RedirectUser*)user;
     redirect->confirmations++;
-    utassert(state && state->selected.len == 1 && state->selected[0] == 2);
+    utassert(state && len(state->selected) == 1 && state->selected[0] == 2);
 }
 
 // combobox.rs single_select_confirms_delegate_replacement. on_will_change
@@ -487,7 +487,7 @@ static void FilteredRowReplacementSelectsTheVisibleValue() {
     s->SetOpen(true, &cx);
     s->SetQuery(StrL("Vue"), &cx);
     utassert(base::StrEq(s->SelectedValue(), StrL("React")));
-    utassert(s->state.matches.len == 1 && s->state.matches[0] == 1);
+    utassert(len(s->state.matches) == 1 && s->state.matches[0] == 1);
     SearchableListState::OnRowClick(s->List(), &cx, nullptr, 0);
     ComboboxEventSink* heard = sink.Get(&app);
     utassert(base::StrEq(s->SelectedValue(), StrL("Vue")));
@@ -521,7 +521,7 @@ static void ComboboxOwnsStateEventsAndTriggerContext() {
     Str selected[] = {StrL("vue"), StrL("missing")};
     s->SetSelectedValues(selected, 2, &cx);
     utassert(s->Query().len == 0);
-    utassert(s->state.matches.len == 3);
+    utassert(len(s->state.matches) == 3);
     utassert(s->Selection().len == 1 && s->Selection()[0] == 1);
     utassert(base::StrEq(s->SelectedValue(), StrL("vue")));
 
@@ -661,7 +661,7 @@ static void SelectAccessibilityValueTracksPlaceholderAndSelection() {
 
     // Filtering changes the available rows, not the committed value.
     SearchableListSearch(&s->state, items, 2, StrL("Go"));
-    utassert(s->state.matches.len == 1);
+    utassert(len(s->state.matches) == 1);
     utassert(StrEq(render(Str{}, true), StrL("Rust")));
 
     utassert(StrEq(render(StrL("Language: "), true), StrL("Language: Rust")));
@@ -753,7 +753,7 @@ static void ReplacingItemsReconcilesTheCursorAndSelection() {
     utassert(s->SelectedIndex(&cursor));
     utassert(cursor == IndexPathNew(2));
     utassert(base::StrEq(s->SelectedValue(), StrL("main")));
-    utassert(s->state.selected.len == 1 && s->state.selected[0] == 1);
+    utassert(len(s->state.selected) == 1 && s->state.selected[0] == 1);
 
     SearchableItem third[] = {
         {StrL("main"), StrL("main")},
@@ -769,7 +769,7 @@ static void ReplacingItemsReconcilesTheCursorAndSelection() {
     };
     s->SetItems(fourth, 2);
     utassert(!s->SelectedValue().s);
-    utassert(s->state.selected.len == 0);
+    utassert(len(s->state.selected) == 0);
 
     delete win;
     EntityDropAll(&app);

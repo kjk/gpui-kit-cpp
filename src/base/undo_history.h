@@ -84,9 +84,9 @@ struct UndoHistory {
         if (!len(from)) return result;
         Vec<T>* transaction = from[len(from) - 1];
         from.len--;
-        for (int i = 0; i < transaction->len; i++) {
+        for (int i = 0; i < len(*transaction); i++) {
             VecAppend(result,
-                      (*transaction)[reverse ? transaction->len - 1 - i : i]);
+                      (*transaction)[reverse ? len(*transaction) - 1 - i : i]);
         }
         VecAppend(to, transaction);
         hasLastChangedAt = false;

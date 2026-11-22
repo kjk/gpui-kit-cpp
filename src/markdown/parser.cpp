@@ -209,8 +209,8 @@ Vec<Event> Parse(ParseState* parseState) {
     // a 64 KB document walks 4, 8, 16 … 32768 and memcpys about 2 MB getting
     // there. A floor and not a cap: a document with more events than that
     // still grows the ordinary way.
-    VecReserve(tokenizer->events, parseState->bytes.len / 2);
-    State state = Push(tokenizer, 0, 0, parseState->bytes.len, 0,
+    VecReserve(tokenizer->events, len(parseState->bytes) / 2);
+    State state = Push(tokenizer, 0, 0, len(parseState->bytes), 0,
                        StateNext(StateName::DocumentStart));
     Subresult result = Flush(tokenizer, state, true);
 
@@ -224,11 +224,11 @@ Vec<Event> Parse(ParseState* parseState) {
     TokenizerFree(tokenizer);
 
     for (;;) {
-        for (int32_t i = 0; i < result.gfmFootnoteDefinitions.len; i++) {
+        for (int32_t i = 0; i < len(result.gfmFootnoteDefinitions); i++) {
             VecAppend(parseState->gfmFootnoteDefinitions,
                       result.gfmFootnoteDefinitions[i]);
         }
-        for (int32_t i = 0; i < result.definitions.len; i++) {
+        for (int32_t i = 0; i < len(result.definitions); i++) {
             VecAppend(parseState->definitions, result.definitions[i]);
         }
         result.gfmFootnoteDefinitions.len = 0;

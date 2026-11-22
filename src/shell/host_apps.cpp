@@ -172,7 +172,7 @@ int ShellListApplications() {
             StrFree(path);
     }
     delete[] entries;
-    for (int i = 1; i < names.len; i++) {
+    for (int i = 1; i < len(names); i++) {
         Str item = names[i];
         int at = i;
         while (at > 0 && StrCmp(names[at - 1], item) > 0) {
@@ -181,7 +181,7 @@ int ShellListApplications() {
         }
         names[at] = item;
     }
-    if (names.len == 0) {
+    if (len(names) == 0) {
         fprintf(stderr,
                 "no application is installed in %s. Each application is a "
                 "directory there holding main.js and, usually, "
@@ -190,7 +190,7 @@ int ShellListApplications() {
         StrFree(directory);
         return 1;
     }
-    for (int i = 0; i < names.len; i++) {
+    for (int i = 0; i < len(names); i++) {
         Str root = names[i];
         int start = len(root);
         while (start > 0 && root.s[start - 1] != '/' &&

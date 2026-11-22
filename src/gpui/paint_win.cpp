@@ -1627,7 +1627,7 @@ static ID2D1Bitmap* ImageBitmap(PaintCtx* ctx, ImageFrame* frame,
 void PaintBackendRenderImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,
                                  Bounds imageBounds, int frameIndex,
                                  float radius, bool grayscale) {
-    if (!ctx || !ctx->rt || !ctx->rt->rt || !img || img->frames.len <= 0 ||
+    if (!ctx || !ctx->rt || !ctx->rt->rt || !img || len(img->frames) <= 0 ||
         bounds.w <= 0 || bounds.h <= 0 || imageBounds.w <= 0 ||
         imageBounds.h <= 0) {
         return;

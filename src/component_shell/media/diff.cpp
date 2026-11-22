@@ -94,7 +94,7 @@ static bool NewDiffState(shell::StateBuild* build,
     if (!component::DiffFile::Parse(args[0].string, &files, &error)) {
         for (int i = 0; i < len(files); i++) delete files[i];
         return build
-            ->Fail(error.message.len ? error.message : StrL("invalid diff"));
+            ->Fail(len(error.message) ? error.message : StrL("invalid diff"));
     }
     DiffStateValue* held = build->New<DiffStateValue>();
     held->state = EntityNew<component::DiffState>(build->app);

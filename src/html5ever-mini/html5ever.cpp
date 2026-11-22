@@ -273,7 +273,7 @@ struct Build {
 
 static void OnToken(void* user, const Token* token) {
     Build* b = (Build*)user;
-    Node* parent = b->stack.len ? b->stack[b->stack.len - 1] : b->doc;
+    Node* parent = len(b->stack) ? b->stack[len(b->stack) - 1] : b->doc;
     if (token->kind == TokenKind::Character) {
         if (ArenaStrLen(b->a, token->data) <= 0) return;
         Node* node = NodeNew(b->a, NodeKind::Text);
@@ -297,7 +297,7 @@ static void OnToken(void* user, const Token* token) {
             b->stack.Append(b->a, node);
         }
     } else if (token->kind == TokenKind::EndTag) {
-        for (int i = b->stack.len - 1; i >= 0; i--) {
+        for (int i = len(b->stack) - 1; i >= 0; i--) {
             if (StrEqI(NodeName(b->a, b->stack[i]), TokenName(b->a, token))) {
                 b->stack.Truncate(i);
                 break;
@@ -391,22 +391,22 @@ void ParserProcess(Parser* parser, Str chunk) {
     if (!impl || !parser->a) return;
     int n = len(chunk);
     if (n > 0) {
-        int need = impl->len + n;
+        int need = len(*impl) + n;
         if (need > impl->cap) {
             int cap = impl->cap > 0 ? impl->cap * 2 : 256;
             while (cap < need) cap *= 2;
             char* fresh = (char*)parser->a->Push((uint64_t)cap, 1, false);
-            if (impl->len > 0 && impl->buf) {
-                memcpy(fresh, impl->buf, (size_t)impl->len);
+            if (len(*impl) > 0 && impl->buf) {
+                memcpy(fresh, impl->buf, (size_t)len(*impl));
             }
             impl->buf = fresh;
             impl->cap = cap;
         }
-        memcpy(impl->buf + impl->len, chunk.s, (size_t)n);
+        memcpy(impl->buf + len(*impl), chunk.s, (size_t)n);
         impl->len += n;
     }
     if (parser->options.scriptingEnabled && !impl->sawScriptEnd) {
-        Str all = Str(impl->buf, impl->len);
+        Str all = Str(impl->buf, len(*impl));
         if (StrContainsI(all, StrL("</script>"))) {
             impl->sawScriptEnd = true;
             impl->paused = true;
@@ -428,7 +428,7 @@ Node* ParserFinish(Parser* parser) {
     MiniParser* impl = parser ? (MiniParser*)parser->impl : nullptr;
     if (!impl) return nullptr;
     impl->paused = false;
-    Str source = Str(impl->buf, impl->len);
+    Str source = Str(impl->buf, len(*impl));
     if (impl->fragment) {
         return ParseFragment(parser->a, source, impl->context, parser->options);
     }

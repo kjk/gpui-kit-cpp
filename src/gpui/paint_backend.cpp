@@ -376,7 +376,7 @@ void RenderImageComplete(RenderImage* img, RenderImage* decoded) {
     if (decoded && len(decoded->frames) > 0) {
         RenderImageFramesFree(img);
         img->frames.els = decoded->frames.els;
-        img->frames.len = decoded->frames.len;
+        img->frames.len = len(decoded->frames);
         img->frames.cap = decoded->frames.cap;
         decoded->frames.els = nullptr;
         decoded->frames.len = 0;

@@ -131,7 +131,7 @@ class RetainedStore {
     RetainedStore& operator=(const RetainedStore&) = delete;
     ~RetainedStore();
 
-    int Len() const { return entries.len; }
+    int Len() const { return len(entries); }
     uint32_t Checkpoint() const { return nextId; }
 
     EntityHandle CreateInput(bool textarea, Str placeholder, Str value,

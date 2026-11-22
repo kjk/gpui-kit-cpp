@@ -231,7 +231,7 @@ LintResult LintTake(Results* res, Str raw) {
     (void)raw;
     LintResult out;
     out.lines = res->lines.Flatten(res->a);
-    out.nLines = res->lines.len;
+    out.nLines = len(res->lines);
     out.error = res->error;
     return out;
 }
@@ -242,7 +242,7 @@ FormatResult FormatTake(Results* res, Str raw) {
     // FormatResult::error reverts to the raw input.
     out.out = len(res->error) > 0
                   ? base::StrDup(res->a, raw)
-                  : base::StrDup(res->a, Str(res->out.els, res->out.len));
+                  : base::StrDup(res->a, Str(res->out.els, len(res->out)));
     return out;
 }
 

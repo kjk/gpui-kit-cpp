@@ -542,7 +542,7 @@ static void TheDelegateTableOwnsTheWholeContract() {
     if (root) LayoutEl(&win->paint, root, 0, 0, 300, 120, 14, Rgba{});
     ListState* list = state.Get(&app);
     utassert(root && list);
-    utassert(list->count == 3 && list->sectionCounts.len == 2);
+    utassert(list->count == 3 && len(list->sectionCounts) == 2);
     utassert(list->sectionCounts[0] == 2 && list->sectionCounts[1] == 1);
     utassert(probe.sectionsCalls == 1 && probe.itemCountCalls == 2);
     // One representative item plus every visible item.

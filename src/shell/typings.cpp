@@ -128,7 +128,7 @@ static void AppendDeclarationsWithComponents(
     StrBuilder* out, const FrozenComponentRegistry* components) {
     StrBuilder builtin;
     AppendBuiltinTypeDeclarations(&builtin);
-    Str text = Str(builtin.els, builtin.len);
+    Str text = Str(builtin.els, len(builtin));
     Str union_ = StrL("  export type Element = NativeElement;\n");
     Str moduleStart = StrL("declare module \"gpui-component\" {\n");
     Str moduleImport = StrL(
@@ -351,8 +351,8 @@ bool ShellWriteTypeDeclarations(Str root, const HostModules* modules,
     DirEntry* entries = ok ? AllocArray<DirEntry>(kTypesMaxEntries) : nullptr;
     if (!entries) ok = false;
     int files = 0;
-    while (ok && pending.len > 0 && files <= kShellTypesMaxFiles) {
-        TypesDirectory directory = pending[pending.len - 1];
+    while (ok && len(pending) > 0 && files <= kShellTypesMaxFiles) {
+        TypesDirectory directory = pending[len(pending) - 1];
         pending.len--;
         int count = PlatListDir(directory.path, entries, kTypesMaxEntries);
         if (count >= kTypesMaxEntries) break;
@@ -391,7 +391,7 @@ bool ShellWriteTypeDeclarations(Str root, const HostModules* modules,
                 AppendDirectory(&targets, Str(directory.path), directory.depth);
     }
 
-    for (int i = 0; ok && i < targets.len; i++) {
+    for (int i = 0; ok && i < len(targets); i++) {
         bool changed = false;
         ok = RefreshTypes(Str(targets[i].path), text, entries, &changed, error);
         if (ok && changed && written) (*written)++;

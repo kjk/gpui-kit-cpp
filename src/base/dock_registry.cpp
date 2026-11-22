@@ -18,7 +18,7 @@ void PanelRegistry::Register(Str panelName, PanelRegistryBuild build,
     if (!panelName.s || !build) {
         return;
     }
-    for (int i = 0; i < items.len; i++) {
+    for (int i = 0; i < len(items); i++) {
         if (base::StrEq(items[i].name, panelName)) {
             items[i].build = build;
             items[i].data = data;
@@ -37,7 +37,7 @@ bool PanelRegistry::BuildPanel(Str panelName, const PanelBuildContext* context,
     if (!out) {
         return false;
     }
-    for (int i = 0; i < items.len; i++) {
+    for (int i = 0; i < len(items); i++) {
         if (!base::StrEq(items[i].name, panelName)) {
             continue;
         }

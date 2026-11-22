@@ -5,7 +5,7 @@ namespace gpui {
 
 WindowLayers::~WindowLayers() {
     if (app) {
-        for (int i = 0; i < dialogs.len; i++) {
+        for (int i = 0; i < len(dialogs); i++) {
             EntityDrop(app, dialogs[i].view);
         }
         if (hasSheet) {
@@ -52,7 +52,7 @@ void WindowOpenDialog(Ctx* cx, EntityId view, bool overlay) {
     // stacking a second copy of it. One still playing its exit is reopened:
     // the presence clock keyed by its id plays the entrance again from
     // wherever the exit had reached.
-    for (int i = 0; i < l->dialogs.len; i++) {
+    for (int i = 0; i < len(l->dialogs); i++) {
         if (l->dialogs[i].view != view) {
             continue;
         }
@@ -76,7 +76,7 @@ static int NewestOpenDialog(const WindowLayers* l) {
     if (!l) {
         return -1;
     }
-    for (int i = l->dialogs.len - 1; i >= 0; i--) {
+    for (int i = len(l->dialogs) - 1; i >= 0; i--) {
         if (!l->dialogs[i].closing) {
             return i;
         }
@@ -97,7 +97,7 @@ bool WindowHasActiveDialog(Ctx* cx) {
 
 int WindowDialogCount(Ctx* cx) {
     WindowLayers* l = LayersOf(cx);
-    return l ? l->dialogs.len : 0;
+    return l ? len(l->dialogs) : 0;
 }
 
 void WindowCloseDialog(Ctx* cx) {
@@ -122,11 +122,11 @@ void WindowCloseDialog(Ctx* cx) {
 
 void WindowCloseAllDialogs(Ctx* cx) {
     WindowLayers* l = LayersOf(cx);
-    if (!l || l->dialogs.len == 0) {
+    if (!l || len(l->dialogs) == 0) {
         return;
     }
     FocusHandle previous = l->dialogs[0].previousFocus;
-    for (int i = l->dialogs.len - 1; i >= 0; i--) {
+    for (int i = len(l->dialogs) - 1; i >= 0; i--) {
         if (l->dialogs[i].closing || l->dialogs[i].exitEnabled) {
             l->dialogs[i].closing = true;
             continue;
@@ -242,7 +242,7 @@ int WindowNotificationCount(Ctx* cx) {
         return 0;
     }
     component::NotificationListState* st = l->notifications.Get(cx);
-    return st ? st->items.len : 0;
+    return st ? len(st->items) : 0;
 }
 
 void WindowRemoveNotifications(Ctx* cx, component::NotificationTypeId type) {
@@ -277,7 +277,7 @@ InputState* WindowFocusedInput(Ctx* cx) {
     Window* win = cx->win;
     InputState* input = win->input;
     bool registered = input->focused && input->focusWin == win;
-    for (int i = 0; registered && i < win->paint.hits.len; i++) {
+    for (int i = 0; registered && i < len(win->paint.hits); i++) {
         if (win->paint.hits[i].input == input) {
             return input;
         }

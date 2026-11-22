@@ -86,8 +86,8 @@ static void TheSemanticTokensAreTheRolesOfThePalette() {
                                                       .lineHeight == 20.f);
     utassert(tk.typography.monoMd.size == kMonoFontSize);
     // ShadowTokens::elevations, at 18% black.
-    utassert(tk.shadow.sm.len == 1 && tk.shadow.md.len == 1 &&
-             tk.shadow.lg.len == 1);
+    utassert(len(tk.shadow.sm) == 1 && len(tk.shadow.md) == 1 &&
+             len(tk.shadow.lg) == 1);
     utassert(tk.shadow.md[0].y == 4.f && tk.shadow.md[0].blur == 8.f &&
              tk.shadow.md[0].spread == -2.f);
     utassert(tk.shadow.lg[0].blur == 24.f);
@@ -111,14 +111,14 @@ static void SourceTokenDefaultsKeepTypographyAndShadowStructure() {
                                                       .lineHeight == 16.f);
     utassert(tk.typography.monoMd.size == 13.f &&
              tk.typography.monoMd.weight == FontWeight::Normal);
-    utassert(tk.shadow.sm.len == 0 && tk.shadow.md.len == 0 &&
-             tk.shadow.lg.len == 0);
+    utassert(len(tk.shadow.sm) == 0 && len(tk.shadow.md) == 0 &&
+             len(tk.shadow.lg) == 0);
 
     ShadowTokens elevated = ShadowTokens::Elevations(Rgba8(1, 2, 3, 4));
-    utassert(elevated.sm.len == 1 && elevated.md.len == 1 &&
-             elevated.lg.len == 1);
+    utassert(len(elevated.sm) == 1 && len(elevated.md) == 1 &&
+             len(elevated.lg) == 1);
     VecAppend(elevated.md, BoxShadow{1, 2, 3, 4, Rgb(5, 6, 7), true});
-    utassert(elevated.md.len == 2);
+    utassert(len(elevated.md) == 2);
     utassert(elevated.md[1].inset && elevated.md[1].spread == 4.f);
 }
 
@@ -227,7 +227,7 @@ static void TypedSemanticSchemaParsesAndAppliesArrays() {
     utassert(tokens.radius.lg == 10.f);
     utassert(StrEqI(tokens.typography.sans, "Inter") &&
              tokens.typography.md.lineHeight == 22.f);
-    utassert(tokens.shadow.sm.len == 1 && tokens.shadow.sm[0].x == 1.f &&
+    utassert(len(tokens.shadow.sm) == 1 && tokens.shadow.sm[0].x == 1.f &&
              tokens.shadow.sm[0].y == 2.f && tokens.shadow.sm[0].blur == 3.f &&
              tokens.shadow.sm[0].spread == 4.f && tokens.shadow.sm[0].inset);
     VecReset(tokens.shadow.sm);

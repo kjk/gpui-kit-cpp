@@ -63,7 +63,7 @@ static bool RequiredString(const JsonValue* object, const char* field, Str* out,
                             Str(JsonTypeName(value))));
         return false;
     }
-    if (value->str.len == 0) {
+    if (len(value->str) == 0) {
         SetError(error, fmt("field `%s` is empty", Str(field)));
         return false;
     }
@@ -510,7 +510,7 @@ static bool ParseDependencies(const JsonValue* value, PluginManifest* out,
             return false;
         }
         if (!ValidateDependency(dependency, error)) return false;
-        int at = out->dependencies.len;
+        int at = len(out->dependencies);
         VecAppend(out->dependencies, dependency);
         while (at > 0 && !DependencyNameOrdered(out->dependencies[at - 1].name,
                                                 out->dependencies[at].name)) {
@@ -581,7 +581,7 @@ static bool ParseCapabilities(const JsonValue* value, PluginManifest* out,
                               &out->networkHosts,
                               StrL("capabilities.network.hosts"), error))
             return false;
-        for (int i = 0; i < out->networkHosts.len; i++) {
+        for (int i = 0; i < len(out->networkHosts); i++) {
             Str host = out->networkHosts[i];
             if (!host || StrFind(host, StrL("://")) >= 0 ||
                 StrFind(host, StrL("/")) >= 0) {
@@ -637,7 +637,7 @@ static bool ParseCapabilities(const JsonValue* value, PluginManifest* out,
             if (!ParseStringArray(
                     out->arena, JsonGet(rule, "methods"), &parsed->methods,
                     StrL("capabilities.network.http.methods"), error, true) ||
-                parsed->methods.len == 0 ||
+                len(parsed->methods) == 0 ||
                 !ParseStringArray(
                     out->arena, JsonGet(rule, "paths"), &parsed->paths,
                     StrL("capabilities.network.http.paths"), error) ||
@@ -646,7 +646,7 @@ static bool ParseCapabilities(const JsonValue* value, PluginManifest* out,
                     &parsed->pathPrefixes,
                     StrL("capabilities.network.http.path_prefixes"), error))
                 return false;
-            for (int i = 0; i < parsed->methods.len; i++) {
+            for (int i = 0; i < len(parsed->methods); i++) {
                 if (!StrEq(parsed->methods[i], StrL("GET")) &&
                     !StrEq(parsed->methods[i], StrL("POST"))) {
                     SetError(error, fmt("invalid HTTP method `%s`",
@@ -699,7 +699,7 @@ static bool ParseCapabilities(const JsonValue* value, PluginManifest* out,
         if (!ParseStringArray(out->arena, JsonGet(process, "env"), &out->env,
                               StrL("capabilities.process.env"), error))
             return false;
-        for (int i = 0; i < out->env.len; i++) {
+        for (int i = 0; i < len(out->env); i++) {
             Str name = out->env[i];
             if (!name || StrFind(name, StrL("=")) >= 0) {
                 SetError(error, fmt("process.env entry `%s` must be an "
@@ -721,7 +721,7 @@ PluginManifest::~PluginManifest() {
     VecReset(execute);
     VecReset(networkHosts);
     VecReset(env);
-    for (int i = 0; i < http.len; i++) {
+    for (int i = 0; i < len(http); i++) {
         VecReset(http[i]->methods);
         VecReset(http[i]->paths);
         VecReset(http[i]->pathPrefixes);
@@ -950,7 +950,7 @@ Capabilities PluginManifest::Grant(Str pluginDirectory,
                                    Str dataDirectory) const {
     Capabilities result;
     Str home = ShellHomeDirectory();
-    for (int i = 0; i < readRoots.len; i++) {
+    for (int i = 0; i < len(readRoots); i++) {
         Str path;
         if (!ExpandPath(readRoots[i], pluginDirectory, dataDirectory, home,
                         &path))
@@ -958,7 +958,7 @@ Capabilities PluginManifest::Grant(Str pluginDirectory,
         result.AddReadRoot(path);
         StrFree(path);
     }
-    for (int i = 0; i < writeRoots.len; i++) {
+    for (int i = 0; i < len(writeRoots); i++) {
         Str path;
         if (!ExpandPath(writeRoots[i], pluginDirectory, dataDirectory, home,
                         &path))
@@ -967,25 +967,25 @@ Capabilities PluginManifest::Grant(Str pluginDirectory,
         StrFree(path);
     }
     StrFree(home);
-    for (int i = 0; i < env.len; i++) result.AddEnvVariable(env[i]);
+    for (int i = 0; i < len(env); i++) result.AddEnvVariable(env[i]);
     if (executeUnrestricted) {
         result.SetExecute(ExecuteGrant::Unrestricted());
-    } else if (execute.len > 0) {
-        ExecuteGrant grant = ExecuteGrant::Allowed(execute.els, execute.len);
+    } else if (len(execute) > 0) {
+        ExecuteGrant grant = ExecuteGrant::Allowed(execute.els, len(execute));
         result.SetExecute(grant);
     }
-    for (int i = 0; i < networkHosts.len; i++)
+    for (int i = 0; i < len(networkHosts); i++)
         result.AddNetworkHost(networkHosts[i]);
-    for (int i = 0; i < http.len; i++) {
+    for (int i = 0; i < len(http); i++) {
         PluginHttpGrant* file = http[i];
         HttpRequestGrant grant(file->host);
         grant.Scheme(file->scheme);
         if (file->hasPort) grant.Port(file->port);
-        for (int j = 0; j < file->methods.len; j++)
+        for (int j = 0; j < len(file->methods); j++)
             grant.AddMethod(file->methods[j]);
         for (int j = 0; j < len(file->paths); j++)
             grant.AddPath(file->paths[j]);
-        for (int j = 0; j < file->pathPrefixes.len; j++)
+        for (int j = 0; j < len(file->pathPrefixes); j++)
             grant.AddPathPrefix(file->pathPrefixes[j]);
         result.AddHttpRequest(grant);
     }
@@ -1050,15 +1050,15 @@ Str ShellBundleIdForPath(Str root) {
         safe.AppendChar(ch);
         previousDot = ch == '.';
     }
-    while (safe.len > 0 &&
+    while (len(safe) > 0 &&
            (safe.els[0] == '.' || safe.els[0] == '-' || safe.els[0] == '_')) {
         memmove(safe.els, safe.els + 1, (size_t)--safe.len);
     }
-    while (safe.len > 0 &&
-           (safe.els[safe.len - 1] == '.' || safe.els[safe.len - 1] == '-' ||
-            safe.els[safe.len - 1] == '_'))
+    while (len(safe) > 0 &&
+           (safe.els[len(safe) - 1] == '.' || safe.els[len(safe) - 1] == '-' ||
+            safe.els[len(safe) - 1] == '_'))
         safe.len--;
-    if (safe.len == 0) safe.Append(StrL("app"));
+    if (len(safe) == 0) safe.Append(StrL("app"));
     safe.Append(fmt("-%016llx", (unsigned long long)hash));
     return safe.TakeStr();
 }
@@ -1099,7 +1099,7 @@ static void FreePlugin(Plugin* plugin, App* app) {
 }
 
 PluginManager::~PluginManager() {
-    for (int i = 0; i < loaded.len; i++) FreePlugin(loaded[i], loaded[i]->app);
+    for (int i = 0; i < len(loaded); i++) FreePlugin(loaded[i], loaded[i]->app);
     VecReset(loaded);
     ClearCatalog();
     StrVecFree(&directories);
@@ -1118,7 +1118,7 @@ PluginManager& PluginManager::DataHome(Str directory) {
 }
 
 void PluginManager::ClearCatalog() {
-    for (int i = 0; i < catalog.len; i++) {
+    for (int i = 0; i < len(catalog); i++) {
         delete catalog[i].manifest;
         StrFree(catalog[i].root);
         StrFree(catalog[i].error);
@@ -1142,12 +1142,12 @@ const Vec<PluginDiscovery>& PluginManager::Discover() {
     ClearCatalog();
     discovered = true;
     Vec<Str> roots;
-    for (int d = 0; d < directories.len; d++) {
+    for (int d = 0; d < len(directories); d++) {
         if (ManifestAt(directories[d])) {
             VecAppend(roots, StrDup(directories[d]));
             continue;
         }
-        if (directories[d].len >= kMaxPath) continue;
+        if (len(directories[d]) >= kMaxPath) continue;
         TempStr directory = StrDupTemp(directories[d]);
         DirEntry* entries = AllocArray<DirEntry>(4096);
         int count = entries ? PlatListDir(directory.s, entries, 4096) : 0;
@@ -1180,7 +1180,7 @@ const Vec<PluginDiscovery>& PluginManager::Discover() {
             error.message = {};
             delete manifest;
         } else {
-            for (int j = 0; j < catalog.len; j++) {
+            for (int j = 0; j < len(catalog); j++) {
                 if (catalog[j].manifest &&
                     StrEq(catalog[j].manifest->id, manifest->id)) {
                     found.error = StrDup(fmt("`%s` is already provided by %s",
@@ -1219,7 +1219,7 @@ bool PluginManager::Load(ShellRuntime* runtime, Str id,
         return false;
     }
     const PluginDiscovery* selected = nullptr;
-    for (int i = 0; i < catalog.len; i++)
+    for (int i = 0; i < len(catalog); i++)
         if (catalog[i].manifest && StrEq(catalog[i].manifest->id, id))
             selected = &catalog[i];
     if (!selected) {
@@ -1292,11 +1292,11 @@ bool PluginManager::Load(ShellRuntime* runtime, Str id,
 }
 
 bool PluginManager::Unload(Str id, App* app) {
-    for (int i = 0; i < loaded.len; i++) {
+    for (int i = 0; i < len(loaded); i++) {
         if (!loaded[i]->manifest || !StrEq(loaded[i]->manifest->id, id))
             continue;
         Plugin* plugin = loaded[i];
-        for (int j = i + 1; j < loaded.len; j++) loaded[j - 1] = loaded[j];
+        for (int j = i + 1; j < len(loaded); j++) loaded[j - 1] = loaded[j];
         loaded.len--;
         FreePlugin(plugin, app);
         return true;
@@ -1305,7 +1305,7 @@ bool PluginManager::Unload(Str id, App* app) {
 }
 
 const Plugin* PluginManager::Loaded(Str id) const {
-    for (int i = 0; i < loaded.len; i++)
+    for (int i = 0; i < len(loaded); i++)
         if (loaded[i]->manifest && StrEq(loaded[i]->manifest->id, id))
             return loaded[i];
     return nullptr;

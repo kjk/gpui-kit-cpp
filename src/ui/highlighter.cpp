@@ -21,7 +21,7 @@ struct InputMenuViewState {
     static void CompletionClick(InputMenuViewState* self, Ctx* cx,
                                 const ClickEvent*, int64_t ix) {
         if (!self || !self->input || ix < 0 ||
-            ix >= self->input->completion.items.len) {
+            ix >= len(self->input->completion.items)) {
             return;
         }
         self->input->completion.selected = (int)ix;
@@ -32,7 +32,7 @@ struct InputMenuViewState {
     static void CompletionHover(InputMenuViewState* self, Ctx* cx,
                                 const HoverEvent* event, int64_t ix) {
         if (!self || !self->input || !event || !event->hovered || ix < 0 ||
-            ix >= self->input->completion.items.len ||
+            ix >= len(self->input->completion.items) ||
             self->input->completion.selected == ix) {
             return;
         }
@@ -50,7 +50,7 @@ struct InputMenuViewState {
     static void CodeActionClick(InputMenuViewState* self, Ctx* cx,
                                 const ClickEvent*, int64_t ix) {
         if (!self || !self->input || ix < 0 ||
-            ix >= self->input->codeActions.items.len) {
+            ix >= len(self->input->codeActions.items)) {
             return;
         }
         self->input->codeActions.selected = (int)ix;
@@ -61,7 +61,7 @@ struct InputMenuViewState {
     static void CodeActionHover(InputMenuViewState* self, Ctx* cx,
                                 const HoverEvent* event, int64_t ix) {
         if (!self || !self->input || !event || !event->hovered || ix < 0 ||
-            ix >= self->input->codeActions.items.len ||
+            ix >= len(self->input->codeActions.items) ||
             self->input->codeActions.selected == ix) {
             return;
         }
@@ -335,7 +335,7 @@ static void PlaceCaretMenu(PaintCtx* ctx, El* e, void* user) {
 
 El* CompletionMenu::IntoEl() {
     if (!editor || !editor->completion.open ||
-        editor->completion.items.len <= 0) {
+        len(editor->completion.items) <= 0) {
         return nullptr;
     }
     float x = CaretPopupX(editor);
@@ -394,7 +394,7 @@ static El* CompletionMenuContent(CompletionMenu* self, Ctx* cx, float maxW,
                                           ? editor->completionHighlight.fn
                                           : HighlightPrefix;
     void* highlightData = editor->completionHighlight.data;
-    for (int i = 0; i < editor->completion.items.len; i++) {
+    for (int i = 0; i < len(editor->completion.items); i++) {
         const CompletionItem& item = editor->completion.items[i];
         bool selected = i == editor->completion.selected;
         // MenuItemElement: text_sm, py_0, px_2, h(rems(26/16)), mb_0p5,
@@ -533,7 +533,8 @@ bool CodeActionMenu::HandleAction(InputAction action) {
 }
 
 El* CodeActionMenu::IntoEl() {
-    if (!state || !state->codeActions.open || state->codeActions.items.len <= 0)
+    if (!state || !state->codeActions.open ||
+        len(state->codeActions.items) <= 0)
         return nullptr;
     float x = CaretPopupX(state);
     float y = CaretPopupY(state);
@@ -572,7 +573,7 @@ static El* CodeActionMenuContent(CodeActionMenu* self, Ctx* cx, float maxW) {
             Rems(cx, 0.25f)));
     Entity<InputMenuViewState> view =
         InputMenuView(cx, state, "code-action-menu");
-    for (int i = 0; i < state->codeActions.items.len; i++) {
+    for (int i = 0; i < len(state->codeActions.items); i++) {
         bool selected = i == state->codeActions.selected;
         El* row = Div(a)
                       ->FlexRow()
@@ -627,7 +628,7 @@ static El* PlaceEditorPopover(Ctx* cx, InputState* input, El* surface,
 }
 
 El* DiagnosticPopover::IntoEl() {
-    if (!state || diagnostic < 0 || diagnostic >= state->diagnostics.len)
+    if (!state || diagnostic < 0 || diagnostic >= len(state->diagnostics))
         return nullptr;
     const Theme& theme = ThemeNow(cx->app);
     const Diagnostic& item = state->diagnostics[diagnostic];
@@ -908,9 +909,9 @@ static void SynHlLexInto(SyntaxLang lang, Str text, Vec<HlRun>* runs,
         // Adjacent runs of one kind are one run, which keeps a document of a
         // few hundred lines to a few hundred of them.
         int hi = tokStart + len(lx.text);
-        if (runs->len > 0 && (*runs)[runs->len - 1].hi == tokStart &&
-            (*runs)[runs->len - 1].tok == lx.tok) {
-            (*runs)[runs->len - 1].hi = hi;
+        if (len(*runs) > 0 && (*runs)[len(*runs) - 1].hi == tokStart &&
+            (*runs)[len(*runs) - 1].tok == lx.tok) {
+            (*runs)[len(*runs) - 1].hi = hi;
             continue;
         }
         HlRun run;
@@ -1232,10 +1233,10 @@ static bool SemanticTokColor(Ctx* cx, Str name, Rgba* out) {
 // rows slice out of — the same shape the language's own captures come in.
 static int SemanticSpans(Ctx* cx, InputState* state, Str text, TextSpan* out,
                          int cap) {
-    if (!state || state->semanticTokens.len == 0 || !text.s) {
+    if (!state || len(state->semanticTokens) == 0 || !text.s) {
         return 0;
     }
-    const int kWindow = std::min(1024, state->semanticTokens.len);
+    const int kWindow = std::min(1024, len(state->semanticTokens));
     auto* window =
         (SemanticRange*)Alloc(cx->a, (int)sizeof(SemanticRange) * kWindow);
     if (!window) {
@@ -1244,7 +1245,7 @@ static int SemanticSpans(Ctx* cx, InputState* state, Str text, TextSpan* out,
     // Rust windows to what is on screen; the rows here are built from spans
     // over the whole document, so the whole document is the window.
     int n = SemanticTokensForRange(state->semanticTokens.els,
-                                   state->semanticTokens.len, text,
+                                   len(state->semanticTokens), text,
                                    Selection{0, len(text)}, window, kWindow);
     int m = 0;
     for (int i = 0; i < n && m < cap; i++) {
@@ -1481,7 +1482,7 @@ El* Highlighter::IntoEl() {
     // (Textarea::New) — so the cap bounds only the decorations, which are
     // tens of runs, never a document's worth.
     const int kMaxSpans = 4096;
-    int semanticCap = state ? std::min(1024, state->semanticTokens.len) : 0;
+    int semanticCap = state ? std::min(1024, len(state->semanticTokens)) : 0;
     int cap = std::min(kMaxSpans,
                        semanticCap + 2 * std::min(kMaxSpans, nDecorations));
     auto* spans =
@@ -1502,7 +1503,7 @@ El* Highlighter::IntoEl() {
     if (state && SearchSessionIsActive(&state->search)) {
         const SearchMatcher* m = &state->search.matcher;
         style.matches = m->ranges.els;
-        style.nMatches = m->ranges.len;
+        style.nMatches = len(m->ranges);
         style.currentMatch = SearchMatcherIndex(m);
         style.matchBg = RgbaOpacity(th.warning, 0.35f);
         style.currentMatchBg = RgbaOpacity(th.warning, 0.75f);

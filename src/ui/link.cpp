@@ -48,7 +48,7 @@ El* Link::IntoEl() {
     // `when(!disabled)` beside it, so a disabled link keeps the hand there
     // too; this keeps that.
     e->Cursor(CursorKind::Pointer);
-    if (children.len > 0) {
+    if (len(children) > 0) {
         // The colour and underline go on the link itself, as link.rs sets
         // them, for the children to take.
         e->Fg(th.link)->Underline();

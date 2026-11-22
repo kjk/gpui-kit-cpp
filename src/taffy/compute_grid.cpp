@@ -848,10 +848,10 @@ struct NamedLineResolver {
             edge = priorEdge == 0 || value < priorEdge ? value : priorEdge;
         }
 
-        for (int i = 0; i < map->len; i++) {
+        for (int i = 0; i < len(*map); i++) {
             LineNameEntry& e = (*map)[i];
             if (base::StrEq(e.name, name)) {
-                for (int k = 0; k < e.lines.len; k++) {
+                for (int k = 0; k < len(e.lines); k++) {
                     if (e.lines[k] == value) {
                         return;
                     }
@@ -881,7 +881,7 @@ struct NamedLineResolver {
     }
 
     static void SortUnique(Vec<uint32_t>& lines) {
-        for (int i = 1; i < lines.len; i++) {
+        for (int i = 1; i < len(lines); i++) {
             uint32_t v = lines[i];
             int j = i;
             while (j > 0 && lines[j - 1] > v) {
@@ -891,7 +891,7 @@ struct NamedLineResolver {
             lines[j] = v;
         }
         int w = 0;
-        for (int i = 0; i < lines.len; i++) {
+        for (int i = 0; i < len(lines); i++) {
             if (w == 0 || lines[w - 1] != lines[i]) {
                 lines[w++] = lines[i];
             }
@@ -1050,9 +1050,9 @@ int NamedLineResolver::CollectLines(Str name, GridAreaAxis axis,
     const Vec<LineNameEntry>& lookup =
         axis == GridAreaAxis::Row ? rowLines : columnLines;
     const Vec<uint32_t>* lines = Find(lookup, name);
-    if (lines && lines->len > 0) {
+    if (lines && len(*lines) > 0) {
         *data = lines->els;
-        return lines->len;
+        return len(*lines);
     }
     Str areaName;
     GridAreaEnd edge;
@@ -1697,7 +1697,7 @@ void InitializeGridTracks(Vec<GridTrack>* tracks, TrackCounts counts,
             // non-collapsed track and collapse everything after it.
             bool isLast = currentTrackIndex == counts.Len();
             if (isAutoFit && isLast) {
-                for (int t = tracks->len - 1; t >= 0; t--) {
+                for (int t = len(*tracks) - 1; t >= 0; t--) {
                     GridTrack& prev = (*tracks)[t];
                     if (prev.kind == GridTrackKind::Track &&
                         !prev.isCollapsed) {
@@ -1719,9 +1719,9 @@ void InitializeGridTracks(Vec<GridTrack>* tracks, TrackCounts counts,
     CreateCycledImplicitTracks(tracks, positive, autoTracks, 0, gap);
 
     // The first and last grid lines are collapsed.
-    if (tracks->len > 0) {
+    if (len(*tracks) > 0) {
         (*tracks)[0].Collapse();
-        (*tracks)[tracks->len - 1].Collapse();
+        (*tracks)[len(*tracks) - 1].Collapse();
     }
 }
 

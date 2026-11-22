@@ -80,7 +80,7 @@ CompletionMenuState CompletionMenuState::Of(const InputState* state) {
     result.triggerStartOffset = state->completion.triggerStart;
     result.query = state->completion.query;
     result.items = state->completion.items.els;
-    result.nItems = state->completion.items.len;
+    result.nItems = len(state->completion.items);
     result.selected = state->completion.selected;
     result.revision = state->completion.revision;
     return result;
@@ -93,7 +93,7 @@ CodeActionMenuState CodeActionMenuState::Of(const InputState* state) {
     }
     result.open = state->codeActions.open;
     result.items = state->codeActions.items.els;
-    result.nItems = state->codeActions.items.len;
+    result.nItems = len(state->codeActions.items);
     result.selected = state->codeActions.selected;
     result.revision = state->codeActions.revision;
     return result;
@@ -106,7 +106,7 @@ HoverPopoverState HoverPopoverState::Of(const InputState* state) {
     }
     result.symbolRange = state->hoverRange;
     result.hover = state->hoverText;
-    result.open = state->hoverText.len > 0;
+    result.open = len(state->hoverText) > 0;
     return result;
 }
 
@@ -187,7 +187,7 @@ void Lsp::Install(InputState* input) {
     documentColorProvider.Install(state);
     semanticTokensProvider.Install(state);
     showDocument.Install(state);
-    for (int i = 0; i < codeActionProviders.len; i++) {
+    for (int i = 0; i < len(codeActionProviders); i++) {
         codeActionProviders[i].Install(state);
     }
 }
@@ -206,7 +206,7 @@ int Lsp::DocumentColorsForRange(Selection visible, DocumentColor* out,
         return 0;
     }
     int total = 0;
-    for (int i = 0; i < state->documentColors.len; i++) {
+    for (int i = 0; i < len(state->documentColors); i++) {
         const DocumentColor& color = state->documentColors[i];
         if (color.range.start >= visible.end ||
             color.range.end <= visible.start ||
@@ -224,16 +224,16 @@ int Lsp::DocumentColorsForRange(Selection visible, DocumentColor* out,
 int Lsp::SemanticTokensForRange(Selection visible,
                                 const HighlightStyleResolver& resolver,
                                 TextSpan* out, int cap) const {
-    if (!state || state->semanticTokens.len <= 0) {
+    if (!state || len(state->semanticTokens) <= 0) {
         return 0;
     }
     Vec<SemanticRange> ranges;
-    if (!VecReserve(ranges, state->semanticTokens.len)) {
+    if (!VecReserve(ranges, len(state->semanticTokens))) {
         return 0;
     }
     int n = gpui::SemanticTokensForRange(
-        state->semanticTokens.els, state->semanticTokens.len, InputValue(state),
-        visible, ranges.els, ranges.cap);
+        state->semanticTokens.els, len(state->semanticTokens),
+        InputValue(state), visible, ranges.els, ranges.cap);
     int total = 0;
     for (int i = 0; i < n; i++) {
         TextSpan span;

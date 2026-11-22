@@ -3666,14 +3666,14 @@ static Str ClipboardReadPaths(Arena* a, HANDLE handle) {
         int bytes = WideCharToMultiByte(CP_UTF8, 0, wide, (int)chars, nullptr,
                                         0, nullptr, nullptr);
         if (bytes <= 0) continue;
-        if (paths.len > 0) paths.AppendChar('\n');
-        int at = paths.len;
+        if (len(paths) > 0) paths.AppendChar('\n');
+        int at = len(paths);
         paths.Reserve(at + bytes + 1);
         if (!paths.els) continue;
         WideCharToMultiByte(CP_UTF8, 0, wide, (int)chars, paths.els + at, bytes,
                             nullptr, nullptr);
         paths.len += bytes;
-        paths.els[paths.len] = 0;
+        paths.els[len(paths)] = 0;
     }
     return paths.TakeStr();
 }

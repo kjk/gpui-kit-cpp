@@ -141,14 +141,14 @@ static void ANotifyNamesTheWindowsThatRenderedIt() {
 
     EntityRender(&app, a, arena, onA.id);
     EntityRender(&app, b, arena, onB.id);
-    utassert(a->rendered.len == 1 && a->rendered[0] == onA.id);
-    utassert(b->rendered.len == 1 && b->rendered[0] == onB.id);
+    utassert(len(a->rendered) == 1 && a->rendered[0] == onA.id);
+    utassert(len(b->rendered) == 1 && b->rendered[0] == onB.id);
 
     // A frame starts over: the set is this frame's, not every frame's.
     a->rendered.len = 0;
     EntityRender(&app, a, arena, onA.id);
     EntityRender(&app, a, arena, onB.id);
-    utassert(a->rendered.len == 2);
+    utassert(len(a->rendered) == 2);
 
     ArenaDelete(arena);
     VecReset(app.windows);

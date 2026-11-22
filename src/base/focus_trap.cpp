@@ -26,7 +26,7 @@ int FocusTrapOf(const Window* win, int focusId) {
     if (!focusId) {
         return 0;
     }
-    for (int i = 0; i < win->focusEls.len; i++) {
+    for (int i = 0; i < len(win->focusEls); i++) {
         if (win->focusEls[i].id == focusId) {
             return win->focusEls[i].trapId;
         }
@@ -41,7 +41,7 @@ int FocusTrapActive(const Window* win) {
 // A rendered tab stop inside the trap. Non-stops still hold focus; they are
 // not where Tab lands.
 static bool TrapOffersTabStop(const Window* win, int trapId) {
-    for (int i = 0; i < win->focusEls.len; i++) {
+    for (int i = 0; i < len(win->focusEls); i++) {
         if (win->focusEls[i].trapId == trapId && win->focusEls[i].tabStop) {
             return true;
         }
@@ -66,7 +66,7 @@ int FocusTrapTab(Window* win, bool backward) {
     // The trap has no rendered tab stops. Its container remains a focus
     // target even when that container is excluded from ordinary tab order.
     if (win->focusId != trap) {
-        for (int i = 0; i < win->focusEls.len; i++) {
+        for (int i = 0; i < len(win->focusEls); i++) {
             if (win->focusEls[i].id == trap) {
                 WindowSetFocusId(win, trap);
                 break;
@@ -80,7 +80,7 @@ bool FocusTrapEnter(Window* win, int trapId, bool backward) {
     if (!trapId) {
         return false;
     }
-    int n = win->focusEls.len;
+    int n = len(win->focusEls);
     for (int k = 0; k < n; k++) {
         int i = backward ? n - 1 - k : k;
         if (win->focusEls[i].trapId != trapId || !win->focusEls[i].tabStop) {
@@ -124,7 +124,7 @@ void FocusTrapApplyPending(Window* win) {
     // control instead put a focus ring on a dialog's Cancel button the
     // moment it opened, which the Rust window never shows.
     if (host) {
-        for (int i = 0; i < win->focusEls.len; i++) {
+        for (int i = 0; i < len(win->focusEls); i++) {
             if (win->focusEls[i].id == host) {
                 WindowSetFocusId(win, host);
                 return;

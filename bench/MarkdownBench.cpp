@@ -291,7 +291,7 @@ static void RunShapeSized(const char* name, BuildFn build, int32_t largeBytes) {
         MdCase c;
         c.out = out;
         c.source = doc.AsStr();
-        BenchCase(group, name, "bytes", doc.len, MkFunc0(MdSetup, &c),
+        BenchCase(group, name, "bytes", len(doc), MkFunc0(MdSetup, &c),
                   MkFunc0(MdParseRun, &c));
         // What the tree cost to hold, which is the other half of the number
         // above: one more parse into a freshly reset arena, and how far the
@@ -299,7 +299,7 @@ static void RunShapeSized(const char* name, BuildFn build, int32_t largeBytes) {
         // that is what makes two document shapes comparable.
         MdSetup(&c);
         MdParseRun(&c);
-        BenchMem(group, name, doc.len, ArenaUsed(c.out));
+        BenchMem(group, name, len(doc), ArenaUsed(c.out));
 
         // And what building it cost, which is the arena `ToMdast` makes and
         // throws away: every ArenaVec the tokenizer and the resolvers fill
@@ -318,7 +318,7 @@ static void RunShapeSized(const char* name, BuildFn build, int32_t largeBytes) {
             markdown::Node* tree =
                 markdown::ToMdastCompile(events, &st, nullptr);
             BenchKeep(tree);
-            BenchMemAs(group, name, "scratch", doc.len, ArenaUsed(scratch));
+            BenchMemAs(group, name, "scratch", len(doc), ArenaUsed(scratch));
             ArenaDelete(scratch);
         }
 
@@ -401,7 +401,7 @@ static void RunPhases() {
         c.out = out;
         c.scratch = scratch;
         c.source = doc.AsStr();
-        BenchCase(group, "tokenize", "bytes", doc.len,
+        BenchCase(group, "tokenize", "bytes", len(doc),
                   MkFunc0(TokenizeSetup, &c), MkFunc0(TokenizeRun, &c));
         ArenaDelete(scratch);
         ArenaDelete(out);
@@ -414,7 +414,7 @@ static void RunPhases() {
         c.out = out;
         c.scratch = scratch;
         c.source = doc.AsStr();
-        BenchCase(group, "to_mdast", "bytes", doc.len,
+        BenchCase(group, "to_mdast", "bytes", len(doc),
                   MkFunc0(CompileSetup, &c), MkFunc0(CompileRun, &c));
         ArenaDelete(scratch);
         ArenaDelete(out);

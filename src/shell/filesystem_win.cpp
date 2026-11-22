@@ -273,7 +273,7 @@ static bool ReadGrantedFile(HANDLE root, Str rootName, Str relative,
     }
     StrBuilder output;
     bool ok = true;
-    while (output.len <= kFsMaxReadBytes) {
+    while (len(output) <= kFsMaxReadBytes) {
         char bytes[8192];
         DWORD count = 0;
         if (!::ReadFile(file, bytes, sizeof(bytes), &count, nullptr)) {
@@ -367,7 +367,7 @@ static bool ReadDirectory(HANDLE root, Str rootName, Str relative,
             if (!dot) {
                 Str name = Utf8Dup(entry->FileName, chars);
                 nameBytes += len(name);
-                if (!name.s || result->entries.len >= kFsMaxDirectoryEntries ||
+                if (!name.s || len(result->entries) >= kFsMaxDirectoryEntries ||
                     nameBytes > kFsMaxDirectoryNameBytes) {
                     StrFree(name);
                     ErrorOutSet(error, fmt("directory exceeded the %d-entry or "
@@ -396,9 +396,9 @@ static bool ReadDirectory(HANDLE root, Str rootName, Str relative,
         if (!ok) break;
     }
     CloseHandle(directory);
-    if (ok && result->entries.len > 1) {
-        qsort(result->entries.els, (size_t)result->entries.len, sizeof(FsEntry),
-              CompareEntry);
+    if (ok && len(result->entries) > 1) {
+        qsort(result->entries.els, (size_t)len(result->entries),
+              sizeof(FsEntry), CompareEntry);
     }
     return ok;
 }

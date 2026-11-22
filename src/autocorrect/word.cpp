@@ -362,7 +362,7 @@ static bool RunPasses(Arena* a, Str in, const Pass* passes, int nPasses,
                        ? PassRemove(cur, passes[p].one, passes[p].other, &b)
                        : PassAdd(cur, passes[p].one, passes[p].other, &b);
         if (hit) {
-            cur = base::StrDup(a, Str(b.els, b.len));
+            cur = base::StrDup(a, Str(b.els, len(b)));
             changed = true;
         }
     }
@@ -448,12 +448,12 @@ bool FormatSpaceBackticks(Arena* a, Str in, Str* out) {
     bool changed = false;
     StrBuilder b;
     if (PassAdd(cur, SideCjk, SideBacktickString, &b)) {
-        cur = base::StrDup(a, Str(b.els, b.len));
+        cur = base::StrDup(a, Str(b.els, len(b)));
         changed = true;
     }
     b.Reset();
     if (PassBacktickThenCjk(cur, &b)) {
-        cur = base::StrDup(a, Str(b.els, b.len));
+        cur = base::StrDup(a, Str(b.els, len(b)));
         changed = true;
     }
     if (changed) {

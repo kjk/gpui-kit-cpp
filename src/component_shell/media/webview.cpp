@@ -110,7 +110,7 @@ struct Bridge {
     Vec<PageEvent> queue;
 
     ~Bridge() {
-        for (int i = 0; i < queue.len; i++) StrFree(queue.els[i].text);
+        for (int i = 0; i < len(queue); i++) StrFree(queue.els[i].text);
     }
 
     static void OnDrain(Bridge* self, Ctx* cx, const void*);
@@ -164,7 +164,7 @@ static void Enqueue(Bridge* self, uint8_t kind, Str text) {
         self->posted = false;
         return;
     }
-    if (self->queue.len >= kEventQueue) {
+    if (len(self->queue) >= kEventQueue) {
         logf("dropped a WebView event; the script is not keeping up\n");
         return;
     }
@@ -227,14 +227,14 @@ void Bridge::OnDrain(Bridge* self, Ctx* cx, const void*) {
     if (!self || self->dead) return;
     self->draining = true;
     self->posted = false;
-    int count = self->queue.len;
+    int count = len(self->queue);
     for (int i = 0; i < count; i++) {
         PageEvent event = self->queue.els[i];
         self->queue.els[i].text = {};
         if (!self->dead) Deliver(self, cx, event);
         StrFree(event.text);
         if (self->dropAfterDrain) {
-            for (int j = i + 1; j < self->queue.len; j++) {
+            for (int j = i + 1; j < len(self->queue); j++) {
                 StrFree(self->queue.els[j].text);
                 self->queue.els[j].text = {};
             }
@@ -246,7 +246,7 @@ void Bridge::OnDrain(Bridge* self, Ctx* cx, const void*) {
             return;
         }
     }
-    int rest = self->queue.len - count;
+    int rest = len(self->queue) - count;
     if (rest < 0) rest = 0;
     for (int i = 0; i < rest; i++)
         self->queue.els[i] = self->queue.els[count + i];

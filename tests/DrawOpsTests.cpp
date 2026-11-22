@@ -119,19 +119,19 @@ static void BuilderRoundTrip() {
     b.End();
 
     Size vb = {};
-    utassert(DrawOpsViewBox(b.data.els, b.data.len, &vb));
+    utassert(DrawOpsViewBox(b.data.els, len(b.data), &vb));
     utassertnear(vb.w, 32.f);
     utassertnear(vb.h, 16.f);
 
     // Two bytes of opcode each, plus 4 + 1 + 4 + 2 + 6 floats.
-    utassert(b.data.len == 8 * 2 + 17 * 4);
-    utassert(SameOps(b.data.els, b.data.len, b.data.els, b.data.len, "self"));
+    utassert(len(b.data) == 8 * 2 + 17 * 4);
+    utassert(SameOps(b.data.els, len(b.data), b.data.els, len(b.data), "self"));
 
     // A drawing with no viewBox of its own is read in the lucide 24x24 box.
     DrawOpsBuilder plain;
     plain.Line(0, 0, 1, 1);
     plain.End();
-    utassert(DrawOpsViewBox(plain.data.els, plain.data.len, &vb));
+    utassert(DrawOpsViewBox(plain.data.els, len(plain.data), &vb));
     utassertnear(vb.w, 24.f);
     utassertnear(vb.h, 24.f);
 }
@@ -238,7 +238,7 @@ static void AGroupTransformMovesWhatIsInsideIt() {
         StrL("<svg viewBox=\"0 0 24 24\"><path d=\"M2 3 L4 5\"/></svg>"),
         &plain));
     float x = 0, y = 0;
-    utassert(FirstPoint(plain.data.els, plain.data.len, &x, &y));
+    utassert(FirstPoint(plain.data.els, len(plain.data), &x, &y));
     utassertnear(x, 2.f);
     utassertnear(y, 3.f);
 
@@ -247,7 +247,7 @@ static void AGroupTransformMovesWhatIsInsideIt() {
                                "<g transform=\"translate(10, 6)\">"
                                "<path d=\"M2 3 L4 5\"/></g></svg>"),
                           &moved));
-    utassert(FirstPoint(moved.data.els, moved.data.len, &x, &y));
+    utassert(FirstPoint(moved.data.els, len(moved.data), &x, &y));
     utassertnear(x, 12.f);
     utassertnear(y, 9.f);
 
@@ -258,7 +258,7 @@ static void AGroupTransformMovesWhatIsInsideIt() {
                                "<g transform=\"translate(120, 0)\">"
                                "<path d=\"M2 3 L4 5\"/></g></g></svg>"),
                           &cancels));
-    utassert(FirstPoint(cancels.data.els, cancels.data.len, &x, &y));
+    utassert(FirstPoint(cancels.data.els, len(cancels.data), &x, &y));
     utassertnear(x, 2.f);
     utassertnear(y, 3.f);
 
@@ -268,7 +268,7 @@ static void AGroupTransformMovesWhatIsInsideIt() {
                                "<g transform=\"translate(10, 6)\"></g>"
                                "<path d=\"M2 3 L4 5\"/></svg>"),
                           &after));
-    utassert(FirstPoint(after.data.els, after.data.len, &x, &y));
+    utassert(FirstPoint(after.data.els, len(after.data), &x, &y));
     utassertnear(x, 2.f);
     utassertnear(y, 3.f);
 
@@ -279,7 +279,7 @@ static void AGroupTransformMovesWhatIsInsideIt() {
                                "<path d=\"M2 3 L4 5\" "
                                "transform=\"translate(1, 1)\"/></g></svg>"),
                           &scaled));
-    utassert(FirstPoint(scaled.data.els, scaled.data.len, &x, &y));
+    utassert(FirstPoint(scaled.data.els, len(scaled.data), &x, &y));
     utassertnear(x, 6.f);
     utassertnear(y, 8.f);
 }
@@ -295,12 +295,12 @@ static void AnEllipseIsDrawnAndIsNotAStadium() {
         &b));
     // It starts at the rightmost point of the ellipse.
     float x = 0, y = 0;
-    utassert(FirstPoint(b.data.els, b.data.len, &x, &y));
+    utassert(FirstPoint(b.data.els, len(b.data), &x, &y));
     utassertnear(x, 22.f);
     utassertnear(y, 6.f);
     // Curves, not the four lines a stadium's flat sides would be.
-    utassert(HasOp(b.data.els, b.data.len, kOpCubicTo));
-    utassert(!HasOp(b.data.els, b.data.len, kOpLineTo));
+    utassert(HasOp(b.data.els, len(b.data), kOpCubicTo));
+    utassert(!HasOp(b.data.els, len(b.data), kOpLineTo));
 
     // No radius is nothing to draw rather than a crash or a point.
     DrawOpsBuilder none;
@@ -318,12 +318,12 @@ static void AShapeKeepsTheColourItIsStrokedWith() {
                                "stroke=\"#ff0000\"/></svg>"),
                           &b));
     uint32_t c = 0;
-    utassert(FirstColor(b.data.els, b.data.len, &c));
+    utassert(FirstColor(b.data.els, len(b.data), &c));
     // kOpColor packs r,g,b,a low byte first.
     utassert((c & 0xff) == 0xff);
     utassert(((c >> 8) & 0xff) == 0);
     utassert(((c >> 16) & 0xff) == 0);
-    utassert(HasOp(b.data.els, b.data.len, kOpStrokePath));
+    utassert(HasOp(b.data.els, len(b.data), kOpStrokePath));
 
     // Filled in one colour and drawn in another is two passes, since one op
     // carries one colour.
@@ -332,8 +332,8 @@ static void AShapeKeepsTheColourItIsStrokedWith() {
                                "<rect x=\"1\" y=\"1\" width=\"4\" height=\"4\" "
                                "fill=\"#00ff00\" stroke=\"#0000ff\"/></svg>"),
                           &both));
-    utassert(HasOp(both.data.els, both.data.len, kOpFillPath));
-    utassert(HasOp(both.data.els, both.data.len, kOpStrokePath));
+    utassert(HasOp(both.data.els, len(both.data), kOpFillPath));
+    utassert(HasOp(both.data.els, len(both.data), kOpStrokePath));
 
     // A shape that names neither is still the caller's colour, which is every
     // lucide icon and what the table above already proves.
@@ -342,7 +342,7 @@ static void AShapeKeepsTheColourItIsStrokedWith() {
         StrL("<svg viewBox=\"0 0 24 24\"><path d=\"M2 3 L4 5\"/></svg>"),
         &plain));
     uint32_t unused = 0;
-    utassert(!FirstColor(plain.data.els, plain.data.len, &unused));
+    utassert(!FirstColor(plain.data.els, len(plain.data), &unused));
 }
 
 static void ShapePaintOverridesRootPaint() {
@@ -354,16 +354,16 @@ static void ShapePaintOverridesRootPaint() {
                                "<path d=\"M6 7 L8 9\" fill=\"none\" "
                                "stroke=\"currentColor\"/></svg>"),
                           &b));
-    utassert(HasOp(b.data.els, b.data.len, kOpFillPath));
-    utassert(HasOp(b.data.els, b.data.len, kOpStrokePath));
+    utassert(HasOp(b.data.els, len(b.data), kOpFillPath));
+    utassert(HasOp(b.data.els, len(b.data), kOpStrokePath));
 
     DrawOpsBuilder none;
     utassert(SvgToDrawOps(StrL("<svg viewBox=\"0 0 24 24\" fill=\"none\" "
                                "stroke=\"none\">"
                                "<path d=\"M2 3 L4 5\"/></svg>"),
                           &none));
-    utassert(!HasOp(none.data.els, none.data.len, kOpFillPath));
-    utassert(!HasOp(none.data.els, none.data.len, kOpStrokePath));
+    utassert(!HasOp(none.data.els, len(none.data), kOpFillPath));
+    utassert(!HasOp(none.data.els, len(none.data), kOpStrokePath));
 }
 
 // The badges at the top of the story's README are their labels and nothing
@@ -421,7 +421,7 @@ static void ATextRunIsReadAndPlaced() {
     uint32_t flags = 0;
     TempStr text = AllocStrTemp(63);
     text.s[0] = 0;
-    utassert(FirstText(b.data.els, b.data.len, &x, &y, &size, &tlen, &flags,
+    utassert(FirstText(b.data.els, len(b.data), &x, &y, &size, &tlen, &flags,
                        text.s, len(text) + 1));
     utassert(StrEq(Str(text.s), StrL("crates.io")));
     utassertnear(x, 29.5f);
@@ -439,7 +439,7 @@ static void ATextRunIsReadAndPlaced() {
                                "<tspan x=\"22\" y=\"14\">CI</tspan>"
                                "</text></g></svg>"),
                           &nested));
-    utassert(FirstText(nested.data.els, nested.data.len, &x, &y, &size, &tlen,
+    utassert(FirstText(nested.data.els, len(nested.data), &x, &y, &size, &tlen,
                        &flags, text.s, len(text) + 1));
     utassert(StrEq(Str(text.s), StrL("CI")));
     utassertnear(x, 22.f);
@@ -448,7 +448,7 @@ static void ATextRunIsReadAndPlaced() {
     // The <text> named a colour, so the run carries it rather than the
     // caller's.
     uint32_t c = 0;
-    utassert(FirstColor(nested.data.els, nested.data.len, &c));
+    utassert(FirstColor(nested.data.els, len(nested.data), &c));
 
     // A run under a filter is a drop shadow this cannot blur: drawing it
     // sharp would print the word twice.
@@ -467,8 +467,8 @@ static void ATextRunIsReadAndPlaced() {
                                "<tspan x=\"5\" y=\"6\">CI</tspan>\n"
                                "</text></g></svg>"),
                           &wrapper));
-    utassert(FirstText(wrapper.data.els, wrapper.data.len, &x, &y, &size, &tlen,
-                       &flags, text.s, len(text) + 1));
+    utassert(FirstText(wrapper.data.els, len(wrapper.data), &x, &y, &size,
+                       &tlen, &flags, text.s, len(text) + 1));
     utassert(StrEq(Str(text.s), StrL("CI")));
     utassertnear(x, 5.f);
     utassertnear(y, 6.f);
@@ -513,7 +513,7 @@ static void GeneratedTableMatchesReader() {
         DrawOpsBuilder b;
         utassert(SvgToDrawOps(xml, &b));
         utassert(SameOps(kAssetIconsData + e.offset, e.len, b.data.els,
-                         b.data.len, name.s));
+                         len(b.data), name.s));
         checked++;
     }
     // The table came from that directory; if none of it could be read the
@@ -533,9 +533,9 @@ static void ArcFlagsMayRunIntoTheNextNumber() {
     utassert(SvgToDrawOps(StrL("<svg viewBox=\"0 0 24 24\"><path "
                                "d=\"M20 19a2 2 0 0 0 22 17V5\"/></svg>"),
                           &spaced));
-    utassert(spaced.data.len > 0);
-    utassert(SameOps(spaced.data.els, spaced.data.len, packed.data.els,
-                     packed.data.len, "arc flags"));
+    utassert(len(spaced.data) > 0);
+    utassert(SameOps(spaced.data.els, len(spaced.data), packed.data.els,
+                     len(packed.data), "arc flags"));
 }
 
 void TestDrawOps() {

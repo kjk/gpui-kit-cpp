@@ -52,7 +52,7 @@ int SearchableListDelegate::ItemsCount(int section) const {
         return section == 0 ? nItems : 0;
     }
     return section >= 0 && section < nGroups && groups[section]
-               ? groups[section]->items.len
+               ? len(groups[section]->items)
                : 0;
 }
 
@@ -69,7 +69,7 @@ const SearchableListItem* SearchableListDelegate::Item(IndexPath path) const {
         return nullptr;
     }
     const SearchableGroup* group = groups[path.section];
-    return path.row >= 0 && path.row < group->items.len
+    return path.row >= 0 && path.row < len(group->items)
                ? &group->items[path.row]
                : nullptr;
 }
@@ -167,7 +167,7 @@ SearchableGroup* SearchableGroup::Items(const SearchableListItem* values,
 
 bool SearchableGroup::MatchedRows(Str query, Vec<int>* rows) const {
     int found = 0;
-    for (int i = 0; i < items.len; i++) {
+    for (int i = 0; i < len(items); i++) {
         if (SearchableItemMatches(&items[i], query)) {
             VecAppend(*rows, i);
             found++;
@@ -180,7 +180,7 @@ bool SearchableGroup::Matches(Str query) const {
     if (LabelQueryMatches(title, query)) {
         return true;
     }
-    for (int i = 0; i < items.len; i++) {
+    for (int i = 0; i < len(items); i++) {
         if (SearchableItemMatches(&items[i], query)) {
             return true;
         }
@@ -198,14 +198,14 @@ SearchableVec* SearchableVec::New(const SearchableListItem* values, int count) {
 }
 
 SearchableVec* SearchableVec::Push(const SearchableListItem& value) {
-    VecAppend(matched, items.len);
+    VecAppend(matched, len(items));
     VecAppend(items, value);
     return this;
 }
 
 void SearchableVec::PerformSearch(Str query) {
     VecClear(matched);
-    for (int i = 0; i < items.len; i++) {
+    for (int i = 0; i < len(items); i++) {
         if (SearchableItemMatches(&items[i], query)) {
             VecAppend(matched, i);
         }
@@ -213,19 +213,19 @@ void SearchableVec::PerformSearch(Str query) {
 }
 
 int SearchableVec::ItemsCount(int section) const {
-    return section == 0 ? matched.len : 0;
+    return section == 0 ? len(matched) : 0;
 }
 
 const SearchableListItem* SearchableVec::Item(IndexPath path) const {
-    if (path.section != 0 || path.row < 0 || path.row >= matched.len) {
+    if (path.section != 0 || path.row < 0 || path.row >= len(matched)) {
         return nullptr;
     }
     int ix = matched[path.row];
-    return ix >= 0 && ix < items.len ? &items[ix] : nullptr;
+    return ix >= 0 && ix < len(items) ? &items[ix] : nullptr;
 }
 
 bool SearchableVec::Position(Str value, IndexPath* out) const {
-    for (int i = 0; i < matched.len; i++) {
+    for (int i = 0; i < len(matched); i++) {
         const SearchableListItem* item = Item(IndexPathNew(i));
         if (item && base::StrEq(item->value, value)) {
             if (out) {
@@ -250,7 +250,7 @@ SearchableGroupVec* SearchableGroupVec::New(SearchableGroup* const* values,
 }
 
 SearchableGroupVec::~SearchableGroupVec() {
-    for (int i = 0; i < groups.len; i++) {
+    for (int i = 0; i < len(groups); i++) {
         delete groups[i];
     }
     VecReset(groups);
@@ -261,11 +261,11 @@ SearchableGroupVec::~SearchableGroupVec() {
 void SearchableGroupVec::PerformSearch(Str query) {
     VecClear(matched);
     VecClear(rows);
-    for (int i = 0; i < groups.len; i++) {
+    for (int i = 0; i < len(groups); i++) {
         if (!groups[i]) {
             continue;
         }
-        int start = rows.len;
+        int start = len(rows);
         if (!groups[i]->MatchedRows(query, &rows)) {
             rows.len = start;
             continue;
@@ -273,25 +273,25 @@ void SearchableGroupVec::PerformSearch(Str query) {
         SearchableGroupMatch m;
         m.ix = i;
         m.rowsStart = start;
-        m.rowsLen = rows.len - start;
+        m.rowsLen = len(rows) - start;
         VecAppend(matched, m);
     }
 }
 
 int SearchableGroupVec::SectionsCount() const {
-    return matched.len;
+    return len(matched);
 }
 
 // matched_item: the section's entry and the group it points at.
 static const SearchableGroup* MatchedGroup(const SearchableGroupVec* v,
                                            int section,
                                            const SearchableGroupMatch** m) {
-    if (section < 0 || section >= v->matched.len) {
+    if (section < 0 || section >= len(v->matched)) {
         return nullptr;
     }
     *m = &v->matched[section];
     int ix = (*m)->ix;
-    return ix >= 0 && ix < v->groups.len ? v->groups[ix] : nullptr;
+    return ix >= 0 && ix < len(v->groups) ? v->groups[ix] : nullptr;
 }
 
 Str SearchableGroupVec::SectionTitle(int section) const {
@@ -306,7 +306,7 @@ int SearchableGroupVec::ItemsCount(int section) const {
     if (!g) {
         return 0;
     }
-    return m->rowsStart < 0 ? g->items.len : m->rowsLen;
+    return m->rowsStart < 0 ? len(g->items) : m->rowsLen;
 }
 
 const SearchableListItem* SearchableGroupVec::Item(IndexPath path) const {
@@ -322,11 +322,11 @@ const SearchableListItem* SearchableGroupVec::Item(IndexPath path) const {
         }
         row = rows[m->rowsStart + row];
     }
-    return row < g->items.len ? &g->items[row] : nullptr;
+    return row < len(g->items) ? &g->items[row] : nullptr;
 }
 
 bool SearchableGroupVec::Position(Str value, IndexPath* out) const {
-    for (int s = 0; s < matched.len; s++) {
+    for (int s = 0; s < len(matched); s++) {
         int n = ItemsCount(s);
         for (int r = 0; r < n; r++) {
             const SearchableListItem* item = Item(IndexPathNew(r).Section(s));
@@ -428,7 +428,7 @@ El* SearchableListItemElement::IntoEl() {
     // long option truncates instead of pushing the check out of the row.
     El* left =
         Div(a)->FlexRow()->Flex1()->MinW(0)->ClipX()->Gap(4)->ItemsCenter();
-    for (int i = 0; i < children.len; i++) {
+    for (int i = 0; i < len(children); i++) {
         left->Child(children[i]);
     }
     El* inner = SpreadRow(cx)->Child(left);
@@ -484,7 +484,7 @@ void SearchableListState::SelectedValues(Vec<Str>* out) const {
         return;
     }
     VecClear(*out);
-    for (int i = 0; i < selected.len; i++) {
+    for (int i = 0; i < len(selected); i++) {
         int ix = selected[i];
         if (items && ix >= 0 && ix < nItems) {
             VecAppend(*out, items[ix].value);
@@ -497,7 +497,7 @@ bool SearchableListState::AddSelectedIndex(IndexPath index) {
     if (flat < 0) {
         return false;
     }
-    for (int i = 0; i < selected.len; i++) {
+    for (int i = 0; i < len(selected); i++) {
         if (selected[i] == flat) {
             return false;
         }
@@ -508,11 +508,11 @@ bool SearchableListState::AddSelectedIndex(IndexPath index) {
 
 bool SearchableListState::RemoveSelectedIndex(IndexPath index) {
     int flat = SearchableListFlatIndex(this, index);
-    for (int i = 0; i < selected.len; i++) {
+    for (int i = 0; i < len(selected); i++) {
         if (selected[i] != flat) {
             continue;
         }
-        for (int j = i; j < selected.len - 1; j++) {
+        for (int j = i; j < len(selected) - 1; j++) {
             selected[j] = selected[j + 1];
         }
         selected.len--;
@@ -549,7 +549,7 @@ void SearchableListSearch(SearchableListState* s, const SearchableItem* items,
             VecAppend(s->matches, i);
         }
     }
-    s->list.count = s->matches.len;
+    s->list.count = len(s->matches);
 }
 
 void SearchableListSelectOnly(SearchableListState* s, int index) {
@@ -565,7 +565,7 @@ void SearchableListSelectOnly(SearchableListState* s, int index) {
 static int SelectionIndexOfValue(const SearchableListState* s,
                                  const SearchableItem* items, int nItems,
                                  Str value) {
-    for (int i = 0; i < s->selected.len; i++) {
+    for (int i = 0; i < len(s->selected); i++) {
         int ix = s->selected[i];
         if (ix >= 0 && ix < nItems && base::StrEq(items[ix].value, value)) {
             return i;
@@ -604,7 +604,7 @@ bool SearchableListIsEnabled(const SearchableListState* s,
     if (items[index].disabled || items[index].pinned) {
         return false;
     }
-    if (s->maxSelected > 0 && s->selected.len >= s->maxSelected) {
+    if (s->maxSelected > 0 && len(s->selected) >= s->maxSelected) {
         return SelectionIndexOfValue(s, items, nItems, items[index].value) >= 0;
     }
     return true;
@@ -617,7 +617,7 @@ void SearchableListChangesFor(const SearchableListState* s,
     if (s->mode == SearchableListMode::Single) {
         // The single-select strategy: everything that was selected comes out,
         // and the one that was clicked goes in.
-        for (int i = 0; i < s->selected.len; i++) {
+        for (int i = 0; i < len(s->selected); i++) {
             VecAppend(*out,
                       {SearchableListChangeKind::Deselect, s->selected[i]});
         }
@@ -634,7 +634,7 @@ void SearchableListChangesFor(const SearchableListState* s,
 }
 
 static void SelectionRemoveAt(SearchableListState* s, int at) {
-    for (int i = at; i < s->selected.len - 1; i++) {
+    for (int i = at; i < len(s->selected) - 1; i++) {
         s->selected[i] = s->selected[i + 1];
     }
     s->selected.len--;
@@ -653,7 +653,7 @@ void SearchableListApply(SearchableListState* s, const SearchableItem* items,
         if (ch.kind == SearchableListChangeKind::Select) {
             // on_will_change: a Select that would take the selection past its
             // limit is dropped, rather than pushing something else out.
-            if (s->maxSelected > 0 && s->selected.len >= s->maxSelected) {
+            if (s->maxSelected > 0 && len(s->selected) >= s->maxSelected) {
                 continue;
             }
             // A value already in the selection is not added twice.
@@ -667,7 +667,7 @@ void SearchableListApply(SearchableListState* s, const SearchableItem* items,
             continue;
         }
         // Nothing carried that value, so the index itself is what goes.
-        for (int i = 0; i < s->selected.len; i++) {
+        for (int i = 0; i < len(s->selected); i++) {
             if (s->selected[i] == ch.index) {
                 SelectionRemoveAt(s, i);
                 break;
@@ -691,7 +691,7 @@ bool SearchableListClick(SearchableListState* s, int index) {
 void SearchableListState::OnRowClick(SearchableListState* self, Ctx* cx,
                                      const ClickEvent*, int64_t match) {
     int m = (int)match;
-    if (m < 0 || m >= self->matches.len) {
+    if (m < 0 || m >= len(self->matches)) {
         return;
     }
     self->list.selected = m;
@@ -872,7 +872,7 @@ El* SearchableList::IntoEl() {
     }
     Listener click = ListenTo(state, &SearchableListState::OnRowClick, 0);
     int lastSection = -1;
-    for (int m = 0; m < s->matches.len; m++) {
+    for (int m = 0; m < len(s->matches); m++) {
         int ix = s->matches[m];
         const SearchableItem& it = items[ix];
         // render_section_header: a heading whenever the section changes, and
@@ -967,7 +967,7 @@ El* SearchableList::IntoEl() {
             ->AriaLabel(it.title)
             ->AriaSelected(checked)
             ->AriaPositionInSet(m + 1)
-            ->AriaSizeOfSet(s->matches.len)
+            ->AriaSizeOfSet(len(s->matches))
             ->AriaDisabled(!enabled)
             ->Shrink0();
         if (enabled) {

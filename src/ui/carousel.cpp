@@ -61,7 +61,7 @@ CarouselState& CarouselState::WithLooping(bool value) {
 }
 
 static bool GeometryReady(const CarouselState* s) {
-    return s->hasViewport && s->items.len == s->itemCount;
+    return s->hasViewport && len(s->items) == s->itemCount;
 }
 static bool RuntimeLooping(const CarouselState* s) {
     return s->looping && (!GeometryReady(s) || s->loopLayout.active);
@@ -184,7 +184,7 @@ static Point SnapOffset(const CarouselState* s, Bounds viewport, Bounds item) {
         s->axis == Axis::Horizontal ? viewport.x - item.x : viewport.y - item.y;
     if (s->loopLayout.active && s->loopLayout.runwayReady) {
         float contentInset = 0;
-        if (s->items.len > 0) {
+        if (len(s->items) > 0) {
             contentInset = AxisStart(s->items[0], s->axis) -
                            AxisStart(viewport, s->axis) -
                            s->loopLayout.runwayExtent;
@@ -198,7 +198,7 @@ static Point SnapOffset(const CarouselState* s, Bounds viewport, Bounds item) {
 }
 
 static bool HasSnap(const CarouselState* s, int index, Point* out) {
-    if (!s->hasViewport || index < 0 || index >= s->items.len) return false;
+    if (!s->hasViewport || index < 0 || index >= len(s->items)) return false;
     *out = SnapOffset(s, s->viewport, s->items[index]);
     return true;
 }
@@ -242,7 +242,7 @@ Point CarouselState::LoopItemOffset(int index) const {
     if (!loopLayout.runwayReady) {
         return AxisPoint(axis, -loopLayout.runwayExtent);
     }
-    if (!hasViewport || index < 0 || index >= items.len) return {};
+    if (!hasViewport || index < 0 || index >= len(items)) return {};
     float viewStart = AxisStart(viewport, axis);
     float extent = axis == Axis::Horizontal ? viewport.w : viewport.h;
     float viewportCenter =
@@ -270,11 +270,11 @@ Point CarouselState::MotionTargetFor(int index) const {
 }
 
 static bool MeasuredCycle(const CarouselState* s, float* extent, float* gap) {
-    if (s->items.len == 0) return false;
+    if (len(s->items) == 0) return false;
     Bounds first = s->items[0];
-    Bounds last = s->items[s->items.len - 1];
+    Bounds last = s->items[len(s->items) - 1];
     *gap = 0;
-    if (s->items.len > 1) {
+    if (len(s->items) > 1) {
         *gap = std::max(
             AxisStart(s->items[1], s->axis) - AxisEnd(first, s->axis), 0.f);
     }
@@ -581,10 +581,10 @@ bool CarouselState::SelectLast(Ctx* cx) {
 }
 
 int CarouselState::NearestIndex(Point at) const {
-    if (!hasViewport || items.len == 0) return -1;
+    if (!hasViewport || len(items) == 0) return -1;
     int best = 0;
     float bestDist = 1e9f;
-    for (int i = 0; i < items.len; i++) {
+    for (int i = 0; i < len(items); i++) {
         Point target = SnapOffset(this, viewport, items[i]);
         float distance =
             fabsf(PrimaryOffset(this, at) - PrimaryOffset(this, target));
@@ -639,7 +639,7 @@ static float SnapExtent(const CarouselState* s) {
     if (s->hasViewport) {
         return s->axis == Axis::Horizontal ? s->viewport.w : s->viewport.h;
     }
-    if (s->items.len > 0) {
+    if (len(s->items) > 0) {
         return s->axis == Axis::Horizontal ? s->items[0].w : s->items[0].h;
     }
     return 1.f;

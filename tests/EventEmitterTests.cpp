@@ -122,7 +122,7 @@ static void AStaleEndSweepsTheSubscription() {
     // And the emitter going away takes the rest with it.
     EntityDrop(&app, ticker.id);
     utassert(EntitySubscriberCount(&app, ticker.id) == 0);
-    utassert(app.subs.len == 0);
+    utassert(len(app.subs) == 0);
 
     delete win;
     EntityDropAll(&app);

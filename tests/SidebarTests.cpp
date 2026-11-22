@@ -140,7 +140,7 @@ static void SidebarItemAllowsGenericNestedContent() {
     utassert(wrapper != nullptr);
     utassert(direct.renders == 1);
     utassert(direct.collapsed);
-    utassert(sidebar->content.len == 1);
+    utassert(len(sidebar->content) == 1);
 
     AppGlobalClear(&app);
     ArenaDelete(a);
@@ -211,8 +211,8 @@ static void HeaderFooterAndMenuRetainTheirBuilderSurface() {
     }
     El* headerEl = header->IntoEl();
     El* footerEl = footer->IntoEl();
-    utassert(header->children.len == 40);
-    utassert(footer->children.len == 40);
+    utassert(len(header->children) == 40);
+    utassert(len(footer->children) == 40);
     utassert(ChildCount(headerEl) == 40);
     utassert(ChildCount(footerEl) == 1);
     utassert(ChildCount(footerEl ? footerEl->first : nullptr) == 40);

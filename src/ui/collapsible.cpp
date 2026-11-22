@@ -41,7 +41,7 @@ Collapsible* Collapsible::Child(El* e) {
 }
 Collapsible* Collapsible::Content(El* e) {
     content = e;
-    contentAt = children.len;
+    contentAt = len(children);
     return this;
 }
 
@@ -60,11 +60,11 @@ El* Collapsible::IntoEl() {
         base->Reveal(motionId, progress);
     }
     // The children and the content in the order they were given.
-    for (int i = 0; i <= children.len; i++) {
+    for (int i = 0; i <= len(children); i++) {
         if (i == contentAt) {
             base->Content(content);
         }
-        if (i < children.len) {
+        if (i < len(children)) {
             base->Child(children[i]);
         }
     }

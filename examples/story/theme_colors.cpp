@@ -50,7 +50,7 @@ struct ThemeColorsStory {
 };
 
 static void FillThemeItems(ThemeColorsStory* self, App* app) {
-    if (self->themeItems.len > 0) {
+    if (len(self->themeItems) > 0) {
         return;
     }
     // `themes/`, wherever an asset root has one — the pinned Rust clone ships
@@ -101,11 +101,11 @@ static void ToggleThemeSelect(ThemeColorsStory* self, Ctx* cx,
 // on screen rather than one menu away.
 static void SetTheme(ThemeColorsStory* self, Ctx* cx, const ClickEvent*) {
     component::SelectState* st = self->themes.Get(cx);
-    if (!st || st->state.selected.len == 0) {
+    if (!st || len(st->state.selected) == 0) {
         return;
     }
     int ix = st->state.selected[0];
-    if (ix < 0 || ix >= self->themeItems.len) {
+    if (ix < 0 || ix >= len(self->themeItems)) {
         return;
     }
     const ThemeConfig* cfg =
@@ -196,7 +196,7 @@ El* ThemeColorsStory::Render(ThemeColorsStory* self, Ctx* cx) {
             // one the registry has installed for the mode in force.
             Str active = ThemeRegistryActive(cx->app, ThemeGet(cx->app));
             int at = 0;
-            for (int i = 0; i < self->themeItems.len; i++) {
+            for (int i = 0; i < len(self->themeItems); i++) {
                 if (base::StrEq(self->themeItems[i].title, active)) {
                     at = i;
                     break;
@@ -421,7 +421,7 @@ El* ThemeColorsStory::Render(ThemeColorsStory* self, Ctx* cx) {
     El* top = Div(a)->FlexCol()->W(kFill)->Gap(12);
     El* pick = Div(a)->FlexRow()->W(kFill)->Gap(8)->ItemsCenter();
     pick->Child(component::Select::New(cx, StrL("theme-select"), self->themes)
-                    ->Items(self->themeItems.els, self->themeItems.len)
+                    ->Items(self->themeItems.els, len(self->themeItems))
                     ->W(300)
                     ->OnToggle(Listen(cx, &ToggleThemeSelect))
                     ->IntoEl());

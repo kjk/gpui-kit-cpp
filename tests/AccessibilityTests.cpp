@@ -76,7 +76,7 @@ static void TheTreeSkipsVisualBoxesButKeepsSemanticParents() {
 
     IdsCollect(dialog);
     AccessibilityCollect(dialog, &f.win->accessibility);
-    utassert(f.win->accessibility.len == 2);
+    utassert(len(f.win->accessibility) == 2);
     const AccessibilityNode* dialogNode =
         RoleNode(f.win->accessibility, AccessibilityRole::Dialog);
     const AccessibilityNode* buttonNode =
@@ -345,8 +345,8 @@ static void ExplicitAriaFieldsSurviveCollection() {
                    ->AriaDisabled(true)
                    ->Child(TextEl(f.arena, StrL("Derived")));
     AccessibilityCollect(node, &f.win->accessibility);
-    utassert(f.win->accessibility.len == 1);
-    if (f.win->accessibility.len == 1) {
+    utassert(len(f.win->accessibility) == 1);
+    if (len(f.win->accessibility) == 1) {
         const AccessibilityInfo& a = f.win->accessibility[0].info;
         utassert(base::StrEq(a.authorId, StrL("heading.main")));
         utassert(base::StrEq(a.label, StrL("Explicit")));
@@ -467,7 +467,7 @@ static void ConditionalAndCompositeRolesMatchUpstream() {
         RoleNode(f.win->accessibility, AccessibilityRole::ComboBox);
     utassert(date && date->info.hasExpanded && date->info.expanded);
     // The unnamed header and panel add neither role.
-    utassert(f.win->accessibility.len == 7);
+    utassert(len(f.win->accessibility) == 7);
     FreeAccessibilityFrame(&f);
 }
 
@@ -485,7 +485,7 @@ static void MaskToggleIsNamedForTheActionItTakes() {
     IdsCollect(masked);
     AccessibilityCollect(masked, &f.win->accessibility);
     const AccessibilityNode* show = nullptr;
-    for (int i = 0; i < f.win->accessibility.len; i++) {
+    for (int i = 0; i < len(f.win->accessibility); i++) {
         const AccessibilityNode* node = &f.win->accessibility[i];
         if (node->info.role == AccessibilityRole::Button &&
             base::StrEq(node->info.label, StrL("Show password"))) {
@@ -501,7 +501,7 @@ static void MaskToggleIsNamedForTheActionItTakes() {
     IdsCollect(revealed);
     AccessibilityCollect(revealed, &f.win->accessibility);
     const AccessibilityNode* hide = nullptr;
-    for (int i = 0; i < f.win->accessibility.len; i++) {
+    for (int i = 0; i < len(f.win->accessibility); i++) {
         const AccessibilityNode* node = &f.win->accessibility[i];
         if (node->info.role == AccessibilityRole::Button &&
             base::StrEq(node->info.label, StrL("Hide password"))) {
@@ -546,7 +546,7 @@ static void ClearButtonIsNamed() {
     IdsCollect(field);
     AccessibilityCollect(field, &f.win->accessibility);
     const AccessibilityNode* button = nullptr;
-    for (int i = 0; i < f.win->accessibility.len; i++) {
+    for (int i = 0; i < len(f.win->accessibility); i++) {
         const AccessibilityNode* node = &f.win->accessibility[i];
         if (node->info.role == AccessibilityRole::Button &&
             base::StrEq(node->info.label, StrL("Clear"))) {
@@ -1017,7 +1017,7 @@ static void EditableTextOffersSetValueAndReadOnlyTextDoesNot() {
 
 static const AccessibilityNode* SetValueNode(
     const Vec<AccessibilityNode>& nodes) {
-    for (int i = 0; i < nodes.len; i++) {
+    for (int i = 0; i < len(nodes); i++) {
         if (nodes[i].actions & AccessibilityActionSetValue) return &nodes[i];
     }
     return nullptr;

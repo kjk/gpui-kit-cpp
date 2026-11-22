@@ -56,7 +56,7 @@ static void TheBuilderCarriesStatusAxisSizeAndSlots() {
                                  ->Child(TextEl(a, StrL("second")));
     utassert(group->onScroll.IsValid() && group->scrollX == 12.f);
     utassert(group->hasEdgeFade && RgbaEq(group->edgeFade, Rgb(0, 0, 0)));
-    utassert(group->children.len == 2);
+    utassert(len(group->children) == 2);
     AttachmentGroup* plain = AttachmentGroup::New(&cx, StrL("plain"));
     utassert(!plain->onScroll.IsValid() && !plain->hasEdgeFade);
 
@@ -117,14 +117,14 @@ static void TheSlotsAreComposable() {
 
     AttachmentMedia* media = AttachmentMedia::New(&cx)
                                  ->Child(TextEl(a, StrL("icon")));
-    utassert(media->children.len == 1);
+    utassert(len(media->children) == 1);
 
     AttachmentContent* content =
         AttachmentContent::New(&cx)
             ->Title(AttachmentTitle::New(&cx, StrL("name")))
             ->Description(AttachmentDescription::New(&cx, StrL("Details")))
             ->Child(TextEl(a, StrL("Custom progress")));
-    utassert(content->children.len == 3);
+    utassert(len(content->children) == 3);
     utassert(content->children[0].title != nullptr);
     utassert(content->children[1].description != nullptr);
     utassert(content->children[2].element != nullptr);
@@ -139,12 +139,12 @@ static void TheSlotsAreComposable() {
 
     AttachmentActions* actions = AttachmentActions::New(&cx)
                                      ->Child(TextEl(a, StrL("remove")));
-    utassert(actions->children.len == 1);
+    utassert(len(actions->children) == 1);
 
     AttachmentGroup* group = AttachmentGroup::New(&cx, StrL("attachments"))
                                  ->Child(TextEl(a, StrL("First")))
                                  ->Child(TextEl(a, StrL("Second")));
-    utassert(group->children.len == 2);
+    utassert(len(group->children) == 2);
 
     AppGlobalClear(&app);
     ArenaDelete(a);
@@ -244,8 +244,8 @@ static void AMediaPreviewKeepsItsChildrenAndOverlays() {
                                  ->Child(TextEl(a, StrL("Existing overlay")))
                                  ->Overlay(TextEl(a, StrL("Centered overlay")));
     utassert(media->hasSource);
-    utassert(media->children.len == 1);
-    utassert(media->overlays.len == 1);
+    utassert(len(media->children) == 1);
+    utassert(len(media->overlays) == 1);
 
     El* preview = media->IntoEl()->first;
     utassert(preview && preview->kind == ElKind::Image &&

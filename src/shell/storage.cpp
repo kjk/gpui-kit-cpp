@@ -27,13 +27,13 @@ Storage::Storage(bool writes) : persisted(writes) {}
 
 Storage::~Storage() {
     ResetEntries();
-    for (int i = 0; i < waiters.len; i++) delete waiters[i];
+    for (int i = 0; i < len(waiters); i++) delete waiters[i];
     VecReset(waiters);
     StrFree(path);
 }
 
 void Storage::ResetEntries() {
-    for (int i = 0; i < entries.len; i++) {
+    for (int i = 0; i < len(entries); i++) {
         StrFree(entries[i]->key);
         StrFree(entries[i]->value);
         delete entries[i];
@@ -43,7 +43,7 @@ void Storage::ResetEntries() {
 
 bool Storage::SetPath(Str value, Str* error) {
     ClearError(error);
-    if (inFlight || waiters.len) {
+    if (inFlight || len(waiters)) {
         StorageError(error, StrL("cannot replace the localStorage path while a "
                                  "write or flush is pending"));
         return false;
@@ -101,9 +101,9 @@ bool Storage::Load(Str* error) {
     bool ok = root && root->kind == JsonKind::Object;
     for (JsonValue* item = ok ? root->first : nullptr; item;
          item = item->next) {
-        if (item->kind != JsonKind::String || entries.len >= kMaxStorageKeys ||
+        if (item->kind != JsonKind::String || len(entries) >= kMaxStorageKeys ||
             len(item->key) > kMaxStorageValueBytes ||
-            item->str.len > kMaxStorageValueBytes) {
+            len(item->str) > kMaxStorageValueBytes) {
             ok = false;
             break;
         }
@@ -111,7 +111,7 @@ bool Storage::Load(Str* error) {
         entry->key = StrDup(item->key);
         entry->value = StrDup(item->str);
         if ((!entry->key.s && len(item->key)) ||
-            (!entry->value.s && item->str.len) || !VecAppend(entries, entry)) {
+            (!entry->value.s && len(item->str)) || !VecAppend(entries, entry)) {
             StrFree(entry->key);
             StrFree(entry->value);
             delete entry;
@@ -133,7 +133,7 @@ bool Storage::Load(Str* error) {
 }
 
 Str Storage::Get(Str key) const {
-    for (int i = 0; i < entries.len; i++) {
+    for (int i = 0; i < len(entries); i++) {
         if (StrEq(entries[i]->key, key)) return entries[i]->value;
     }
     return {};
@@ -148,7 +148,7 @@ bool Storage::Encode(Str* encoded, Str* error) const {
     JsonWriter writer;
     writer.out = &body;
     writer.BeginObject();
-    for (int i = 0; i < entries.len; i++) {
+    for (int i = 0; i < len(entries); i++) {
         writer.String(entries[i]->key.s, entries[i]->value);
     }
     writer.EndObject();
@@ -192,7 +192,7 @@ bool Storage::Set(Str key, Str value, Str* error) {
         StorageError(error, StrL("allocating the storage value failed"));
         return false;
     }
-    for (int i = 0; i < entries.len; i++) {
+    for (int i = 0; i < len(entries); i++) {
         if (!StrEq(entries[i]->key, key)) continue;
         Str old = entries[i]->value;
         entries[i]->value = copy;
@@ -205,7 +205,7 @@ bool Storage::Set(Str key, Str value, Str* error) {
         Touch();
         return true;
     }
-    if (entries.len >= kMaxStorageKeys) {
+    if (len(entries) >= kMaxStorageKeys) {
         StrFree(copy);
         StorageError(error, StrL("storage reached its 4096-key limit"));
         return false;
@@ -233,10 +233,10 @@ bool Storage::Set(Str key, Str value, Str* error) {
 
 bool Storage::Remove(Str key, Str* error) {
     ClearError(error);
-    for (int i = 0; i < entries.len; i++) {
+    for (int i = 0; i < len(entries); i++) {
         if (!StrEq(entries[i]->key, key)) continue;
         StorageEntry* entry = entries[i];
-        for (int j = i + 1; j < entries.len; j++) entries[j - 1] = entries[j];
+        for (int j = i + 1; j < len(entries); j++) entries[j - 1] = entries[j];
         entries.len--;
         StrFree(entry->key);
         StrFree(entry->value);
@@ -251,7 +251,7 @@ bool Storage::Remove(Str key, Str* error) {
 
 bool Storage::Clear(Str* error) {
     ClearError(error);
-    if (entries.len) {
+    if (len(entries)) {
         ResetEntries();
         Touch();
     }
@@ -259,7 +259,7 @@ bool Storage::Clear(Str* error) {
 }
 
 Str Storage::Key(int index) const {
-    return index >= 0 && index < entries.len ? entries[index]->key : Str{};
+    return index >= 0 && index < len(entries) ? entries[index]->key : Str{};
 }
 
 bool Storage::IsDirty() const {
@@ -297,7 +297,7 @@ bool Storage::BeginWrite(StorageWrite* write, Str* error) {
 
 void Storage::ReadyThrough(uint64_t through, Vec<StorageWaiter*>* ready) {
     int keep = 0;
-    for (int i = 0; i < waiters.len; i++) {
+    for (int i = 0; i < len(waiters); i++) {
         StorageWaiter* waiter = waiters[i];
         if (waiter->revision <= through && ready && VecAppend(*ready, waiter)) {
             continue;
@@ -339,7 +339,7 @@ bool Storage::Wait(Func1<StorageOutcome> settle, StorageWaiter** waiter,
         if (immediate) *immediate = true;
         return true;
     }
-    if (waiters.len >= kMaxStorageWaiters) {
+    if (len(waiters) >= kMaxStorageWaiters) {
         StorageError(
             error,
             StrL(
@@ -362,9 +362,9 @@ bool Storage::Wait(Func1<StorageOutcome> settle, StorageWaiter** waiter,
 
 void Storage::CancelWaiter(StorageWaiter* waiter) {
     if (!waiter) return;
-    for (int i = 0; i < waiters.len; i++) {
+    for (int i = 0; i < len(waiters); i++) {
         if (waiters[i] != waiter) continue;
-        for (int j = i + 1; j < waiters.len; j++) waiters[j - 1] = waiters[j];
+        for (int j = i + 1; j < len(waiters); j++) waiters[j - 1] = waiters[j];
         waiters.len--;
         delete waiter;
         return;

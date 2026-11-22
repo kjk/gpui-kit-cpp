@@ -15,19 +15,19 @@ static int PaneNodeToState(const PaneNode* node, const PanelSource& source,
     out->nodes[ix].axis = node->axis;
     out->nodes[ix].activeIndex = node->activeIx;
     if (node->paneKind == PaneKind::Split) {
-        for (int i = 0; i < node->children.len; i++) {
+        for (int i = 0; i < len(node->children); i++) {
             int child = PaneNodeToState(node->children[i], source, out);
             VecAppend(out->nodes[ix].children, child);
             // The persisted schema has no optional size; upstream writes
             // zero for an unresolved slot. Resolve sizes before saving when
             // compatibility with readers predating the tree is required.
-            float size = i < node->sizeKnown.len && node->sizeKnown[i]
+            float size = i < len(node->sizeKnown) && node->sizeKnown[i]
                              ? node->sizes[i]
                              : 0;
             VecAppend(out->nodes[ix].sizes, size);
         }
     } else {
-        for (int i = 0; i < node->panels.len; i++) {
+        for (int i = 0; i < len(node->panels); i++) {
             PanelId panel = node->panels[i];
             int child = out->NewNode(source.panelName
                                          ? source.panelName(source.data, panel)
@@ -46,7 +46,7 @@ int PaneTree::ToState(const PanelSource& source, DockAreaState* out) const {
 }
 
 void DockAreaState::Clear() {
-    for (int i = 0; i < nodes.len; i++) {
+    for (int i = 0; i < len(nodes); i++) {
         VecReset(nodes[i].children);
         VecReset(nodes[i].sizes);
     }
@@ -63,7 +63,7 @@ int DockAreaState::NewNode(Str panelName) {
     PanelStateNode node;
     node.panelName = panelName;
     VecAppend(nodes, node);
-    return nodes.len - 1;
+    return len(nodes) - 1;
 }
 
 // One node and everything under it. Answers the node's index, or -1.
@@ -200,7 +200,7 @@ bool DockAreaStateParse(Arena* a, Str json, DockAreaState* out) {
 
 static void WriteNode(JsonWriter* w, const char* key, const DockAreaState* s,
                       int ix) {
-    if (ix < 0 || ix >= s->nodes.len) {
+    if (ix < 0 || ix >= len(s->nodes)) {
         w->Null(key);
         return;
     }
@@ -208,7 +208,7 @@ static void WriteNode(JsonWriter* w, const char* key, const DockAreaState* s,
     w->BeginObject(key);
     w->String("panel_name", node.panelName);
     w->BeginArray("children");
-    for (int i = 0; i < node.children.len; i++) {
+    for (int i = 0; i < len(node.children); i++) {
         WriteNode(w, nullptr, s, node.children[i]);
     }
     w->EndArray();
@@ -217,7 +217,7 @@ static void WriteNode(JsonWriter* w, const char* key, const DockAreaState* s,
         case PanelInfoKind::Stack:
             w->BeginObject("stack");
             w->BeginArray("sizes");
-            for (int i = 0; i < node.sizes.len; i++) {
+            for (int i = 0; i < len(node.sizes); i++) {
                 w->Number(nullptr, node.sizes[i]);
             }
             w->EndArray();
@@ -276,7 +276,7 @@ void DockAreaStateWrite(const DockAreaState* s, StrBuilder* out) {
 
 // One node of the live tree, written out. Answers the state node's index.
 static int DumpNode(const DockState* s, DockAreaState* out, int node) {
-    if (node < 0 || node >= s->nodes.len || !s->nodes[node].used) {
+    if (node < 0 || node >= len(s->nodes) || !s->nodes[node].used) {
         return -1;
     }
     const DockNode& n = s->nodes[node];
@@ -287,7 +287,7 @@ static int DumpNode(const DockState* s, DockAreaState* out, int node) {
         }
         Vec<int> children;
         Vec<float> sizes;
-        for (int i = 0; i < n.child.len; i++) {
+        for (int i = 0; i < len(n.child); i++) {
             int child = DumpNode(s, out, n.child[i]);
             if (child >= 0) {
                 VecAppend(children, child);
@@ -314,9 +314,9 @@ static int DumpNode(const DockState* s, DockAreaState* out, int node) {
     // A panel is a leaf under the name it was registered with, which is what
     // the registry is asked for when this is read back.
     Vec<int> children;
-    for (int i = 0; i < n.panel.len; i++) {
+    for (int i = 0; i < len(n.panel); i++) {
         int panelIx = n.panel[i];
-        if (panelIx < 0 || panelIx >= s->panels.len) {
+        if (panelIx < 0 || panelIx >= len(s->panels)) {
             continue;
         }
         int leaf = out->NewNode(s->panels[panelIx].name);
@@ -408,7 +408,7 @@ static int PanelForName(DockState* s, const PanelStateNode* saved, Arena* a,
 static int LoadNode(DockState* s, const DockAreaState* st, int ix, Arena* a,
                     El* (*invalidRender)(Ctx* cx, void* data), App* app,
                     Window* win, Entity<DockState> dockArea) {
-    if (ix < 0 || ix >= st->nodes.len) {
+    if (ix < 0 || ix >= len(st->nodes)) {
         return -1;
     }
     const PanelStateNode& sn = st->nodes[ix];
@@ -417,13 +417,13 @@ static int LoadNode(DockState* s, const DockAreaState* st, int ix, Arena* a,
         if (node < 0) {
             return -1;
         }
-        for (int i = 0; i < sn.children.len; i++) {
+        for (int i = 0; i < len(sn.children); i++) {
             int child = LoadNode(s, st, sn.children[i], a, invalidRender, app,
                                  win, dockArea);
             if (child >= 0) {
                 DockSplitAdd(
                     s, node, child,
-                    i < sn.sizes.len ? sn.sizes[i] : kDockPanelMinSize);
+                    i < len(sn.sizes) ? sn.sizes[i] : kDockPanelMinSize);
             }
         }
         return node;
@@ -441,7 +441,7 @@ static int LoadNode(DockState* s, const DockAreaState* st, int ix, Arena* a,
         return -1;
     }
     if (sn.kind == PanelInfoKind::Tabs) {
-        for (int i = 0; i < sn.children.len; i++) {
+        for (int i = 0; i < len(sn.children); i++) {
             const PanelStateNode& leaf = st->nodes[sn.children[i]];
             // Rust flattens a tab group's children into their panels and
             // ignores anything that is not one.
@@ -461,7 +461,7 @@ static int LoadNode(DockState* s, const DockAreaState* st, int ix, Arena* a,
             }
         }
         s->nodes[node].activeIx =
-            sn.activeIndex < s->nodes[node].panel.len ? sn.activeIndex : 0;
+            sn.activeIndex < len(s->nodes[node].panel) ? sn.activeIndex : 0;
         return node;
     }
     int panelIx = PanelForName(s, &sn, a, invalidRender, app, win, dockArea);
@@ -494,7 +494,7 @@ bool DockLoad(DockState* s, const DockAreaState* st, Arena* a,
     s->hasVersion = st->hasVersion;
     s->version = st->version;
     // The panels the host registered stay; the tree they were in does not.
-    for (int i = 0; i < s->nodes.len; i++) {
+    for (int i = 0; i < len(s->nodes); i++) {
         s->nodes[i] = DockNode{};
     }
     s->center = -1;

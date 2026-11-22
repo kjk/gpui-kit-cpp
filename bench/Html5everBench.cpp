@@ -21,7 +21,7 @@ static Str BuildLargeHtml(Arena* a) {
         .Append(StrL("<!doctype html><html><head><title>Large document</title>"
                      "</head><body><main id=content class=article>"));
     int section = 0;
-    while (out.len < kHtmlBytes) {
+    while (len(out) < kHtmlBytes) {
         TempStr n = fmt("%d", section++);
         out.Append(StrL("<section data-section=\""));
         out.Append(n);

@@ -328,7 +328,7 @@ static Bounds HitPath(Window* win, uint32_t path) {
     if (!win) {
         return {};
     }
-    for (int i = 0; i < win->paint.hits.len; i++) {
+    for (int i = 0; i < len(win->paint.hits); i++) {
         if (win->paint.hits[i].pathId == path) {
             return win->paint.hits[i].bounds;
         }

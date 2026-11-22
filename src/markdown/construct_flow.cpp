@@ -283,7 +283,7 @@ bool HeadingAtxResolve(Tokenizer* t, Subresult*) {
     bool headingInside = false;
     int32_t dataStart = -1;
     int32_t dataEnd = -1;
-    while (index < t->events.len) {
+    while (index < len(t->events)) {
         const Event& event = t->events[index];
         if (event.name == Name::HeadingAtx) {
             if (event.kind == Kind::Enter) {
@@ -327,11 +327,11 @@ bool HeadingAtxResolve(Tokenizer* t, Subresult*) {
 
 State HeadingSetextStart(Tokenizer* t) {
     if (!t->parseState->options->constructs.headingSetext || t->lazy ||
-        t->pierce || t->events.len == 0) {
+        t->pierce || len(t->events) == 0) {
         return StateNok();
     }
     Name names[2] = {Name::LineEnding, Name::SpaceOrTab};
-    int32_t before = SkipOptBack(t->events, t->events.len - 1, names, 2);
+    int32_t before = SkipOptBack(t->events, len(t->events) - 1, names, 2);
     Name name = t->events[before].name;
     if (name != Name::Content && name != Name::HeadingSetextUnderline) {
         return StateNok();
@@ -383,7 +383,7 @@ State HeadingSetextAfter(Tokenizer* t) {
 bool HeadingSetextResolve(Tokenizer* t, Subresult*) {
     Name underline = Name::HeadingSetextUnderline;
     int32_t enter = SkipTo(t->events, 0, &underline, 1);
-    while (enter < t->events.len) {
+    while (enter < len(t->events)) {
         int32_t exit = SkipTo(t->events, enter + 1, &underline, 1);
 
         Name names[3] = {Name::SpaceOrTab, Name::LineEnding,
@@ -405,7 +405,7 @@ bool HeadingSetextResolve(Tokenizer* t, Subresult*) {
             Event headingExit = t->events[exit];
             headingExit.name = Name::HeadingSetext;
             EditMapAdd(t->map, exit + 1, 0, &headingExit, 1);
-        } else if (exit + 3 < t->events.len &&
+        } else if (exit + 3 < len(t->events) &&
                    t->events[exit + 1].name == Name::LineEnding &&
                    t->events[exit + 3].name == Name::Paragraph) {
             // There is a following paragraph: turn the underline into its
@@ -556,7 +556,7 @@ State ListItemAfter(Tokenizer* t) {
     }
 
     Name listItem = Name::ListItem;
-    int32_t start = SkipToBack(t->events, t->events.len - 1, &listItem, 1);
+    int32_t start = SkipToBack(t->events, len(t->events) - 1, &listItem, 1);
     Position position;
     position.start = t->events[start].point;
     position.end = t->point;
@@ -625,7 +625,7 @@ bool ListItemResolve(Tokenizer* t, Subresult*) {
     int32_t index = 0;
     int32_t balance = 0;
 
-    while (index < t->events.len) {
+    while (index < len(t->events)) {
         const Event& event = t->events[index];
         if (event.name == Name::ListItem) {
             if (event.kind == Kind::Enter) {
@@ -722,11 +722,11 @@ State DefinitionStart(Tokenizer* t) {
     }
     if (t->interrupt) {
         // Can only interrupt when the thing before is a definition too.
-        if (t->events.len == 0) {
+        if (len(t->events) == 0) {
             return StateNok();
         }
         Name names[2] = {Name::LineEnding, Name::SpaceOrTab};
-        int32_t before = SkipOptBack(t->events, t->events.len - 1, names, 2);
+        int32_t before = SkipOptBack(t->events, len(t->events) - 1, names, 2);
         if (t->events[before].name != Name::Definition) {
             return StateNok();
         }
@@ -756,7 +756,7 @@ State DefinitionLabelAfter(Tokenizer* t) {
     if (t->current == ':') {
         Name labelString = Name::DefinitionLabelString;
         t->tokenizeState
-            .end = SkipToBack(t->events, t->events.len - 1, &labelString, 1);
+            .end = SkipToBack(t->events, len(t->events) - 1, &labelString, 1);
         Enter(t, Name::DefinitionMarker);
         Consume(t);
         Exit(t, Name::DefinitionMarker);

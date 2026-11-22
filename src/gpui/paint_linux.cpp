@@ -422,13 +422,13 @@ void PathEmitClose(Path* p) {
 }
 
 static bool Replay(cairo_t* cr, Path* p) {
-    if (!cr || !p || p->ops.len == 0) {
+    if (!cr || !p || len(p->ops) == 0) {
         return false;
     }
     cairo_new_path(cr);
     cairo_set_fill_rule(cr, p->head.winding ? CAIRO_FILL_RULE_WINDING
                                             : CAIRO_FILL_RULE_EVEN_ODD);
-    for (int i = 0; i < p->ops.len; i++) {
+    for (int i = 0; i < len(p->ops); i++) {
         const CairoPathOp& o = p->ops[i];
         switch (o.cmd) {
             case kPathMove:
@@ -780,8 +780,8 @@ void PaintBackendRenderImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,
                                  Bounds imageBounds, int frameIndex,
                                  float radius, bool grayscale) {
     cairo_t* cr = Cr(ctx);
-    if (!cr || !img || img->frames.len <= 0 || bounds.w <= 0 || bounds.h <= 0 ||
-        imageBounds.w <= 0 || imageBounds.h <= 0) {
+    if (!cr || !img || len(img->frames) <= 0 || bounds.w <= 0 ||
+        bounds.h <= 0 || imageBounds.w <= 0 || imageBounds.h <= 0) {
         return;
     }
     frameIndex = RenderImageFrameIndex(img, frameIndex);

@@ -44,13 +44,13 @@ static int QsortProc(const void* x, const void* y) {
 
 void SysSortProcesses(SysState* s, ProcessSort field, bool descending,
                       int keepTop) {
-    if (s->procs.len <= 1) {
+    if (len(s->procs) <= 1) {
         return;
     }
     gSortField = field;
     gSortDesc = descending;
-    qsort(s->procs.els, (size_t)s->procs.len, sizeof(ProcessInfo), QsortProc);
-    if (keepTop > 0 && s->procs.len > keepTop) {
+    qsort(s->procs.els, (size_t)len(s->procs), sizeof(ProcessInfo), QsortProc);
+    if (keepTop > 0 && len(s->procs) > keepTop) {
         s->procs.len = keepTop;
     }
 }

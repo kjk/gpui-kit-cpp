@@ -381,19 +381,19 @@ TabBar* TabBar::WFill() {
     return this;
 }
 TabBar* TabBar::Flex1() {
-    if (items.len > 0) {
-        items[items.len - 1].flex1 = true;
+    if (len(items) > 0) {
+        items[len(items) - 1].flex1 = true;
     }
     return this;
 }
 TabBar* TabBar::AriaLabel(Str label) {
-    if (items.len > 0) {
-        items[items.len - 1].ariaLabel = label;
+    if (len(items) > 0) {
+        items[len(items) - 1].ariaLabel = label;
     }
     return this;
 }
 TabBar* TabBar::Disabled(int ix, bool v) {
-    if (ix >= 0 && ix < items.len) {
+    if (ix >= 0 && ix < len(items)) {
         items[ix].disabled = v;
     }
     return this;
@@ -781,7 +781,7 @@ struct TabBarScrollState {
     }
 
     static void Start(TabBarScrollState* self, Ctx* cx, int ix) {
-        if (!self->hasStrip || ix < 0 || ix >= self->tabs.len) {
+        if (!self->hasStrip || ix < 0 || ix >= len(self->tabs)) {
             return;
         }
         float scrollX = self->geomScroll;
@@ -794,8 +794,8 @@ struct TabBarScrollState {
         view.right = self->viewport.x + self->viewport.w;
         int left = self->rtl ? ix + 1 : ix - 1;
         int right = self->rtl ? ix - 1 : ix + 1;
-        bool hasPrev = left >= 0 && left < self->tabs.len;
-        bool hasNext = right >= 0 && right < self->tabs.len;
+        bool hasPrev = left >= 0 && left < len(self->tabs);
+        bool hasNext = right >= 0 && right < len(self->tabs);
         float to = TabRevealOffset(
             -scrollX, maxScroll, view, Unscrolled(self->tabs[ix], scrollX),
             hasPrev,
@@ -822,7 +822,7 @@ struct TabBarScrollState {
                            const ClickEvent* ev, int64_t packed) {
         int ix = (int)packed;
         Start(self, cx, ix);
-        if (ix >= 0 && ix < self->clicks.len && self->clicks[ix].IsValid()) {
+        if (ix >= 0 && ix < len(self->clicks) && self->clicks[ix].IsValid()) {
             ListenerCall(cx->app, cx->win, self->clicks[ix], ev);
         }
     }
@@ -980,9 +980,9 @@ El* TabBar::IntoEl() {
         }
         scrollState->peek = TabRevealPeek(size);
         scrollState->rtl = rtl;
-        VecResize(scrollState->tabs, items.len);
-        VecResize(scrollState->clicks, items.len);
-        for (int c = 0; c < scrollState->clicks.len; c++) {
+        VecResize(scrollState->tabs, len(items));
+        VecResize(scrollState->clicks, len(items));
+        for (int c = 0; c < len(scrollState->clicks); c++) {
             scrollState->clicks[c] = {};
         }
     }
@@ -1075,8 +1075,8 @@ El* TabBar::IntoEl() {
     if (rtl && hasEnd && lastEmptySpace) {
         strip->Child(Div(a)->Shrink0()->MlAuto()->Child(lastEmptySpace));
     }
-    for (int order = 0; order < items.len; ++order) {
-        int i = rtl ? items.len - 1 - order : order;
+    for (int order = 0; order < len(items); ++order) {
+        int i = rtl ? len(items) - 1 - order : order;
         const component::Tab& item = items[i];
         bool pushEnd = rtl && !hasEnd && order == 0;
         bool on = selected >= 0 ? i == selected : item.selected;
@@ -1095,14 +1095,14 @@ El* TabBar::IntoEl() {
         if (item.disabled) {
             click = {};
         }
-        if (scrollState && click.IsValid() && i < scrollState->clicks.len) {
+        if (scrollState && click.IsValid() && i < len(scrollState->clicks)) {
             scrollState->clicks[i] = click;
             click = ListenTo(scrollEntity, &TabBarScrollState::OnTabClick, i);
         }
         El* tab = gpui::Tab::New(cx, tabId, item.disabled,
                                  item.disabled ? Listener{} : click, on,
                                  item.ariaLabel.s ? item.ariaLabel : item.label,
-                                 i + 1, items.len)
+                                 i + 1, len(items))
                       ->FlexRowDir(cx->app)
                       ->ItemsCenter()
                       ->JustifyCenter()
@@ -1204,7 +1204,7 @@ El* TabBar::IntoEl() {
             inner->W(kFill);
         }
         bool nextOn = false;
-        if (folder && i + 1 < items.len) {
+        if (folder && i + 1 < len(items)) {
             nextOn = selected >= 0 ? i + 1 == selected : items[i + 1].selected;
         }
         bool thisShaped = folder && (on || folderHovered == i);
@@ -1233,7 +1233,7 @@ El* TabBar::IntoEl() {
                            ->Radius(folderM.radius)
                            ->Bg(th.secondary));
         }
-        if (folder && i + 1 < items.len && !thisShaped && !nextShaped) {
+        if (folder && i + 1 < len(items) && !thisShaped && !nextShaped) {
             float sepTop =
                 (h - folderM.topPadding - folderM.separatorHeight) / 2.f;
             tab->Child(Div(a)
@@ -1280,14 +1280,14 @@ El* TabBar::IntoEl() {
                 host->OnHover(ListenTo(folderHover, &FolderHover::OnHover, i));
             }
             host->Child(tab);
-            if (scrollState && i < scrollState->tabs.len) {
+            if (scrollState && i < len(scrollState->tabs)) {
                 host->customPaint = &RecordTabBound;
                 host->customUser = &scrollState->tabs[i];
             }
             if (pushEnd) host->MlAuto();
             strip->Child(host);
         } else {
-            if (scrollState && i < scrollState->tabs.len) {
+            if (scrollState && i < len(scrollState->tabs)) {
                 tab->customPaint = &RecordTabBound;
                 tab->customUser = &scrollState->tabs[i];
             }

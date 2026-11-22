@@ -72,7 +72,7 @@ void BaseTextViewStatePush(App* app, EntityId view) {
 
 void BaseTextViewStatePop(App* app) {
     if (BaseGlobalState* state = AppGlobalGet<BaseGlobalState>(app)) {
-        if (state->textViewStateStack.len > 0) {
+        if (len(state->textViewStateStack) > 0) {
             state->textViewStateStack.len--;
         }
     }
@@ -80,8 +80,8 @@ void BaseTextViewStatePop(App* app) {
 
 EntityId BaseTextViewStateCurrent(const App* app) {
     BaseGlobalState* state = AppGlobalGet<BaseGlobalState>(app);
-    return state && state->textViewStateStack.len > 0
-               ? state->textViewStateStack[state->textViewStateStack.len - 1]
+    return state && len(state->textViewStateStack) > 0
+               ? state->textViewStateStack[len(state->textViewStateStack) - 1]
                : EntityId{};
 }
 
@@ -133,7 +133,7 @@ const MenuDef* BaseAppMenus(const App* app, int* count) {
     if (count) {
         *count = state ? state->appMenus.len : 0;
     }
-    return state && state->appMenus.len > 0 ? state->appMenus.els : nullptr;
+    return state && len(state->appMenus) > 0 ? state->appMenus.els : nullptr;
 }
 
 void BaseSetAppMenus(App* app, const MenuDef* menus, int count) {
@@ -156,7 +156,7 @@ void BaseSetAppMenus(App* app, const MenuDef* menus, int count) {
             VecAppend(state->appMenus, copy);
         }
     }
-    AppSetMenus(app, state->appMenus.els, state->appMenus.len);
+    AppSetMenus(app, state->appMenus.els, len(state->appMenus));
 }
 
 void BaseDeferredPopoverSet(App* app, EntityId popover, bool open) {
@@ -165,7 +165,7 @@ void BaseDeferredPopoverSet(App* app, EntityId popover, bool open) {
         return;
     }
     int found = -1;
-    for (int i = 0; i < state->deferredPopovers.len; i++) {
+    for (int i = 0; i < len(state->deferredPopovers); i++) {
         if (state->deferredPopovers[i] == popover) {
             found = i;
             break;
@@ -174,7 +174,7 @@ void BaseDeferredPopoverSet(App* app, EntityId popover, bool open) {
     if (open && found < 0) {
         VecAppend(state->deferredPopovers, popover);
     } else if (!open && found >= 0) {
-        for (int i = found; i < state->deferredPopovers.len - 1; i++) {
+        for (int i = found; i < len(state->deferredPopovers) - 1; i++) {
             state->deferredPopovers[i] = state->deferredPopovers[i + 1];
         }
         state->deferredPopovers.len--;
@@ -191,16 +191,16 @@ bool BaseIsInDeferredContext(App* app) {
     if (!state) {
         return false;
     }
-    for (int i = state->deferredPopovers.len - 1; i >= 0; i--) {
+    for (int i = len(state->deferredPopovers) - 1; i >= 0; i--) {
         if (EntityGet(app, state->deferredPopovers[i])) {
             continue;
         }
-        for (int j = i; j < state->deferredPopovers.len - 1; j++) {
+        for (int j = i; j < len(state->deferredPopovers) - 1; j++) {
             state->deferredPopovers[j] = state->deferredPopovers[j + 1];
         }
         state->deferredPopovers.len--;
     }
-    return state->deferredPopovers.len > 0;
+    return len(state->deferredPopovers) > 0;
 }
 
 } // namespace gpui

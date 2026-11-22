@@ -273,7 +273,7 @@ static void DisablingFocusedButtonPreservesBidirectionalTraversal() {
         Entity<DisableDuringFocus> controls =
             EntityNew<DisableDuringFocus>(app);
         Window* win = TestWindowOpen(app, controls);
-        utassert(win->focusEls.len == 3);
+        utassert(len(win->focusEls) == 3);
         int ids[3] = {win->focusEls[0].id, win->focusEls[1].id,
                       win->focusEls[2].id};
         WindowSetFocusId(win, ids[0]);
@@ -285,7 +285,7 @@ static void DisablingFocusedButtonPreservesBidirectionalTraversal() {
         DisableDuringFocus* self = controls.Get(app);
         utassert(self && self->disabled && self->activations == 1);
         utassert(win->focusId == ids[1]);
-        utassert(win->focusEls.len == 3 && !win->focusEls[1].tabStop);
+        utassert(len(win->focusEls) == 3 && !win->focusEls[1].tabStop);
         PressTransitionKey(win, KeyReturn, false);
         PressTransitionKey(win, KeySpace, false);
         utassert(controls.Get(app)->activations == 1);
@@ -297,7 +297,7 @@ static void DisablingFocusedButtonPreservesBidirectionalTraversal() {
         self->disabled = false;
         NotifyEntity(app, controls.id, win);
         TestDraw(win);
-        utassert(win->focusEls.len == 3 && win->focusEls[1].tabStop);
+        utassert(len(win->focusEls) == 3 && win->focusEls[1].tabStop);
         PressTransitionKey(win, KeyTab, dir.shift);
         utassert(win->focusId == ids[1]);
         TestAppFree(app);

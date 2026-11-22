@@ -662,7 +662,7 @@ El* Button::IntoEl() {
     // a square of the size's own side and no padding at all, rather than the
     // h/px pair a labelled button takes. `.icon()` is not a child in Rust, so
     // an icon alone still lands here; `extra` is what a `.child()` is here.
-    bool iconOnly = !label.s && children.len == 0;
+    bool iconOnly = !label.s && len(children) == 0;
     if (iconOnly) {
         h = Rems(cx, size == UiSize::XSmall  ? 1.25f
                      : size == UiSize::Small ? 1.5f
@@ -1188,7 +1188,7 @@ El* ToggleGroup::IntoEl() {
     El* root = gpui::ToggleGroup::New(cx, id, Axis::Horizontal);
     El* row = Div(a)->FlexRowDir(cx->app)->ItemsCenter();
     if (!segmented) row->Gap(Rems(cx, 0.5f));
-    int n = items.len;
+    int n = len(items);
     for (int i = 0; i < n; i++) {
         Toggle* item = items[i];
         item->Disabled(disabled || item->disabled)
@@ -1466,7 +1466,7 @@ El* ButtonGroup::IntoEl() {
         stateValue = state.Get(cx->app);
         if (stateValue) {
             VecClear(stateValue->selected);
-            for (int i = 0; i < children.len; i++) {
+            for (int i = 0; i < len(children); i++) {
                 if (children[i]->selected) {
                     VecAppend(stateValue->selected, i);
                 }
@@ -1486,7 +1486,7 @@ El* ButtonGroup::IntoEl() {
     } else {
         box->FlexRowDir(cx->app)->ItemsCenter();
     }
-    for (int i = 0; i < children.len; i++) {
+    for (int i = 0; i < len(children); i++) {
         Button* b = children[i];
         // A button's selected presentation alone is not a toggle state, but
         // membership in ButtonGroup is: upstream stamps every group child.
@@ -1506,8 +1506,8 @@ El* ButtonGroup::IntoEl() {
         if (outline) {
             b->Outline();
         }
-        b->joined = children.len > 1;
-        if (children.len > 1) {
+        b->joined = len(children) > 1;
+        if (len(children) > 1) {
             // First / middle / last: the seam between two children is drawn
             // once, by the one after it.
             b->edgeT = vertical ? (i == 0) : true;
@@ -1519,7 +1519,7 @@ El* ButtonGroup::IntoEl() {
                 b->cornerTR = vertical;
                 b->cornerBL = !vertical;
                 b->cornerBR = false;
-            } else if (i == children.len - 1) {
+            } else if (i == len(children) - 1) {
                 b->cornerTL = false;
                 b->cornerTR = !vertical;
                 b->cornerBL = vertical;

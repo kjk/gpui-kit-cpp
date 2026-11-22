@@ -396,8 +396,8 @@ class SpecArena {
     ~SpecArena();
 
     void Reset();
-    int Len() const { return nodes.len; }
-    bool IsEmpty() const { return nodes.len == 0; }
+    int Len() const { return len(nodes); }
+    bool IsEmpty() const { return len(nodes) == 0; }
     SpecId Push(const Component& component);
     bool PushChildView(const Component& component, SpecId* out,
                        SpecError* error = nullptr);
@@ -436,10 +436,10 @@ class SpecArena {
     // No parent, slot or component holds this node.
     static constexpr SpecId kNoHolder = 0xffffffffu;
     uint8_t Height(SpecId id) const {
-        return id < (SpecId)heights.len ? heights[(int)id] : 0;
+        return id < (SpecId)len(heights) ? heights[(int)id] : 0;
     }
     SpecId Holder(SpecId id) const {
-        return id < (SpecId)holders.len ? holders[(int)id] : kNoHolder;
+        return id < (SpecId)len(holders) ? holders[(int)id] : kNoHolder;
     }
     bool ClaimVirtualItems(uint64_t count, uint64_t limit);
     Str DebugTree(Arena* into, SpecId root) const;
@@ -472,7 +472,7 @@ class SpecArena {
     // grafted many times and GPUI cannot mount one entity at two positions in
     // a tree, so a body that describes one is refused at definition rather
     // than at the second call.
-    bool MountsAnEntity() const { return mountedViews.len > 0; }
+    bool MountsAnEntity() const { return len(mountedViews) > 0; }
 
     // Where a registered constructor's or method's payload is allocated: the
     // same arena as the node that carries it, so it lives exactly as long.

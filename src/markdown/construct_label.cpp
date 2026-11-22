@@ -23,10 +23,10 @@ static bool DefinitionsContain(const Vec<Str>& definitions, Str id) {
 
 State LabelEndStart(Tokenizer* t) {
     if (t->current == ']' && t->parseState->options->constructs.labelEnd &&
-        t->tokenizeState.labelStarts.len > 0) {
+        len(t->tokenizeState.labelStarts) > 0) {
         const LabelStartMark& labelStart =
-            t->tokenizeState.labelStarts[t->tokenizeState.labelStarts.len - 1];
-        t->tokenizeState.end = t->events.len;
+            t->tokenizeState.labelStarts[len(t->tokenizeState.labelStarts) - 1];
+        t->tokenizeState.end = len(t->events);
         // Mark as balanced if the info is inactive.
         if (labelStart.inactive) {
             return StateRetry(StateName::LabelEndNok);
@@ -42,7 +42,7 @@ State LabelEndStart(Tokenizer* t) {
 }
 
 State LabelEndAfter(Tokenizer* t) {
-    int32_t startIndex = t->tokenizeState.labelStarts.len - 1;
+    int32_t startIndex = len(t->tokenizeState.labelStarts) - 1;
     const LabelStartMark& start = t->tokenizeState.labelStarts[startIndex];
     int32_t from = t->events[start.startB].point.index;
     int32_t to = t->events[t->tokenizeState.end].point.index;
@@ -96,7 +96,7 @@ State LabelEndOk(Tokenizer* t) {
 
     // Deactivate the other label starts: a link may not contain a link.
     if (labelStart.kind != LabelKind::Image) {
-        for (int32_t index = 0; index < t->tokenizeState.labelStarts.len;
+        for (int32_t index = 0; index < len(t->tokenizeState.labelStarts);
              index++) {
             if (t->tokenizeState.labelStarts[index].kind != LabelKind::Image) {
                 t->tokenizeState.labelStarts[index].inactive = true;
@@ -109,7 +109,7 @@ State LabelEndOk(Tokenizer* t) {
     label.startA = labelStart.startA;
     label.startB = labelStart.startB;
     label.endA = t->tokenizeState.end;
-    label.endB = t->events.len - 1;
+    label.endB = len(t->events) - 1;
     VecAppend(t->tokenizeState.labels, label);
     t->tokenizeState.end = 0;
     RegisterResolverBefore(t, ResolveName::Label);
@@ -216,7 +216,7 @@ State LabelEndReferenceFull(Tokenizer* t) {
 State LabelEndReferenceFullAfter(Tokenizer* t) {
     ResetLabelTokens(t);
     Name referenceString = Name::ReferenceString;
-    int32_t at = SkipToBack(t->events, t->events.len - 1, &referenceString, 1);
+    int32_t at = SkipToBack(t->events, len(t->events) - 1, &referenceString, 1);
     Position position = PositionFromExitEvent(t->events, at);
     Slice slice = SliceFromPosition(t->parseState->bytes, position);
     Str id = NormalizeIdentifier(t->parseState->scratch, slice.bytes);
@@ -345,14 +345,14 @@ bool LabelEndResolve(Tokenizer* t, Subresult*) {
 
     // Turn the leftover starts into data.
     Vec<LabelStartMark> starts;
-    for (int32_t i = 0; i < t->tokenizeState.labelStarts.len; i++) {
+    for (int32_t i = 0; i < len(t->tokenizeState.labelStarts); i++) {
         VecAppend(starts, t->tokenizeState.labelStarts[i]);
     }
     t->tokenizeState.labelStarts.len = 0;
     MarkAsData(t, starts);
 
     starts.len = 0;
-    for (int32_t i = 0; i < t->tokenizeState.labelStartsLoose.len; i++) {
+    for (int32_t i = 0; i < len(t->tokenizeState.labelStartsLoose); i++) {
         VecAppend(starts, t->tokenizeState.labelStartsLoose[i]);
     }
     t->tokenizeState.labelStartsLoose.len = 0;

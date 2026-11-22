@@ -35,15 +35,15 @@ static void SetPanelSize(ResizableStory* self, Ctx* cx, const ClickEvent*,
     // resize_panel_at_handle from an action rather than a drag, which is what
     // the Rust story's four buttons do: the group settles the rest.
     component::ResizableState* st = self->prog.Get(cx);
-    if (st && st->sizes.len == 3) {
+    if (st && len(st->sizes) == 3) {
         float container = st->bounds.w;
         if (packed & 1) {
             ResizablePanelResize(st->sizes.els, st->mins.els, st->maxs.els,
-                                 st->sizes.len, 1,
+                                 len(st->sizes), 1,
                                  container - size - st->sizes[0], container);
         } else {
             ResizablePanelResize(st->sizes.els, st->mins.els, st->maxs.els,
-                                 st->sizes.len, 0, size, container);
+                                 len(st->sizes), 0, size, container);
         }
     }
     Notify(cx);

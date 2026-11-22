@@ -84,16 +84,16 @@ static TempStr JoinPathTemp(Str a, Str b) {
 }
 
 static void ParentDir(Str* path) {
-    while (path->len > 0 &&
-           (path->s[path->len - 1] == '\\' || path->s[path->len - 1] == '/')) {
+    while (len(*path) > 0 && (path->s[len(*path) - 1] == '\\' ||
+                              path->s[len(*path) - 1] == '/')) {
         path->s[--path->len] = 0;
     }
-    while (path->len > 0 && path->s[path->len - 1] != '\\' &&
-           path->s[path->len - 1] != '/') {
+    while (len(*path) > 0 && path->s[len(*path) - 1] != '\\' &&
+           path->s[len(*path) - 1] != '/') {
         path->s[--path->len] = 0;
     }
-    while (path->len > 0 &&
-           (path->s[path->len - 1] == '\\' || path->s[path->len - 1] == '/')) {
+    while (len(*path) > 0 && (path->s[len(*path) - 1] == '\\' ||
+                              path->s[len(*path) - 1] == '/')) {
         path->s[--path->len] = 0;
     }
 }

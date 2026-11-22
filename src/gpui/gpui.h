@@ -4828,10 +4828,10 @@ void SearchMatcherReset(SearchMatcher* m);
 void SearchMatcherUpdate(SearchMatcher* m, Str text);
 void SearchMatcherUpdateQuery(SearchMatcher* m, Str query, bool insensitive);
 inline int SearchMatcherLen(const SearchMatcher* m) {
-    return m->ranges.len;
+    return len(m->ranges);
 }
 inline bool SearchMatcherIsEmpty(const SearchMatcher* m) {
-    return m->ranges.len == 0;
+    return len(m->ranges) == 0;
 }
 inline int SearchMatcherIndex(const SearchMatcher* m) {
     return m->current;
@@ -4839,7 +4839,7 @@ inline int SearchMatcherIndex(const SearchMatcher* m) {
 // current(): the index of the current match into matched_ranges, -1 while
 // there is no match — so "no match" is not mistaken for the first one.
 inline int SearchMatcherCurrentIndex(const SearchMatcher* m) {
-    return m->ranges.len == 0 ? -1 : m->current;
+    return len(m->ranges) == 0 ? -1 : m->current;
 }
 // label(): "3/17", or "0/0" when nothing matched.
 Str SearchMatcherLabel(Arena* a, const SearchMatcher* m);

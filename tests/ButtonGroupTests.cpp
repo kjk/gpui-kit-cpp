@@ -209,7 +209,7 @@ static void SourceButtonVariantsRoundingAndIconsRemainConcrete() {
             ->Children(grouped, 2)
             ->Layout(Axis::Vertical)
             ->Custom(custom);
-    utassert(sourceGroup->children.len == 2 && sourceGroup->vertical);
+    utassert(len(sourceGroup->children) == 2 && sourceGroup->vertical);
     utassert(sourceGroup->variant == component::ButtonVariant::Custom);
     component::DropdownButton* dropdown =
         component::DropdownButton::New(&cx, StrL("source-dropdown"))
@@ -287,7 +287,7 @@ static void SourceButtonVariantsRoundingAndIconsRemainConcrete() {
         component::PopupMenu::New(&cx, StrL("data-icons"))
             ->Menu(StrL("Search"), component::Icon::Empty(&cx)
                                        ->Data(Str(kSvg)));
-    utassert(menu->items.len == 1 && StrEq(menu->items[0].iconSvg, Str(kSvg)));
+    utassert(len(menu->items) == 1 && StrEq(menu->items[0].iconSvg, Str(kSvg)));
 
     // tooltip_placement (699936e4): a preferred side rides with the tip so
     // the overlay can honour it; omitting it keeps automatic positioning, and
@@ -918,7 +918,7 @@ static void TestToggleGroupBuilder() {
             ->Single()
             ->Disabled(false)
             ->OnClick(Listen(&cx, &ToggleGroupBuilderNop));
-    utassert(group->items.len == 3);
+    utassert(len(group->items) == 3);
     utassert(group->variant == component::ToggleVariant::Outline);
     utassert(group->size == UiSize::Large);
     utassert(group->segmented);

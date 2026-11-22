@@ -266,10 +266,10 @@ El* Accordion::IntoEl() {
     // The group's name is on the stack while its items are built, so an
     // item is `0`, `1`, `2` inside it.
     IdScope group(cx, id);
-    for (int i = 0; i < items.len; i++) {
+    for (int i = 0; i < len(items); i++) {
         AccordionItem* item = items[i];
         item->index = i;
-        item->last = i + 1 == items.len;
+        item->last = i + 1 == len(items);
         item->size = size;
         // Either the group or the item disables it: an enabled group leaves an
         // item's own disabled flag in force.

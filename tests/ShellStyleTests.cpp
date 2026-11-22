@@ -115,7 +115,7 @@ static void EveryDeclaredStyleIsAccepted() {
     StrBuilder builtin;
     AppendBuiltinTypeDeclarations(&builtin);
     DeclaredStyles declared;
-    ReadDeclaredStyles(Str(builtin.els, builtin.len), &declared);
+    ReadDeclaredStyles(Str(builtin.els, len(builtin)), &declared);
     // Rust's the_reflection_table_is_populated, against the declarations.
     utassert(len(declared.nullary) > 3000);
 
@@ -599,7 +599,7 @@ static void AScriptMayCallEveryDeclaredStyle() {
     StrBuilder builtin;
     AppendBuiltinTypeDeclarations(&builtin);
     DeclaredStyles declared;
-    ReadDeclaredStyles(Str(builtin.els, builtin.len), &declared);
+    ReadDeclaredStyles(Str(builtin.els, len(builtin)), &declared);
 
     App app;
     Window window;
@@ -626,7 +626,7 @@ static void AScriptMayCallEveryDeclaredStyle() {
         source.Append(StrL(";\n} }\n"));
         ViewType* type = runtime
                              ->LoadSource(Str(fmt("styles%d.js", first)),
-                                          Str(source.els, source.len), &error);
+                                          Str(source.els, len(source)), &error);
         ViewObject* object =
             type ? runtime->Instantiate(type, &window, &app, nullptr, &error)
                  : nullptr;
@@ -670,7 +670,7 @@ static void ACloseTypoGetsASuggestion() {
     StrBuilder builtin;
     AppendBuiltinTypeDeclarations(&builtin);
     DeclaredStyles declared;
-    ReadDeclaredStyles(Str(builtin.els, builtin.len), &declared);
+    ReadDeclaredStyles(Str(builtin.els, len(builtin)), &declared);
     int missing = 0;
     // A sample: every name against every name is millions of distances.
     for (int i = 0; i < len(declared.nullary); i += 23) {
@@ -1061,13 +1061,13 @@ static void DrawingAHoveredDebugElement() {
     // Hitbox::is_hovered: last frame's hit test found the item's hitbox under
     // the pointer, and the view it is in is on the id stack.
     TestDraw(win);
-    utassert(win->debugHoveredPaths.len == 1);
-    utassert(win->debugViewRoots.len >= 1);
+    utassert(len(win->debugHoveredPaths) == 1);
+    utassert(len(win->debugViewRoots) >= 1);
     // Off the item there is no hitbox under the pointer: the list has none.
     TestSimulateMouseMove(win, {250, 150});
     TestDraw(win);
     TestDraw(win);
-    utassert(win->debugHoveredPaths.len == 0);
+    utassert(len(win->debugHoveredPaths) == 0);
 
     // The label sits at the item's origin. Over it with the secondary
     // modifier held, a press prints where the item's div() was called and

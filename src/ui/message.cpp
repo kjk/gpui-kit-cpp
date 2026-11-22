@@ -16,7 +16,7 @@ El* MessageGroupColumn(Ctx* cx, const ArenaVec<El*>& children,
     if (styleSet) {
         column->Refine(style, styleSet);
     }
-    for (int i = 0; i < children.len; i++) {
+    for (int i = 0; i < len(children); i++) {
         column->Child(children[i]);
     }
     return column;
@@ -42,7 +42,7 @@ El* MessageAvatar::IntoEl() {
     if (styleSet) {
         slot->Refine(style, styleSet);
     }
-    for (int i = 0; i < children.len; i++) {
+    for (int i = 0; i < len(children); i++) {
         slot->Child(children[i]);
     }
     return slot;

@@ -99,7 +99,7 @@ static void SankeyLabelsCarryIndependentStylesAndDoNotCap() {
     }
     const SankeyChartNode& node = chart->nodes[0];
     utassert(node.hasCustomLabels);
-    utassert(node.labels.len == 40);
+    utassert(len(node.labels) == 40);
     utassert(base::StrEq(node.labels[0].text, StrL("a")));
     utassert(base::StrEq(node.labels[39].text, StrL("b")));
     utassertnear(node.labels[39].fontSize, 14);
@@ -643,7 +643,7 @@ static void AValueColorColorsOnlyTheRowAddedLast() {
             ->Row(blue, StrL("Open"), StrL("1"))
             ->Row(blue, StrL("Close"), StrL("2"))
             ->ValueColor(green);
-    utassert(tooltip->rows.len == 2);
+    utassert(len(tooltip->rows) == 2);
     utassert(!tooltip->rows[0].hasValueColor);
     utassert(tooltip->rows[1].hasValueColor &&
              ChartColorEq(tooltip->rows[1].valueColor, green));
@@ -860,7 +860,7 @@ static void TooltipFillWritesEachRowWithTheValueColor() {
         content, component::plot::Tooltip::New(&cx, {0, 0}, {100, 100}), &one,
         StrL("Jan"), true, rows, 2);
     utassert(tooltip->hasTitle && StrEq(tooltip->title, StrL("Jan")));
-    utassert(tooltip->rows.len == 2);
+    utassert(len(tooltip->rows) == 2);
     utassert(StrEq(tooltip->rows[0].value, StrL("0: +2")) &&
              ChartColorEq(tooltip->rows[0].valueColor, Rgb(0, 255, 0)));
     utassert(StrEq(tooltip->rows[1].value, StrL("1: -1")) &&
@@ -899,8 +899,8 @@ static void TooltipFillRendersTheCallerContentWithoutBuildingRows() {
         StrL("Jan"), true, rows, 1);
     utassert(gContentCalls == 1);
     utassert(!tooltip->hasTitle);
-    utassert(tooltip->rows.len == 0);
-    utassert(tooltip->children.len == 1 &&
+    utassert(len(tooltip->rows) == 0);
+    utassert(len(tooltip->children) == 1 &&
              StrEq(tooltip->children[0]->text, StrL("datum 1")));
     ArenaDelete(a);
 }

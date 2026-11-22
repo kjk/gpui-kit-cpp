@@ -27,7 +27,7 @@ static void MountRoot(App* app, Window* window) {
 
 static ToastStatus NotificationStatus(const NotificationListState* state,
                                       int id) {
-    for (int i = 0; state && i < state->stack.entries.len; i++) {
+    for (int i = 0; state && i < len(state->stack.entries); i++) {
         if (state->stack.entries[i].id == id) {
             return state->stack.entries[i].status;
         }
@@ -229,7 +229,7 @@ static void SheetAndNotificationsStayInTheFullyVisibleArea() {
     int sheetId = HashClickId(StrL("sheet-content"));
     bool foundSheet = false;
     Bounds sheet = {};
-    for (int i = 0; i < win->paint.hits.len; i++) {
+    for (int i = 0; i < len(win->paint.hits); i++) {
         if (win->paint.hits[i].id == sheetId) {
             sheet = win->paint.hits[i].bounds;
             foundSheet = true;
@@ -241,7 +241,7 @@ static void SheetAndNotificationsStayInTheFullyVisibleArea() {
     utassert(sheet.Bottom() <= visible.Bottom() + 0.5f);
 
     NotificationListState* notes = WindowNotifications(&cx).Get(app);
-    utassert(notes && notes->items.len >= 1);
+    utassert(notes && len(notes->items) >= 1);
     Bounds toast = notes->items[0].measured;
     utassert(toast.h > 1);
     utassert(toast.y >= visible.y);

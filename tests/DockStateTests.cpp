@@ -105,9 +105,9 @@ static void TheFixtureLayoutReadsBack() {
 
     const PanelStateNode& center = s.nodes[s.center];
     utassert(StrEqI(center.panelName, "StackPanel"));
-    utassert(center.children.len == 2);
+    utassert(len(center.children) == 2);
     utassert(center.kind == PanelInfoKind::Stack);
-    utassert(center.sizes.len == 2);
+    utassert(len(center.sizes) == 2);
     utassertnear(center.sizes[0], 704.f);
     utassertnear(center.sizes[1], 263.f);
     // axis 1 is vertical.
@@ -119,7 +119,7 @@ static void TheFixtureLayoutReadsBack() {
     utassert(first.activeIndex == 0);
     const PanelStateNode& second = s.nodes[center.children[1]];
     utassert(StrEqI(second.panelName, "TabPanel"));
-    utassert(second.children.len == 1);
+    utassert(len(second.children) == 1);
     utassert(StrEqI(s.nodes[second.children[0]].panelName, "StoryContainer"));
 
     utassert(s.left.present);
@@ -128,20 +128,20 @@ static void TheFixtureLayoutReadsBack() {
     utassert(s.left.placement == DockPlacement::Left);
     const PanelStateNode& left = s.nodes[s.left.node];
     utassert(StrEqI(left.panelName, "TabPanel"));
-    utassert(left.children.len == 1);
+    utassert(len(left.children) == 1);
     utassert(StrEqI(s.nodes[left.children[0]].panelName, "StoryContainer"));
 
     utassert(s.bottom.present);
     utassert(s.bottom.open);
     utassertnear(s.bottom.size, 200.f);
     utassert(s.bottom.placement == DockPlacement::Bottom);
-    utassert(s.nodes[s.bottom.node].children.len == 2);
+    utassert(len(s.nodes[s.bottom.node].children) == 2);
 
     utassert(s.right.present);
     utassert(s.right.open);
     utassertnear(s.right.size, 320.f);
     utassert(s.right.placement == DockPlacement::Right);
-    utassert(s.nodes[s.right.node].children.len == 1);
+    utassert(len(s.nodes[s.right.node].children) == 1);
     ArenaDelete(a);
 }
 
@@ -178,7 +178,7 @@ static void ALayoutSurvivesTheRoundTrip() {
     utassert(StrEqI(node.panelName, "TabPanel"));
     utassert(node.kind == PanelInfoKind::Tabs);
     utassert(node.activeIndex == 1);
-    utassert(node.children.len == 2);
+    utassert(len(node.children) == 2);
     utassert(StrEqI(back.nodes[node.children[0]].panelName, "Alpha"));
     utassert(StrEqI(back.nodes[node.children[1]].panelName, "Beta"));
     // A dock that is not there is left out rather than written as null, so
@@ -254,7 +254,7 @@ static void ASavedTilesNodeReadsAsTabs() {
     utassert(StrEqI(node.panelName, "Tiles"));
     utassert(node.kind == PanelInfoKind::Tabs);
     utassert(node.activeIndex == 0);
-    utassert(node.children.len == 2);
+    utassert(len(node.children) == 2);
     utassert(StrEqI(s.nodes[node.children[0]].panelName, "Alpha"));
     utassert(StrEqI(s.nodes[node.children[1]].panelName, "Beta"));
 
@@ -401,7 +401,7 @@ static void TheLegacyEmptyStackPanelIsReadAsAnEmptySplit() {
     utassert(root >= 0);
     utassert(StrEq(out.nodes[root].panelName, StrL("StackPanel")));
     utassert(out.nodes[root].kind == PanelInfoKind::Stack);
-    utassert(out.nodes[root].children.len == 0);
+    utassert(len(out.nodes[root].children) == 0);
     ArenaDelete(a);
 }
 
@@ -446,12 +446,12 @@ static void AnEmptyStackPanelSavedInsideATabGroupIsDropped() {
     DockAreaState out;
     int root = tree.ToState(source, &out);
     utassert(root >= 0);
-    utassert(out.nodes[root].children.len == 1);
+    utassert(len(out.nodes[root].children) == 1);
     const PanelStateNode& group = out.nodes[out.nodes[root].children[0]];
     utassert(StrEq(group.panelName, StrL("TabPanel")));
     utassert(group.kind == PanelInfoKind::Tabs);
     utassert(group.activeIndex == 0);
-    utassert(group.children.len == 1);
+    utassert(len(group.children) == 1);
     utassert(StrEq(out.nodes[group.children[0]].panelName, StrL("Alpha")));
     ArenaDelete(a);
 }

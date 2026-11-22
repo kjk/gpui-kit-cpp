@@ -64,7 +64,7 @@ void SelectState::SetItems(const SearchableItem* items, int nItems) {
     Str cursorValue = {};
     bool hadCursor = false;
     if (state.items && state.list.selected >= 0 &&
-        state.list.selected < state.matches.len) {
+        state.list.selected < len(state.matches)) {
         int ix = state.matches[state.list.selected];
         if (ix >= 0 && ix < state.nItems) {
             cursorValue = state.items[ix].value;
@@ -73,7 +73,7 @@ void SelectState::SetItems(const SearchableItem* items, int nItems) {
     }
     Vec<int> kept;
     if (state.items) {
-        for (int i = 0; i < state.selected.len; i++) {
+        for (int i = 0; i < len(state.selected); i++) {
             int old = state.selected[i];
             if (old < 0 || old >= state.nItems) {
                 continue;
@@ -98,11 +98,11 @@ void SelectState::SetItems(const SearchableItem* items, int nItems) {
     }
     SearchableListSearch(&state, items, nItems, Str{});
     VecClear(state.selected);
-    for (int i = 0; i < kept.len; i++) {
+    for (int i = 0; i < len(kept); i++) {
         VecAppend(state.selected, kept[i]);
     }
     state.list.selected = -1;
-    for (int i = 0; i < state.matches.len; i++) {
+    for (int i = 0; i < len(state.matches); i++) {
         if (state.matches[i] == cursor) {
             state.list.selected = i;
             break;
@@ -122,7 +122,7 @@ void SelectState::SetSelectedIndex(int flatIndex, Ctx* cx) {
     }
     SearchableListSelectOnly(&state, flatIndex);
     state.list.selected = -1;
-    for (int i = 0; i < state.matches.len; i++) {
+    for (int i = 0; i < len(state.matches); i++) {
         if (state.matches[i] == flatIndex) {
             state.list.selected = i;
             break;
@@ -154,7 +154,7 @@ void SelectState::SetSelectedValue(Str value, Ctx* cx) {
 bool SelectState::SelectedIndex(IndexPath* out) const {
     // list.selected_index: the highlighted row, not the committed value.
     // set_items can move one without the other.
-    if (state.list.selected < 0 || state.list.selected >= state.matches.len) {
+    if (state.list.selected < 0 || state.list.selected >= len(state.matches)) {
         return false;
     }
     IndexPath path =
@@ -169,7 +169,7 @@ bool SelectState::SelectedIndex(IndexPath* out) const {
 }
 
 Str SelectState::SelectedValue() const {
-    if (state.selected.len <= 0 || !state.items) {
+    if (len(state.selected) <= 0 || !state.items) {
         return {};
     }
     int ix = state.selected[0];
@@ -199,9 +199,9 @@ void SelectState::ClearQueryAndRestore(Ctx* cx) {
     }
     SearchableListSearch(&state, state.items, state.nItems, Str{});
     state.list.selected = -1;
-    if (state.selected.len > 0) {
+    if (len(state.selected) > 0) {
         int committed = state.selected[0];
-        for (int i = 0; i < state.matches.len; i++) {
+        for (int i = 0; i < len(state.matches); i++) {
             if (state.matches[i] == committed) {
                 state.list.selected = i;
                 break;
@@ -375,13 +375,13 @@ Select* Select::TriggerRefiner(ElRefiner value) {
 Str SelectTriggerTitle(const SearchableListState* s, Str placeholder,
                        Str titlePrefix, Arena* a) {
     Str none = placeholder.s ? placeholder : Tr("Select.placeholder");
-    if (!s || s->selected.len == 0 || !s->items) {
+    if (!s || len(s->selected) == 0 || !s->items) {
         return none;
     }
-    if (s->selected.len > 1) {
+    if (len(s->selected) > 1) {
         // Rust shows the picked items as tags; the trigger says how many when
         // there is no room for that.
-        return StrDup(a, fmt("%d selected", s->selected.len));
+        return StrDup(a, fmt("%d selected", len(s->selected)));
     }
     int ix = s->selected[0];
     if (ix < 0 || ix >= s->nItems) {
@@ -420,8 +420,8 @@ void SelectToggleOpen(SearchableListState* s, Ctx* cx) {
     // Opening starts the keyboard on whatever is already picked, so the first
     // arrow steps from there rather than from the top.
     s->list.selected = -1;
-    if (s->open && s->selected.len > 0) {
-        for (int m = 0; m < s->matches.len; m++) {
+    if (s->open && len(s->selected) > 0) {
+        for (int m = 0; m < len(s->matches); m++) {
             if (s->matches[m] == s->selected[0]) {
                 s->list.selected = m;
                 break;
@@ -502,7 +502,7 @@ El* Select::IntoEl() {
         font = 12;
     }
     bool open = s && s->open && !disabled;
-    bool hasValue = s && s->selected.len > 0;
+    bool hasValue = s && len(s->selected) > 0;
     Str title = SelectTriggerTitle(s, placeholder, titlePrefix, a);
     // The select's own name, so the parts inside it are scoped by it rather
     // than spelling it out. BindClick below names it again for the enabled

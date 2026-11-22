@@ -75,7 +75,7 @@ static void OnlyOpenFoldersPutTheirChildrenOnScreen() {
     TreeState s;
     Seed(&s);
     // Everything starts closed, so the two roots are the whole list.
-    utassert(s.entries.len == 2);
+    utassert(len(s.entries) == 2);
     utassert(TreeIndexOf(&s, StrL("root")) == 0);
     utassert(TreeIndexOf(&s, StrL("a")) == -1);
     // An item something else calls its parent is a folder; the rest are not.
@@ -88,20 +88,20 @@ static void OnlyOpenFoldersPutTheirChildrenOnScreen() {
     utassert(expanded);
     // The root's own children come in, but not the ones under the folder
     // that is still closed.
-    utassert(s.entries.len == 4);
+    utassert(len(s.entries) == 4);
     utassert(TreeIndexOf(&s, StrL("b")) == 2);
     utassert(TreeIndexOf(&s, StrL("b1")) == -1);
     utassert(TreeIndexOf(&s, StrL("other")) == 3);
 
     utassert(TreeToggleExpandAt(&s, 2, &expanded));
     utassert(expanded);
-    utassert(s.entries.len == 5);
+    utassert(len(s.entries) == 5);
     utassert(TreeIndexOf(&s, StrL("b1")) == 3);
 
     // Closing the root takes the whole subtree off screen at once.
     utassert(TreeToggleExpandAt(&s, 0, &expanded));
     utassert(!expanded);
-    utassert(s.entries.len == 2);
+    utassert(len(s.entries) == 2);
 }
 
 static void ALeafDoesNotToggle() {
@@ -112,7 +112,7 @@ static void ALeafDoesNotToggle() {
     utassert(!TreeToggleExpandAt(&s, 1, nullptr));
     // And neither does a row that is not there.
     utassert(!TreeToggleExpandAt(&s, 99, nullptr));
-    utassert(s.entries.len == 4);
+    utassert(len(s.entries) == 4);
 }
 
 static void RevealOpensEveryFolderAboveIt() {
@@ -135,7 +135,7 @@ static void CollapsingPastTheSelectionPullsItBack() {
     // The rows the selection pointed at are gone, so it lands on the last
     // one that is left rather than off the end.
     TreeToggleExpandAt(&s, 0, nullptr);
-    utassert(s.entries.len == 2);
+    utassert(len(s.entries) == 2);
     utassert(s.selected == 1);
 }
 
@@ -164,7 +164,7 @@ static void ReplacingItemsResetsBothInteractionIndices() {
     only.id = StrL("Cargo.toml");
     only.label = only.id;
     TreeSetItems(&s, nullptr, &only, 1);
-    utassert(s.items.len == 1 && s.entries.len == 1);
+    utassert(len(s.items) == 1 && len(s.entries) == 1);
     utassert(s.selected == -1 && s.rightClicked == -1);
     utassert(base::StrEq(TreeEntryAt(&s, 0).item->id, StrL("Cargo.toml")));
 }
@@ -186,7 +186,7 @@ static void TheStateOwnsTheStringsItIsGiven() {
     only.id = StrL("Cargo.toml");
     only.label = only.id;
     TreeSetItems(&s, nullptr, &only, 1);
-    utassert(s.items.len == 1);
+    utassert(len(s.items) == 1);
     utassert(base::StrEq(s.items[0].id, StrL("Cargo.toml")));
     utassert(base::StrEq(s.items[0].label, StrL("Cargo.toml")));
 }
@@ -216,14 +216,14 @@ static void RevealingUnderALaterRootKeepsOtherSubtrees() {
     TreeAddItem(&s, StrL("src/ui/tree.rs"), StrL("tree.rs"), ui);
     s.items[docs].expanded = true;
     TreeRebuild(&s);
-    utassert(s.entries.len == 3);
+    utassert(len(s.entries) == 3);
 
     utassert(TreeRevealItem(&s, StrL("src/ui/tree.rs")) == 4);
     const char* ids[] = {"docs", "docs/guide", "src", "src/ui",
                          "src/ui/tree.rs"};
     const int depths[] = {0, 1, 0, 1, 2};
-    utassert(s.entries.len == 5);
-    for (int i = 0; i < 5 && i < s.entries.len; i++) {
+    utassert(len(s.entries) == 5);
+    for (int i = 0; i < 5 && i < len(s.entries); i++) {
         TreeEntry e = TreeEntryAt(&s, i);
         utassert(e.item && StrEq(e.item->id, Str(ids[i])));
         utassert(e.depth == depths[i]);
@@ -360,7 +360,7 @@ static void EntriesSelectAndToggleOnClickNotMouseDown() {
 
     TestSimulateMouseDown(win, entry, MouseButton::Left);
     utassert(s->selected < 0);
-    utassert(s->entries.len == 1);
+    utassert(len(s->entries) == 1);
 
     TestSimulateMouseUp(win, {10.f, 500.f}, MouseButton::Left);
     utassert(s->selected < 0);
@@ -368,7 +368,7 @@ static void EntriesSelectAndToggleOnClickNotMouseDown() {
     entry = TreeRowCenter(view);
     TestSimulateClick(win, entry);
     utassert(s->selected == 0);
-    utassert(s->entries.len == 2);
+    utassert(len(s->entries) == 2);
     TestAppFree(app);
 }
 
@@ -385,7 +385,7 @@ static void DraggingAnEntryDoesNotSelectOrToggleIt() {
     TestDraw(win);
     TestSimulateMouseUp(win, entry, MouseButton::Left);
     utassert(s->selected < 0);
-    utassert(s->entries.len == 1);
+    utassert(len(s->entries) == 1);
     TestAppFree(app);
 }
 
@@ -400,7 +400,7 @@ static void RightClickNeitherSelectsNorToggles() {
     TestSimulateMouseUp(win, entry, MouseButton::Right);
     utassert(s->rightClicked == 0);
     utassert(s->selected < 0);
-    utassert(s->entries.len == 1);
+    utassert(len(s->entries) == 1);
     TestAppFree(app);
 }
 
@@ -413,7 +413,7 @@ static void ClickingADisabledEntryDoesNothing() {
 
     TestSimulateClick(win, entry);
     utassert(s->selected < 0);
-    utassert(s->entries.len == 1);
+    utassert(len(s->entries) == 1);
     TestAppFree(app);
 }
 

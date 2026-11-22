@@ -94,7 +94,7 @@ static Str TrimQuery(Str s) {
 }
 
 static Str AppliedQuery(const CommandState* s) {
-    return Str(s->applied.els, s->applied.len);
+    return Str(s->applied.els, len(s->applied));
 }
 Str CommandState::HighlightedQuery() const {
     return highlightMatches && searchable && filterable ? AppliedQuery(this)
@@ -120,7 +120,7 @@ static void SetApplied(CommandState* s, Str q) {
 }
 
 static const CommandItem* ItemOfMatch(const CommandState* s, int matchIx) {
-    if (!s || matchIx < 0 || matchIx >= s->matched.len) {
+    if (!s || matchIx < 0 || matchIx >= len(s->matched)) {
         return nullptr;
     }
     const CommandMatch& m = s->matched[matchIx];
@@ -258,19 +258,19 @@ static void UpdateMatches(CommandState* s, Str query) {
         m.entry = entryIx;
         m.itemIx = itemIx;
         m.path = path;
-        m.row = s->rows.len;
+        m.row = len(s->rows);
         m.disabled = it.disabled;
         m.data = it.data;
         VecAppend(s->matched, m);
         CommandRow row;
         row.kind = CommandRowKind::Item;
-        row.match = s->matched.len - 1;
+        row.match = len(s->matched) - 1;
         VecAppend(s->rows, row);
     };
     for (int entryIx = 0; entryIx < s->nEntries; entryIx++) {
         const CommandEntry& e = s->entries[entryIx];
         if (e.kind == CommandEntryKind::Separator) {
-            pendingSeparator = s->rows.len > 0;
+            pendingSeparator = len(s->rows) > 0;
             continue;
         }
         if (e.kind == CommandEntryKind::Item) {
@@ -298,7 +298,7 @@ static void UpdateMatches(CommandState* s, Str query) {
         flushSeparator();
         // The heading is hidden while every item in the group is filtered out,
         // which the check above is.
-        if (e.group.heading.len > 0) {
+        if (len(e.group.heading) > 0) {
             CommandRow heading;
             heading.kind = CommandRowKind::Heading;
             heading.heading = e.group.heading;
@@ -313,13 +313,13 @@ static void UpdateMatches(CommandState* s, Str query) {
         }
     }
 
-    if (s->selected >= s->matched.len) {
+    if (s->selected >= len(s->matched)) {
         s->selected = -1;
     }
 }
 
 bool CommandSelectedIndex(const CommandState* s, IndexPath* out) {
-    if (!s || s->selected < 0 || s->selected >= s->matched.len) {
+    if (!s || s->selected < 0 || s->selected >= len(s->matched)) {
         return false;
     }
     const CommandMatch& m = s->matched[s->selected];
@@ -333,14 +333,14 @@ bool CommandSelectedIndex(const CommandState* s, IndexPath* out) {
 }
 
 int CommandMatchedCount(const CommandState* s) {
-    return s ? s->matched.len : 0;
+    return s ? len(s->matched) : 0;
 }
 
 // reset_selection: the highlight moves to the first item that can be
 // confirmed.
 static void ResetSelection(CommandState* s) {
     s->selected = -1;
-    for (int i = 0; i < s->matched.len; i++) {
+    for (int i = 0; i < len(s->matched); i++) {
         if (!s->matched[i].disabled) {
             s->selected = i;
             break;
@@ -385,7 +385,7 @@ static void MeasureRows(CommandState* s, Ctx* cx) {
                      : RuntimeStyleNow(cx ? cx->app : nullptr).fontSize;
     uint32_t keymap = KeymapGeneration();
     float rem = Rems(cx, 1);
-    if (!s->needsMeasure && s->rowSizes.len == s->rows.len &&
+    if (!s->needsMeasure && len(s->rowSizes) == len(s->rows) &&
         s->measuredW == s->listW && s->measuredRem == rem &&
         s->measuredFont == font && s->measuredKeymap == keymap) {
         return;
@@ -399,7 +399,7 @@ static void MeasureRows(CommandState* s, Ctx* cx) {
     s->rowSizes.len = 0;
     bool canBuild = cx && cx->a && cx->app;
     PaintCtx* paint = cx && cx->win ? &cx->win->paint : nullptr;
-    for (int i = 0; i < s->rows.len; i++) {
+    for (int i = 0; i < len(s->rows); i++) {
         const CommandRow& row = s->rows[i];
         float h = RowHeight(row);
         if (canBuild && row.kind != CommandRowKind::Separator) {
@@ -467,7 +467,7 @@ void CommandInstall(CommandState* s, Ctx* cx, const CommandEntry* entries,
     // keeps it cleared.
     int preserved = -1;
     if (hadPrev) {
-        for (int i = 0; i < s->matched.len; i++) {
+        for (int i = 0; i < len(s->matched); i++) {
             if (!s->matched[i].disabled && s->matched[i].path == prev) {
                 preserved = i;
                 break;
@@ -496,7 +496,7 @@ void CommandSetSelectedIndex(CommandState* s, Ctx* cx, const IndexPath* path) {
     }
     int found = -1;
     if (path) {
-        for (int i = 0; i < s->matched.len; i++) {
+        for (int i = 0; i < len(s->matched); i++) {
             if (!s->matched[i].disabled && s->matched[i].path == *path) {
                 found = i;
                 break;
@@ -612,7 +612,7 @@ void CommandState::OnRowHover(CommandState* self, Ctx* cx, const HoverEvent* ev,
         return;
     }
     int m = (int)match;
-    if (m < 0 || m >= self->matched.len || self->matched[m].disabled) {
+    if (m < 0 || m >= len(self->matched) || self->matched[m].disabled) {
         return;
     }
     SelectMatch(self, cx, m);
@@ -799,7 +799,7 @@ static El* BuildCommandRow(Ctx* cx, CommandState* s, int rowIx,
                            bool interactive) {
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
-    if (!s || rowIx < 0 || rowIx >= s->rows.len) {
+    if (!s || rowIx < 0 || rowIx >= len(s->rows)) {
         return Div(a);
     }
     const CommandRow& row = s->rows[rowIx];
@@ -915,7 +915,7 @@ static void CommandListPrePaint(PaintCtx* ctx, El* e, void* user) {
         s->listFont = e->laidFont;
         changed = true;
     }
-    if (changed && s->rows.len > 0 && ctx->window) {
+    if (changed && len(s->rows) > 0 && ctx->window) {
         WindowRequestAnimationFrame(ctx->window);
     }
 }
@@ -1008,7 +1008,7 @@ El* Command::IntoEl() {
     probe->state = state;
     listBox->prePaint = &CommandListPrePaint;
     listBox->customUser = probe;
-    if (s->rows.len == 0) {
+    if (len(s->rows) == 0) {
         // The inset is the list's own; only the empty slot needs it from the
         // box around it, and only while that slot is shown. A search in
         // flight leaves no blank strip under the query.
@@ -1017,7 +1017,7 @@ El* Command::IntoEl() {
             listBox->Child(empty ? empty : DefaultEmpty(cx));
         }
     } else {
-        float content = VirtualListContentSize(s->rowSizes.els, s->rows.len);
+        float content = VirtualListContentSize(s->rowSizes.els, len(s->rows));
         float viewMax = listMaxH - inset * 2;
         float viewH = content < viewMax ? content : viewMax;
         if (s->pendingScroll >= 0) {
@@ -1028,7 +1028,7 @@ El* Command::IntoEl() {
         CommandRowContext* rowCx = ArenaNew<CommandRowContext>(a);
         rowCx->state = state;
         rowCx->itemRadius = CommandItemRadius(cx, th, bordered);
-        El* list = VirtualList::New(cx, s->rows.len)
+        El* list = VirtualList::New(cx, len(s->rows))
                        ->Id(StrL("list"))
                        ->Sizes(s->rowSizes.els)
                        ->ViewH(viewH)

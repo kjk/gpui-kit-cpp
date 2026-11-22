@@ -433,7 +433,7 @@ const int kElementIdCap = 8192;
 
 static void ElementIdRemember(Str id, int kind, int nameLen) {
 #ifndef NDEBUG
-    if (gElementIds.len >= kElementIdCap) {
+    if (len(gElementIds) >= kElementIdCap) {
         VecClear(gElementIds);
     }
     ElementIdRec rec;
@@ -461,7 +461,7 @@ Str ElementIdInteger(Arena* a, uint64_t ix) {
 }
 
 int ElementIdKindOf(Str id, int* nameLen) {
-    for (int i = gElementIds.len - 1; id.s && i >= 0; i--) {
+    for (int i = len(gElementIds) - 1; id.s && i >= 0; i--) {
         if (gElementIds[i].s == id.s) {
             if (nameLen) {
                 *nameLen = gElementIds[i].nameLen;
@@ -4995,8 +4995,8 @@ bool LayoutReuseOn() {
 
 static LayoutNode* LayoutNodeTake(LayoutCache* lc, El* e) {
     LayoutNode* n = nullptr;
-    if (lc->spare.len > 0) {
-        n = lc->spare[lc->spare.len - 1];
+    if (len(lc->spare) > 0) {
+        n = lc->spare[len(lc->spare) - 1];
         lc->spare.len--;
     } else {
         n = new LayoutNode();
@@ -5285,7 +5285,7 @@ static taffy::NodeId LayoutSync(LayoutSyncCtx* sc, El* e, taffy::NodeId prev,
 static void LayoutCacheReset(LayoutCache* lc) {
     lc->tree.Clear();
     lc->spare.len = 0;
-    for (int i = 0; i < lc->pool.len; i++) {
+    for (int i = 0; i < len(lc->pool); i++) {
         lc->pool[i]->el = nullptr;
         VecAppend(lc->spare, lc->pool[i]);
     }
@@ -5479,7 +5479,7 @@ static void TruncateTextStartOrMiddle(PaintCtx* ctx, El* e) {
     if (keepTo > 0) out.Append(Str(text.s, keepTo));
     out.Append(ellipsis);
     if (keepFrom < n) out.Append(Str(text.s + keepFrom, n - keepFrom));
-    e->text = StrDup(e->arena, Str(out.els, out.len));
+    e->text = StrDup(e->arena, Str(out.els, len(out)));
     // The run now fits, and the backend's own end ellipsis would only get
     // in its way.
     e->style.truncate = false;
@@ -6143,7 +6143,7 @@ void LayoutCacheFree(LayoutCache* lc) {
     if (!lc) {
         return;
     }
-    for (int i = 0; i < lc->pool.len; i++) {
+    for (int i = 0; i < len(lc->pool); i++) {
         delete lc->pool[i];
     }
     VecReset(lc->pool);
@@ -6168,7 +6168,7 @@ int LayoutCacheSlotCount(const LayoutCache* lc) {
 // records and its node slots back — the way ImageCacheClear and the rest of
 // AppFree's list do.
 void LayoutScratchFree() {
-    for (int i = 0; i < gMeasureCache.pool.len; i++) {
+    for (int i = 0; i < len(gMeasureCache.pool); i++) {
         delete gMeasureCache.pool[i];
     }
     VecReset(gMeasureCache.pool);
@@ -7027,7 +7027,7 @@ static void PaintDebugInfo(PaintCtx* ctx, const El* e) {
         return;
     }
     bool hovered = false;
-    for (int i = 0; i < win->debugHoveredPaths.len && !hovered; i++) {
+    for (int i = 0; i < len(win->debugHoveredPaths) && !hovered; i++) {
         hovered = win->debugHoveredPaths[i] == e->pathId;
     }
     if (!hovered) {
@@ -8221,7 +8221,7 @@ void PaintEl(PaintCtx* ctx, El* e) {
     auto& overlays = ctx->deferredPaint;
     // Paint and hit records follow the same layer/z order with scene on or
     // off. The scene keeps each overlay as one context under the root.
-    for (int i = 1; i < overlays.len; i++) {
+    for (int i = 1; i < len(overlays); i++) {
         PaintCtx::DeferredPaint entry = overlays[i];
         El* item = entry.element;
         int layer = item->style.deferredLayer ? item->style.deferredLayer
@@ -8389,9 +8389,9 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay);
 // scope of its own.
 static int ElSelectionScope(PaintCtx* ctx, const El* e) {
     Window* win = ctx ? ctx->window : nullptr;
-    if (win && win->textSelectionScopes.len > 0) {
+    if (win && len(win->textSelectionScopes) > 0) {
         uint64_t raw =
-            win->textSelectionScopes[win->textSelectionScopes.len - 1];
+            win->textSelectionScopes[len(win->textSelectionScopes) - 1];
         return (int)(raw & 0x7fffffffU);
     }
     return e->style.trapId;
@@ -8484,7 +8484,7 @@ static void PaintElNode(PaintCtx* ctx, El* e, bool skipOverlay) {
     PaintIdLink viewLink;
     if (ctx->window) {
         const Vec<Window::DebugViewRoot>& views = ctx->window->debugViewRoots;
-        for (int i = 0; i < views.len; i++) {
+        for (int i = 0; i < len(views); i++) {
             if (views[i].el == e) {
                 viewLink.view = views[i].view;
                 viewLink.parent = ctx->idChain;
@@ -8698,7 +8698,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         VecAppend(ctx->hits, hr);
         // Everything under this element names it as the ancestor its events
         // pass through, which is the chain the two phases walk.
-        ctx->hitParent = ctx->hits.len - 1;
+        ctx->hitParent = len(ctx->hits) - 1;
     }
     int scrollSlot = -1;
     if (e->style.overflowY == Overflow::Scroll ||
@@ -8742,7 +8742,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         sr.maskHit = e->scrollMaskAxes ? ctx->hitParent : -1;
         sr.onScroll = e->onScroll;
         sr.input = e->input;
-        scrollSlot = ctx->scrolls.len;
+        scrollSlot = len(ctx->scrolls);
         VecAppend(ctx->scrolls, sr);
     }
 
@@ -8853,7 +8853,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     bool recordedInput = false;
     if (e->input && e->kind != ElKind::Text) {
         bool seen = false;
-        for (int i = 0; i < ctx->inputs.len && !seen; i++) {
+        for (int i = 0; i < len(ctx->inputs) && !seen; i++) {
             seen = ctx->inputs[i] == e->input;
         }
         if (!seen) {
@@ -9287,7 +9287,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     if (sorted) {
         Vec<El*> children;
         for (El* c = e->first; c; c = c->next) VecAppend(children, c);
-        for (int i = 1; i < children.len; i++) {
+        for (int i = 1; i < len(children); i++) {
             El* c = children[i];
             int at = i;
             while (at > 0 && children[at - 1]->style.zIndex > c->style.zIndex) {
@@ -9357,7 +9357,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     bool overBox = e->Bounds().Contains({ctx->mouseX, ctx->mouseY});
     bool covered = false;
     if (e->scrollId != 0 && ctx->window) {
-        for (int i = 0; i < ctx->window->scrollbarOccluded.len; i++) {
+        for (int i = 0; i < len(ctx->window->scrollbarOccluded); i++) {
             if (ctx->window->scrollbarOccluded[i] == e->scrollId) {
                 covered = true;
                 break;
@@ -9446,7 +9446,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     // A bar nobody can see is a bar nobody can grab: the ScrollRect this frame
     // recorded says so, and ScrollbarAt skips it.
     if (e->scrollId != 0) {
-        for (int i = ctx->scrolls.len - 1; i >= 0; i--) {
+        for (int i = len(ctx->scrolls) - 1; i >= 0; i--) {
             if (ctx->scrolls[i].id == e->scrollId) {
                 ctx->scrolls[i].barVisible = barVisible;
                 break;
@@ -9454,8 +9454,8 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         }
     }
     // Children are already painted. Hits from here on are above the bar.
-    if (scrollSlot >= 0 && scrollSlot < ctx->scrolls.len) {
-        ctx->scrolls[scrollSlot].barHit = ctx->hits.len;
+    if (scrollSlot >= 0 && scrollSlot < len(ctx->scrolls)) {
+        ctx->scrolls[scrollSlot].barHit = len(ctx->hits);
     }
     // style_for_normal / style_for_hovered_bar / style_for_hovered_thumb /
     // style_for_active. Hovering the track keeps the normal thumb style;
@@ -9611,7 +9611,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
 }
 
 const HitRect* HitTestRect(PaintCtx* ctx, float x, float y) {
-    for (int i = ctx->hits.len - 1; i >= 0; i--) {
+    for (int i = len(ctx->hits) - 1; i >= 0; i--) {
         const HitRect& h = ctx->hits[i];
         if (h.bounds.Contains({x, y})) {
             return &ctx->hits[i];
@@ -9624,7 +9624,7 @@ const HitRect* HitTestDrop(PaintCtx* ctx, float x, float y, Str kind) {
     if (kind.s == nullptr) {
         return nullptr;
     }
-    for (int i = ctx->hits.len - 1; i >= 0; i--) {
+    for (int i = len(ctx->hits) - 1; i >= 0; i--) {
         const HitRect& h = ctx->hits[i];
         if (!h.onDrop.IsValid() || h.dropKind.s == nullptr) {
             continue;
@@ -9640,7 +9640,7 @@ const HitRect* HitTestDrop(PaintCtx* ctx, float x, float y, Str kind) {
 }
 
 InputState* InputAtPosition(PaintCtx* ctx, float x, float y) {
-    for (int i = ctx->inputs.len - 1; i >= 0; i--) {
+    for (int i = len(ctx->inputs) - 1; i >= 0; i--) {
         InputState* s = ctx->inputs[i];
         if (s->inputBounds.Contains({x, y})) {
             return s;
@@ -9655,7 +9655,7 @@ int HitTest(PaintCtx* ctx, float x, float y) {
 }
 
 const ScrollRect* HitScrollRect(PaintCtx* ctx, float x, float y) {
-    for (int i = ctx->scrolls.len - 1; i >= 0; i--) {
+    for (int i = len(ctx->scrolls) - 1; i >= 0; i--) {
         const ScrollRect& s = ctx->scrolls[i];
         if (s.bounds.Contains({x, y})) {
             return &ctx->scrolls[i];
@@ -9697,7 +9697,7 @@ static const TextHit* TextHitFind(PaintCtx* ctx, float x, float y, bool nearest,
     }
     const TextHit* best = nullptr;
     float bestScore = 1e9f;
-    for (int i = ctx->texts.len - 1; i >= 0; i--) {
+    for (int i = len(ctx->texts) - 1; i >= 0; i--) {
         const TextHit& h = ctx->texts[i];
         if (h.paintLayer < minLayer) {
             continue;
@@ -9769,7 +9769,7 @@ bool TextTableCellAt(const PaintCtx* ctx, float x, float y, Bounds* out) {
     if (!ctx || !out) {
         return false;
     }
-    for (int i = ctx->tableCells.len - 1; i >= 0; i--) {
+    for (int i = len(ctx->tableCells) - 1; i >= 0; i--) {
         if (ctx->tableCells[i].Contains({x, y})) {
             *out = ctx->tableCells[i];
             return true;
@@ -10034,7 +10034,8 @@ static bool AtomReached(PaintCtx* ctx, int i, int a, int b, EntityId owner) {
     const TextHit& t = ctx->texts[i];
     const SelBlock* blk = t.src ? t.src->block : nullptr;
     const TextHit* prev = i > 0 ? &ctx->texts[i - 1] : nullptr;
-    const TextHit* next = i + 1 < ctx->texts.len ? &ctx->texts[i + 1] : nullptr;
+    const TextHit* next =
+        i + 1 < len(ctx->texts) ? &ctx->texts[i + 1] : nullptr;
     if (prev && !TextHitOwnerMatches(*prev, owner)) prev = nullptr;
     if (next && !TextHitOwnerMatches(*next, owner)) next = nullptr;
     // Only a run of the same block is a run of this paragraph.
@@ -10073,7 +10074,7 @@ static bool AcrossStylesUsesSource(PaintCtx* ctx, int a, int b, int scope,
     const SelBlock* blk = nullptr;
     const SelSource* grp = nullptr;
     bool saw = false;
-    for (int i = 0; i < ctx->texts.len; i++) {
+    for (int i = 0; i < len(ctx->texts); i++) {
         const TextHit& t = ctx->texts[i];
         if ((scope >= 0 && t.scope != scope) ||
             !TextHitOwnerMatches(t, owner)) {
@@ -10145,7 +10146,7 @@ static int CopyTextHitsFiltered(PaintCtx* ctx, int a, int b, int scope,
     // been emitted yet" is what keeps a drag that ends exactly at the start of
     // the next run reaching into it.
     bool sep = false;
-    for (int i = 0; i < ctx->texts.len && o.n < cap - 1; i++) {
+    for (int i = 0; i < len(ctx->texts) && o.n < cap - 1; i++) {
         const TextHit& t = ctx->texts[i];
         if ((scope >= 0 && t.scope != scope) ||
             !TextHitOwnerMatches(t, owner) || !TextHitInCell(t, cell)) {
@@ -10180,7 +10181,7 @@ static int CopyTextHitsFiltered(PaintCtx* ctx, int a, int b, int scope,
         int lo = a > pos ? a : pos;
         int hi = b < pos + plen ? b : pos + plen;
         int gap = pos + plen;
-        bool spansGap = i + 1 < ctx->texts.len && a <= gap && b > gap;
+        bool spansGap = i + 1 < len(ctx->texts) && a <= gap && b > gap;
         // An inline image: no text to slice, so what says the selection has
         // reached it is the runs either side of it (AtomReached above). It
         // carries its whole `![alt](url)` in the group's `pre`, which the
@@ -10322,7 +10323,7 @@ static void CollectFocus(El* e, Window* win, int trap, Listener increment,
     // The context comes before this element's own handlers, so a walk out
     // from here finds the handlers first and then the context they sit in,
     // which is the order Rust reads them.
-    int first = win->dispatch.len;
+    int first = len(win->dispatch);
     if (e->style.keyContext) {
         DispatchNode n;
         n.context = e->style.keyContext;
@@ -10353,7 +10354,7 @@ static void CollectFocus(El* e, Window* win, int trap, Listener increment,
         // end of the subtree beside it and pick up that sibling's context.
         DispatchNode marker;
         marker.depth = depth;
-        fr.dispatchIx = win->dispatch.len;
+        fr.dispatchIx = len(win->dispatch);
         VecAppend(win->dispatch, marker);
         fr.bounds = e->Bounds();
         fr.accessibilityIncrement = increment;
@@ -10368,9 +10369,9 @@ static void CollectFocus(El* e, Window* win, int trap, Listener increment,
     }
     // The subtree is closed: everything from here down was written between
     // `first` and now, so anything focused in it sits inside this span.
-    for (int i = first; i < win->dispatch.len; i++) {
+    for (int i = first; i < len(win->dispatch); i++) {
         if (win->dispatch[i].subtreeEnd == 0) {
-            win->dispatch[i].subtreeEnd = win->dispatch.len;
+            win->dispatch[i].subtreeEnd = len(win->dispatch);
         }
     }
 }
@@ -10460,7 +10461,7 @@ static void KeymapDefaults() {
 // with no focused field (⌘Q, Quit) still reaches the root's on_action.
 static int DispatchAnchor(Window* win) {
     if (win->focusId) {
-        for (int i = 0; i < win->focusEls.len; i++) {
+        for (int i = 0; i < len(win->focusEls); i++) {
             if (win->focusEls[i].id == win->focusId) {
                 return win->focusEls[i].dispatchIx;
             }
@@ -10469,7 +10470,7 @@ static int DispatchAnchor(Window* win) {
     // CollectFocus closes every subtree, so standing at `len` is past every
     // exclusive end and skipped the root too. Depth 0 is the window's own
     // nodes; stand just after them, the way a focused root would.
-    int n = win->dispatch.len;
+    int n = len(win->dispatch);
     int i = 0;
     while (i < n && win->dispatch[i].depth == 0) {
         i++;
@@ -10501,7 +10502,7 @@ static int DispatchAnchorForFocus(Window* win, FocusHandle focus) {
     if (!win || !focus.IsValid()) {
         return -1;
     }
-    for (int i = 0; i < win->focusEls.len; i++) {
+    for (int i = 0; i < len(win->focusEls); i++) {
         if (win->focusEls[i].id == focus.id) {
             return win->focusEls[i].dispatchIx;
         }
@@ -11195,7 +11196,7 @@ void FocusCollect(Window* win, El* root) {
     // it, so the sort has to be a stable one: an insertion sort over a list
     // this size, where almost every element is already index zero and nothing
     // moves at all.
-    for (int i = 1; i < win->focusEls.len; i++) {
+    for (int i = 1; i < len(win->focusEls); i++) {
         FocusRect fr = win->focusEls[i];
         int j = i - 1;
         while (j >= 0 && win->focusEls[j].tabIndex > fr.tabIndex) {
@@ -11218,17 +11219,17 @@ void FocusCollect(Window* win, El* root) {
 // and over a copy of the ids: a listener may move the focus again, which
 // fires this afresh, or subscribe and unsubscribe.
 static void WindowFireBlur(Window* win, int was) {
-    if (!was || win->focusId == was || !win->app || win->blurSubs.len == 0) {
+    if (!was || win->focusId == was || !win->app || len(win->blurSubs) == 0) {
         return;
     }
-    for (int i = win->blurSubs.len - 1; i >= 0; i--) {
+    for (int i = len(win->blurSubs) - 1; i >= 0; i--) {
         if (!EntityGet(win->app, win->blurSubs[i].handler.view)) {
             VecRemoveAt(win->blurSubs, i);
         }
     }
     int ids[16];
     int n = 0;
-    for (int i = 0; i < win->blurSubs.len && n < 16; i++) {
+    for (int i = 0; i < len(win->blurSubs) && n < 16; i++) {
         if (win->blurSubs[i].focusId == was) {
             ids[n++] = win->blurSubs[i].id;
         }
@@ -11236,7 +11237,7 @@ static void WindowFireBlur(Window* win, int was) {
     FocusHandle lost;
     lost.id = was;
     for (int k = 0; k < n; k++) {
-        for (int i = 0; i < win->blurSubs.len; i++) {
+        for (int i = 0; i < len(win->blurSubs); i++) {
             if (win->blurSubs[i].id == ids[k]) {
                 Listener l = win->blurSubs[i].handler;
                 ListenerCall(win->app, win, l, &lost);
@@ -11258,7 +11259,7 @@ static void WindowSyncFocusedInput(Window* win, int id) {
     if (!id || win->input) {
         return;
     }
-    for (int i = 0; i < win->focusEls.len; i++) {
+    for (int i = 0; i < len(win->focusEls); i++) {
         InputState* s = win->focusEls[i].input;
         if (win->focusEls[i].id == id && s && !s->disabled) {
             InputFocus(s, win->app, win);
@@ -11299,7 +11300,7 @@ void WindowUnsubscribeBlur(Window* win, Subscription sub) {
     if (!win || !sub.IsValid()) {
         return;
     }
-    for (int i = 0; i < win->blurSubs.len; i++) {
+    for (int i = 0; i < len(win->blurSubs); i++) {
         if (win->blurSubs[i].id == sub.id) {
             VecRemoveAt(win->blurSubs, i);
             return;
@@ -11362,7 +11363,7 @@ bool WindowFocusContains(const Window* win, int outer, int inner) {
     if (outer == inner) {
         return true;
     }
-    for (int i = 0; i < win->focusEls.len; i++) {
+    for (int i = 0; i < len(win->focusEls); i++) {
         const FocusRect& in = win->focusEls[i];
         if (in.id != inner) {
             continue;
@@ -11371,10 +11372,10 @@ bool WindowFocusContains(const Window* win, int outer, int inner) {
         if (in.trapId == outer) {
             return true;
         }
-        for (int j = 0; j < win->focusEls.len; j++) {
+        for (int j = 0; j < len(win->focusEls); j++) {
             const FocusRect& out = win->focusEls[j];
             // A focus list written without its tree has no spans to test.
-            if (out.id != outer || out.dispatchIx >= win->dispatch.len) {
+            if (out.id != outer || out.dispatchIx >= len(win->dispatch)) {
                 continue;
             }
             int end = win->dispatch[out.dispatchIx].subtreeEnd;
@@ -11394,7 +11395,7 @@ bool WindowRestoreFocus(Window* win, int id) {
     if (!win || !id) {
         return false;
     }
-    for (int i = 0; i < win->focusEls.len; i++) {
+    for (int i = 0; i < len(win->focusEls); i++) {
         if (win->focusEls[i].id == id) {
             WindowSetFocusId(win, id);
             return true;
@@ -11411,7 +11412,7 @@ bool WindowRestoreFocus(Window* win, int id) {
 // is one stop, as the input's state element is.
 static bool FocusNextStop(const Window* win, int fromId, int trapId,
                           bool backward, int* out) {
-    int n = win->focusEls.len;
+    int n = len(win->focusEls);
     int cur = -1;
     for (int i = 0; i < n; i++) {
         if (win->focusEls[i].id == fromId) {
@@ -11445,7 +11446,7 @@ static bool FocusNextStop(const Window* win, int fromId, int trapId,
 }
 
 int FocusNext(Window* win, int trapId, bool backward) {
-    if (win->focusEls.len == 0) {
+    if (len(win->focusEls) == 0) {
         return 0;
     }
     int next = 0;

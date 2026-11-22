@@ -39,8 +39,8 @@ El* EditMenu::IntoEl() {
     El* row =
         Div(a)->FlexRowDir(cx->app)->ItemsStretch()->ClipX()->ClipY()->Id(id);
     PopoverSurface(cx, row)->Radius(radius);
-    int last = items.len > 0 ? items.len - 1 : 0;
-    for (int i = 0; i < items.len; i++) {
+    int last = len(items) > 0 ? len(items) - 1 : 0;
+    for (int i = 0; i < len(items); i++) {
         const EditMenuItem& item = items[i];
         if (i > 0) {
             row->Child(Separator::Vertical(cx)->IntoEl());
@@ -100,7 +100,7 @@ TouchSelectionOverlay* TouchSelectionOverlay::Item(Str label,
 }
 
 El* TouchSelectionOverlay::IntoEl() {
-    if (!hasSnapshot || items.len == 0 || !snapshot.menuOpen) {
+    if (!hasSnapshot || len(items) == 0 || !snapshot.menuOpen) {
         return nullptr;
     }
     Bounds anchor = {};
@@ -112,7 +112,7 @@ El* TouchSelectionOverlay::IntoEl() {
         anchor.h += TouchHandle::kExtent * 2.f;
     }
     EditMenu* menu = EditMenu::New(cx, id, anchor);
-    for (int i = 0; i < items.len; i++) {
+    for (int i = 0; i < len(items); i++) {
         menu->Item(items[i].label, items[i].onClick);
     }
     return menu->IntoEl();

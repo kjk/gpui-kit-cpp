@@ -155,7 +155,7 @@ static void ThePublicContainerRefinesItsElement() {
     utassert(trap->style.trapId == 77);
 
     FocusCollect(win, trap);
-    utassert(win->focusEls.len == 2);
+    utassert(len(win->focusEls) == 2);
     utassert(win->focusEls[0].id == 77);
     utassert(win->focusEls[0].trapId == 77);
     utassert(win->focusEls[1].id == 78);
@@ -245,7 +245,7 @@ static void TheTabIndexGroupsTheTraversal() {
                    ->Child(Div(a)->FocusId(3)->TabIndex(-1))
                    ->Child(Div(a)->FocusId(4));
     FocusCollect(win, root);
-    utassert(win->focusEls.len == 4);
+    utassert(len(win->focusEls) == 4);
     utassert(win->focusEls[0].id == 3);
     utassert(win->focusEls[1].id == 2);
     utassert(win->focusEls[2].id == 4);

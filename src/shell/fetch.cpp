@@ -257,7 +257,7 @@ static Str NormalizeUrlPath(Arena* arena, Str path) {
         out.Append(parts[s]);
     }
     VecReset(parts);
-    return Str(out.els, out.len);
+    return Str(out.els, len(out));
 }
 
 bool FetchAuthorize(Str url, Str method, const Capabilities& capabilities,
@@ -397,7 +397,7 @@ bool FetchFollowsLocation(int status) {
 void FetchRewriteRedirect(int status, Str* method, Vec<FetchHeader>* headers,
                           Str* body) {
     if (!method) return;
-    Str verb = method->len > 0 ? *method : StrL("GET");
+    Str verb = len(*method) > 0 ? *method : StrL("GET");
     bool becomesGet =
         ((status == 301 || status == 302) && StrEq(verb, StrL("POST"))) ||
         (status == 303 && !StrEq(verb, StrL("HEAD")));
@@ -411,7 +411,7 @@ void FetchRewriteRedirect(int status, Str* method, Vec<FetchHeader>* headers,
     }
     // The entity is gone, so the two headers that described it go with it.
     if (headers) {
-        for (int i = headers->len - 1; i >= 0; i--) {
+        for (int i = len(*headers) - 1; i >= 0; i--) {
             if (StrEqI((*headers)[i].name, StrL("content-length")) ||
                 StrEqI((*headers)[i].name, StrL("content-type"))) {
                 StrFree((*headers)[i].name);
@@ -757,7 +757,7 @@ static void FetchAsyncTestWork(FetchAsyncState* state) {
         gFetchHttpSendForTests
             ? gFetchHttpSendForTests(
                   HttpReq{state->walk.url, state->walk.method, state->wire.els,
-                          state->wire.len, state->walk.body, true},
+                          len(state->wire), state->walk.body, true},
                   &state->testResponse)
             : false;
 }
@@ -803,8 +803,8 @@ static bool FetchAsyncStart(FetchAsyncState* state) {
     HttpReq request;
     request.url = state->walk.url;
     request.method = state->walk.method;
-    request.headers = state->wire.len ? state->wire.els : nullptr;
-    request.nHeaders = state->wire.len;
+    request.headers = len(state->wire) ? state->wire.els : nullptr;
+    request.nHeaders = len(state->wire);
     request.body = state->walk.body;
     request.noRedirect = true;
     if (gFetchHttpSendForTests) {

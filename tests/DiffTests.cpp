@@ -616,7 +616,7 @@ static void TestInlineAndRows() {
             body.Append(fmt(" %s%d\n", StrL("line "), line));
     }
     DiffFix folds;
-    utassert(folds.LoadStr(Str(body.els, body.len)));
+    utassert(folds.LoadStr(Str(body.els, len(body))));
     folds.state->SetContextLines(true, 2, &folds.cx);
     folds.state->WithExpansionLines(5);
     utassert(FoldCount(folds.state) == 2);
@@ -677,7 +677,7 @@ static void TestInlineAndRows() {
     StrBuilder notes;
     for (int line = 1; line <= 40; line++) notes.Append(fmt("line %d\n", line));
     DiffFile* unchanged =
-        DiffFile::Unchanged(StrL("notes.txt"), Str(notes.els, notes.len));
+        DiffFile::Unchanged(StrL("notes.txt"), Str(notes.els, len(notes)));
     DiffFix plain;
     plain.state->WithMode(DiffMode::Split);
     plain.state->SetFiles(&unchanged, 1, &plain.cx);
@@ -998,7 +998,7 @@ struct LongDiffView {
             }
             Vec<DiffFile*> files;
             DiffParseError error = {};
-            if (DiffFile::Parse(Str(patch.els, patch.len), &files, &error)) {
+            if (DiffFile::Parse(Str(patch.els, len(patch)), &files, &error)) {
                 st->SetFiles(files.els, len(files), cx);
             }
             self->loaded = true;
@@ -1128,10 +1128,10 @@ struct HighlightCalls {
 static void Remember(HighlightCalls* calls, Str language, Str text) {
     if (!calls || calls->n >= 8) return;
     int i = calls->n++;
-    int n = language.len < 31 ? language.len : 31;
+    int n = len(language) < 31 ? len(language) : 31;
     if (language.s && n > 0) memcpy(calls->language[i], language.s, (size_t)n);
     calls->language[i][n] = 0;
-    n = text.len < 159 ? text.len : 159;
+    n = len(text) < 159 ? len(text) : 159;
     if (text.s && n > 0) memcpy(calls->text[i], text.s, (size_t)n);
     calls->text[i][n] = 0;
 }
@@ -1144,7 +1144,7 @@ static void HighlightLet(void* data, Str language, Str text,
                          Vec<DiffSyntaxStyle>* out) {
     Remember((HighlightCalls*)data, language, text);
     int i = 0;
-    while (i + 3 <= text.len) {
+    while (i + 3 <= len(text)) {
         if (text.s[i] == 'l' && text.s[i + 1] == 'e' && text.s[i + 2] == 't') {
             DiffSyntaxStyle style;
             style.start = i;
@@ -1176,8 +1176,8 @@ struct WordWeight {
 
 static void HighlightFirstWord(void* data, Str, Str text,
                                Vec<DiffSyntaxStyle>* out) {
-    int end = text.len;
-    for (int i = 0; i < text.len; i++) {
+    int end = len(text);
+    for (int i = 0; i < len(text); i++) {
         if (text.s[i] == ' ') {
             end = i;
             break;

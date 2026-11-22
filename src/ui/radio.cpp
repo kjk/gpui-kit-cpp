@@ -48,7 +48,7 @@ El* Radio::IntoEl() {
         cx, gpui::Radio::New(cx, id, checked, disabled, onClick), *this);
     refiner.Apply(row);
     row->Child(dot);
-    if (label.s || hint.s || children.len > 0) {
+    if (label.s || hint.s || len(children) > 0) {
         El* col =
             ChoiceLabelColumn(cx, dot, box, label, hint, size, disabled, false);
         for (El* child : children) {
@@ -119,7 +119,7 @@ El* RadioGroup::IntoEl() {
     } else {
         base->FlexCol();
     }
-    for (int i = 0; i < radios.len; i++) {
+    for (int i = 0; i < len(radios); i++) {
         Radio* r = radios[i];
         // A radio disabled on its own stays disabled in an enabled group.
         r->Checked(selected == i)->Disabled(disabled || r->disabled);
@@ -130,7 +130,7 @@ El* RadioGroup::IntoEl() {
             r->OnClick(ListenerArg(onClick, i));
         }
         base->Child(
-            r->IntoEl()->AriaPositionInSet(i + 1)->AriaSizeOfSet(radios.len));
+            r->IntoEl()->AriaPositionInSet(i + 1)->AriaSizeOfSet(len(radios)));
     }
     return group;
 }

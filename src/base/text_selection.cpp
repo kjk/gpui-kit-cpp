@@ -214,7 +214,7 @@ static TextSelectionParticipantState* ParticipantAt(Window* window, Point point,
     EntityId predecessorId = {};
     TextSelectionParticipantState* first = nullptr;
     EntityId firstId = {};
-    for (int i = 0; i < selection->participants.len; i++) {
+    for (int i = 0; i < len(selection->participants); i++) {
         EntityId id = selection->participants[i];
         TextSelectionParticipantState* state =
             (TextSelectionParticipantState*)EntityGet(window->app, id);
@@ -645,11 +645,11 @@ void TextSelectionHandle::Register(TextSelectionRegistration value,
         VecAppend(participant->textBounds, value.textBounds[i]);
     }
     participant->registration.textBounds = participant->textBounds.els;
-    participant->registration.textBoundsCount = participant->textBounds.len;
+    participant->registration.textBoundsCount = len(participant->textBounds);
     WindowSelection* selection = WindowSelectionOf(window);
     participant->registrationGeneration = selection->frameGeneration;
     bool found = false;
-    for (int i = 0; i < selection->participants.len; i++) {
+    for (int i = 0; i < len(selection->participants); i++) {
         if (selection->participants[i] == state.id) {
             found = true;
             break;
@@ -823,7 +823,7 @@ TextSelectionProjection TextSelectionHandle::UpdateRuns(
         TextSelectionProjection none;
         return none;
     }
-    for (int i = 0; i < participant->runs.len; i++) {
+    for (int i = 0; i < len(participant->runs); i++) {
         if (participant->runs[i].layout) {
             TextLayoutRelease(participant->runs[i].layout);
         }
@@ -955,12 +955,12 @@ El* TextSelectionScope(El* element, TextSelectionScopeId scope) {
 }
 
 bool CurrentTextSelectionScope(const Window* win, TextSelectionScopeId* out) {
-    if (!win || win->textSelectionScopes.len == 0) {
+    if (!win || len(win->textSelectionScopes) == 0) {
         return false;
     }
     if (out) {
         *out = TextSelectionScopeId::FromRaw(
-            win->textSelectionScopes[win->textSelectionScopes.len - 1]);
+            win->textSelectionScopes[len(win->textSelectionScopes) - 1]);
     }
     return true;
 }
@@ -974,7 +974,7 @@ TextSelectionScopeGuard::TextSelectionScopeGuard(Window* window,
 }
 
 TextSelectionScopeGuard::~TextSelectionScopeGuard() {
-    if (win && win->textSelectionScopes.len > 0) {
+    if (win && len(win->textSelectionScopes) > 0) {
         win->textSelectionScopes.len--;
     }
 }
@@ -1443,7 +1443,7 @@ bool WindowSelectionHasEntity(const Window* win, EntityId owner) {
         b = swap;
     }
     const PaintCtx* paint = &win->paint;
-    for (int i = 0; i < paint->texts.len; i++) {
+    for (int i = 0; i < len(paint->texts); i++) {
         const TextHit& hit = paint->texts[i];
         if (hit.owner != owner || hit.scope != selection->scope) continue;
         int n = hit.atom ? 1 : len(hit.text);
@@ -1476,7 +1476,7 @@ void WindowSelectionSelectAll(Window* win, EntityId owner) {
     int activeScope = selection->activeScope.raw != 0
                           ? selection->activeScope.RuntimeScope()
                           : -1;
-    for (int i = 0; i < win->paint.texts.len; i++) {
+    for (int i = 0; i < len(win->paint.texts); i++) {
         const TextHit& hit = win->paint.texts[i];
         if (hit.owner != owner ||
             (activeScope >= 0 && hit.scope != activeScope)) {
@@ -1517,7 +1517,7 @@ void WindowSelectionSelectAllTouched(Window* win) {
     EntityId owner = {};
     int lo = s->anchor < s->cursor ? s->anchor : s->cursor;
     int hi = s->anchor < s->cursor ? s->cursor : s->anchor;
-    for (int i = 0; i < win->paint.texts.len; i++) {
+    for (int i = 0; i < len(win->paint.texts); i++) {
         const TextHit& hit = win->paint.texts[i];
         if (s->scope && hit.scope != s->scope) {
             continue;
@@ -1531,7 +1531,7 @@ void WindowSelectionSelectAllTouched(Window* win) {
             break;
         }
     }
-    if (!owner.IsValid() && s->participants.len > 0) {
+    if (!owner.IsValid() && len(s->participants) > 0) {
         owner = s->participants[0];
     }
     WindowSelectionSelectAll(win, owner);
@@ -1572,7 +1572,7 @@ int TextSelection::SelectedText(Window* window, App* app, char* out, int cap) {
     WindowSelection* selection = window ? window->sel : nullptr;
     if (!selection || !app) return 0;
     Vec<ParticipantCopyItem> active;
-    for (int i = 0; i < selection->participants.len; i++) {
+    for (int i = 0; i < len(selection->participants); i++) {
         TextSelectionParticipantState* participant =
             (TextSelectionParticipantState*)EntityGet(
                 app, selection->participants[i]);
@@ -1627,7 +1627,7 @@ int TextSelection::SelectedText(Window* window, App* app, char* out, int cap) {
                                                        : selection->cursor;
         int hi = selection->anchor < selection->cursor ? selection->cursor
                                                        : selection->anchor;
-        for (int i = 0; i < window->paint.texts.len; i++) {
+        for (int i = 0; i < len(window->paint.texts); i++) {
             const TextHit& hit = window->paint.texts[i];
             if (selection->scope && hit.scope != selection->scope) {
                 continue;
@@ -1653,7 +1653,7 @@ bool TextSelection::HasSelection(Window* window, const App* app) {
     if (WindowSelectionHas(window)) return true;
     const WindowSelection* selection = window ? window->sel : nullptr;
     if (!selection || !app) return false;
-    for (int i = 0; i < selection->participants.len; i++) {
+    for (int i = 0; i < len(selection->participants); i++) {
         TextSelectionParticipantState* participant =
             (TextSelectionParticipantState*)EntityGet(
                 (App*)app, selection->participants[i]);

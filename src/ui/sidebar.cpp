@@ -160,7 +160,7 @@ SidebarMenuItem* SidebarMenuItem::OnClick(Listener fn) {
 
 El* SidebarMenuItem::IntoEl(Str id) {
     const Theme& th = ThemeNow(cx->app);
-    bool isSubmenu = children.len > 0;
+    bool isSubmenu = len(children) > 0;
     Entity<SidebarMenuState> st = {};
     bool isOpen = false;
     if (isSubmenu) {
@@ -284,7 +284,7 @@ El* SidebarMenuItem::IntoEl(Str id) {
                       ->PadY(Rems(cx, 0.125f))
                       ->PadS(Rems(cx, 0.625f), cx->app)
                       ->BorderS(1, th.sidebarBorder, cx->app);
-        for (int i = 0; i < children.len; i++) {
+        for (int i = 0; i < len(children); i++) {
             children[i]->collapsed = collapsed;
             sub->Child(children[i]->IntoEl(StrDup(a, fmt("%d", i))));
         }
@@ -312,7 +312,7 @@ El* SidebarMenu::IntoEl(Str id) {
     El* col = Div(a)->FlexCol()->W(kFill)->Gap(Rems(cx, 0.5f)); // gap_2
     StyleApplyFields(&col->style, style, styleSet);
     refiner.Apply(col);
-    for (int i = 0; i < items.len; i++) {
+    for (int i = 0; i < len(items); i++) {
         items[i]->collapsed = collapsed;
         col->Child(items[i]->IntoEl(StrDup(a, fmt("%d", i))));
     }
@@ -376,7 +376,7 @@ El* SidebarGroup::IntoEl(Str id) {
         col->Child(header);
     }
     El* inner = Div(a)->FlexCol()->W(kFill)->Gap(Rems(cx, 0.5f)); // gap_2
-    for (int i = 0; i < children.len; i++) {
+    for (int i = 0; i < len(children); i++) {
         inner
             ->Child(children[i].Render(cx, StrDup(a, fmt("%d", i)), collapsed));
     }
@@ -674,7 +674,7 @@ El* Sidebar::IntoEl() {
     } else {
         inner->PadX(r3);
     }
-    for (int i = 0; i < this->content.len; i++) {
+    for (int i = 0; i < len(this->content); i++) {
         // The groups are rows of a `list(..)` in Rust, which has no gap of
         // its own: `pt_3` on the first and `pb_3` on the last are the whole
         // of the spacing around them, and two groups touch. `inner`'s
@@ -684,7 +684,7 @@ El* Sidebar::IntoEl() {
         if (i == 0) {
             box->PadT(r3);
         }
-        if (i + 1 == this->content.len) {
+        if (i + 1 == len(this->content)) {
             box->PadB(r3);
         }
         inner->Child(box);

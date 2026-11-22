@@ -30,21 +30,21 @@ bool RetainedStore::Belongs(EntityHandle handle, uint32_t* id) const {
 RetainedEntry* RetainedStore::Find(EntityHandle handle) const {
     uint32_t id = 0;
     if (!Belongs(handle, &id)) return nullptr;
-    for (int i = 0; i < entries.len; i++) {
+    for (int i = 0; i < len(entries); i++) {
         if (entries[i]->id == id) return entries[i];
     }
     return nullptr;
 }
 
 RetainedEntry* RetainedStore::FindLocal(uint32_t id) const {
-    for (int i = 0; i < entries.len; i++) {
+    for (int i = 0; i < len(entries); i++) {
         if (entries[i]->id == id) return entries[i];
     }
     return nullptr;
 }
 
 EntityHandle RetainedStore::Push(RetainedEntry* entry) {
-    if (!entry || storeId == 0 || entries.len >= kMaxLiveEntities ||
+    if (!entry || storeId == 0 || len(entries) >= kMaxLiveEntities ||
         nextId == 0) {
         delete entry;
         return 0;
@@ -180,7 +180,7 @@ bool RetainedStore::AddCallback(EntityHandle handle, RetainedEvent event,
     RetainedEntry* entry = Find(handle);
     if (!entry || callback == 0) return false;
     if (replace) {
-        for (int i = 0; i < entry->callbacks.len; i++) {
+        for (int i = 0; i < len(entry->callbacks); i++) {
             if (entry->callbacks[i].event == event) {
                 if (replaced) *replaced = entry->callbacks[i].callback;
                 entry->callbacks[i].callback = callback;
@@ -232,9 +232,9 @@ void RetainedStore::Destroy(RetainedEntry* entry, Vec<CallbackId>* callbacks) {
 bool RetainedStore::Release(EntityHandle handle, Vec<CallbackId>* callbacks) {
     RetainedEntry* entry = Find(handle);
     if (!entry) return false;
-    for (int i = 0; i < entries.len; i++) {
+    for (int i = 0; i < len(entries); i++) {
         if (entries[i] != entry) continue;
-        for (int j = i + 1; j < entries.len; j++) entries[j - 1] = entries[j];
+        for (int j = i + 1; j < len(entries); j++) entries[j - 1] = entries[j];
         entries.len--;
         Destroy(entry, callbacks);
         return true;
@@ -244,10 +244,10 @@ bool RetainedStore::Release(EntityHandle handle, Vec<CallbackId>* callbacks) {
 
 void RetainedStore::ReleaseOwner(EntityId owner, Vec<CallbackId>* callbacks) {
     if (!owner.IsValid()) return;
-    for (int i = entries.len - 1; i >= 0; i--) {
+    for (int i = len(entries) - 1; i >= 0; i--) {
         if (entries[i]->owner != owner) continue;
         RetainedEntry* entry = entries[i];
-        for (int j = i + 1; j < entries.len; j++) entries[j - 1] = entries[j];
+        for (int j = i + 1; j < len(entries); j++) entries[j - 1] = entries[j];
         entries.len--;
         Destroy(entry, callbacks);
     }
@@ -256,17 +256,17 @@ void RetainedStore::ReleaseOwner(EntityId owner, Vec<CallbackId>* callbacks) {
 void RetainedStore::ReleaseApplication(void* application,
                                        Vec<CallbackId>* callbacks) {
     if (!application) return;
-    for (int i = entries.len - 1; i >= 0; i--) {
+    for (int i = len(entries) - 1; i >= 0; i--) {
         if (entries[i]->application != application) continue;
         RetainedEntry* entry = entries[i];
-        for (int j = i + 1; j < entries.len; j++) entries[j - 1] = entries[j];
+        for (int j = i + 1; j < len(entries); j++) entries[j - 1] = entries[j];
         entries.len--;
         Destroy(entry, callbacks);
     }
 }
 
 void RetainedStore::Rollback(uint32_t checkpoint, Vec<CallbackId>* callbacks) {
-    for (int i = entries.len - 1; i >= 0; i--) {
+    for (int i = len(entries) - 1; i >= 0; i--) {
         if (entries[i]->id < checkpoint) continue;
         RetainedEntry* entry = entries[i];
         entries.len = i;
@@ -275,7 +275,7 @@ void RetainedStore::Rollback(uint32_t checkpoint, Vec<CallbackId>* callbacks) {
 }
 
 void RetainedStore::Clear(Vec<CallbackId>* callbacks) {
-    for (int i = 0; i < entries.len; i++) Destroy(entries[i], callbacks);
+    for (int i = 0; i < len(entries); i++) Destroy(entries[i], callbacks);
     VecReset(entries);
 }
 

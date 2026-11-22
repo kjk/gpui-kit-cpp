@@ -251,7 +251,7 @@ El* TableRow::IntoEl() {
         row->BorderT(1, th.tableRowBorder);
     }
     if (hoverStyle) row->Hover(*hoverStyle);
-    for (int i = 0; i < cells.len; i++) {
+    for (int i = 0; i < len(cells); i++) {
         cells[i]->ix = i;
         cells[i]->size = size;
         row->Child(cells[i]->IntoEl());
@@ -312,7 +312,7 @@ El* TableGroup::IntoEl() {
                 ->FlexCol();
         refiner.Apply(g);
     }
-    for (int i = 0; i < rows.len; i++) {
+    for (int i = 0; i < len(rows); i++) {
         rows[i]->ix = i;
         rows[i]->size = size;
         g->Child(rows[i]->IntoEl());
@@ -401,7 +401,7 @@ El* Table::IntoEl() {
         t->Border(1, th.border)->Radius(th.radius);
     }
     // Every child in the order it was added, numbered by its place.
-    for (int i = 0; i < parts.len; i++) {
+    for (int i = 0; i < len(parts); i++) {
         if (TableGroup* g = parts[i].group) {
             g->ix = i;
             g->size = size;
@@ -1102,7 +1102,7 @@ El* DataTable::BuildEl() {
     // is that height times every header row, and an empty layout still
     // reserves the leaf row (header_layout.len().max(1)).
     float headerH = headerRowHeight > 0 ? headerRowHeight : rowHeight;
-    float headsH = (float)(groupHeaders.len + 1) * headerH;
+    float headsH = (float)(len(groupHeaders) + 1) * headerH;
     float first = h > 0 ? h : (cx->win ? WindowSize(cx->win).dipH : 0.f);
     LaidOutHeight* laid = UseLaidOutHeight(cx, id, first);
     if (laid) {
@@ -1166,7 +1166,7 @@ El* DataTable::BuildEl() {
         return e;
     };
 
-    for (int g = 0; g < groupHeaders.len; g++) {
+    for (int g = 0; g < len(groupHeaders); g++) {
         // Every head row is header_row_height — state.rs renders the group
         // bands and the leaf heads through the same height, which is what
         // makes the head block a whole number of those rows.

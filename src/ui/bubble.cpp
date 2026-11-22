@@ -69,7 +69,7 @@ El* BubbleContent::IntoEl() {
     if (styleSet) {
         surface->Refine(style, styleSet);
     }
-    for (int i = 0; i < children.len; i++) {
+    for (int i = 0; i < len(children); i++) {
         surface->Child(children[i]);
     }
     return surface;
@@ -110,7 +110,7 @@ BubbleReactions* BubbleReactions::Child(El* e) {
 El* BubbleReactions::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
     bool hasAction = false;
-    for (int i = 0; i < children.len; i++) {
+    for (int i = 0; i < len(children); i++) {
         if (children[i].action) {
             hasAction = true;
         }
@@ -147,7 +147,7 @@ El* BubbleReactions::IntoEl() {
     if (styleSet) {
         pill->Refine(style, styleSet);
     }
-    for (int i = 0; i < children.len; i++) {
+    for (int i = 0; i < len(children); i++) {
         const BubbleReactionChild& child = children[i];
         if (child.action) {
             pill->Child(child.action->Rounded(th.radiusFull)->IntoEl());
@@ -187,7 +187,7 @@ Bubble* Bubble::Content(BubbleContent* value) {
     // the append-only ArenaVec goes the other way instead — the new surface's
     // children and its style land on the surface already holding them, which
     // is the same list in the same order.
-    for (int i = 0; i < value->children.len; i++) {
+    for (int i = 0; i < len(value->children); i++) {
         content->children.Append(a, value->children[i]);
     }
     StyleApplyFields(&content->style, value->style, value->styleSet);

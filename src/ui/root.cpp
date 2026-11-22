@@ -105,7 +105,7 @@ El* WindowStateLayers(Ctx* cx) {
     }
     // A closing dialog keeps its layer only to finish leaving. Focus that
     // landed inside one is put back where it was before that dialog opened.
-    for (int i = 0; i < wl->dialogs.len; i++) {
+    for (int i = 0; i < len(wl->dialogs); i++) {
         WindowLayer& dialog = wl->dialogs[i];
         if (!dialog.closing || !dialog.trapFocus) {
             continue;
@@ -127,7 +127,7 @@ El* WindowStateLayers(Ctx* cx) {
     Vec<bool> wantsOverlay;
     Vec<bool> closing;
     int topOpen = -1;
-    for (int i = 0; i < wl->dialogs.len; i++) {
+    for (int i = 0; i < len(wl->dialogs); i++) {
         VecAppend(wantsOverlay, wl->dialogs[i].overlay);
         VecAppend(closing, wl->dialogs[i].closing);
         if (!wl->dialogs[i].closing) {
@@ -135,10 +135,10 @@ El* WindowStateLayers(Ctx* cx) {
         }
     }
     int overlaySlot =
-        RootDialogOverlayIndex(wantsOverlay.els, closing.els, wl->dialogs.len);
+        RootDialogOverlayIndex(wantsOverlay.els, closing.els, len(wl->dialogs));
     Vec<uint32_t> dropIds;
     int stackDepth = 0;
-    for (int i = 0; i < wl->dialogs.len; i++) {
+    for (int i = 0; i < len(wl->dialogs); i++) {
         DialogMount mount;
         mount.bound = true;
         mount.id = wl->dialogs[i].id;
@@ -169,7 +169,7 @@ El* WindowStateLayers(Ctx* cx) {
     // Unmount after the view has returned. Dropping it mid-render would free
     // the entity whose Render is still on the stack.
     for (int d = 0; d < len(dropIds); d++) {
-        for (int i = wl->dialogs.len - 1; i >= 0; i--) {
+        for (int i = len(wl->dialogs) - 1; i >= 0; i--) {
             if (wl->dialogs[i].id != dropIds[d] || !wl->dialogs[i].closing) {
                 continue;
             }

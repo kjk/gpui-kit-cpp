@@ -1389,7 +1389,7 @@ static void ListVisibleRange(const LazyListState* state, float height,
         float along = -state->topInto;
         while (end < count) {
             if (along >= room) break;
-            float h = end < state->measured.len ? state->measured[end] : 0;
+            float h = end < len(state->measured) ? state->measured[end] : 0;
             if (h <= 0) break;
             end++;
             along += h;
@@ -1457,7 +1457,7 @@ static void OnLazyListScroll(ScriptView*, Ctx* cx, const ScrollEvent* event,
     if (next < 0) next = 0;
     if (state->viewport > 0) {
         float content = VirtualListContentSize(
-            state->measured.len ? state->measured.els : nullptr,
+            len(state->measured) ? state->measured.els : nullptr,
             state->itemCount);
         float most = content - state->viewport;
         if (most < 0) most = 0;
@@ -1469,7 +1469,7 @@ static void OnLazyListScroll(ScriptView*, Ctx* cx, const ScrollEvent* event,
     bool towardStart = next + 0.5f < state->offset;
     state->offset = next;
     VirtualListLogicalFromPixel(
-        state->measured.len ? state->measured.els : nullptr, state->itemCount,
+        len(state->measured) ? state->measured.els : nullptr, state->itemCount,
         state->rowH, next, &state->topItem, &state->topInto);
     if (state->follow == ListFollow::Tail && towardStart) {
         state->following = false;
@@ -1520,7 +1520,7 @@ static void StickListToTail(PaintCtx* ctx, ListFollowHook* hook,
                             float viewport) {
     LazyListState* state = hook->state;
     int count = state->itemCount;
-    float* sizes = state->measured.len ? state->measured.els : nullptr;
+    float* sizes = len(state->measured) ? state->measured.els : nullptr;
     if (count <= 0 || !sizes) {
         state->topItem = 0;
         state->topInto = 0;
@@ -1550,7 +1550,7 @@ static void StickListToTail(PaintCtx* ctx, ListFollowHook* hook,
 
 static bool ListAtMeasuredEnd(const LazyListState* state, float viewport) {
     if (!state) return false;
-    const float* sizes = state->measured.len ? state->measured.els : nullptr;
+    const float* sizes = len(state->measured) ? state->measured.els : nullptr;
     float content = VirtualListContentSize(sizes, state->itemCount);
     float pixel = VirtualListPixelFromLogical(sizes, state->itemCount,
                                               state->topItem, state->topInto);
@@ -1698,7 +1698,7 @@ static El* LazyListElement(Ctx* cx, ShellRuntime* runtime,
         RememberListTop(runtime, state, spec->getKey, count, cx);
     VirtualListOpts opts;
     opts.count = count;
-    opts.sizes = state->measured.len ? state->measured.els : nullptr;
+    opts.sizes = len(state->measured) ? state->measured.els : nullptr;
     opts.scrollY = state->offset;
     opts.logicalScroll = true;
     opts.topItem = state->topItem;
@@ -1761,7 +1761,7 @@ static El* DockAreaElement(Ctx* cx, ShellRuntime* runtime,
         logf("shell: this dock area is no longer live\n");
         return Div(cx->a);
     }
-    if (node->children.len > 0) {
+    if (len(node->children) > 0) {
         logf(
             "shell: children are dropped on a dock_area: what it draws is "
             "the panels in its layout, which are added with add_panel(...) "
@@ -2081,7 +2081,7 @@ struct DocumentImages {
 
     // on_release: what the app decoded from each image goes with the view.
     ~DocumentImages() {
-        for (int i = 0; i < used.len; i++) {
+        for (int i = 0; i < len(used); i++) {
             DocumentImage* image = used[i];
             if (image->bytes.s) {
                 ImageDropEncoded(app, (const uint8_t*)image->bytes.s,
@@ -2127,7 +2127,7 @@ static ImageLoadState DocumentImageDenied(PaintApp*, void*,
 }
 
 static DocumentImage* DocumentImageFor(DocumentImages* images, Str uri) {
-    for (int i = 0; i < images->used.len; i++) {
+    for (int i = 0; i < len(images->used); i++) {
         if (StrEq(images->used[i]->uri, uri)) return images->used[i];
     }
     DocumentImage* image = new DocumentImage();
@@ -2840,7 +2840,7 @@ static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
         El* editor = Slot(cx, runtime, specs, node, "input", error);
         if (!editor) editor = Input::New(cx, state);
         El* ordinary = nullptr;
-        if (node->children.len > 0) {
+        if (len(node->children) > 0) {
             ordinary = Div(cx->a)->FlexRow();
             for (shell::SpecId child : node->children)
                 ordinary
@@ -3269,7 +3269,7 @@ static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
         node->component.kind == shell::ComponentKind::HVirtualList ||
         node->component.kind == shell::ComponentKind::List ||
         node->component.kind == shell::ComponentKind::UniformList;
-    if (lazyList && node->children.len > 0) {
+    if (lazyList && len(node->children) > 0) {
         logf(
             "shell: children are dropped on a %s: its contents are whatever "
             "the item renderer returns\n",

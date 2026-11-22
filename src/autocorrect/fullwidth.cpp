@@ -169,7 +169,7 @@ bool FormatFullwidth(Arena* a, Str in, Str* out) {
     for (MatchFn pattern : kPatterns) {
         b.Reset();
         if (PassReplace(cur, pattern, &b)) {
-            cur = base::StrDup(a, Str(b.els, b.len));
+            cur = base::StrDup(a, Str(b.els, len(b)));
             changed = true;
         }
     }

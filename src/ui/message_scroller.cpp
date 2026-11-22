@@ -34,7 +34,7 @@ void MessageScrollerState::Init(MessageScrollerState* self, int itemCount) {
 }
 
 int MessageScrollerState::ItemCount() const {
-    return heights.len;
+    return len(heights);
 }
 
 bool MessageScrollerState::IsFollowingTail() const {
@@ -49,21 +49,21 @@ ListOffset MessageScrollerState::LogicalScrollTop() const {
     // layout.
     if (handle.pending) {
         if (followTail) {
-            top.itemIx = heights.len;
+            top.itemIx = len(heights);
             return top;
         }
         int ix = handle.pendingIx + handle.pendingOffset;
         if (ix < 0) {
             ix = 0;
         }
-        if (ix > heights.len) {
-            ix = heights.len;
+        if (ix > len(heights)) {
+            ix = len(heights);
         }
         top.itemIx = ix;
         top.offsetInItem = handle.pendingInItem;
         return top;
     }
-    VirtualListLogicalFromPixel(heights.els, heights.len, 0, handle.offset,
+    VirtualListLogicalFromPixel(heights.els, len(heights), 0, handle.offset,
                                 &top.itemIx, &top.offsetInItem);
     return top;
 }
@@ -81,7 +81,7 @@ bool MessageScrollerState::IsScrolledUp() const {
 }
 
 bool MessageScrollerState::ValidRange(int start, int end) const {
-    return start >= 0 && start <= end && end <= heights.len;
+    return start >= 0 && start <= end && end <= len(heights);
 }
 
 void MessageScrollerState::Reset(Ctx* cx, int itemCount) {
@@ -115,7 +115,7 @@ bool MessageScrollerState::Splice(Ctx* cx, int start, int end, int count) {
             if (flags) flags[i] = 1;
         }
     }
-    handle.itemsCount = heights.len;
+    handle.itemsCount = len(heights);
     if (handle.pending && !followTail && handle.pendingIx >= start) {
         // Keep a pending logical restoration on the same message across
         // insertions. When its row is removed, start at the next survivor.
@@ -131,7 +131,7 @@ bool MessageScrollerState::Splice(Ctx* cx, int start, int end, int count) {
     // The default row wrapper pads every row except the last, so a row whose
     // "last" status may have flipped carries a stale measured height.
     // Remeasure the new last row and the survivor next to the splice.
-    int last = heights.len - 1;
+    int last = len(heights) - 1;
     if (last >= 0) {
         heights[last] = kMessageScrollerEstimatedRowHeight;
         needsMeasure[last] = 1;
@@ -148,7 +148,7 @@ bool MessageScrollerState::Splice(Ctx* cx, int start, int end, int count) {
         int marks[2] = {0, count};
         for (int m = 0; m < 2; m++) {
             int index = marks[m];
-            if (index >= 0 && index < heights.len && index != last) {
+            if (index >= 0 && index < len(heights) && index != last) {
                 heights[index] = kMessageScrollerEstimatedRowHeight;
                 needsMeasure[index] = 1;
             }
@@ -161,7 +161,7 @@ bool MessageScrollerState::Splice(Ctx* cx, int start, int end, int count) {
 }
 
 bool MessageScrollerState::Append(Ctx* cx, int count) {
-    int itemCount = heights.len;
+    int itemCount = len(heights);
     return Splice(cx, itemCount, itemCount, count);
 }
 
@@ -170,7 +170,7 @@ bool MessageScrollerState::Prepend(Ctx* cx, int count) {
 }
 
 void MessageScrollerState::Remeasure(Ctx* cx) {
-    for (int i = 0; i < heights.len; i++) {
+    for (int i = 0; i < len(heights); i++) {
         heights[i] = kMessageScrollerEstimatedRowHeight;
         needsMeasure[i] = 1;
     }
@@ -388,7 +388,7 @@ El* MessageScroller::IntoEl() {
         return Div(a);
     }
 
-    int count = st->heights.len;
+    int count = len(st->heights);
     // GPUI's `list` lays rows out at the full list width and offsets them
     // only by vertical padding, so the horizontal component of the list
     // style is carried by every row wrapper instead.
@@ -438,10 +438,11 @@ El* MessageScroller::IntoEl() {
     StrBuilder bounceName;
     bounceName.Append(id);
     bounceName.Append(StrL("-bounce"));
-    list = ScrollBounce::New(cx, StrDup(a, Str(bounceName.els, bounceName.len)),
-                             VirtualListScrollbar(&st->handle), list)
-               ->OnScroll(ListenTo(state, &MessageScrollerState::OnScroll))
-               ->IntoEl();
+    list =
+        ScrollBounce::New(cx, StrDup(a, Str(bounceName.els, len(bounceName))),
+                          VirtualListScrollbar(&st->handle), list)
+            ->OnScroll(ListenTo(state, &MessageScrollerState::OnScroll))
+            ->IntoEl();
     // The list used to be the viewport's only child and filled it. The
     // bounce is that child now, so it has to take the same box.
     list->W(kFill)->H(kFill)->MinH(0)->MinW(0);

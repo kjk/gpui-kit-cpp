@@ -56,7 +56,7 @@ State SpaceOrTabStart(Tokenizer* t) {
             Enter(t, t->tokenizeState.spaceOrTabToken);
         }
         if (t->tokenizeState.spaceOrTabConnect) {
-            SubtokenizeLink(t->events, t->events.len - 1);
+            SubtokenizeLink(t->events, len(t->events) - 1);
         } else {
             t->tokenizeState.spaceOrTabConnect = true;
         }
@@ -151,7 +151,7 @@ State SpaceOrTabEolAtEol(Tokenizer* t) {
             Enter(t, Name::LineEnding);
         }
         if (t->tokenizeState.spaceOrTabEolConnect) {
-            SubtokenizeLink(t->events, t->events.len - 1);
+            SubtokenizeLink(t->events, len(t->events) - 1);
         } else if (t->tokenizeState.spaceOrTabEolContentSome) {
             t->tokenizeState.spaceOrTabEolConnect = true;
         }
@@ -227,12 +227,12 @@ State DataInside(Tokenizer* t) {
 
 bool DataResolve(Tokenizer* t, Subresult*) {
     int32_t index = 0;
-    while (index < t->events.len) {
+    while (index < len(t->events)) {
         const Event& event = t->events[index];
         if (event.kind == Kind::Enter && event.name == Name::Data) {
             index += 1;
             int32_t exitIndex = index;
-            while (exitIndex + 1 < t->events.len &&
+            while (exitIndex + 1 < len(t->events) &&
                    t->events[exitIndex + 1].name == Name::Data) {
                 exitIndex += 2;
             }
@@ -366,7 +366,7 @@ static void EnterConnectedStringData(Tokenizer* t) {
     link.content = ContentKind::String;
     EnterLink(t, Name::Data, link);
     if (t->tokenizeState.connect) {
-        SubtokenizeLink(t->events, t->events.len - 1);
+        SubtokenizeLink(t->events, len(t->events) - 1);
     } else {
         t->tokenizeState.connect = true;
     }
@@ -541,7 +541,7 @@ static void TrimData(Tokenizer* t, int32_t exitIndex, bool trimStart,
     Slice slice = SliceFromPosition(t->parseState->bytes, position);
 
     if (trimEnd) {
-        int32_t index = slice.bytes.len;
+        int32_t index = len(slice.bytes);
         bool spacesOnly = slice.after == 0;
         while (index > 0) {
             char byte = slice.bytes.s[index - 1];
@@ -554,10 +554,10 @@ static void TrimData(Tokenizer* t, int32_t exitIndex, bool trimStart,
             }
             index -= 1;
         }
-        int32_t diff = slice.bytes.len - index;
+        int32_t diff = len(slice.bytes) - index;
         Name name =
             (hardBreak && spacesOnly && diff >= kHardBreakPrefixSizeMin &&
-             exitIndex + 1 < t->events.len)
+             exitIndex + 1 < len(t->events))
                 ? Name::HardBreakTrailing
                 : Name::SpaceOrTab;
         if (index == 0) {
@@ -586,7 +586,7 @@ static void TrimData(Tokenizer* t, int32_t exitIndex, bool trimStart,
 
     if (trimStart) {
         int32_t index = 0;
-        while (index < slice.bytes.len) {
+        while (index < len(slice.bytes)) {
             char byte = slice.bytes.s[index];
             if (byte == ' ' || byte == '\t') {
                 index += 1;
@@ -594,7 +594,7 @@ static void TrimData(Tokenizer* t, int32_t exitIndex, bool trimStart,
                 break;
             }
         }
-        if (index == slice.bytes.len) {
+        if (index == len(slice.bytes)) {
             t->events[exitIndex - 1].name = Name::SpaceOrTab;
             t->events[exitIndex].name = Name::SpaceOrTab;
             return;
@@ -620,14 +620,14 @@ static void TrimData(Tokenizer* t, int32_t exitIndex, bool trimStart,
 
 void ResolveWhitespace(Tokenizer* t, bool hardBreak, bool trimWhole) {
     int32_t index = 0;
-    while (index < t->events.len) {
+    while (index < len(t->events)) {
         const Event& event = t->events[index];
         if (event.kind == Kind::Exit && event.name == Name::Data) {
             bool trimStart =
                 (trimWhole && index == 1) ||
                 (index > 1 && t->events[index - 2].name == Name::LineEnding);
-            bool trimEnd = (trimWhole && index == t->events.len - 1) ||
-                           (index + 1 < t->events.len &&
+            bool trimEnd = (trimWhole && index == len(t->events) - 1) ||
+                           (index + 1 < len(t->events) &&
                             t->events[index + 1].name == Name::LineEnding);
             TrimData(t, index, trimStart, trimEnd, hardBreak);
         }

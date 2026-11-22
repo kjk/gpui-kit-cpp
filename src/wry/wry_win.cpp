@@ -2554,7 +2554,7 @@ struct DragDropTarget : ComObject<IDropTarget> {
         DragDropEvent event;
         event.kind = kind;
         event.paths = paths ? paths->els : nullptr;
-        event.pathCount = paths ? paths->len : 0;
+        event.pathCount = paths ? len(*paths) : 0;
         event.x = point.x;
         event.y = point.y;
         // The pinned Windows implementation ignores this result after
@@ -3965,8 +3965,8 @@ static HRESULT PrepareRequest(WebView* wv, ICoreWebView2WebResourceRequest* req,
     if (FAILED(hr)) {
         return hr;
     }
-    out->headers = headerStore->len > 0 ? &(*headerStore)[0] : nullptr;
-    out->headerCount = headerStore->len;
+    out->headers = len(*headerStore) > 0 ? &(*headerStore)[0] : nullptr;
+    out->headerCount = len(*headerStore);
 
     IStream* content = nullptr;
     if (SUCCEEDED(req->get_Content(&content)) && content) {
@@ -3989,8 +3989,8 @@ static HRESULT PrepareRequest(WebView* wv, ICoreWebView2WebResourceRequest* req,
             return hr;
         }
     }
-    out->body = bodyStore->len > 0 ? &(*bodyStore)[0] : nullptr;
-    out->bodyLen = bodyStore->len;
+    out->body = len(*bodyStore) > 0 ? &(*bodyStore)[0] : nullptr;
+    out->bodyLen = len(*bodyStore);
     out->uri = RevertUriWorkAround(uri, Str(wv->httpOrHttps), protocol);
     return S_OK;
 }
@@ -4017,7 +4017,7 @@ static HRESULT OnWebResourceRequested(
     Str uri = TakePwstrTemp(rawUri);
 
     CustomProtocol* found = nullptr;
-    for (int i = 0; i < wv->protocols.len; i++) {
+    for (int i = 0; i < len(wv->protocols); i++) {
         if (IsWorkAroundUri(uri, Str(wv->httpOrHttps), wv->protocols[i].name)) {
             found = &wv->protocols[i];
             break;
@@ -4064,7 +4064,7 @@ static HRESULT OnWebResourceRequested(
 
 static bool AttachCustomProtocolHandler(WebView* wv,
                                         EventRegistrationToken* token) {
-    for (int i = 0; i < wv->protocols.len; i++) {
+    for (int i = 0; i < len(wv->protocols); i++) {
         Str filter = base::FormatTemp(
             "%s*",
             WorkAroundUriPrefix(Str(wv->httpOrHttps), wv->protocols[i].name));
@@ -4741,7 +4741,7 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs,
         return nullptr;
     }
     if (!AttachIpcHandler(wv, &token) ||
-        (wv->protocols.len > 0 && !AttachCustomProtocolHandler(wv, &token))) {
+        (len(wv->protocols) > 0 && !AttachCustomProtocolHandler(wv, &token))) {
         WebViewFree(wv);
         return nullptr;
     }
@@ -4769,7 +4769,7 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs,
     bool navigated = true;
     if (attrs->url.s) {
         Str url = attrs->url;
-        for (int i = 0; i < wv->protocols.len; i++) {
+        for (int i = 0; i < len(wv->protocols); i++) {
             // A url in one of our own protocols has to go over the
             // work-around scheme, the way every request in it does.
             Str prefix = base::FormatTemp("%s://", wv->protocols[i].name);

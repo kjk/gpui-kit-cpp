@@ -318,7 +318,7 @@ static uint64_t AccessibilityHashStr(uint64_t hash, Str value) {
 
 static uint64_t AccessibilityTreeHash(const Vec<AccessibilityNode>& nodes) {
     uint64_t hash = 0xcbf29ce484222325ull;
-    hash = AccessibilityHashBytes(hash, &nodes.len, (int)sizeof(nodes.len));
+    hash = AccessibilityHashBytes(hash, &nodes.len, (int)sizeof(len(nodes)));
 #define GPUI_A11Y_HASH(value)                                                 \
     do {                                                                      \
         const auto hashValue = (value);                                       \
@@ -475,7 +475,7 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
         VecClear(win->debugHoveredPaths);
         Vec<int> chain;
         HitChain(win, win->mouseX, win->mouseY, &chain);
-        for (int i = 0; i < chain.len; i++) {
+        for (int i = 0; i < len(chain); i++) {
             uint32_t path = win->paint.hits[chain[i]].pathId;
             if (path) {
                 VecAppend(win->debugHoveredPaths, path);
@@ -991,7 +991,7 @@ void WindowDrawFrameHeadless(Window* win, float dipW, float dipH) {
 // Whether the frame gave this id a focus handle. CollectFocus walks the tree
 // for `FocusId`, so an element that only has `Click(id)` is missing here.
 static bool FocusIdIsFocusable(Window* win, int id) {
-    for (int i = 0; i < win->focusEls.len; i++) {
+    for (int i = 0; i < len(win->focusEls); i++) {
         if (win->focusEls[i].id == id) {
             return true;
         }
@@ -1003,7 +1003,7 @@ static bool FocusIdIsFocusable(Window* win, int id) {
 // an element a handle and a place in the Tab order and nothing else; the
 // widgets that focus on a click say so themselves.
 static bool FocusIdTakesPress(Window* win, int id) {
-    for (int i = 0; i < win->focusEls.len; i++) {
+    for (int i = 0; i < len(win->focusEls); i++) {
         if (win->focusEls[i].id == id) {
             return win->focusEls[i].focusOnPress;
         }
@@ -1016,7 +1016,7 @@ static bool FocusIdTakesPress(Window* win, int id) {
 // The index of the topmost hit rect containing (x, y), or -1: the leaf of
 // the chain the pointer is on.
 static int HitLeafAt(const PaintCtx& paint, float x, float y) {
-    for (int i = paint.hits.len - 1; i >= 0; i--) {
+    for (int i = len(paint.hits) - 1; i >= 0; i--) {
         if (paint.hits[i].bounds.Contains({x, y})) {
             return i;
         }
@@ -1029,7 +1029,7 @@ static int HitIndexById(Window* win, int id) {
     if (!win || !id) {
         return -1;
     }
-    for (int i = win->paint.hits.len - 1; i >= 0; i--) {
+    for (int i = len(win->paint.hits) - 1; i >= 0; i--) {
         if (win->paint.hits[i].id == id) {
             return i;
         }
@@ -1046,7 +1046,7 @@ static const HitRect* HitRectByFocusId(Window* win, int focusId) {
     if (!win || !focusId) {
         return nullptr;
     }
-    for (int i = win->paint.hits.len - 1; i >= 0; i--) {
+    for (int i = len(win->paint.hits) - 1; i >= 0; i--) {
         if (win->paint.hits[i].focusId == focusId) {
             return &win->paint.hits[i];
         }
@@ -1065,7 +1065,7 @@ static const HitRect* HitRectByFocusId(Window* win, int focusId) {
 static const int kHoverChainMax = 32;
 static int HoverChain(Window* win, int ix, int* out) {
     int n = 0;
-    while (ix >= 0 && ix < win->paint.hits.len && n < kHoverChainMax) {
+    while (ix >= 0 && ix < len(win->paint.hits) && n < kHoverChainMax) {
         out[n++] = ix;
         ix = win->paint.hits[ix].parent;
     }
@@ -1090,7 +1090,7 @@ static bool ElementLongPress(Window* win, const LongPressEvent& ev) {
     win->defaultPrevented = false;
     Point at = {ev.startPosition.x, ev.startPosition.y};
     int ix = HitLeafAt(win->paint, at.x, at.y);
-    while (ix >= 0 && ix < win->paint.hits.len) {
+    while (ix >= 0 && ix < len(win->paint.hits)) {
         HitRect hr = win->paint.hits[ix];
         int parent = hr.parent;
         if (hr.onLongPress.IsValid()) {
@@ -2078,7 +2078,7 @@ static void ScrollOffsetBy(const ScrollRect& s, bool canX, bool canY, float dx,
 // of its two bars. Innermost first, the way the hit test reads its rects.
 static ScrollRect* ScrollbarAt(PaintCtx* ctx, float x, float y,
                                bool* horizontal) {
-    for (int i = ctx->scrolls.len - 1; i >= 0; i--) {
+    for (int i = len(ctx->scrolls) - 1; i >= 0; i--) {
         const ScrollRect& s = ctx->scrolls[i];
         if (!s.onScroll.IsValid() && !s.input) {
             continue;
@@ -2121,7 +2121,7 @@ static bool ScrollbarCovered(const PaintCtx& paint, const ScrollRect& s,
 
 static void NoteScrollbarOcclusion(Window* win) {
     VecClear(win->scrollbarOccluded);
-    for (int i = 0; i < win->paint.scrolls.len; i++) {
+    for (int i = 0; i < len(win->paint.scrolls); i++) {
         const ScrollRect& s = win->paint.scrolls[i];
         if (s.id == 0) {
             continue;
@@ -2202,7 +2202,7 @@ static bool PageScrollBy(Window* win, int dir) {
     Point pointer = {win->mouseX, win->mouseY};
     ScrollRect* underPointer = nullptr;
     ScrollRect* underFocus = nullptr;
-    for (int i = win->paint.scrolls.len - 1; i >= 0; i--) {
+    for (int i = len(win->paint.scrolls) - 1; i >= 0; i--) {
         ScrollRect& s = win->paint.scrolls[i];
         if (s.input || !s.onScroll.IsValid() || !ScrollsY(s)) {
             continue;
@@ -2358,7 +2358,7 @@ static ScrollRect* ScrollRectById(Window* win, int id) {
     if (id == 0) {
         return nullptr;
     }
-    for (int i = win->paint.scrolls.len - 1; i >= 0; i--) {
+    for (int i = len(win->paint.scrolls) - 1; i >= 0; i--) {
         if (win->paint.scrolls[i].id == id) {
             return &win->paint.scrolls[i];
         }
@@ -2370,7 +2370,7 @@ const ScrollRect* WindowLastScrollRect(const Window* win, int id) {
     if (!win || id == 0) {
         return nullptr;
     }
-    for (int i = win->prevScrolls.len - 1; i >= 0; i--) {
+    for (int i = len(win->prevScrolls) - 1; i >= 0; i--) {
         if (win->prevScrolls[i].id == id) {
             return &win->prevScrolls[i];
         }
@@ -2386,7 +2386,7 @@ static ScrollRect* ScrollRectForDrag(Window* win) {
     if (!win->scrollDragInput) {
         return nullptr;
     }
-    for (int i = win->paint.scrolls.len - 1; i >= 0; i--) {
+    for (int i = len(win->paint.scrolls) - 1; i >= 0; i--) {
         if (win->paint.scrolls[i].input == win->scrollDragInput) {
             return &win->paint.scrolls[i];
         }
@@ -2427,7 +2427,7 @@ static void SliderDrag(Window* win, const HitRect* hit, Point at) {
 // handle_release clears the flag, so one that was not being dragged says
 // nothing and a state bound twice only answers once.
 static void SliderRelease(Window* win) {
-    for (int i = 0; i < win->paint.hits.len; i++) {
+    for (int i = 0; i < len(win->paint.hits); i++) {
         SliderState* s = win->paint.hits[i].slider;
         if (s && SliderHandleRelease(s)) {
             SliderEmit(win, s, SliderEventKind::Release);
@@ -2442,7 +2442,7 @@ static bool SliderKeyStep(Window* win, int key) {
     if (!win->focusId) {
         return false;
     }
-    for (int i = 0; i < win->paint.hits.len; i++) {
+    for (int i = 0; i < len(win->paint.hits); i++) {
         const HitRect& hr = win->paint.hits[i];
         if (hr.focusId != win->focusId || !hr.slider) {
             continue;
@@ -2468,7 +2468,7 @@ static bool SemanticKeyStep(Window* win, int key, bool ctrl, bool alt) {
     if (ctrl || alt || !win->focusId || (key != KeyUp && key != KeyDown)) {
         return false;
     }
-    for (int i = 0; i < win->focusEls.len; i++) {
+    for (int i = 0; i < len(win->focusEls); i++) {
         const FocusRect& fr = win->focusEls[i];
         if (fr.id != win->focusId) {
             continue;
@@ -2515,10 +2515,10 @@ static void WindowApplyCursor(Window* win, CursorKind kind, CursorImage* img) {
 // is the hitbox `hover_definition_hitbox` inserts. The bounds are last
 // frame's, measured where the symbol was painted.
 static bool HoverDefAt(Window* win, float x, float y) {
-    for (int i = 0; i < win->paint.inputs.len; i++) {
+    for (int i = 0; i < len(win->paint.inputs); i++) {
         InputState* f = win->paint.inputs[i];
-        if (f->hoverDef.locations.len > 0 && f->hoverDef.bounds
-                                                 .Contains({x, y})) {
+        if (len(f->hoverDef.locations) > 0 && f->hoverDef.bounds
+                                                  .Contains({x, y})) {
             return true;
         }
     }
@@ -2699,9 +2699,9 @@ static void DispatchMouseMove(Window* win, const MouseMoveEvent& in) {
     // A carousel viewport listens for the drag even when the press landed on
     // a child button. Walk ancestors so that capture-phase begin_drag on the
     // viewport still sees the moves.
-    if (win->mouseDown && pressed && win->paint.hits.len > 0) {
+    if (win->mouseDown && pressed && len(win->paint.hits) > 0) {
         int ix = (int)(pressed - &win->paint.hits[0]);
-        if (ix >= 0 && ix < win->paint.hits.len) {
+        if (ix >= 0 && ix < len(win->paint.hits)) {
             for (int i = win->paint.hits[ix].parent; i >= 0;
                  i = win->paint.hits[i].parent) {
                 const HitRect& hr = win->paint.hits[i];
@@ -2839,7 +2839,7 @@ static const HitRect* SliderHitAt(Window* win, Point at) {
 }
 
 static bool SliderPainted(Window* win, const SliderState* s) {
-    for (int i = 0; i < win->paint.hits.len; i++) {
+    for (int i = 0; i < len(win->paint.hits); i++) {
         if (win->paint.hits[i].slider == s) {
             return true;
         }
@@ -2966,7 +2966,7 @@ static void DispatchChain(Window* win, const Vec<int>& chain, Ev* ev, Pick pick,
 // on_mouse_up_out and ensuring an open popover's trigger closes it before the
 // content (which is necessarily elsewhere) observes the same press.
 static void DispatchMouseDownOut(Window* win, const MouseDownEvent& in) {
-    for (int i = 0; i < win->paint.hits.len; i++) {
+    for (int i = 0; i < len(win->paint.hits); i++) {
         const HitRect& hr = win->paint.hits[i];
         if (hr.onMouseDownOut.IsValid() && !hr.bounds.Contains({in.x, in.y})) {
             ListenerCall(win->app, win, hr.onMouseDownOut, &in);
@@ -3261,7 +3261,7 @@ static void DispatchMouseUp(Window* win, const MouseUpEvent& in,
     // get. Rust hears one wherever the pointer is, so this walks the frame
     // rather than only the element that took the press — a drag that ended
     // off the edge is the case it exists for.
-    for (int i = 0; i < win->paint.hits.len; i++) {
+    for (int i = 0; i < len(win->paint.hits); i++) {
         const HitRect& hr = win->paint.hits[i];
         if (hr.onMouseUpOut.IsValid() &&
             (canceled || !hr.bounds.Contains({in.x, in.y}))) {
@@ -3562,7 +3562,7 @@ static void DispatchScrollWheel(Window* win, const ScrollWheelEvent& in) {
     // so the box reports where it should now be rather than moving itself.
     // Only a box that asked for the event gets it; anything else falls
     // through to the window subscription, as it did before there were any.
-    for (int i = win->paint.scrolls.len - 1; i >= 0; i--) {
+    for (int i = len(win->paint.scrolls) - 1; i >= 0; i--) {
         ScrollRect& s = win->paint.scrolls[i];
         if (!s.onScroll.IsValid() || !s.bounds.Contains({in.x, in.y})) {
             continue;
@@ -4475,14 +4475,14 @@ Str FileUriListToPaths(Arena* a, Str list) {
         if (len(path) == 0) {
             continue;
         }
-        if (out.len > 0 && !out.AppendChar('\n')) {
+        if (len(out) > 0 && !out.AppendChar('\n')) {
             return {};
         }
-        int at = out.len;
+        int at = len(out);
         if (!AppendDecoded(out, path)) {
             return {};
         }
-        if (out.len == at) {
+        if (len(out) == at) {
             continue;
         }
     }
@@ -4545,7 +4545,7 @@ bool WindowScrollApply(Window* win, float x, float y, float dx, float dy) {
     if (!win) {
         return false;
     }
-    for (int i = win->paint.scrolls.len - 1; i >= 0; i--) {
+    for (int i = len(win->paint.scrolls) - 1; i >= 0; i--) {
         ScrollRect& s = win->paint.scrolls[i];
         if (!s.onScroll.IsValid() || !s.bounds.Contains({x, y})) {
             continue;
@@ -4712,7 +4712,7 @@ static void BlinkRegister(App* app, EntityId id) {
     if (!reg || !id.IsValid()) {
         return;
     }
-    for (int i = 0; i < reg->ids.len; i++) {
+    for (int i = 0; i < len(reg->ids); i++) {
         if (reg->ids[i] == id) {
             return;
         }
@@ -4725,11 +4725,11 @@ static void BlinkUnregister(App* app, EntityId id) {
     if (!reg) {
         return;
     }
-    for (int i = 0; i < reg->ids.len; i++) {
+    for (int i = 0; i < len(reg->ids); i++) {
         if (reg->ids[i] != id) {
             continue;
         }
-        reg->ids[i] = reg->ids[reg->ids.len - 1];
+        reg->ids[i] = reg->ids[len(reg->ids) - 1];
         reg->ids.len--;
         return;
     }
@@ -4885,7 +4885,7 @@ static void BlinkSchedule(BlinkCursor* b) {
     // the integer millisecond counted from the last activity.
     int64_t fireAt = b->lastActivityMs + BlinkElapsedMs(b) + delay;
     double due = (double)fireAt / 1000.0;
-    for (int i = 0; i < b->win->timers.len; i++) {
+    for (int i = 0; i < len(b->win->timers); i++) {
         if (b->win->timers[i].id == b->timer) {
             b->win->timers[i].dueAt = due;
             break;
@@ -4899,7 +4899,7 @@ void BlinkRetarget(App* app, const CursorBlink& policy) {
         return;
     }
     CursorBlink next = policy.Normalized();
-    for (int i = 0; i < reg->ids.len; i++) {
+    for (int i = 0; i < len(reg->ids); i++) {
         BlinkCursor* b = BlinkGet(app, reg->ids[i]);
         if (!b || BlinkPolicySame(b->policy, next)) {
             continue;
@@ -5025,9 +5025,9 @@ void WindowTimerTick(Window* win) {
 
     // A snapshot of the count, so a timer armed by a handler runs next pass
     // rather than inside this one.
-    int n = win->timers.len;
+    int n = len(win->timers);
     win->timersTicking = true;
-    for (int i = 0; i < n && i < win->timers.len; i++) {
+    for (int i = 0; i < n && i < len(win->timers); i++) {
         TimerSub& t = win->timers[i];
         // id 0: cancelled by an earlier handler in this pass.
         if (t.id == 0 || t.dueAt > now) {
@@ -5048,7 +5048,7 @@ void WindowTimerTick(Window* win) {
     // Drop the one-shots that fired, and any timer whose view is gone — the
     // lifetime Rust gets from Task being dropped with its entity.
     int keep = 0;
-    for (int i = 0; i < win->timers.len; i++) {
+    for (int i = 0; i < len(win->timers); i++) {
         const TimerSub& t = win->timers[i];
         bool dead = t.id == 0 || t.dueAt <= 0 ||
                     (t.l.view.IsValid() && !EntityGet(win->app, t.l.view));
@@ -5090,7 +5090,7 @@ int WindowChromeHit(Window* win, float x, float y) {
 
 double WindowTimersDue(const Window* win) {
     double soonest = -1;
-    for (int i = 0; i < win->timers.len; i++) {
+    for (int i = 0; i < len(win->timers); i++) {
         double due = win->timers[i].dueAt;
         if (due > 0 && (soonest < 0 || due < soonest)) {
             soonest = due;
@@ -5177,7 +5177,7 @@ bool AppAnyWindowOpen(App* app) {
     if (!app) {
         return false;
     }
-    for (int i = 0; i < app->windows.len; i++) {
+    for (int i = 0; i < len(app->windows); i++) {
         if (app->windows[i]->plat) {
             return true;
         }
@@ -5311,7 +5311,7 @@ void WindowClosed(Window* win) {
     // A dialog gives its parent back; windows that named this one as their
     // parent no longer have one.
     WindowModalRelease(win);
-    for (int i = 0; i < win->app->windows.len; i++) {
+    for (int i = 0; i < len(win->app->windows); i++) {
         Window* other = win->app->windows[i];
         if (other->opts.parent == win) {
             other->opts.parent = nullptr;
@@ -5339,7 +5339,7 @@ void WindowClosed(Window* win) {
     // kept its deferred-popover registration, and every later right-click
     // menu stepped aside as if a popup were still showing (upstream
     // f180d29d, `open_without_dismiss_releases_the_menu`).
-    for (int i = 0; i < win->keyed.len; i++) {
+    for (int i = 0; i < len(win->keyed); i++) {
         if (win->keyed[i].entity.IsValid()) {
             EntityDrop(win->app, win->keyed[i].entity);
             win->keyed[i].entity = {};
@@ -5445,7 +5445,7 @@ bool WindowIsEnabled(Window* win) {
     if (!win) {
         return false;
     }
-    for (int i = 0; i < win->app->windows.len; i++) {
+    for (int i = 0; i < len(win->app->windows); i++) {
         if (win->app->windows[i]->modalParent == win) {
             return false;
         }
@@ -5521,7 +5521,7 @@ static void AppFetchLanded(App* app) {
     if (!app) {
         return;
     }
-    for (int i = 0; i < app->windows.len; i++) {
+    for (int i = 0; i < len(app->windows); i++) {
         AppInvalidate(app->windows[i]);
     }
 }
@@ -5588,7 +5588,7 @@ static void AppRelease(App* app, bool platform) {
     // A fetch that lands from here on has no App to tell.
     HttpSetOnFetchDone(Func0{});
     EntityDropAll(app);
-    for (int i = 0; i < app->windows.len; i++) {
+    for (int i = 0; i < len(app->windows); i++) {
         Window* w = app->windows[i];
         WindowReleaseResources(w);
         delete w;
@@ -5699,7 +5699,7 @@ void AppRefreshWindows(App* app) {
     if (!app) {
         return;
     }
-    for (int i = 0; i < app->windows.len; i++) {
+    for (int i = 0; i < len(app->windows); i++) {
         AppInvalidate(app->windows[i]);
     }
 }
@@ -6043,7 +6043,7 @@ static PlatMenuItem* AppMenuToPlat(AppMenuState* state, Arena* a,
             continue;
         }
         VecAppend(state->rows, AppMenuBinding{r.action, r.arg});
-        p.id = state->rows.len;
+        p.id = len(state->rows);
     }
     return out;
 }
@@ -6107,7 +6107,7 @@ bool AppMenuRowForId(int id, uint32_t* action, int64_t* arg) {
 
 bool AppMenuRowForId(const App* app, int id, uint32_t* action, int64_t* arg) {
     AppMenuState* state = AppGlobalGet<AppMenuState>(app);
-    if (!state || id <= 0 || id > state->rows.len) {
+    if (!state || id <= 0 || id > len(state->rows)) {
         return false;
     }
     if (action) {
@@ -6145,7 +6145,7 @@ void AppMenuChosen(int id) {
     // key window, and falls back to the application's own handlers when there
     // is none — which is what WindowDispatchAction ends with anyway.
     Window* win = nullptr;
-    for (int i = 0; i < gAppMenuApp->windows.len; i++) {
+    for (int i = 0; i < len(gAppMenuApp->windows); i++) {
         Window* w = gAppMenuApp->windows[i];
         if (w && w->active) {
             win = w;

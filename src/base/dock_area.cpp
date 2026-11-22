@@ -37,7 +37,7 @@ DockState* GroupState(const DockTabGroup* g) {
         return nullptr;
     }
     DockState* s = g->state.Get(g->cx);
-    if (!s || g->node >= s->nodes.len || !s->nodes[g->node].used) {
+    if (!s || g->node >= len(s->nodes) || !s->nodes[g->node].used) {
         return nullptr;
     }
     return s;
@@ -50,7 +50,7 @@ DockState* GroupState(const DockTabGroup* g) {
 
 int DockGroupCount(const DockTabGroup* g) {
     DockState* s = GroupState(g);
-    return s ? s->nodes[g->node].panel.len : 0;
+    return s ? len(s->nodes[g->node].panel) : 0;
 }
 
 const DockPanelDef* DockGroupPanel(const DockTabGroup* g, int ix) {
@@ -59,7 +59,7 @@ const DockPanelDef* DockGroupPanel(const DockTabGroup* g, int ix) {
         return nullptr;
     }
     DockNode& n = s->nodes[g->node];
-    if (ix < 0 || ix >= n.panel.len) {
+    if (ix < 0 || ix >= len(n.panel)) {
         return nullptr;
     }
     return &s->panels[n.panel[ix]];
@@ -145,7 +145,7 @@ El* DockBindTab(const DockTabGroup* g, int ix, El* tab) {
     }
     Ctx* cx = g->cx;
     DockNode& n = s->nodes[g->node];
-    if (ix < 0 || ix >= n.panel.len) {
+    if (ix < 0 || ix >= len(n.panel)) {
         return tab;
     }
     int panelIx = n.panel[ix];
@@ -283,7 +283,7 @@ El* DockBindTitleDrag(const DockTabGroup* g, int ix, El* e) {
         return e;
     }
     DockNode& n = s->nodes[g->node];
-    if (ix < 0 || ix >= n.panel.len) {
+    if (ix < 0 || ix >= len(n.panel)) {
         return e;
     }
     e->Id(DockElId(g->cx, "title", g->node, ix))
@@ -335,7 +335,7 @@ bool DockGroupIsPanelClosable(const DockTabGroup* g, int ix) {
         return false;
     }
     const DockNode& n = s->nodes[g->node];
-    return ix >= 0 && ix < n.panel.len && s->panels[n.panel[ix]].closable;
+    return ix >= 0 && ix < len(n.panel) && s->panels[n.panel[ix]].closable;
 }
 
 ResizeHandle* DockBindResizeHandle(const DockCtx* d, ResizeHandle* h) {
@@ -601,14 +601,14 @@ El* RenderSplit(const AreaCtx& ac, int node) {
     int grows = -1;
     bool allSized = true;
     float totalSize = 0;
-    for (int i = 0; i < n.child.len; i++) {
+    for (int i = 0; i < len(n.child); i++) {
         if (DockNodeVisible(s, n.child[i])) {
             grows = i;
             allSized = allSized && n.size[i] > 0;
             totalSize += n.size[i];
         }
     }
-    for (int i = 0; i < n.child.len; i++) {
+    for (int i = 0; i < len(n.child); i++) {
         if (!DockNodeVisible(s, n.child[i])) {
             continue;
         }
@@ -646,7 +646,7 @@ El* RenderSplit(const AreaCtx& ac, int node) {
 
 El* RenderNode(const AreaCtx& ac, int node) {
     DockState* s = ac.s;
-    if (node < 0 || node >= s->nodes.len || !s->nodes[node].used) {
+    if (node < 0 || node >= len(s->nodes) || !s->nodes[node].used) {
         return Div(ac.cx->a)->SizeFull();
     }
     if (s->nodes[node].split) {
@@ -667,7 +667,7 @@ El* RenderDragPreview(const AreaCtx& ac) {
         return nullptr;
     }
     int panelIx = drag->ix;
-    if (panelIx < 0 || panelIx >= ac.s->panels.len) {
+    if (panelIx < 0 || panelIx >= len(ac.s->panels)) {
         return nullptr;
     }
     El* preview = ac.r->dragPreview(cx, ac.r->data, &ac.s->panels[panelIx]);

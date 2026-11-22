@@ -11,7 +11,7 @@ namespace gpui {
 
 // The index of key's slot in app->globals, or -1.
 static int AppGlobalIndex(const App* app, const void* key) {
-    for (int i = 0; i < app->globals.len; i++) {
+    for (int i = 0; i < len(app->globals); i++) {
         if (app->globals[i].key == key) {
             return i;
         }
@@ -61,12 +61,12 @@ bool AppGlobalRemoveRaw(App* app, const void* key) {
         return false;
     }
     AppGlobalFreeValue(app->globals[i]);
-    for (int j = i; j < app->globals.len - 1; j++) {
+    for (int j = i; j < len(app->globals) - 1; j++) {
         app->globals[j] = app->globals[j + 1];
     }
     app->globals.len--;
     if (app->globals.els) {
-        app->globals[app->globals.len] = {};
+        app->globals[len(app->globals)] = {};
     }
     return true;
 }
@@ -82,7 +82,7 @@ void AppGlobalClear(App* app) {
     // queued against it is disowned here rather than run against freed
     // memory.
     PostedDisown(app);
-    for (int i = app->globals.len - 1; i >= 0; i--) {
+    for (int i = len(app->globals) - 1; i >= 0; i--) {
         AppGlobalFreeValue(app->globals[i]);
     }
     VecReset(app->globals);
@@ -95,13 +95,13 @@ EntityId EntityNewRaw(App* app, void* ptr, RenderFn render, DropFn drop) {
         return id;
     }
     int32_t ix;
-    if (app->freeSlots.len > 0) {
-        ix = app->freeSlots[app->freeSlots.len - 1];
+    if (len(app->freeSlots) > 0) {
+        ix = app->freeSlots[len(app->freeSlots) - 1];
         app->freeSlots.len--;
     } else {
         EntitySlot fresh = {};
         VecAppend(app->entities, fresh);
-        ix = (int32_t)(app->entities.len - 1);
+        ix = (int32_t)(len(app->entities) - 1);
     }
     EntitySlot& s = app->entities[ix];
     s.ptr = ptr;
@@ -116,7 +116,7 @@ EntityId EntityNewRaw(App* app, void* ptr, RenderFn render, DropFn drop) {
 }
 
 void* EntityGet(App* app, EntityId id) {
-    if (!app || !id.IsValid() || id.index >= app->entities.len) {
+    if (!app || !id.IsValid() || id.index >= len(app->entities)) {
         return nullptr;
     }
     EntitySlot& s = app->entities[id.index];
@@ -127,7 +127,7 @@ void* EntityGet(App* app, EntityId id) {
 }
 
 bool EntityHasDrop(App* app, EntityId id, DropFn drop) {
-    if (!app || !drop || !id.IsValid() || id.index >= app->entities.len) {
+    if (!app || !drop || !id.IsValid() || id.index >= len(app->entities)) {
         return false;
     }
     EntitySlot& s = app->entities[id.index];
@@ -137,7 +137,7 @@ bool EntityHasDrop(App* app, EntityId id, DropFn drop) {
 static void DropListenersOf(App* app, EntityId id);
 
 void EntityDrop(App* app, EntityId id) {
-    if (!app || !id.IsValid() || id.index >= app->entities.len) {
+    if (!app || !id.IsValid() || id.index >= len(app->entities)) {
         return;
     }
     EntitySlot& s = app->entities[id.index];
@@ -188,7 +188,7 @@ void EntityDropAll(App* app) {
 }
 
 El* EntityRender(App* app, Window* win, Arena* a, EntityId id) {
-    if (!app || !id.IsValid() || id.index >= app->entities.len) {
+    if (!app || !id.IsValid() || id.index >= len(app->entities)) {
         return nullptr;
     }
     EntitySlot& s = app->entities[id.index];
@@ -236,7 +236,7 @@ void NotifyApp(App* app) {
     if (!app) {
         return;
     }
-    for (int i = 0; i < app->windows.len; i++) {
+    for (int i = 0; i < len(app->windows); i++) {
         InvalidateForNotify(app->windows[i]);
     }
 }
@@ -245,18 +245,18 @@ void NotifyApp(App* app) {
 // a handler may observe or unobserve, and the list moving under the walk
 // would otherwise skip or repeat one. The same shape as EntityEmit's.
 static void RunObservers(App* app, Window* win, EntityId observed) {
-    if (!app || app->observers.len <= 0) {
+    if (!app || len(app->observers) <= 0) {
         return;
     }
     Subscription ids[64];
     int nIds = 0;
-    for (int i = 0; i < app->observers.len && nIds < 64; i++) {
+    for (int i = 0; i < len(app->observers) && nIds < 64; i++) {
         if (app->observers[i].emitter == observed) {
             ids[nIds++].id = app->observers[i].id;
         }
     }
     for (int k = 0; k < nIds; k++) {
-        for (int i = 0; i < app->observers.len; i++) {
+        for (int i = 0; i < len(app->observers); i++) {
             if (app->observers[i].id != ids[k].id) {
                 continue;
             }
@@ -276,9 +276,9 @@ void NotifyEntity(App* app, EntityId id, Window* from) {
     // only when the entity that notified is one of the views it rendered.
     bool any = false;
     if (id.IsValid()) {
-        for (int i = 0; i < app->windows.len; i++) {
+        for (int i = 0; i < len(app->windows); i++) {
             Window* w = app->windows[i];
-            for (int j = 0; j < w->rendered.len; j++) {
+            for (int j = 0; j < len(w->rendered); j++) {
                 if (w->rendered[j] == id) {
                     InvalidateForNotify(w);
                     any = true;
@@ -572,9 +572,9 @@ static Vec<PostedTask*> gPosted;
 
 static void PostedForget(PostedTask* t) {
     gPostedLock.Lock();
-    for (int i = 0; i < gPosted.len; i++) {
+    for (int i = 0; i < len(gPosted); i++) {
         if (gPosted[i] == t) {
-            gPosted[i] = gPosted[gPosted.len - 1];
+            gPosted[i] = gPosted[len(gPosted) - 1];
             gPosted.len--;
             break;
         }
@@ -584,7 +584,7 @@ static void PostedForget(PostedTask* t) {
 
 static void PostedDisown(App* app) {
     gPostedLock.Lock();
-    for (int i = 0; i < gPosted.len; i++) {
+    for (int i = 0; i < len(gPosted); i++) {
         if (gPosted[i]->app == app) {
             gPosted[i]->app = nullptr;
         }
@@ -599,7 +599,7 @@ static bool WindowIsLive(App* app, Window* win) {
     if (!app || !win) {
         return false;
     }
-    for (int i = 0; i < app->windows.len; i++) {
+    for (int i = 0; i < len(app->windows); i++) {
         if (app->windows[i] == win) {
             // A closed window stays in the list but takes no more work, as a
             // Rust WindowHandle::update on a closed window fails.
@@ -663,7 +663,7 @@ void WindowCancelTimer(Window* win, int id) {
     if (!win || id <= 0) {
         return;
     }
-    for (int i = 0; i < win->timers.len; i++) {
+    for (int i = 0; i < len(win->timers); i++) {
         if (win->timers[i].id != id) {
             continue;
         }
@@ -674,7 +674,7 @@ void WindowCancelTimer(Window* win, int id) {
             win->timers[i].repeat = false;
             break;
         }
-        for (int j = i + 1; j < win->timers.len; j++) {
+        for (int j = i + 1; j < len(win->timers); j++) {
             win->timers[j - 1] = win->timers[j];
         }
         win->timers.len--;
@@ -690,7 +690,7 @@ void* WindowKeyedState(Window* win, uint32_t key, void* fresh, DropFn drop) {
         }
         return nullptr;
     }
-    for (int i = 0; i < win->keyed.len; i++) {
+    for (int i = 0; i < len(win->keyed); i++) {
         if (win->keyed[i].key == key) {
             drop(fresh);
             return win->keyed[i].ptr;
@@ -713,7 +713,7 @@ void* WindowFrameKeyedState(Window* win, uint32_t key, void* fresh,
     if (!p) {
         return nullptr;
     }
-    for (int i = win->keyed.len - 1; i >= 0; i--) {
+    for (int i = len(win->keyed) - 1; i >= 0; i--) {
         if (win->keyed[i].key == key) {
             win->keyed[i].frameScoped = true;
             win->keyed[i].frame = win->frameSeq;
@@ -823,7 +823,7 @@ void WindowKeyedSweep(Window* win) {
         return;
     }
     int keep = 0;
-    for (int i = 0; i < win->keyed.len; i++) {
+    for (int i = 0; i < len(win->keyed); i++) {
         KeyedSlot slot = win->keyed[i];
         if (!slot.frameScoped || slot.frame == win->frameSeq) {
             win->keyed[keep++] = slot;
@@ -850,7 +850,7 @@ EntityId WindowKeyedEntity(Window* win, App* app, uint32_t key, void* fresh,
         }
         return {};
     }
-    for (int i = 0; i < win->keyed.len; i++) {
+    for (int i = 0; i < len(win->keyed); i++) {
         if (win->keyed[i].key != key) {
             continue;
         }
@@ -876,7 +876,7 @@ void* WindowMotionState(Window* win, uint32_t key, int size) {
     if (!win || size <= 0) {
         return nullptr;
     }
-    for (int i = 0; i < win->motionSlots.len; i++) {
+    for (int i = 0; i < len(win->motionSlots); i++) {
         if (win->motionSlots[i].key == key) {
             win->motionSlots[i].frame = win->frameSeq;
             return win->motionSlots[i].ptr;
@@ -895,10 +895,10 @@ uint32_t* WindowPlotAppearScopeToken(Window* win, uint32_t key) {
 }
 
 uint32_t WindowPlotAppearScope(const Window* win) {
-    if (!win || win->plotAppearScopes.len == 0) {
+    if (!win || len(win->plotAppearScopes) == 0) {
         return 0;
     }
-    return win->plotAppearScopes[win->plotAppearScopes.len - 1];
+    return win->plotAppearScopes[len(win->plotAppearScopes) - 1];
 }
 
 void WindowMotionSweep(Window* win) {
@@ -906,7 +906,7 @@ void WindowMotionSweep(Window* win) {
         return;
     }
     int keep = 0;
-    for (int i = 0; i < win->motionSlots.len; i++) {
+    for (int i = 0; i < len(win->motionSlots); i++) {
         if (win->motionSlots[i].frame == win->frameSeq) {
             win->motionSlots[keep++] = win->motionSlots[i];
             continue;
@@ -920,7 +920,7 @@ void WindowMotionFree(Window* win) {
     if (!win) {
         return;
     }
-    for (int i = 0; i < win->motionSlots.len; i++) {
+    for (int i = 0; i < len(win->motionSlots); i++) {
         Free(nullptr, win->motionSlots[i].ptr);
     }
     VecReset(win->motionSlots);
@@ -930,7 +930,7 @@ void WindowKeyedFree(Window* win) {
     if (!win) {
         return;
     }
-    for (int i = 0; i < win->keyed.len; i++) {
+    for (int i = 0; i < len(win->keyed); i++) {
         if (win->keyed[i].ptr) {
             if (win->keyed[i].drop) {
                 win->keyed[i].drop(win->keyed[i].ptr);
@@ -949,14 +949,14 @@ void WindowKeyedFree(Window* win) {
 // Vec is POD storage with no removal of its own; a subscription list is
 // short and ordered, so the tail slides down.
 static void SubRemoveAt(App* app, int ix) {
-    for (int k = ix; k + 1 < app->subs.len; k++) {
+    for (int k = ix; k + 1 < len(app->subs); k++) {
         app->subs[k] = app->subs[k + 1];
     }
     app->subs.len--;
 }
 
 static void ObserverRemoveAt(App* app, int ix) {
-    for (int k = ix; k + 1 < app->observers.len; k++) {
+    for (int k = ix; k + 1 < len(app->observers); k++) {
         app->observers[k] = app->observers[k + 1];
     }
     app->observers.len--;
@@ -1001,7 +1001,7 @@ void EntityUnobserve(App* app, Subscription sub) {
     if (!app || !sub.IsValid()) {
         return;
     }
-    for (int i = 0; i < app->observers.len; i++) {
+    for (int i = 0; i < len(app->observers); i++) {
         if (app->observers[i].id == sub.id) {
             ObserverRemoveAt(app, i);
             return;
@@ -1015,7 +1015,7 @@ int EntityObserverCount(App* app, EntityId observed) {
         return 0;
     }
     int n = 0;
-    for (int i = app->observers.len - 1; i >= 0; i--) {
+    for (int i = len(app->observers) - 1; i >= 0; i--) {
         if (!EntityGet(app, app->observers[i].handler.view)) {
             ObserverRemoveAt(app, i);
             continue;
@@ -1047,7 +1047,7 @@ void EntityUnsubscribe(App* app, Subscription sub) {
     if (!app || !sub.IsValid()) {
         return;
     }
-    for (int i = 0; i < app->subs.len; i++) {
+    for (int i = 0; i < len(app->subs); i++) {
         if (app->subs[i].id == sub.id) {
             SubRemoveAt(app, i);
             return;
@@ -1058,7 +1058,7 @@ void EntityUnsubscribe(App* app, Subscription sub) {
 // A subscription is dead once either end of it is: Rust drops the whole list
 // with the emitter, and a Subscription with the subscriber.
 static void SweepSubs(App* app) {
-    for (int i = app->subs.len - 1; i >= 0; i--) {
+    for (int i = len(app->subs) - 1; i >= 0; i--) {
         const EntitySub& s = app->subs[i];
         if (!EntityGet(app, s.emitter) || !EntityGet(app, s.handler.view)) {
             SubRemoveAt(app, i);
@@ -1075,7 +1075,7 @@ void EntityEmitRaw(App* app, Window* win, EntityId emitter,
     // Oldest first, and over a copy of the handles: a handler is allowed to
     // subscribe or unsubscribe, and the list moving under the walk would
     // otherwise skip or repeat one.
-    int n = app->subs.len;
+    int n = len(app->subs);
     if (n <= 0) {
         return;
     }
@@ -1088,7 +1088,7 @@ void EntityEmitRaw(App* app, Window* win, EntityId emitter,
         }
     }
     for (int k = 0; k < nIds; k++) {
-        for (int i = 0; i < app->subs.len; i++) {
+        for (int i = 0; i < len(app->subs); i++) {
             if (app->subs[i].id != ids[k].id) {
                 continue;
             }
@@ -1105,7 +1105,7 @@ int EntitySubscriberCount(App* app, EntityId emitter) {
     }
     SweepSubs(app);
     int n = 0;
-    for (int i = 0; i < app->subs.len; i++) {
+    for (int i = 0; i < len(app->subs); i++) {
         if (app->subs[i].emitter == emitter) {
             n++;
         }

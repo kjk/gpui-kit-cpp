@@ -100,7 +100,7 @@ static Str TrimEol(Str value, bool atStart, bool atEnd) {
 // ─── the tree stack ──────────────────────────────────────────────────────
 
 static TreeFrame& TreeTail(CompileContext* c) {
-    return c->trees[c->trees.len - 1];
+    return c->trees[len(c->trees) - 1];
 }
 
 // `delve_mut(tree, stack)` in markdown-rs, which walks the whole depth. The
@@ -134,12 +134,14 @@ static void Grow(CompileContext* c, Node* n, NodeStrKind k, Str more) {
 
 static Node* TailMut(CompileContext* c) {
     TreeFrame& frame = TreeTail(c);
-    return frame.stack.len > 0 ? frame.stack[frame.stack.len - 1] : frame.tree;
+    return len(frame.stack) > 0 ? frame.stack[len(frame.stack) - 1]
+                                : frame.tree;
 }
 
 static Node* TailPenultimateMut(CompileContext* c) {
     TreeFrame& frame = TreeTail(c);
-    return frame.stack.len > 1 ? frame.stack[frame.stack.len - 2] : frame.tree;
+    return len(frame.stack) > 1 ? frame.stack[len(frame.stack) - 2]
+                                : frame.tree;
 }
 
 static void Buffer(CompileContext* c) {
@@ -156,7 +158,7 @@ static Node* Resume(CompileContext* c) {
 // The table entry of a node already recorded — a recent one, so from the end.
 static int32_t SpanIndexOf(CompileContext* c, const Node* n) {
     NodePositions* p = c->positions;
-    for (int32_t i = p->spans.len - 1; i >= 0; i--) {
+    for (int32_t i = len(p->spans) - 1; i >= 0; i--) {
         if (p->spans[i].node == n) {
             return i;
         }
@@ -178,7 +180,7 @@ static void TailPush(CompileContext* c, Node* child) {
         span.node = child;
         span.start = at;
         span.end = at;
-        frame.spanStack.Append(c->a, c->positions->spans.len);
+        frame.spanStack.Append(c->a, len(c->positions->spans));
         VecAppend(c->positions->spans, span);
     }
 }
@@ -205,9 +207,9 @@ static void TailPop(CompileContext* c) {
     }
     frame.stack.Pop();
     frame.eventStack.Pop();
-    if (c->positions && frame.spanStack.len > 0) {
+    if (c->positions && len(frame.spanStack) > 0) {
         // `pos.end = ev.point.to_unist()`.
-        int32_t ix = frame.spanStack[frame.spanStack.len - 1];
+        int32_t ix = frame.spanStack[len(frame.spanStack) - 1];
         frame.spanStack.Pop();
         if (ix >= 0) {
             c->positions->spans[ix].end = (*c->events)[c->index].point.index;
@@ -399,13 +401,13 @@ static void Enter(CompileContext* c) {
             TailPush(c, NodeNew(c->a, NodeKind::Paragraph));
             break;
         case Name::Reference:
-            c->mediaReferenceStack[c->mediaReferenceStack.len - 1]
+            c->mediaReferenceStack[len(c->mediaReferenceStack) - 1]
                 .kind = ReferenceKind::Collapsed;
-            c->mediaReferenceStack[c->mediaReferenceStack.len - 1]
+            c->mediaReferenceStack[len(c->mediaReferenceStack) - 1]
                 .kindSome = true;
             break;
         case Name::Resource:
-            c->mediaReferenceStack[c->mediaReferenceStack.len - 1]
+            c->mediaReferenceStack[len(c->mediaReferenceStack) - 1]
                 .kindSome = false;
             break;
         case Name::Strong:
@@ -577,7 +579,7 @@ static void OnExitLabelText(CompileContext* c) {
     Str identifier = IdentifierFrom(c->a, ExitSlice(c).bytes);
 
     Reference& reference =
-        c->mediaReferenceStack[c->mediaReferenceStack.len - 1];
+        c->mediaReferenceStack[len(c->mediaReferenceStack) - 1];
     reference.label = label;
     reference.identifier = identifier;
 
@@ -715,7 +717,7 @@ static void OnExitReferenceString(CompileContext* c) {
     Str label = NodeToString(c->a, Resume(c));
     Str identifier = IdentifierFrom(c->a, ExitSlice(c).bytes);
     Reference& reference =
-        c->mediaReferenceStack[c->mediaReferenceStack.len - 1];
+        c->mediaReferenceStack[len(c->mediaReferenceStack) - 1];
     reference.kind = ReferenceKind::Full;
     reference.kindSome = true;
     reference.label = label;

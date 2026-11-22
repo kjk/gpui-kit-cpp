@@ -238,7 +238,7 @@ struct InputContextMenuState {
         }
         gpui::NativeMenu rows;
         InputDefaultNativeMenu(s, &rows);
-        if (id < 1 || id > rows.items.len) {
+        if (id < 1 || id > len(rows.items)) {
             return;
         }
         InputPerformNativeMenuItem(s, cx->app, cx->win,
@@ -281,7 +281,7 @@ struct InputContextMenu {
             // the menu InputDefaultNativeMenu builds, rebuilt on selection.
             gpui::NativeMenu rows;
             InputDefaultNativeMenu(s, &rows);
-            for (int i = 0; i < rows.items.len; i++) {
+            for (int i = 0; i < len(rows.items); i++) {
                 const gpui::NativeMenuItem& row = rows.items[i];
                 if (row.kind == gpui::NativeMenuItemKind::Separator) {
                     menu->Separator();
@@ -523,7 +523,7 @@ static void InputTouchSelectionLayer(Ctx* cx, El* e, Str id,
     Str text = InputValue(state);
     Selection sel = state->selectedRange;
     bool allSelected =
-        sel.start == 0 && sel.end == len(text) && state->extraCursors.len == 0;
+        sel.start == 0 && sel.end == len(text) && len(state->extraCursors) == 0;
     bool selectable = len(text) > 0 && !allSelected;
     TouchSelectionOverlay* overlay =
         TouchSelectionOverlay::New(cx, StrL("input-touch-selection"))
@@ -2489,7 +2489,7 @@ El* InputGroupButton::RenderInGroup(bool disabled) {
         button->Disabled(true);
     }
     bool selected = button->selected;
-    bool iconOnly = !button->label.s && button->children.len == 0 &&
+    bool iconOnly = !button->label.s && len(button->children) == 0 &&
                     (button->icon != IconName::None || button->buttonIcon);
     bool ghost = button->variant == ButtonVariant::Ghost && !button->outline;
     bool compact = size == UiSize::XSmall || size == UiSize::Small;

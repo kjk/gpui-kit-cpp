@@ -216,7 +216,7 @@ static void NumberSettingsDelegateStepAndRangeToTheInputEngine() {
                    ->NumberField(StrL("400"), options)
                    ->IntoEl();
     SettingsState* settings = state.Get(&app);
-    InputState* input = settings && settings->fields.len == 1
+    InputState* input = settings && len(settings->fields) == 1
                             ? settings->fields[0].input
                             : nullptr;
     El* increment = FindSettingElement(root, "increment");
@@ -699,7 +699,7 @@ static void ResetAllOnSearchResultsLeavesHiddenSettingsUnchanged() {
         ->Keywords(StrL("hidden"))
         ->SwitchField(&hidden, false, true)
         ->IntoEl();
-    utassert(settings->fields.len == 1);
+    utassert(len(settings->fields) == 1);
     SettingsState::OnResetPage(settings, &cx, nullptr, 0);
     utassert(!visible);
     utassert(hidden);
@@ -742,7 +742,7 @@ static void ElementItemsAndFieldsWithoutADefault() {
         ->SwitchField(&withDefault, false, true)
         ->IntoEl();
     SettingsState* settings = state.Get(&app);
-    utassert(settings && settings->fields.len == 2);
+    utassert(settings && len(settings->fields) == 2);
     SettingsState::OnResetPage(settings, &cx, nullptr, 0);
     utassert(noDefault);
     utassert(!withDefault);
@@ -889,10 +889,10 @@ static void ANarrowPageStacksOnTheFrameItIsLaidOut() {
     utassert(row && row->style.dir == FlexDir::Row);
     // A page built again binds its fields again, in the same places.
     SettingsState* st = state.Get(&app);
-    int fields = st ? st->fields.len : -1;
+    int fields = st ? len(st->fields) : -1;
     row = frame(600);
     utassert(row && row->style.dir == FlexDir::Col);
-    utassert(st && st->fields.len == fields);
+    utassert(st && len(st->fields) == fields);
 
     WindowKeyedFree(win);
     EntityDropAll(&app);
@@ -995,7 +995,7 @@ struct BoolSettingsView {
 
 static const AccessibilityNode* NamedRole(Window* win, AccessibilityRole role,
                                           Str name) {
-    for (int i = 0; i < win->accessibility.len; i++) {
+    for (int i = 0; i < len(win->accessibility); i++) {
         const AccessibilityNode* node = &win->accessibility[i];
         if (node->info.role == role && StrEq(node->info.label, name)) {
             return node;

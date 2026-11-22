@@ -94,9 +94,9 @@ static void ALongStoryMenuFitsWithoutTruncation() {
         row.clickable = true;
         PopupMenuAddRow(&s, row);
     }
-    utassert(s.rows.len == 100);
+    utassert(len(s.rows) == 100);
     PopupMenuBeginRows(&s);
-    utassert(s.rows.len == 0);
+    utassert(len(s.rows) == 0);
 }
 
 // The whole path, as the element lays it out: a focusable root inside the
@@ -518,7 +518,7 @@ struct LongPressMenus {
 };
 
 static Bounds HitBounds(Window* win, int id) {
-    for (int i = 0; i < win->paint.hits.len; i++) {
+    for (int i = 0; i < len(win->paint.hits); i++) {
         if (win->paint.hits[i].id == id) {
             return win->paint.hits[i].bounds;
         }
@@ -569,7 +569,7 @@ static void LongPressOnAnInputInAContextMenuTriggerSelects() {
 }
 
 static const TextHit* FindPaintedText(Window* win, const char* want) {
-    for (int i = 0; i < win->paint.texts.len; i++) {
+    for (int i = 0; i < len(win->paint.texts); i++) {
         if (base::StrEq(win->paint.texts[i].text, Str(want))) {
             return &win->paint.texts[i];
         }
@@ -669,7 +669,7 @@ static void NestedContextMenuUsesTheInnermostRightClick() {
     // button is the short one inside it. The title is the card's top band.
     Bounds card = {};
     Bounds share = {};
-    for (int i = 0; i < win->paint.hits.len; i++) {
+    for (int i = 0; i < len(win->paint.hits); i++) {
         Bounds b = win->paint.hits[i].bounds;
         if (b.h > card.h) {
             share = card;
@@ -944,7 +944,7 @@ static void KeyboardConfirmDispatchesAMenuAction(bool withContext) {
 
     PopupMenuState* menu = self->menu.Get(app);
     utassert(menu && menu->open);
-    utassert(menu->rows.len == 4);
+    utassert(len(menu->rows) == 4);
     utassert(menu->rows[0].action == MenuRowAction());
     utassert(menu->rows[0].actionArg == 7);
     utassert(!menu->rows[0].handler.IsValid());
@@ -989,7 +989,7 @@ static void KeyboardConfirmDispatchesAMenuAction(bool withContext) {
     utassert(self->clicks == 1);
     PopupMenuState* sub = self->sub.Get(app);
     utassert(sub && sub->open);
-    if (withContext && sub && sub->rows.len > 0) {
+    if (withContext && sub && len(sub->rows) > 0) {
         utassert(sub->rows[0].actionFocus == self->field);
         utassert(sub->rows[0].actionArg == 9);
     }
@@ -1074,7 +1074,7 @@ struct TriggerActionMenu {
 // The trigger is the 160×32 box. Its label is not painted, so the hit is
 // what names it.
 static Point TriggerHit(Window* win) {
-    for (int i = 0; i < win->paint.hits.len; i++) {
+    for (int i = 0; i < len(win->paint.hits); i++) {
         Bounds b = win->paint.hits[i].bounds;
         if (b.w > 150 && b.w < 170 && b.h > 28 && b.h < 36) {
             return {b.x + b.w * 0.5f, b.y + b.h * 0.5f};
@@ -1095,7 +1095,7 @@ static void ConfirmOnTheTriggerRunsItsListenerOnce() {
     PopupMenuState* menu = self->menu.Get(app);
     utassert(menu && menu->open);
     utassert(menu->previousFocus == self->trigger);
-    utassert(menu->rows.len == 1);
+    utassert(len(menu->rows) == 1);
     utassert(menu->rows[0].action == TriggerMenuAction());
     utassert(menu->rows[0].actionArg == 42);
     utassert(!menu->rows[0].handler.IsValid());
@@ -1124,7 +1124,7 @@ static void ConfirmInASubmenuUsesTheRootPreviousFocus() {
     PopupMenuState* menu = self->menu.Get(app);
     utassert(menu && menu->open);
     utassert(menu->previousFocus == self->trigger);
-    utassert(menu->rows.len == 1);
+    utassert(len(menu->rows) == 1);
     utassert(menu->rows[0].submenu);
     utassert(menu->rows[0].action == 0);
 
@@ -1136,7 +1136,7 @@ static void ConfirmInASubmenuUsesTheRootPreviousFocus() {
     utassert(menu->openSubmenu == 0);
     PopupMenuState* sub = self->sub.Get(app);
     utassert(sub && sub->open);
-    utassert(sub->rows.len == 1);
+    utassert(len(sub->rows) == 1);
     utassert(sub->rows[0].action == TriggerMenuAction());
     utassert(sub->rows[0].actionArg == 9);
     utassert(sub->rows[0].actionFocus == menu->previousFocus);
@@ -1284,7 +1284,7 @@ static void ActivatingASubmenuEntersItWithoutDismissingItsParent() {
     SubmenuActivationMenu* self = view.Get(app);
     PopupMenuState* menu = self->menu.Get(app);
     PopupMenuState* more = self->more.Get(app);
-    utassert(menu && menu->open && menu->rows.len == 5);
+    utassert(menu && menu->open && len(menu->rows) == 5);
     utassert(menu->rows[2].submenu && menu->rows[2].submenuSelect == 0);
     utassert(menu->rows[4].submenu && menu->rows[4].submenuSelect == 1);
 
@@ -1568,7 +1568,7 @@ static void AScrollableMenuOpensOnItsCheckedItem() {
     TestDraw(win);
     TestDraw(win);
     PopupMenuState* plain = root.Get(app)->menu.Get(app);
-    utassert(plain && plain->itemBounds.len >= 1);
+    utassert(plain && len(plain->itemBounds) >= 1);
     float firstTop = 0;
     if (plain) {
         utassert(MenuItemVisible(plain, 0));
@@ -1587,7 +1587,7 @@ static void AScrollableMenuOpensOnItsCheckedItem() {
     // the next one.
     TestDraw(win);
     PopupMenuState* checked = root.Get(app)->menu.Get(app);
-    utassert(checked && checked->itemBounds.len > 30);
+    utassert(checked && len(checked->itemBounds) > 30);
     if (checked) {
         utassert(MenuItemVisible(checked, 30));
         utassert(!MenuItemVisible(checked, 0));

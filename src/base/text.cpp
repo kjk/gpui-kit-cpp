@@ -178,7 +178,7 @@ MarkdownExtensions& MarkdownExtensions::BlockRenderer(Arena* a, Str name,
                                                       void* data) {
     if (fn) {
         // HashMap::insert replaces a renderer registered for the same name.
-        for (int i = 0; i < blockRenderers.len; i++) {
+        for (int i = 0; i < len(blockRenderers); i++) {
             if (base::StrEq(blockRenderers[i].name, name)) {
                 blockRenderers[i] = {name, fn, data};
                 revision = NextMarkdownExtensionsRevision();
@@ -212,28 +212,28 @@ bool MarkdownExtensions::HasSameParserConfiguration(
         enableMdx != other.enableMdx ||
         enableFrontmatter != other.enableFrontmatter ||
         disableRawHtml != other.disableRawHtml ||
-        blockParsers.len != other.blockParsers.len ||
-        blockRenderers.len != other.blockRenderers.len ||
-        inlineParsers.len != other.inlineParsers.len ||
-        inlineRenderers.len != other.inlineRenderers.len ||
-        blockSurfaces.len != other.blockSurfaces.len) {
+        len(blockParsers) != len(other.blockParsers) ||
+        len(blockRenderers) != len(other.blockRenderers) ||
+        len(inlineParsers) != len(other.inlineParsers) ||
+        len(inlineRenderers) != len(other.inlineRenderers) ||
+        len(blockSurfaces) != len(other.blockSurfaces)) {
         return false;
     }
     // Rust compares the renderer map's keys; the order they were registered
     // in is not part of the parser's shape.
-    for (int i = 0; i < blockRenderers.len; i++) {
+    for (int i = 0; i < len(blockRenderers); i++) {
         if (!other.Renderer(blockRenderers[i].name)) {
             return false;
         }
     }
-    for (int i = 0; i < inlineRenderers.len; i++) {
+    for (int i = 0; i < len(inlineRenderers); i++) {
         if (!other.InlineRenderer(inlineRenderers[i].name)) {
             return false;
         }
     }
     // has_same_parser_configuration also requires the surface-name sets to
     // match. The callbacks are not part of the parse.
-    for (int i = 0; i < blockSurfaces.len; i++) {
+    for (int i = 0; i < len(blockSurfaces); i++) {
         if (!other.BlockSurfaceOf(blockSurfaces[i].name)) {
             return false;
         }
@@ -246,23 +246,23 @@ uint64_t MarkdownExtensions::ParserFingerprint() const {
     h = h * 1099511628211ull + (enableFrontmatter ? 1ull : 0ull);
     h = h * 1099511628211ull + (disableRawHtml ? 1ull : 0ull);
     h = h * 1099511628211ull + parserRevision;
-    h = h * 1099511628211ull + (uint64_t)blockParsers.len;
-    h = h * 1099511628211ull + (uint64_t)blockRenderers.len;
-    h = h * 1099511628211ull + (uint64_t)inlineParsers.len;
-    h = h * 1099511628211ull + (uint64_t)inlineRenderers.len;
-    h = h * 1099511628211ull + (uint64_t)blockSurfaces.len;
+    h = h * 1099511628211ull + (uint64_t)len(blockParsers);
+    h = h * 1099511628211ull + (uint64_t)len(blockRenderers);
+    h = h * 1099511628211ull + (uint64_t)len(inlineParsers);
+    h = h * 1099511628211ull + (uint64_t)len(inlineRenderers);
+    h = h * 1099511628211ull + (uint64_t)len(blockSurfaces);
     // Name by name, and order-independent, so a renderer table rebuilt in a
     // different order is still the same parser configuration.
     uint64_t names = 0;
-    for (int i = 0; i < blockRenderers.len; i++) {
+    for (int i = 0; i < len(blockRenderers); i++) {
         Str name = blockRenderers[i].name;
         names += Fnv1a64(kFnv1aBasis64, name.s, (size_t)len(name));
     }
-    for (int i = 0; i < inlineRenderers.len; i++) {
+    for (int i = 0; i < len(inlineRenderers); i++) {
         Str name = inlineRenderers[i].name;
         names += Fnv1a64(kFnv1aBasis64, name.s, (size_t)len(name));
     }
-    for (int i = 0; i < blockSurfaces.len; i++) {
+    for (int i = 0; i < len(blockSurfaces); i++) {
         Str name = blockSurfaces[i].name;
         names += Fnv1a64(kFnv1aBasis64, name.s, (size_t)len(name));
     }
@@ -318,7 +318,7 @@ MarkdownExtensions& MarkdownExtensions::BlockSurface(Arena* a, Str name,
                                                      void* data) {
     if (fn && len(name) > 0) {
         Str key = AsciiLowerDup(a, name);
-        for (int i = 0; i < blockSurfaces.len; i++) {
+        for (int i = 0; i < len(blockSurfaces); i++) {
             if (base::StrEq(blockSurfaces[i].name, key)) {
                 blockSurfaces[i] = {key, fn, data};
                 revision = NextMarkdownExtensionsRevision();
@@ -332,7 +332,7 @@ MarkdownExtensions& MarkdownExtensions::BlockSurface(Arena* a, Str name,
 }
 
 Str MarkdownExtensions::BlockSurfaceName(Str written) const {
-    for (int i = 0; i < blockSurfaces.len; i++) {
+    for (int i = 0; i < len(blockSurfaces); i++) {
         if (AsciiEqFold(blockSurfaces[i].name, written)) {
             return blockSurfaces[i].name;
         }
@@ -341,7 +341,7 @@ Str MarkdownExtensions::BlockSurfaceName(Str written) const {
 }
 
 const MarkdownBlockSurface* MarkdownExtensions::BlockSurfaceOf(Str name) const {
-    for (int i = 0; i < blockSurfaces.len; i++) {
+    for (int i = 0; i < len(blockSurfaces); i++) {
         if (base::StrEq(blockSurfaces[i].name, name)) {
             return &blockSurfaces[i];
         }
@@ -358,7 +358,7 @@ El* MarkdownExtensions::RenderBlockSurface(Str name, Ctx* cx) const {
 }
 
 const MarkdownBlockRenderer* MarkdownExtensions::Renderer(Str name) const {
-    for (int i = 0; i < blockRenderers.len; i++) {
+    for (int i = 0; i < len(blockRenderers); i++) {
         if (base::StrEq(blockRenderers[i].name, name)) {
             return &blockRenderers[i];
         }
@@ -368,7 +368,7 @@ const MarkdownBlockRenderer* MarkdownExtensions::Renderer(Str name) const {
 
 const MarkdownInlineRenderer* MarkdownExtensions::InlineRenderer(
     Str name) const {
-    for (int i = 0; i < inlineRenderers.len; i++) {
+    for (int i = 0; i < len(inlineRenderers); i++) {
         if (base::StrEq(inlineRenderers[i].name, name)) {
             return &inlineRenderers[i];
         }
@@ -1087,7 +1087,7 @@ SourceRangeSelection TextHitsSourceRange(const PaintCtx* ctx, int selA,
     }
     int a = selA < selB ? selA : selB;
     int b = selA < selB ? selB : selA;
-    for (int i = 0; i < ctx->texts.len; i++) {
+    for (int i = 0; i < len(ctx->texts); i++) {
         const TextHit& hit = ctx->texts[i];
         // A run with no map is not Markdown content — a list marker, or a
         // plugin block that named no source span — and has no part in the
@@ -1353,8 +1353,8 @@ static bool StartsWithBytes(Str s, const char* prefix, int n) {
 // linear and adjacent, so that a merged run still maps byte for byte. Any
 // other segment is kept whole on its own.
 static void PushSegment(Vec<SourceSegment>& out, SourceSegment s) {
-    if (out.len > 0) {
-        SourceSegment& prev = out[out.len - 1];
+    if (len(out) > 0) {
+        SourceSegment& prev = out[len(out) - 1];
         if (prev.linear && s.linear && prev.renderedEnd == s.renderedStart &&
             prev.sourceEnd == s.sourceStart) {
             prev.renderedEnd = s.renderedEnd;
@@ -1460,7 +1460,7 @@ int SourceCharOffset(Str raw, int rawCursor, const char* ch, int cl,
     uint32_t key = SourceCharKey(ch, cl);
     if (positions->built) {
         int lo = 0;
-        int hi = positions->pos.len;
+        int hi = len(positions->pos);
         while (lo < hi) {
             int mid = lo + (hi - lo) / 2;
             const SourceCharPos& p = positions->pos[mid];
@@ -1470,7 +1470,7 @@ int SourceCharOffset(Str raw, int rawCursor, const char* ch, int cl,
                 hi = mid;
             }
         }
-        if (lo < positions->pos.len && positions->pos[lo].key == key) {
+        if (lo < len(positions->pos) && positions->pos[lo].key == key) {
             return positions->pos[lo].offset;
         }
         return -1;
@@ -1489,8 +1489,8 @@ int SourceCharOffset(Str raw, int rawCursor, const char* ch, int cl,
         VecAppend(positions->pos, p);
         i += n;
     }
-    if (positions->pos.len > 1) {
-        qsort(positions->pos.els, (size_t)positions->pos.len,
+    if (len(positions->pos) > 1) {
+        qsort(positions->pos.els, (size_t)len(positions->pos),
               sizeof(SourceCharPos), CompareSourceCharPos);
     }
     positions->built = true;
@@ -1636,7 +1636,7 @@ static void MdSourceSegments(MdBuild* b, const md::Node* n, Str rendered,
     // backslash and the character map as a whole; the rest of the run stays
     // linear.
     if (includePrecedingEscape && span.start >= 1 &&
-        b->source.s[span.start - 1] == '\\' && out.len > 0) {
+        b->source.s[span.start - 1] == '\\' && len(out) > 0) {
         int at = out[0].renderedStart;
         int firstCharLen = 0;
         if (at < len(rendered)) {
@@ -1782,7 +1782,7 @@ static void AddText(MdBuild* b, Str s,
     if (len(s) <= 0) {
         return;
     }
-    int added = segments ? segments->len : 0;
+    int added = segments ? len(*segments) : 0;
     MdNode* n = b->cur;
     MdRun* r = n->runLast;
     // A different wash is a different run, or two adjacent <mark>s would
@@ -2241,8 +2241,8 @@ static void MdInlineChildren(MdBuild* b, const md::Node* n) {
         item.shift = b->posShift;
         VecAppend(items, item);
     }
-    MdInlineItems(b, items.els, items.len);
-    for (int i = 0; i < reparsed.len; i++) {
+    MdInlineItems(b, items.els, len(items));
+    for (int i = 0; i < len(reparsed); i++) {
         delete reparsed[i];
     }
     VecReset(reparsed);
@@ -2279,7 +2279,7 @@ static bool MdClaimedInline(MdBuild* b, const md::Node* n, MarkdownNode* out) {
     context.arena = b->a;
     context.source = b->parsed;
     context.positions = b->positions;
-    for (int i = 0; i < b->extensions->inlineParsers.len; i++) {
+    for (int i = 0; i < len(b->extensions->inlineParsers); i++) {
         const MarkdownBlockParser& parser = b->extensions->inlineParsers[i];
         if (parser.fn && parser.fn(n, &context, parser.data, out)) {
             return true;
@@ -2660,7 +2660,7 @@ static void MdSetSpanStart(MdBuild* b, const md::Node* n, int32_t start) {
     // line is not text, so the remainder's span has to start after it or
     // MdSourceSegments maps the marker.
     md::NodePositions* positions = const_cast<md::NodePositions*>(b->positions);
-    for (int i = 0; i < positions->spans.len; i++) {
+    for (int i = 0; i < len(positions->spans); i++) {
         if (positions->spans[i].node == n) {
             positions->spans[i].start = start;
             return;
@@ -2790,7 +2790,7 @@ static void MdBlockNode(MdBuild* b, const md::Node* n) {
         context.arena = b->a;
         context.source = b->parsed;
         context.positions = b->positions;
-        for (int i = 0; i < b->extensions->blockParsers.len; i++) {
+        for (int i = 0; i < len(b->extensions->blockParsers); i++) {
             const MarkdownBlockParser& parser = b->extensions->blockParsers[i];
             MarkdownNode custom;
             if (!parser.fn || !parser.fn(n, &context, parser.data, &custom)) {
@@ -3670,7 +3670,7 @@ const SelBlock* TextView::SrcOpen(Str marker, Str post, bool join) {
     // neither.
     Str head = {};
     if (!join) {
-        head = srcMarker.len > 0 ? srcMarker : srcLinePre;
+        head = len(srcMarker) > 0 ? srcMarker : srcLinePre;
         srcMarker = Str{};
     }
     b->pre = SrcCat(a, head, marker);
@@ -3727,7 +3727,7 @@ El* TextView::SrcMark(El* t, uint8_t marks, Str href) {
     // `**one two three**` rather than as three wrapped words, which is what
     // reconstruct_markdown gets from walking mark ranges instead of words.
     bool same = srcRunLast && srcRunLast->block == srcBlock &&
-                srcRunMarks == marks && srcRunHref.len == len(href) &&
+                srcRunMarks == marks && len(srcRunHref) == len(href) &&
                 (len(href) == 0 || srcRunHref.s == href.s);
     if (!same) {
         SelSource* s = ArenaNew<SelSource>(a);
@@ -5166,7 +5166,7 @@ El* TextView::CodeBlock(MdNode* n) {
         segments = n->runFirst->segments;
         segmentCount = n->runFirst->segmentCount;
     }
-    if (spans.len > 0) {
+    if (len(spans) > 0) {
         box->Child(CodeLines(Str(buf, at), spans, segments, segmentCount, n));
     } else {
         El* t = TextEl(a, Str(buf, at))
@@ -5981,10 +5981,10 @@ El* TextView::Item(MdNode* n, Str marker, int depth) {
     // of that indent, which is Rust indenting by `marker.len()` alone.
     Str savedPre = srcLinePre;
     Str md = srcItemMarker;
-    Str pad = srcItemPad.len > 0 ? srcItemPad : md;
+    Str pad = len(srcItemPad) > 0 ? srcItemPad : md;
     srcItemMarker = Str{};
     srcItemPad = Str{};
-    srcMarker = SrcCat(a, srcMarker.len > 0 ? srcMarker : srcLinePre, md);
+    srcMarker = SrcCat(a, len(srcMarker) > 0 ? srcMarker : srcLinePre, md);
     srcLinePre = SrcCat(a, srcLinePre, SrcIndent(a, pad));
     // An item's blocks are below; runs sit on the item itself only when
     // something built the tree by hand, since mdast gives even a tight list
@@ -7183,8 +7183,8 @@ void TextViewState::StartParse(App* app, Window* window,
         parserFingerprint = extensions->ParserFingerprint();
         parserFrontmatter = extensions->enableFrontmatter;
         parserMdx = extensions->enableMdx;
-        parserPlugins = extensions->blockParsers.len > 0 ||
-                        extensions->inlineParsers.len > 0;
+        parserPlugins = len(extensions->blockParsers) > 0 ||
+                        len(extensions->inlineParsers) > 0;
     }
     uint64_t fingerprint = plain ? 0 : parserFingerprint;
     if (parseFlight) {
@@ -7775,7 +7775,7 @@ El* TextView::Blocks(El* into, MdNode* n, int depth, bool inList) {
 // The text a plugin's parser is given: an HTML block's raw source, and every
 // other block's runs laid end to end.
 Str TextView::BlockText(MdNode* n) {
-    if (n->kind == MdKind::Html && n->raw.len > 0) {
+    if (n->kind == MdKind::Html && len(n->raw) > 0) {
         return n->raw;
     }
     int total = 0;
@@ -7833,11 +7833,11 @@ El* TextView::MarkBlockPlugin(El* el, Str plain, Str markdown, bool hasSpan,
 }
 
 El* TextView::PluginBlock(MdNode* n) {
-    if (plugins.len <= 0) {
+    if (len(plugins) <= 0) {
         return nullptr;
     }
     Str text = BlockText(n);
-    for (int i = 0; i < plugins.len; i++) {
+    for (int i = 0; i < len(plugins); i++) {
         MdPluginNode node;
         node.name = plugins[i].name;
         if (!plugins[i].parse(cx, n, text, plugins[i].data, &node)) {
@@ -8817,21 +8817,21 @@ TextView* TextView::MarkdownExtensionsSet(
     markdownExtensions.enableMdx = extensions.enableMdx;
     markdownExtensions.disableRawHtml = extensions.disableRawHtml;
     markdownExtensions.revision = extensions.revision;
-    for (int i = 0; i < extensions.blockParsers.len; i++) {
+    for (int i = 0; i < len(extensions.blockParsers); i++) {
         markdownExtensions.blockParsers.Append(a, extensions.blockParsers[i]);
     }
-    for (int i = 0; i < extensions.blockRenderers.len; i++) {
+    for (int i = 0; i < len(extensions.blockRenderers); i++) {
         markdownExtensions.blockRenderers
             .Append(a, extensions.blockRenderers[i]);
     }
-    for (int i = 0; i < extensions.inlineParsers.len; i++) {
+    for (int i = 0; i < len(extensions.inlineParsers); i++) {
         markdownExtensions.inlineParsers.Append(a, extensions.inlineParsers[i]);
     }
-    for (int i = 0; i < extensions.inlineRenderers.len; i++) {
+    for (int i = 0; i < len(extensions.inlineRenderers); i++) {
         markdownExtensions.inlineRenderers
             .Append(a, extensions.inlineRenderers[i]);
     }
-    for (int i = 0; i < extensions.blockSurfaces.len; i++) {
+    for (int i = 0; i < len(extensions.blockSurfaces); i++) {
         markdownExtensions.blockSurfaces.Append(a, extensions.blockSurfaces[i]);
     }
     return this;

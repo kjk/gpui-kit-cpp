@@ -65,7 +65,7 @@ El* Breadcrumb::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
     El* row = Div(a)->FlexRowDir(cx->app)->ItemsCenter()->Gap(
         Rems(cx, 0.375f)); // gap_1p5
-    for (int i = 0; i < items.len; i++) {
+    for (int i = 0; i < len(items); i++) {
         if (i) {
             row->Child(
                 IconEl(a, DirectionalChevron(cx->app, true), Rems(cx, 0.875f))
@@ -73,7 +73,7 @@ El* Breadcrumb::IntoEl() {
         }
         BreadcrumbItem* it = items[i];
         it->ix = i;
-        it->isLast = i == items.len - 1;
+        it->isLast = i == len(items) - 1;
         row->Child(it->IntoEl());
     }
     return row;

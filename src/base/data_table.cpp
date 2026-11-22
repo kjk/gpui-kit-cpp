@@ -89,22 +89,22 @@ static void TableEmit(TableState* s, Ctx* cx, TableEventKind kind, int row,
 }
 
 void TableEnsureCols(TableState* s, int n) {
-    while (s->colWidth.len < n) {
+    while (len(s->colWidth) < n) {
         VecAppend(s->colWidth, 0.f);
     }
-    while (s->colMinWidths.len < n) {
+    while (len(s->colMinWidths) < n) {
         VecAppend(s->colMinWidths, s->colMinWidth);
     }
-    while (s->colMaxWidths.len < n) {
+    while (len(s->colMaxWidths) < n) {
         VecAppend(s->colMaxWidths, s->colMaxWidth);
     }
-    while (s->colOrder.len < n) {
-        VecAppend(s->colOrder, s->colOrder.len);
+    while (len(s->colOrder) < n) {
+        VecAppend(s->colOrder, len(s->colOrder));
     }
-    while (s->colBounds.len < n) {
+    while (len(s->colBounds) < n) {
         VecAppend(s->colBounds, Bounds{});
     }
-    while (s->colFit.len < n) {
+    while (len(s->colFit) < n) {
         TableColEdge edge = {};
         edge.resizable = 1;
         VecAppend(s->colFit, edge);
@@ -112,7 +112,7 @@ void TableEnsureCols(TableState* s, int n) {
 }
 
 float TableColWidth(const TableState* s, int col, float declared) {
-    if (col < 0 || col >= s->colWidth.len || s->colWidth[col] <= 0) {
+    if (col < 0 || col >= len(s->colWidth) || s->colWidth[col] <= 0) {
         return declared;
     }
     return s->colWidth[col];
@@ -141,10 +141,10 @@ float TableClampColWidth(const TableState* s, float width) {
 float TableClampColWidth(const TableState* s, int col, float width) {
     float minWidth = s->colMinWidth;
     float maxWidth = s->colMaxWidth;
-    if (col >= 0 && col < s->colMinWidths.len) {
+    if (col >= 0 && col < len(s->colMinWidths)) {
         minWidth = s->colMinWidths[col];
     }
-    if (col >= 0 && col < s->colMaxWidths.len) {
+    if (col >= 0 && col < len(s->colMaxWidths)) {
         maxWidth = s->colMaxWidths[col];
     }
     if (width < minWidth) {
@@ -196,7 +196,8 @@ void TableSetColEdge(TableState* s, int col, bool resizable, bool hasPaddings,
 }
 
 bool TableColWidthNow(const TableState* s, int col, float* out) {
-    if (!s || !out || col < 0 || col >= s->colCount || col >= s->colWidth.len) {
+    if (!s || !out || col < 0 || col >= s->colCount ||
+        col >= len(s->colWidth)) {
         return false;
     }
     *out = s->colWidth[col];
@@ -205,7 +206,7 @@ bool TableColWidthNow(const TableState* s, int col, float* out) {
 
 static bool TableColCanResize(const TableState* s, int col) {
     if (!s->colResizable || col < 0 || col >= s->colCount ||
-        col >= s->colFit.len) {
+        col >= len(s->colFit)) {
         return false;
     }
     return s->colFit[col].resizable != 0;
@@ -233,7 +234,7 @@ bool TableFitCol(TableState* s, Ctx* cx, int col) {
     }
     float padL = s->cellPadding.left;
     float padR = s->cellPadding.right;
-    if (col < s->colFit.len && s->colFit[col].hasPaddings) {
+    if (col < len(s->colFit) && s->colFit[col].hasPaddings) {
         padL = s->colFit[col].padL;
         padR = s->colFit[col].padR;
     }
@@ -728,7 +729,7 @@ void TableSeedColOrder(TableState* s, int colCount) {
 }
 
 int TableColAt(const TableState* s, int display) {
-    if (display < 0 || display >= s->colCount || display >= s->colOrder.len) {
+    if (display < 0 || display >= s->colCount || display >= len(s->colOrder)) {
         return display;
     }
     return s->colOrderSeeded ? s->colOrder[display] : display;
@@ -901,7 +902,7 @@ void TableVisibleCols(const TableState* s, int* first, int* end) {
     int lead = -1, last = nScroll;
     for (int i = 0; i < nScroll; i++) {
         int c = TableColAt(s, nFixed + i);
-        float cw = c < s->colWidth.len ? s->colWidth[c] : 0;
+        float cw = c < len(s->colWidth) ? s->colWidth[c] : 0;
         x += cw;
         if (lead < 0 && x > lo) {
             lead = i;
@@ -970,7 +971,7 @@ void TableScrollToCol(TableState* s, int col, ScrollStrategy strategy) {
     Vec<float> w;
     for (int i = first; i < end; i++) {
         int c = TableColAt(s, i);
-        VecAppend(w, c < s->colWidth.len ? s->colWidth[c] : 0);
+        VecAppend(w, c < len(s->colWidth) ? s->colWidth[c] : 0);
     }
     s->scrollX =
         VirtualListScrollToItem(w.els, n, d, s->scrollX, viewport, strategy);
@@ -980,7 +981,7 @@ void TableScrollToCol(TableState* s, int col, ScrollStrategy strategy) {
 void TableRefreshCols(TableState* s) {
     // A zero width is a column that has not been seeded, which is what makes
     // the next build take the caller's declaration again.
-    for (int i = 0; i < s->colWidth.len; i++) {
+    for (int i = 0; i < len(s->colWidth); i++) {
         s->colWidth[i] = 0;
     }
     s->colOrderSeeded = false;
@@ -1008,7 +1009,7 @@ void TableState::OnResizeDrag(TableState* self, Ctx* cx,
     TableEnsureCols(self, col + 1);
     // The width at the press, plus how far the pointer has moved. The
     // painted left edge moves when the table scrolls as the columns narrow.
-    if (!self->hasResizeOrigin || col >= self->colWidth.len) {
+    if (!self->hasResizeOrigin || col >= len(self->colWidth)) {
         return;
     }
     self->resizingCol = col;
@@ -1025,7 +1026,7 @@ void TableState::OnResizeMouseDown(TableState* self, Ctx* cx,
     if (ix >= 0 && ix < self->colCount) {
         TableEnsureCols(self, ix + 1);
         self->resizeOriginX = ev->x;
-        self->resizeOriginW = ix < self->colWidth.len ? self->colWidth[ix] : 0;
+        self->resizeOriginW = ix < len(self->colWidth) ? self->colWidth[ix] : 0;
         self->hasResizeOrigin = true;
     }
     if (ev->clickCount == 1) {

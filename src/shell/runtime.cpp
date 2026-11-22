@@ -488,7 +488,7 @@ static ViewObject* InstantiateObject(ShellRuntime* runtime, ViewType* type,
 static NestedViewEntry* FindNestedView(ShellRuntimeImpl* impl, uint32_t token,
                                        int* index = nullptr) {
     if (!impl || token == 0) return nullptr;
-    for (int i = 0; i < impl->nestedViews.len; i++) {
+    for (int i = 0; i < len(impl->nestedViews); i++) {
         if (impl->nestedViews[i].token != token) continue;
         if (index) *index = i;
         return &impl->nestedViews[i];
@@ -502,9 +502,9 @@ static bool NestedViewIsCurrent(const NestedViewEntry* entry) {
 }
 
 static void DropNestedViewAt(ShellRuntimeImpl* impl, int at) {
-    if (!impl || at < 0 || at >= impl->nestedViews.len) return;
+    if (!impl || at < 0 || at >= len(impl->nestedViews)) return;
     NestedViewEntry entry = impl->nestedViews[at];
-    for (int i = at + 1; i < impl->nestedViews.len; i++) {
+    for (int i = at + 1; i < len(impl->nestedViews); i++) {
         impl->nestedViews[i - 1] = impl->nestedViews[i];
     }
     impl->nestedViews.len--;
@@ -515,7 +515,7 @@ static void DropNestedViewAt(ShellRuntimeImpl* impl, int at) {
 static void RollbackNestedViews(ShellRuntimeImpl* impl, uint32_t checkpoint) {
     for (;;) {
         int found = -1;
-        for (int i = impl ? impl->nestedViews.len - 1 : -1; i >= 0; i--) {
+        for (int i = impl ? len(impl->nestedViews) - 1 : -1; i >= 0; i--) {
             if (impl->nestedViews[i].token >= checkpoint) {
                 found = i;
                 break;
@@ -534,7 +534,7 @@ static bool TakeNestedView(ShellRuntimeImpl* impl, uint32_t token,
         !EntityGet(found->app, found->view))
         return false;
     NestedViewEntry entry = *found;
-    for (int i = at + 1; i < impl->nestedViews.len; i++)
+    for (int i = at + 1; i < len(impl->nestedViews); i++)
         impl->nestedViews[i - 1] = impl->nestedViews[i];
     impl->nestedViews.len--;
     PolicyRelease(entry.policy);
@@ -674,7 +674,7 @@ static void SetError(ShellError* error, Str message) {
 
 static bool TaskWindowLive(const ShellTask* task) {
     if (!task || !task->app || !task->window) return false;
-    for (int i = 0; i < task->app->windows.len; i++) {
+    for (int i = 0; i < len(task->app->windows); i++) {
         if (task->app->windows[i] == task->window) return true;
     }
     return false;
@@ -683,7 +683,7 @@ static bool TaskWindowLive(const ShellTask* task) {
 static ShellTask* FindTask(ShellRuntimeImpl* impl, uint32_t id,
                            int* index = nullptr) {
     if (!impl || id == 0) return nullptr;
-    for (int i = 0; i < impl->tasks.len; i++) {
+    for (int i = 0; i < len(impl->tasks); i++) {
         if (impl->tasks[i]->id != id) continue;
         if (index) *index = i;
         return impl->tasks[i];
@@ -702,7 +702,8 @@ static void DestroyTask(ShellRuntimeImpl* impl, ShellTask* task,
         shell::ProcessStreamKill(task->processStream);
         shell::ProcessStreamFree(task->processStream);
         task->processStream = nullptr;
-        if (impl && task->streamId > 0 && task->streamId <= impl->streams.len) {
+        if (impl && task->streamId > 0 &&
+            task->streamId <= len(impl->streams)) {
             impl->streams[task->streamId - 1] = nullptr;
         }
         task->streamId = 0;
@@ -724,7 +725,7 @@ static bool ForgetTask(ShellRuntimeImpl* impl, uint32_t id,
     int at = -1;
     ShellTask* task = FindTask(impl, id, &at);
     if (!task) return false;
-    for (int i = at + 1; i < impl->tasks.len; i++) {
+    for (int i = at + 1; i < len(impl->tasks); i++) {
         impl->tasks[i - 1] = impl->tasks[i];
     }
     impl->tasks.len--;
@@ -763,7 +764,7 @@ static ScriptCheckpoint ScriptCheckpointTake(ShellRuntimeImpl* impl) {
     ScriptCheckpoint checkpoint;
     checkpoint.retained = impl->retained.Checkpoint();
     checkpoint.nested = impl->nextNestedView;
-    checkpoint.tasks = impl->tasks.len;
+    checkpoint.tasks = len(impl->tasks);
     return checkpoint;
 }
 
@@ -772,8 +773,8 @@ static void ScriptCheckpointRollback(JSContext* ctx, ShellRuntimeImpl* impl,
     Vec<shell::CallbackId> retired;
     impl->retained.Rollback(checkpoint.retained, &retired);
     RetireCallbacks(ctx, impl, &retired);
-    while (impl->tasks.len > checkpoint.tasks) {
-        ForgetTask(impl, impl->tasks[impl->tasks.len - 1]->id);
+    while (len(impl->tasks) > checkpoint.tasks) {
+        ForgetTask(impl, impl->tasks[len(impl->tasks) - 1]->id);
     }
     RollbackNestedViews(impl, checkpoint.nested);
 }
@@ -796,7 +797,7 @@ static uint32_t NewTask(ShellRuntimeImpl* impl, ShellTaskKind kind,
                         JSValueConst callback, App* app = nullptr,
                         Window* window = nullptr, bool ownerless = false,
                         JSValueConst reject = JS_UNDEFINED) {
-    if (!impl || impl->tasks.len >= kMaxShellTasks || impl->nextTask == 0) {
+    if (!impl || len(impl->tasks) >= kMaxShellTasks || impl->nextTask == 0) {
         return 0;
     }
     ShellTask* task = new ShellTask();
@@ -824,7 +825,7 @@ static void ProcessJobWork(ProcessJob* job) {
     shell::ProcessOptions options;
     options.workingDirectory = job->cwd;
     options.timeoutSeconds = job->timeoutSeconds;
-    shell::ProcessRunBounded(job->command, job->args.els, job->args.len,
+    shell::ProcessRunBounded(job->command, job->args.els, len(job->args),
                              &job->cancellation, &job->output, &job->error,
                              &options);
 }
@@ -1009,12 +1010,12 @@ static JSValue ProcessJobResolved(ShellRuntimeImpl* impl, void* user) {
         impl->context, value, "stdout",
         JS_NewStringLen(impl->context,
                         job->output.out.s ? job->output.out.s : "",
-                        (size_t)job->output.out.len));
+                        (size_t)len(job->output.out)));
     JS_SetPropertyStr(
         impl->context, value, "stderr",
         JS_NewStringLen(impl->context,
                         job->output.err.s ? job->output.err.s : "",
-                        (size_t)job->output.err.len));
+                        (size_t)len(job->output.err)));
     return value;
 }
 
@@ -1054,12 +1055,12 @@ static JSValue FsJobValue(JSContext* context, FsJob* job) {
         if (job->text) {
             return JS_NewStringLen(
                 context, job->result.bytes.s ? job->result.bytes.s : "",
-                (size_t)job->result.bytes.len);
+                (size_t)len(job->result.bytes));
         }
         return JS_NewUint8ArrayCopy(
             context,
             (const uint8_t*)(job->result.bytes.s ? job->result.bytes.s : ""),
-            (size_t)job->result.bytes.len);
+            (size_t)len(job->result.bytes));
     }
     if (job->operation == shell::FsOperation::Exists) {
         return JS_NewBool(context, job->result.exists);
@@ -1067,7 +1068,7 @@ static JSValue FsJobValue(JSContext* context, FsJob* job) {
     if (job->operation == shell::FsOperation::ReadLink) {
         return JS_NewStringLen(context,
                                job->result.bytes.s ? job->result.bytes.s : "",
-                               (size_t)job->result.bytes.len);
+                               (size_t)len(job->result.bytes));
     }
     if (job->operation == shell::FsOperation::Stat ||
         job->operation == shell::FsOperation::Lstat) {
@@ -1099,7 +1100,7 @@ static JSValue FsJobValue(JSContext* context, FsJob* job) {
     JSValue make = job->withFileTypes
                        ? JS_GetPropertyStr(context, global, "__shell_fs_dirent")
                        : JS_UNDEFINED;
-    for (int i = 0; i < job->result.entries.len; i++) {
+    for (int i = 0; i < len(job->result.entries); i++) {
         const shell::FsEntry& entry = job->result.entries[i];
         JSValue name =
             JS_NewStringLen(context, entry.name.s, (size_t)len(entry.name));
@@ -1277,7 +1278,7 @@ static void StorageFlushDone(StorageFlushState* state,
 
 static void WakeStorageWaiters(Vec<shell::StorageWaiter*>* ready,
                                shell::StorageOutcome outcome) {
-    for (int i = 0; i < ready->len; i++) {
+    for (int i = 0; i < len(*ready); i++) {
         shell::StorageWaiter* waiter = (*ready)[i];
         Func1<shell::StorageOutcome> settle = waiter->settle;
         delete waiter;
@@ -1726,7 +1727,7 @@ static AppModule* ApplicationForBase(ShellRuntimeImpl* impl, Str base) {
         if (base.s[at] < '0' || base.s[at] > '9') return nullptr;
         generation = generation * 10u + (uint32_t)(base.s[at] - '0');
     }
-    for (int i = impl->modules.len - 1; i >= 0; i--) {
+    for (int i = len(impl->modules) - 1; i >= 0; i--) {
         if (impl->modules[i]->generation == generation) return impl->modules[i];
     }
     return nullptr;
@@ -1742,12 +1743,12 @@ static TempStr UntagTemp(Str name) {
 }
 
 static void DirectoryName(Str* path) {
-    while (path->len > 0 && path->s[path->len - 1] != '/' &&
-           path->s[path->len - 1] != '\\') {
+    while (len(*path) > 0 && path->s[len(*path) - 1] != '/' &&
+           path->s[len(*path) - 1] != '\\') {
         path->s[--path->len] = 0;
     }
-    while (path->len > 1 &&
-           (path->s[path->len - 1] == '/' || path->s[path->len - 1] == '\\')) {
+    while (len(*path) > 1 && (path->s[len(*path) - 1] == '/' ||
+                              path->s[len(*path) - 1] == '\\')) {
         path->s[--path->len] = 0;
     }
 }
@@ -1806,7 +1807,7 @@ static char* ModuleNormalize(JSContext* ctx, const char* base, const char* name,
     // checkout — and a bare one names a dependency, its subpath, or nothing.
     TempStr basePath = UntagTemp(baseName);
     const shell::MaterializedDependency* importing = nullptr;
-    for (int i = 0; i < application->dependencies.items.len; i++) {
+    for (int i = 0; i < len(application->dependencies.items); i++) {
         const shell::MaterializedDependency& dependency =
             application->dependencies.items[i];
         if (WithinRoot(dependency.root, basePath)) importing = &dependency;
@@ -1822,7 +1823,7 @@ static char* ModuleNormalize(JSContext* ctx, const char* base, const char* name,
         if (importing) boundary = importing->root;
     } else {
         const shell::MaterializedDependency* named = nullptr;
-        for (int i = 0; i < application->dependencies.items.len; i++) {
+        for (int i = 0; i < len(application->dependencies.items); i++) {
             const shell::MaterializedDependency& dependency =
                 application->dependencies.items[i];
             Str dependencyName = dependency.name;
@@ -2893,11 +2894,11 @@ static bool NoteSlot(JSContext* ctx, ShellRuntimeImpl* impl,
 static bool LastOpIndex(JSContext* ctx, ShellRuntimeImpl* impl,
                         shell::SpecId id, uint16_t* out) {
     const shell::SpecNode* node = impl->scratch->Node(id);
-    if (!node || node->ops.len == 0) {
+    if (!node || len(node->ops) == 0) {
         JS_ThrowTypeError(ctx, "no operation to attach a slot to");
         return false;
     }
-    if (node->ops.len - 1 > 65535) {
+    if (len(node->ops) - 1 > 65535) {
         JS_ThrowTypeError(ctx,
                           "one element recorded more operations than a "
                           "template can address");
@@ -2996,7 +2997,7 @@ static Str InlineHandler(const shell::SpecArena* recorded,
         if (PayloadHasCallback(node->component.payload.arguments,
                                node->component.payload.argumentCount))
             return node->component.text;
-        for (int index = 0; index < node->ops.len; index++) {
+        for (int index = 0; index < len(node->ops); index++) {
             const shell::SpecOp& op = node->ops[index];
             if (PayloadHasCallback(op.payload.arguments, op.payload
                                                              .argumentCount))
@@ -3084,7 +3085,7 @@ static JSValue NativeTemplateEnd(JSContext* ctx, JSValueConst, int argc,
     discovery->slots = Vec<shell::Slot>{};
     DropDiscovery(impl);
     VecAppend(impl->templates, tmpl);
-    return JS_NewUint32(ctx, (uint32_t)(impl->templates.len - 1));
+    return JS_NewUint32(ctx, (uint32_t)(len(impl->templates) - 1));
 }
 
 // Converts one argument for the position it fills.
@@ -3140,7 +3141,7 @@ static bool SlotValueOf(JSContext* ctx, ShellRuntimeImpl* impl,
             const shell::SpecNode* node =
                 tmpl && tmpl->arena ? tmpl->arena->Node(slot.node) : nullptr;
             Str styleName = {};
-            if (node && (int)slot.site.op < node->ops.len &&
+            if (node && (int)slot.site.op < len(node->ops) &&
                 node->ops[slot.site.op].kind == shell::SpecOpKind::ParamStyle) {
                 styleName = node->ops[slot.site.op].name;
             }
@@ -3192,8 +3193,9 @@ static JSValue NativeTemplateInstantiate(JSContext* ctx, JSValueConst, int argc,
             "a template body cannot call another template. Call it where the "
             "outer template is called");
     }
-    shell::Template* tmpl =
-        id < (uint32_t)impl->templates.len ? impl->templates[(int)id] : nullptr;
+    shell::Template* tmpl = id < (uint32_t)len(impl->templates)
+                                ? impl->templates[(int)id]
+                                : nullptr;
     if (!tmpl) {
         return JS_ThrowTypeError(
             ctx,
@@ -3581,7 +3583,7 @@ static bool ComponentPayloadTransaction(
     if (ok) {
         shell::SpecError failure = {};
         if (!impl->scratch->CheckHold(hasHolder, holder, scope.elements.els,
-                                      scope.elements.len, &failure)) {
+                                      len(scope.elements), &failure)) {
             SpecFailure(ctx, failure);
             ok = false;
         }
@@ -3609,7 +3611,7 @@ static bool ComponentPayloadTransaction(
         }
     }
     if (ok && hasHolder) {
-        impl->scratch->Hold(holder, scope.elements.els, scope.elements.len);
+        impl->scratch->Hold(holder, scope.elements.els, len(scope.elements));
     }
     if (ok && taken) {
         for (int i = 0; i < len(scope.elements); i++) {
@@ -3702,7 +3704,7 @@ static JSValue NativeRegisteredConstructor(JSContext* ctx, JSValueConst,
     component.text = Str(descriptor->name);
     component.payload = payload;
     shell::SpecId id = impl->scratch->Push(component);
-    impl->scratch->Hold(id, taken.els, taken.len);
+    impl->scratch->Hold(id, taken.els, len(taken));
     VecReset(taken);
     return JS_NewUint32(ctx, id);
 }
@@ -4628,7 +4630,7 @@ static bool RefuseRetainedCreation(JSContext* ctx, const char* what) {
         return true;
     }
     ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
-    if (impl && impl->retained.Len() + impl->nestedViews.len >=
+    if (impl && impl->retained.Len() + len(impl->nestedViews) >=
                     shell::kMaxLiveEntities) {
         ThrowRetainedLimit(ctx);
         return true;
@@ -5700,7 +5702,7 @@ static JSValue ContentJs(JSContext* ctx, const InputContent& content) {
                       JS_NewStringLen(ctx, content.text.s ? content.text.s : "",
                                       (size_t)len(content.text)));
     JSValue tokens = JS_NewArray(ctx);
-    for (int i = 0; i < content.tokens.len; i++) {
+    for (int i = 0; i < len(content.tokens); i++) {
         const InlineTokenSpan& span = content.tokens[i];
         JSValue item = JS_NewObject(ctx);
         JS_SetPropertyStr(ctx, item, "range",
@@ -8034,11 +8036,11 @@ static JSValue HostIntoJs(JSContext* ctx, const HostValue& value,
             return JS_NewStringLen(ctx, value.string.s ? value.string.s : "",
                                    (size_t)len(value.string));
         case HostValueKind::Array: {
-            if (value.array.len > kHostBridgeMaxItems)
+            if (len(value.array) > kHostBridgeMaxItems)
                 return JS_ThrowRangeError(
                     ctx, "host result array exceeds 10000 items");
             JSValue array = JS_NewArray(ctx);
-            for (int i = 0; i < value.array.len; i++) {
+            for (int i = 0; i < len(value.array); i++) {
                 JSValue item = value.array[i]
                                    ? HostIntoJs(ctx, *value.array[i], depth + 1)
                                    : JS_NULL;
@@ -8051,11 +8053,11 @@ static JSValue HostIntoJs(JSContext* ctx, const HostValue& value,
             return array;
         }
         case HostValueKind::Object: {
-            if (value.object.len > kHostBridgeMaxItems)
+            if (len(value.object) > kHostBridgeMaxItems)
                 return JS_ThrowRangeError(
                     ctx, "host result object exceeds 10000 fields");
             JSValue object = JS_NewObject(ctx);
-            for (int i = 0; i < value.object.len; i++) {
+            for (int i = 0; i < len(value.object); i++) {
                 const HostField& field = value.object[i];
                 JSValue item = field.value
                                    ? HostIntoJs(ctx, *field.value, depth + 1)
@@ -8154,13 +8156,13 @@ static void HostAsyncWork(HostAsyncJob* job) {
     job->result.string = call.result.string;
     call.result.string = {};
     job->result.array.els = call.result.array.els;
-    job->result.array.len = call.result.array.len;
+    job->result.array.len = len(call.result.array);
     job->result.array.cap = call.result.array.cap;
     call.result.array.els = nullptr;
     call.result.array.len = 0;
     call.result.array.cap = 0;
     job->result.object.els = call.result.object.els;
-    job->result.object.len = call.result.object.len;
+    job->result.object.len = len(call.result.object);
     job->result.object.cap = call.result.object.cap;
     call.result.object.els = nullptr;
     call.result.object.len = 0;
@@ -8220,7 +8222,7 @@ static JSValue NativeHostAsyncCall(JSContext* ctx, JSValueConst, int argc,
     ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
     HostAsyncJob* job = new HostAsyncJob();
     job->arguments.values.els = js.arguments.values.els;
-    job->arguments.values.len = js.arguments.values.len;
+    job->arguments.values.len = len(js.arguments.values);
     job->arguments.values.cap = js.arguments.values.cap;
     js.arguments.values.els = nullptr;
     js.arguments.values.len = 0;
@@ -9242,7 +9244,7 @@ static JSValue NativeProcessRun(JSContext* ctx, JSValueConst, int argc,
 }
 
 static shell::ProcessStream* StreamById(ShellRuntimeImpl* impl, int id) {
-    if (!impl || id <= 0 || id > impl->streams.len) return nullptr;
+    if (!impl || id <= 0 || id > len(impl->streams)) return nullptr;
     return impl->streams[id - 1];
 }
 
@@ -9252,7 +9254,7 @@ static void ReleaseStreamSlot(ShellRuntimeImpl* impl, int streamId,
         shell::ProcessStreamKill(stream);
         shell::ProcessStreamFree(stream);
     }
-    if (impl && streamId > 0 && streamId <= impl->streams.len) {
+    if (impl && streamId > 0 && streamId <= len(impl->streams)) {
         impl->streams[streamId - 1] = nullptr;
     }
 }
@@ -9376,7 +9378,7 @@ static JSValue NativeProcessSpawn(JSContext* ctx, JSValueConst, int argc,
         shell::ProcessStreamFree(stream);
         return JS_ThrowOutOfMemory(ctx);
     }
-    int streamId = impl->streams.len;
+    int streamId = len(impl->streams);
     Entity<ShellTaskDriver> driver = TaskDriver(impl, host.GetApp());
     uint32_t taskId = driver.IsValid()
                           ? NewTask(impl, ShellTaskKind::ProcessStream, argv[3],
@@ -11255,13 +11257,13 @@ static JSValue NativeBindKeys(JSContext* ctx, JSValueConst, int argc,
         KeyBinding binding = {};
         binding.stroke = shell::ShellActionInternText(stroke);
         binding.action = shell::ShellActionOf(action);
-        binding.context = hasContext && context.len > 0
+        binding.context = hasContext && len(context) > 0
                               ? shell::ShellActionInternText(context)
                               : nullptr;
         VecAppend(parsed, binding);
     }
-    if (parsed.len > 0) KeymapBind(&parsed[0], parsed.len);
-    uint32_t installed = (uint32_t)parsed.len;
+    if (len(parsed) > 0) KeymapBind(&parsed[0], len(parsed));
+    uint32_t installed = (uint32_t)len(parsed);
     VecReset(parsed);
     ArenaDelete(arena);
     return JS_NewUint32(ctx, installed);
@@ -11757,9 +11759,9 @@ static void ReleaseScriptPanelClass(void* data) {
     auto* registered = (ScriptPanelClass*)data;
     if (!registered) return;
     if (registered->impl) {
-        for (int i = 0; i < registered->impl->panelClasses.len; i++) {
+        for (int i = 0; i < len(registered->impl->panelClasses); i++) {
             if (registered->impl->panelClasses[i] != registered) continue;
-            for (int j = i + 1; j < registered->impl->panelClasses.len; j++) {
+            for (int j = i + 1; j < len(registered->impl->panelClasses); j++) {
                 registered->impl->panelClasses[j - 1] = registered->impl
                                                             ->panelClasses[j];
             }
@@ -11911,7 +11913,7 @@ static int DockGroupFor(DockState* state, DockPlacement placement) {
     }
     int node = state->center;
     if (node < 0 || state->nodes[node].split) {
-        node = node >= 0 && state->nodes[node].child.len > 0
+        node = node >= 0 && len(state->nodes[node].child) > 0
                    ? state->nodes[node].child[0]
                    : DockNewTabs(state);
         if (state->center < 0) state->center = node;
@@ -11963,7 +11965,7 @@ static JSValue NativeDockAddPanel(JSContext* ctx, JSValueConst, int argc,
     // restored one does — otherwise a layout would round-trip only after a
     // restart, which is the one time nobody is watching. The registration
     // owns the class, so this borrows its hooks and does not free them.
-    for (int i = 0; i < impl->panelClasses.len; i++) {
+    for (int i = 0; i < len(impl->panelClasses); i++) {
         ScriptPanelClass* registered = impl->panelClasses[i];
         if (!StrEq(registered->name, qualified)) continue;
         script.data = registered;
@@ -11982,9 +11984,9 @@ static JSValue NativeDockAddPanel(JSContext* ctx, JSValueConst, int argc,
     DockTabsAdd(state, node, panel);
     // add_panel_inner inserts into the first tab group with `activate:
     // true`: the panel just added is the one its group shows.
-    if (node >= 0 && node < state->nodes.len && !state->nodes[node].split &&
-        state->nodes[node].panel.len > 0) {
-        state->nodes[node].activeIx = state->nodes[node].panel.len - 1;
+    if (node >= 0 && node < len(state->nodes) && !state->nodes[node].split &&
+        len(state->nodes[node].panel) > 0) {
+        state->nodes[node].activeIx = len(state->nodes[node].panel) - 1;
     }
     DockSide* side = DockSideOf(state, placement);
     if (side && size >= 0) side->size = (float)size;
@@ -12006,7 +12008,7 @@ static JSValue NativeDockRemovePanel(JSContext* ctx, JSValueConst, int argc,
     // Base removes a panel by index, which a script has no way to name — it
     // holds the id the area reported. Answers whether anything was removed, so
     // a script asking for a panel that has already gone hears about it.
-    for (int i = 0; i < state->panels.len; i++) {
+    for (int i = 0; i < len(state->panels); i++) {
         if ((double)state->panels[i].id.AsU64() != id) continue;
         int node = DockNodeOfPanel(state, i);
         if (node < 0) return JS_NewBool(ctx, false);
@@ -12036,14 +12038,14 @@ static JSValue NativeDockPanels(JSContext* ctx, JSValueConst, int argc,
     JsonWriter json;
     json.out = &out;
     json.BeginArray();
-    for (int node = 0; node < state->nodes.len; node++) {
+    for (int node = 0; node < len(state->nodes); node++) {
         const DockNode& group = state->nodes[node];
         if (!group.used || group.split) continue;
         int active = DockActiveIx(state, node);
         DockPlacement placement = DockPlacementOfNode(state, node);
         for (int ix = 0; ix < len(group.panel); ix++) {
             int at = group.panel[ix];
-            if (at < 0 || at >= state->panels.len) continue;
+            if (at < 0 || at >= len(state->panels)) continue;
             const DockPanelDef& def = state->panels[at];
             json.BeginObject();
             json.Number("id", (double)def.id.AsU64());
@@ -12771,7 +12773,7 @@ ShellRuntime::~ShellRuntime() {
     if (control) control->runtime = nullptr;
     if (impl) {
         if (impl->context) {
-            for (int i = impl->tasks.len - 1; i >= 0; i--) {
+            for (int i = len(impl->tasks) - 1; i >= 0; i--) {
                 DestroyTask(impl, impl->tasks[i], true);
             }
             VecReset(impl->tasks);
@@ -12798,7 +12800,7 @@ ShellRuntime::~ShellRuntime() {
         // so clearing the vector is not enough on its own. Retiring the class
         // leaves the registration in place, answering with a draw-nothing
         // placeholder that still carries the panel's persisted state forward.
-        for (int i = 0; i < impl->panelClasses.len; i++) {
+        for (int i = 0; i < len(impl->panelClasses); i++) {
             ScriptPanelClass* registered = impl->panelClasses[i];
             if (impl->context && !JS_IsUndefined(registered->klass)) {
                 JS_FreeValue(impl->context, registered->klass);
@@ -12809,7 +12811,7 @@ ShellRuntime::~ShellRuntime() {
             registered->policy = nullptr;
         }
         VecReset(impl->panelClasses);
-        for (int i = 0; i < impl->chromeCache.len; i++) {
+        for (int i = 0; i < len(impl->chromeCache); i++) {
             StrFree(impl->chromeCache[i]->payload);
             delete impl->chromeCache[i]->arena;
             delete impl->chromeCache[i];
@@ -12824,9 +12826,10 @@ ShellRuntime::~ShellRuntime() {
         }
         delete impl->scratch;
         StrFree(impl->dependencyCacheRoot);
-        for (int i = 0; i < impl->templates.len; i++) delete impl->templates[i];
+        for (int i = 0; i < len(impl->templates); i++)
+            delete impl->templates[i];
         VecReset(impl->templates);
-        for (int i = 0; i < impl->modules.len; i++) {
+        for (int i = 0; i < len(impl->modules); i++) {
             StrFree(impl->modules[i]->root);
             impl->modules[i]->dependencies.Free();
             delete impl->modules[i];
@@ -13319,16 +13322,16 @@ int ShellRuntime::LiveEntities() const {
 }
 
 int ShellRuntime::LiveNestedViews() const {
-    return impl->nestedViews.len;
+    return len(impl->nestedViews);
 }
 
 int ShellRuntime::LiveTasks() const {
-    return impl->tasks.len;
+    return len(impl->tasks);
 }
 
 int ShellRuntime::LiveTemplates() const {
     int count = 0;
-    for (int i = 0; i < impl->templates.len; i++) {
+    for (int i = 0; i < len(impl->templates); i++) {
         if (impl->templates[i]) count++;
     }
     return count;
@@ -13349,7 +13352,7 @@ EntityId ShellRuntime::NestedView(shell::EntityHandle handle, App* app) const {
 
 void ShellRuntime::RegisterScriptView(EntityId view, bool* dirty) {
     if (!view.IsValid() || !dirty) return;
-    for (int i = 0; i < impl->views.len; i++) {
+    for (int i = 0; i < len(impl->views); i++) {
         if (impl->views[i].view == view && impl->views[i].dirty == dirty)
             return;
     }
@@ -13357,10 +13360,10 @@ void ShellRuntime::RegisterScriptView(EntityId view, bool* dirty) {
 }
 
 void ShellRuntime::UnregisterScriptView(EntityId view, bool* dirty) {
-    for (int i = 0; i < impl->views.len; i++) {
+    for (int i = 0; i < len(impl->views); i++) {
         if (impl->views[i].view != view || impl->views[i].dirty != dirty)
             continue;
-        for (int j = i + 1; j < impl->views.len; j++) {
+        for (int j = i + 1; j < len(impl->views); j++) {
             impl->views[j - 1] = impl->views[j];
         }
         impl->views.len--;
@@ -13369,7 +13372,7 @@ void ShellRuntime::UnregisterScriptView(EntityId view, bool* dirty) {
 }
 
 void ShellRuntime::InvalidateScriptView(EntityId view) {
-    for (int i = 0; i < impl->views.len; i++) {
+    for (int i = 0; i < len(impl->views); i++) {
         if (impl->views[i].view == view && impl->views[i].dirty) {
             *impl->views[i].dirty = true;
         }
@@ -13379,7 +13382,7 @@ void ShellRuntime::InvalidateScriptView(EntityId view) {
 void ShellRuntime::ReleaseOwnedEntities(EntityId view) {
     for (;;) {
         int nested = -1;
-        for (int i = impl->nestedViews.len - 1; i >= 0; i--) {
+        for (int i = len(impl->nestedViews) - 1; i >= 0; i--) {
             if (impl->nestedViews[i].owner == view) {
                 nested = i;
                 break;
@@ -13388,7 +13391,7 @@ void ShellRuntime::ReleaseOwnedEntities(EntityId view) {
         if (nested < 0) break;
         DropNestedViewAt(impl, nested);
     }
-    for (int i = impl->tasks.len - 1; i >= 0; i--) {
+    for (int i = len(impl->tasks) - 1; i >= 0; i--) {
         if (impl->tasks[i]->owner == view) {
             ForgetTask(impl, impl->tasks[i]->id);
         }
@@ -13408,7 +13411,7 @@ static void RetireApplicationState(ShellRuntimeImpl* impl,
                                    AppModule* application) {
     for (;;) {
         int nested = -1;
-        for (int i = impl->nestedViews.len - 1; i >= 0; i--) {
+        for (int i = len(impl->nestedViews) - 1; i >= 0; i--) {
             if (impl->nestedViews[i].application == application) {
                 nested = i;
                 break;
@@ -13417,7 +13420,7 @@ static void RetireApplicationState(ShellRuntimeImpl* impl,
         if (nested < 0) break;
         DropNestedViewAt(impl, nested);
     }
-    for (int i = impl->tasks.len - 1; i >= 0; i--) {
+    for (int i = len(impl->tasks) - 1; i >= 0; i--) {
         if (impl->tasks[i]->application == application) {
             ForgetTask(impl, impl->tasks[i]->id);
         }
@@ -13435,7 +13438,7 @@ static void RetireApplicationState(ShellRuntimeImpl* impl,
     // removed, because a template's id is its index and a closure in a
     // still-loaded module may hold one: a script that reaches a retired id is
     // told so rather than handed someone else's structure.
-    for (int i = 0; i < impl->templates.len; i++) {
+    for (int i = 0; i < len(impl->templates); i++) {
         if (impl->templates[i] && impl->templates[i]
                                           ->application == (void*)application) {
             delete impl->templates[i];
@@ -13461,7 +13464,7 @@ static void DiscardApplication(ShellRuntimeImpl* impl, AppModule* application) {
     if (!impl || !application) return;
     RetireComponentAppEffects(impl, application);
     RetireApplicationState(impl, application);
-    for (int i = 0; i < impl->modules.len; i++) {
+    for (int i = 0; i < len(impl->modules); i++) {
         if (impl->modules[i] != application) continue;
         VecRemoveAt(impl->modules, i);
         break;
@@ -13965,7 +13968,7 @@ static void RetainedCallbackIds(const shell::RetainedEntry* entry,
                                 shell::RetainedEvent event,
                                 Vec<shell::CallbackId>* out) {
     if (!entry) return;
-    for (int i = 0; i < entry->callbacks.len; i++) {
+    for (int i = 0; i < len(entry->callbacks); i++) {
         if (entry->callbacks[i].event == event) {
             VecAppend(*out, entry->callbacks[i].callback);
         }
@@ -14400,7 +14403,7 @@ void ShellRuntime::RenderVirtualItems(shell::CallbackId renderId,
 static const int kMaxChromeCacheEntries = 4096;
 
 static void ClearChromeCache(ShellRuntimeImpl* impl) {
-    for (int i = 0; i < impl->chromeCache.len; i++) {
+    for (int i = 0; i < len(impl->chromeCache); i++) {
         StrFree(impl->chromeCache[i]->payload);
         delete impl->chromeCache[i]->arena;
         delete impl->chromeCache[i];
@@ -14419,7 +14422,7 @@ El* ShellRuntime::DescribeDockChrome(Ctx* cx, shell::EntityHandle dock,
     }
 
     ChromeCacheEntry* cached = nullptr;
-    for (int i = 0; i < impl->chromeCache.len; i++) {
+    for (int i = 0; i < len(impl->chromeCache); i++) {
         ChromeCacheEntry* candidate = impl->chromeCache[i];
         if (candidate->dock != dock || candidate->slot != slot ||
             candidate->key != key) {
@@ -14483,7 +14486,7 @@ El* ShellRuntime::DescribeDockChrome(Ctx* cx, shell::EntityHandle dock,
             return nullptr;
         }
         if (!cached) {
-            if (impl->chromeCache.len >= kMaxChromeCacheEntries) {
+            if (len(impl->chromeCache) >= kMaxChromeCacheEntries) {
                 ClearChromeCache(impl);
             }
             cached = new ChromeCacheEntry();
@@ -15113,7 +15116,7 @@ bool shell::ComponentAppEffects::Replace(Str key, Str revision, Window* window,
 
 void* ShellRuntime::ScriptViewApplication(EntityId view, App* app) const {
     if (!view.IsValid() || !app) return nullptr;
-    for (int i = 0; i < impl->views.len; i++) {
+    for (int i = 0; i < len(impl->views); i++) {
         if (impl->views[i].view != view) continue;
         ScriptView* script = (ScriptView*)EntityGet(app, view);
         if (!script || !script->object || script->object->runtime != this)
@@ -15129,7 +15132,7 @@ void* ShellRuntime::ScriptViewApplication(EntityId view, App* app) const {
 
 static ComponentAppEffectGeneration* FindAppEffectGeneration(
     ShellRuntimeImpl* impl, void* application, int* at = nullptr) {
-    for (int i = 0; i < impl->appEffects.len; i++) {
+    for (int i = 0; i < len(impl->appEffects); i++) {
         if (impl->appEffects[i]->application == application) {
             if (at) *at = i;
             return impl->appEffects[i];
@@ -15143,7 +15146,7 @@ static ComponentAppEffectGeneration* FindAppEffectGeneration(
 static void RetireAppEffectGeneration(ComponentAppEffectGeneration* generation,
                                       bool runCleanups) {
     shell::ComponentAppEffectQueue& queue = generation->queue;
-    for (int i = 0; i < queue.installed.len; i++) {
+    for (int i = 0; i < len(queue.installed); i++) {
         shell::ComponentAppEffectCleanup cleanup = queue.installed[i].cleanup;
         queue.installed[i].cleanup = {};
         if (runCleanups && cleanup.run)
@@ -15154,7 +15157,7 @@ static void RetireAppEffectGeneration(ComponentAppEffectGeneration* generation,
 }
 
 static void DropDeferredAppEffects(ShellRuntimeImpl* impl, void* application) {
-    for (int i = impl->deferredAppEffects.len - 1; i >= 0; i--) {
+    for (int i = len(impl->deferredAppEffects) - 1; i >= 0; i--) {
         DeferredAppEffect& deferred = impl->deferredAppEffects[i];
         if (application && deferred.application != application) continue;
         DropAppEffectInstall(deferred.install);
@@ -15206,7 +15209,7 @@ bool ShellRuntime::ScheduleComponentAppEffect(
 
 void ShellRuntime::ApplyComponentAppEffect(uint64_t token, App* app) {
     int at = -1;
-    for (int i = 0; i < impl->deferredAppEffects.len; i++) {
+    for (int i = 0; i < len(impl->deferredAppEffects); i++) {
         if (impl->deferredAppEffects[i].token == token) at = i;
     }
     if (at < 0) return;
@@ -15225,7 +15228,7 @@ void ShellRuntime::ApplyComponentAppEffect(uint64_t token, App* app) {
     generation->queue.RemovePending(deferred.key);
     shell::ComponentAppEffectCleanup old = {};
     shell::ComponentAppEffectQueue& queue = generation->queue;
-    for (int i = 0; i < queue.installed.len; i++) {
+    for (int i = 0; i < len(queue.installed); i++) {
         if (!StrEq(queue.installed[i].key, deferred.key)) continue;
         old = queue.installed[i].cleanup;
         StrFree(queue.installed[i].key);
@@ -15272,7 +15275,7 @@ static void RetireComponentAppEffects(ShellRuntimeImpl* impl,
 // The runtime is going away: every install is dropped without running.
 static void ClearComponentAppEffects(ShellRuntimeImpl* impl) {
     DropDeferredAppEffects(impl, nullptr);
-    for (int i = 0; i < impl->appEffects.len; i++) {
+    for (int i = 0; i < len(impl->appEffects); i++) {
         RetireAppEffectGeneration(impl->appEffects[i], false);
     }
     VecReset(impl->appEffects);
@@ -15280,7 +15283,7 @@ static void ClearComponentAppEffects(ShellRuntimeImpl* impl) {
 }
 
 void ShellRuntime::CleanupComponentAppEffects(EntityId view) {
-    for (int i = impl->appEffects.len - 1; i >= 0; i--) {
+    for (int i = len(impl->appEffects) - 1; i >= 0; i--) {
         ComponentAppEffectGeneration* generation = impl->appEffects[i];
         if (generation->view != view) continue;
         VecRemoveAt(impl->appEffects, i);
@@ -15432,7 +15435,7 @@ void ShellAppendAgentsModules(
         out, &first, components->ModuleSpecifier(),
         "this host's styled components; prefer them to hand-styled base "
         "controls",
-        catalog.els, catalog.len);
+        catalog.els, len(catalog));
     VecReset(catalog);
 }
 

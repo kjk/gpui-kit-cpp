@@ -103,44 +103,44 @@ Form* Form::FieldEl(El* label, El* control) {
 // Both apply to the field added last, the way the Rust builder chains onto
 // the field it is building.
 Form* Form::Required(bool v) {
-    if (fields.len > 0) {
-        fields[fields.len - 1].required = v;
+    if (len(fields) > 0) {
+        fields[len(fields) - 1].required = v;
     }
     return this;
 }
 Form* Form::Description(Str s) {
-    if (fields.len > 0) {
-        fields[fields.len - 1].description = FieldBuilder::String(s);
+    if (len(fields) > 0) {
+        fields[len(fields) - 1].description = FieldBuilder::String(s);
     }
     return this;
 }
 Form* Form::DescriptionEl(El* e) {
-    if (fields.len > 0) {
-        fields[fields.len - 1].description = FieldBuilder::Element(e);
+    if (len(fields) > 0) {
+        fields[len(fields) - 1].description = FieldBuilder::Element(e);
     }
     return this;
 }
 Form* Form::SpanAll(bool v) {
-    if (fields.len > 0) {
-        fields[fields.len - 1].colSpan = v ? 0x7fff : 1;
+    if (len(fields) > 0) {
+        fields[len(fields) - 1].colSpan = v ? 0x7fff : 1;
     }
     return this;
 }
 Form* Form::Visible(bool v) {
-    if (fields.len > 0) {
-        fields[fields.len - 1].visible = v;
+    if (len(fields) > 0) {
+        fields[len(fields) - 1].visible = v;
     }
     return this;
 }
 Form* Form::LabelIndent(bool v) {
-    if (fields.len > 0) {
-        fields[fields.len - 1].labelIndent = v;
+    if (len(fields) > 0) {
+        fields[len(fields) - 1].labelIndent = v;
     }
     return this;
 }
 Form* Form::Align(FieldAlign v) {
-    if (fields.len > 0) {
-        fields[fields.len - 1].align = v;
+    if (len(fields) > 0) {
+        fields[len(fields) - 1].align = v;
     }
     return this;
 }
@@ -276,7 +276,7 @@ El* Form::IntoEl() {
     El* col = Div(a)->FlexCol()->W(kFill)->GapX(formGap * 3.f)->GapY(formGap);
     El* row = nullptr; // the row being filled, when the form has columns
     int inRow = 0;
-    for (int i = 0; i < fields.len; i++) {
+    for (int i = 0; i < len(fields); i++) {
         const FormField& fld = fields[i];
         // visible(false): the field is left out of the form entirely.
         if (!fld.visible) {

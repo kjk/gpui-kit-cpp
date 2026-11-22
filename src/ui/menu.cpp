@@ -64,7 +64,7 @@ static MenuItem* MenuAdd(PopupMenu* m, PopupMenuItem kind) {
     if (!m->items.Append(m->a, fresh)) {
         return nullptr;
     }
-    return &m->items[m->items.len - 1];
+    return &m->items[len(m->items) - 1];
 }
 
 PopupMenu* PopupMenu::Menu(Str label, IconName icon) {
@@ -112,8 +112,8 @@ PopupMenu* PopupMenu::Link(Str label, Str href, IconName icon) {
 }
 PopupMenu* PopupMenu::Separator() {
     // Rust ignores a leading separator and coalesces consecutive ones.
-    if (items.len == 0 || items[items.len - 1]
-                                  .kind == MenuItemKind::Separator) {
+    if (len(items) == 0 || items[len(items) - 1]
+                                   .kind == MenuItemKind::Separator) {
         return this;
     }
     MenuAdd(this, MenuItemKind::Separator);
@@ -146,20 +146,20 @@ PopupMenu* PopupMenu::Submenu(Str label, PopupMenu* menu) {
     return this;
 }
 PopupMenu* PopupMenu::Disabled(bool v) {
-    if (items.len > 0) {
-        items[items.len - 1].disabled = v;
+    if (len(items) > 0) {
+        items[len(items) - 1].disabled = v;
     }
     return this;
 }
 PopupMenu* PopupMenu::Checked(bool v) {
-    if (items.len > 0) {
-        items[items.len - 1].checked = v;
+    if (len(items) > 0) {
+        items[len(items) - 1].checked = v;
     }
     return this;
 }
 PopupMenu* PopupMenu::Icon(IconName v) {
-    if (items.len > 0) {
-        items[items.len - 1].icon = v;
+    if (len(items) > 0) {
+        items[len(items) - 1].icon = v;
     }
     return this;
 }
@@ -174,8 +174,8 @@ PopupMenu* PopupMenu::MenuWithAction(Str label, uint32_t action, int64_t arg) {
 }
 
 PopupMenu* PopupMenu::Action(uint32_t action, int64_t arg) {
-    if (items.len > 0) {
-        MenuItem* it = &items[items.len - 1];
+    if (len(items) > 0) {
+        MenuItem* it = &items[len(items) - 1];
         it->action = action;
         it->actionArg = arg;
     }
@@ -183,15 +183,15 @@ PopupMenu* PopupMenu::Action(uint32_t action, int64_t arg) {
 }
 
 PopupMenu* PopupMenu::OnClick(Listener l) {
-    if (items.len > 0) {
-        items[items.len - 1].onClick = l;
+    if (len(items) > 0) {
+        items[len(items) - 1].onClick = l;
     }
     return this;
 }
 
 PopupMenu* PopupMenu::Kbd(Str v) {
-    if (items.len > 0) {
-        items[items.len - 1].kbd = v;
+    if (len(items) > 0) {
+        items[len(items) - 1].kbd = v;
     }
     return this;
 }
@@ -338,7 +338,7 @@ static void PopupMenuScrollToChecked(PopupMenuState* s, Ctx* cx,
         return;
     }
     int ix = -1;
-    for (int i = 0; i < items.len; i++) {
+    for (int i = 0; i < len(items); i++) {
         if (items[i].checked) {
             ix = i;
             break;
@@ -348,7 +348,7 @@ static void PopupMenuScrollToChecked(PopupMenuState* s, Ctx* cx,
         s->scrollToCheckedFrames = 0;
         return;
     }
-    bool ready = ix < s->itemBounds.len && s->itemBounds.els[0].h > 0 &&
+    bool ready = ix < len(s->itemBounds) && s->itemBounds.els[0].h > 0 &&
                  s->itemBounds.els[ix].h > 0 && s->scrollBounds.h > 0;
     if (!ready) {
         s->scrollToCheckedFrames--;
@@ -358,7 +358,7 @@ static void PopupMenuScrollToChecked(PopupMenuState* s, Ctx* cx,
         return;
     }
     float delta = s->itemBounds.els[ix].y - s->itemBounds.els[0].y;
-    int last = s->itemBounds.len - 1;
+    int last = len(s->itemBounds) - 1;
     float topPad = s->itemBounds.els[0].y - s->scrollBounds.y;
     float contentH = s->itemBounds.els[last].y + s->itemBounds.els[last].h +
                      topPad - s->scrollBounds.y;
@@ -415,7 +415,7 @@ El* PopupMenu::IntoEl() {
         float selfW = s->bounds.w > 0 ? s->bounds.w : menuW;
         float subW = selfW;
         int ix = s->selected >= 0 ? s->selected : s->openSubmenu;
-        if (ix >= 0 && ix < items.len && items[ix].submenu) {
+        if (ix >= 0 && ix < len(items) && items[ix].submenu) {
             PopupMenu* child = items[ix].submenu;
             PopupMenuState* childState = child->state.Get(cx);
             float childW = childState && childState->bounds.w > 0
@@ -506,7 +506,7 @@ El* PopupMenu::IntoEl() {
         if (it.submenu) {
             row.submenuState = it.submenu->state;
             row.submenuSelect = -1;
-            for (int k = 0; k < it.submenu->items.len; k++) {
+            for (int k = 0; k < len(it.submenu->items); k++) {
                 const MenuItem& child = it.submenu->items[k];
                 if (child.kind == MenuItemKind::Separator ||
                     child.kind == MenuItemKind::Label || child.disabled) {
@@ -543,14 +543,14 @@ El* PopupMenu::IntoEl() {
         float heightCap = maxH > 0 ? maxH : Rems(cx, 28.125f);
         PopupMenuScrollToChecked(s, cx, items);
         int nRendered = 0;
-        for (int k = 0; k < items.len; k++) {
+        for (int k = 0; k < len(items); k++) {
             if (items[k].kind == MenuItemKind::Separator && k + 1 == items
                                                                          .len) {
                 continue;
             }
             nRendered++;
         }
-        if (s && s->itemBounds.len != nRendered) {
+        if (s && len(s->itemBounds) != nRendered) {
             VecResize(s->itemBounds, nRendered);
         }
         rows->ClipY()
@@ -572,7 +572,7 @@ El* PopupMenu::IntoEl() {
     for (const MenuItem& it : items) {
         i++;
         if (it.kind == MenuItemKind::Separator) {
-            if (i + 1 == items.len) {
+            if (i + 1 == len(items)) {
                 continue;
             }
             // my_0p5 border_b(1): a rule with a little air around it.
@@ -580,7 +580,7 @@ El* PopupMenu::IntoEl() {
                            ->W(kFill)
                            ->PadY(Rems(cx, 0.125f))
                            ->Child(Div(a)->W(kFill)->H(1)->Bg(th.border));
-            if (scrollable && s && rendered < s->itemBounds.len) {
+            if (scrollable && s && rendered < len(s->itemBounds)) {
                 rule->BoundsOut(&s->itemBounds.els[rendered]);
             }
             rendered++;
@@ -759,7 +759,7 @@ El* PopupMenu::IntoEl() {
             sub->Deferred();
             row->Child(sub);
         }
-        if (scrollable && s && rendered < s->itemBounds.len) {
+        if (scrollable && s && rendered < len(s->itemBounds)) {
             row->BoundsOut(&s->itemBounds.els[rendered]);
         }
         rendered++;
@@ -1128,7 +1128,7 @@ El* AppMenuBar::IntoEl() {
         s->focus = FocusHandleNew(cx);
     }
     if (s) {
-        s->count = items.len;
+        s->count = len(items);
     }
     // The bar carries the name, so a title is `0`, `1`, `2` inside it.
     IdScope scope(cx, id);
@@ -1158,7 +1158,7 @@ El* AppMenuBar::IntoEl() {
     }
     Listener click = ListenTo(state, &AppMenuBarState::OnMenuClick, 0);
     Listener hover = ListenTo(state, &AppMenuBarState::OnMenuHover, 0);
-    for (int i = 0; i < items.len; i++) {
+    for (int i = 0; i < len(items); i++) {
         // is_open: this title's popup is the one the menu bar currently has
         // open, not an application-level selection.
         bool isOpen = s && s->selected == i;

@@ -87,7 +87,7 @@ static bool DataUriBytes(Str src, Vec<uint8_t>* out) {
     } else {
         PercentDecode(payload, out);
     }
-    return out->len > 0;
+    return len(*out) > 0;
 }
 
 bool ImageSrcIsLocal(Str src) {
@@ -197,7 +197,7 @@ static SrcBytes BytesForSrc(Str src, Vec<uint8_t>* owned,
     // Local sources go through the asset system. A URI goes through the HTTP
     // client, matching GPUI's ImageSource::Resource dispatch.
     Str asset = ImageAssetFor(GetTempArena(), src);
-    if (asset.s && AssetsLoad(asset, owned) && owned->len > 0) {
+    if (asset.s && AssetsLoad(asset, owned) && len(*owned) > 0) {
         return SrcBytes::Yes;
     }
     VecReset(*owned);
@@ -298,11 +298,11 @@ static void ImageStoreClear(ImageStore* s) {
     if (!s) {
         return;
     }
-    for (int i = 0; i < s->resources.len; i++) {
+    for (int i = 0; i < len(s->resources); i++) {
         ImageSlotFree(&s->resources[i]);
     }
     VecClear(s->resources);
-    for (int i = 0; i < s->encoded.len; i++) {
+    for (int i = 0; i < len(s->encoded); i++) {
         EncodedSlotFree(&s->encoded[i]);
     }
     VecClear(s->encoded);
@@ -337,8 +337,8 @@ static ImageCache* EntityCacheOf(const ImageLookup& cx) {
         return nullptr;
     }
     EntityId id = cx.cache;
-    if (!id.IsValid() && cx.win && cx.win->imageCacheStack.len > 0) {
-        id = cx.win->imageCacheStack[cx.win->imageCacheStack.len - 1];
+    if (!id.IsValid() && cx.win && len(cx.win->imageCacheStack) > 0) {
+        id = cx.win->imageCacheStack[len(cx.win->imageCacheStack) - 1];
     }
     if (!id.IsValid()) {
         return nullptr;
@@ -373,11 +373,11 @@ void ImageCache::Remove(Str src) {
     if (!store) {
         return;
     }
-    for (int i = 0; i < store->resources.len; i++) {
+    for (int i = 0; i < len(store->resources); i++) {
         if (store->resources[i].tried &&
             base::StrEq(store->resources[i].src, src)) {
             ImageSlotFree(&store->resources[i]);
-            store->resources[i] = store->resources[store->resources.len - 1];
+            store->resources[i] = store->resources[len(store->resources) - 1];
             store->resources.len--;
             return;
         }
@@ -385,7 +385,7 @@ void ImageCache::Remove(Str src) {
 }
 
 int ImageCache::Len() const {
-    return store ? store->resources.len : 0;
+    return store ? len(store->resources) : 0;
 }
 
 static uint64_t gImageDecodeEpoch = 1;
@@ -411,12 +411,12 @@ void ImageCacheClear(App* app) {
 
 int ImageCacheResourceCount(App* app) {
     ImageStore* s = StoreOf(app);
-    return s ? s->resources.len : 0;
+    return s ? len(s->resources) : 0;
 }
 
 int ImageCacheEncodedCount(App* app) {
     ImageStore* s = StoreOf(app);
-    return s ? s->encoded.len : 0;
+    return s ? len(s->encoded) : 0;
 }
 
 static uint64_t ImageBytesHash(const uint8_t* bytes, int len) {
@@ -516,7 +516,7 @@ static int ImageSlotFind(Vec<ImageCacheSlot>* slots, Str src) {
     if (!slots) {
         return -1;
     }
-    for (int i = 0; i < slots->len; i++) {
+    for (int i = 0; i < len(*slots); i++) {
         if ((*slots)[i].tried && base::StrEq((*slots)[i].src, src)) {
             return i;
         }
@@ -550,7 +550,7 @@ static ImageCacheSlot* ImageSlotFor(const ImageLookup& cx, Str src) {
             fresh.pending = true;
             fresh.loadingAt = TimeNow();
             VecAppend(*slots, fresh);
-            hitIx = slots->len - 1;
+            hitIx = len(*slots) - 1;
         }
         return &(*slots)[hitIx];
     }
@@ -581,7 +581,7 @@ static ImageCacheSlot* ImageSlotFor(const ImageLookup& cx, Str src) {
         fresh.src = StrDup(src);
         fresh.tried = true;
         VecAppend(*slots, fresh);
-        hitIx = slots->len - 1;
+        hitIx = len(*slots) - 1;
     }
     ImageCacheSlot* slot = &(*slots)[hitIx];
     slot->img = img;
@@ -605,7 +605,7 @@ static EncodedImageSlot* EncodedSlotFor(const ImageLookup& cx,
     }
     ImageStore* store = StoreOf(cx.app);
     uint64_t hash = ImageBytesHash(source.bytes, source.bytesLen);
-    for (int i = 0; i < store->encoded.len; i++) {
+    for (int i = 0; i < len(store->encoded); i++) {
         EncodedImageSlot* slot = &store->encoded[i];
         if (slot->tried && slot->hash == hash &&
             slot->bytesLen == source.bytesLen) {
@@ -622,7 +622,7 @@ static EncodedImageSlot* EncodedSlotFor(const ImageLookup& cx,
     DecodeImageBytes(cx, source.bytes, source.bytesLen, &fresh.img, &fresh.ops,
                      &fresh.opsLen);
     VecAppend(store->encoded, fresh);
-    return &store->encoded[store->encoded.len - 1];
+    return &store->encoded[len(store->encoded) - 1];
 }
 
 bool ImageDropEncoded(App* app, const uint8_t* bytes, int len) {
@@ -648,7 +648,7 @@ static uint64_t ImageSourceKey(const ImageSource& source) {
     switch (source.kind) {
         case ImageSourceKind::Resource:
             key ^= ImageBytesHash((const uint8_t*)source.resource.s,
-                                  source.resource.len);
+                                  len(source.resource));
             break;
         case ImageSourceKind::Render:
             key ^= RenderImageGeneration(source.render);

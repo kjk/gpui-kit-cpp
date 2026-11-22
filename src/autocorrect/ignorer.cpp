@@ -124,7 +124,7 @@ static bool PatternMatches(const IgnorePattern& pat, Str path, bool isDir) {
     if (pat.dirOnly && !isDir) {
         return false;
     }
-    const char* pe = pat.glob.s + pat.glob.len;
+    const char* pe = pat.glob.s + len(pat.glob);
     const char* te = path.s + len(path);
     if (pat.anchored) {
         return GlobMatch(pat.glob.s, pe, path.s, te);

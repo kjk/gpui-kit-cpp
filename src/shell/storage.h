@@ -47,7 +47,7 @@ class Storage {
     bool Set(Str key, Str value, Str* error = nullptr);
     bool Remove(Str key, Str* error = nullptr);
     bool Clear(Str* error = nullptr);
-    int Len() const { return entries.len; }
+    int Len() const { return len(entries); }
     Str Key(int index) const;
     bool HasPath() const { return path.s != nullptr; }
 

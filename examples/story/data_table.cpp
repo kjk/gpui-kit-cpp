@@ -1059,12 +1059,13 @@ El* DataTableStory::Render(DataTableStory* self, Ctx* cx) {
         }
         Str headLine = sb.TakeStr();
         StrFree(self->message);
-        self->message = StrDup(fmt(
-            "Dumped %d rows × %d columns · %s, … · "
-            "first row: %s, %s, %s",
-            kRowCounts[self->rowCount], nColumns, headLine,
-            cells.len > 0 ? cells[0] : Str(), cells.len > 1 ? cells[1] : Str(),
-            cells.len > 2 ? cells[2] : Str()));
+        self->message =
+            StrDup(fmt("Dumped %d rows × %d columns · %s, … · "
+                       "first row: %s, %s, %s",
+                       kRowCounts[self->rowCount], nColumns, headLine,
+                       len(cells) > 0 ? cells[0] : Str(),
+                       len(cells) > 1 ? cells[1] : Str(),
+                       len(cells) > 2 ? cells[2] : Str()));
         StrFree(headLine);
         VecReset(heads);
         VecReset(cells);

@@ -355,7 +355,7 @@ static void EveryProviderIsAsked() {
     InputSetValue(&s, StrL("hello"));
     InputSetSelectedRange(&s, nullptr, nullptr, 0, 5);
     Act(&s, InputAction::ToggleCodeActions);
-    utassert(s.codeActions.open && s.codeActions.items.len == 2);
+    utassert(s.codeActions.open && len(s.codeActions.items) == 2);
     utassert(base::StrEq(s.codeActions.items[0].title, StrL("first")));
     utassert(base::StrEq(s.codeActions.items[1].title, StrL("second")));
     utassert(s.codeActions.items[0].provider == 0);
@@ -403,7 +403,7 @@ static void CodeActionCollectionsGrowToTheirAnswers() {
     InputSetValue(&manyProviders, StrL("hello"));
     InputSetSelectedRange(&manyProviders, nullptr, nullptr, 0, 5);
     Act(&manyProviders, InputAction::ToggleCodeActions);
-    utassert(manyProviders.codeActions.items.len == 6);
+    utassert(len(manyProviders.codeActions.items) == 6);
     utassert(manyProviders.codeActions.items[5].provider == 5);
 
     // Materializing the provider Vec after a caller used the legacy direct
@@ -415,7 +415,7 @@ static void CodeActionCollectionsGrowToTheirAnswers() {
     InputSetValue(&mixed, StrL("hello"));
     InputSetSelectedRange(&mixed, nullptr, nullptr, 0, 5);
     Act(&mixed, InputAction::ToggleCodeActions);
-    utassert(mixed.codeActions.items.len == 2);
+    utassert(len(mixed.codeActions.items) == 2);
     utassert(base::StrEq(mixed.codeActions.items[0].title, StrL("first")));
     utassert(base::StrEq(mixed.codeActions.items[1].title, StrL("second")));
 
@@ -426,7 +426,7 @@ static void CodeActionCollectionsGrowToTheirAnswers() {
     InputSetValue(&manyAnswers, StrL("hello"));
     InputSetSelectedRange(&manyAnswers, nullptr, nullptr, 0, 5);
     Act(&manyAnswers, InputAction::ToggleCodeActions);
-    utassert(manyAnswers.codeActions.items.len == 73);
+    utassert(len(manyAnswers.codeActions.items) == 73);
 }
 
 // Lsp::reset drops everything the layer was holding.
@@ -440,8 +440,8 @@ static void ResetDropsWhatTheLayerHeld() {
     utassert(InputIsContextMenuOpen(&s));
     InputLspReset(&s);
     utassert(!InputIsContextMenuOpen(&s));
-    utassert(s.hoverText.len == 0);
-    utassert(s.semanticTokens.len == 0);
+    utassert(len(s.hoverText) == 0);
+    utassert(len(s.semanticTokens) == 0);
     utassert(s.documentColorsDirty && s.semanticTokensDirty);
 }
 
@@ -459,7 +459,7 @@ static void AHostCanPresentItsOwnItems() {
     items[1].label = StrL("unsafe");
     uint64_t was = s.completion.revision;
     InputPresentCompletionItems(&s, 0, StrL("un"), items, 2);
-    utassert(s.completion.open && s.completion.items.len == 2);
+    utassert(s.completion.open && len(s.completion.items) == 2);
     utassert(InputIsContextMenuOpen(&s));
     // The revision is what a host renderer diffs against, so it moves
     // whenever the content does.
@@ -544,7 +544,7 @@ static void AHostCanTakeTheKeys() {
     // With no handler, the menu takes it as before.
     s.overlayAction = nullptr;
     utassert(InputPerform(&s, nullptr, nullptr, InputAction::MoveDown, false));
-    utassert(s.completion.selected == 0 || s.completion.items.len == 1);
+    utassert(s.completion.selected == 0 || len(s.completion.items) == 1);
 
     // dismiss_lsp_overlays takes down whatever is up.
     InputDismissLspOverlays(&s);
@@ -605,7 +605,7 @@ static void ACodeActionCanBeMoreThanOneEdit() {
     InputSetValue(&s, StrL("hello world"));
     InputSetSelectedRange(&s, nullptr, nullptr, 6, 11);
     Act(&s, InputAction::ToggleCodeActions);
-    utassert(s.codeActions.open && s.codeActions.items.len == 1);
+    utassert(s.codeActions.open && len(s.codeActions.items) == 1);
     utassert(Menu2(&s, InputAction::Enter));
     utassert(ValueIs(s, "hello (world)"));
     utassert(!s.codeActions.open);
@@ -719,7 +719,7 @@ static void CompletionResponsesGrowPastTheOldBuffer() {
     InputSetValue(&s, StrL("c"));
     InputShowCompletions(&s, nullptr, nullptr);
     utassert(s.completion.open);
-    utassert(s.completion.items.len == 257);
+    utassert(len(s.completion.items) == 257);
     utassert(base::StrEq(s.completion.items[256].label, StrL("candidate")));
 }
 
@@ -1223,7 +1223,7 @@ static void SemanticTokenResponsesGrowPastTheOldBuffer() {
     s.semanticLegend = kSemanticLegend;
     s.nSemanticLegend = 2;
     InputUpdateSemanticTokens(&s);
-    utassert(s.semanticTokens.len == total);
+    utassert(len(s.semanticTokens) == total);
     utassert(s.semanticTokens[total - 1].col == total - 1);
 }
 
@@ -1283,7 +1283,7 @@ static void DefinitionResponsesGrowPastTheOldBuffer() {
     s.definitionProvider = &ManyDefinitions;
     s.definitionData = (void*)(int64_t)19;
     InputHoverDefinition(&s, 1);
-    utassert(s.hoverDef.locations.len == 19);
+    utassert(len(s.hoverDef.locations) == 19);
     utassert(s.hoverDef.locations[18].target.start == 18);
 }
 
@@ -1311,7 +1311,7 @@ static void AHoveredSymbolIsAskedAboutOnce() {
     // The word at 2 is `Duration`, which the provider defines.
     InputHoverDefinition(&s, 2);
     utassert(gDefCalls == 1);
-    utassert(s.hoverDef.locations.len == 1);
+    utassert(len(s.hoverDef.locations) == 1);
     utassert(s.hoverDef.symbolRange.start == 0 && s.hoverDef.symbolRange
                                                           .end == 8);
 
@@ -1323,7 +1323,7 @@ static void AHoveredSymbolIsAskedAboutOnce() {
     // A word with no definition clears what was found, and asks.
     InputHoverDefinition(&s, 10);
     utassert(gDefCalls == 2);
-    utassert(s.hoverDef.locations.len == 0);
+    utassert(len(s.hoverDef.locations) == 0);
 }
 
 static void ASecondaryClickFollowsTheDefinition() {
@@ -1335,7 +1335,7 @@ static void ASecondaryClickFollowsTheDefinition() {
 
     // The second `Duration`, at 18.
     InputHoverDefinition(&s, 20);
-    utassert(s.hoverDef.locations.len == 1);
+    utassert(len(s.hoverDef.locations) == 1);
 
     // A plain click is not one: the caret placement below it stands.
     utassert(!InputClickDefinition(&s, nullptr, nullptr, 20, false));
@@ -1362,7 +1362,7 @@ static void TheActionAsksAboutTheCaretWithoutAHover() {
     utassert(RangeIs(s, 14, 14));
 
     // Inside one it does, it follows, never having been hovered.
-    utassert(s.hoverDef.locations.len == 0);
+    utassert(len(s.hoverDef.locations) == 0);
     InputSetSelectedRange(&s, nullptr, nullptr, 20, 20);
     InputGoToDefinition(&s, nullptr, nullptr);
     utassert(gDefCalls == 2);
@@ -1381,7 +1381,7 @@ static void TheHostSeesTheDocumentFirst() {
     gShownExternal = false;
 
     InputHoverDefinition(&s, 1);
-    utassert(s.hoverDef.locations.len == 1);
+    utassert(len(s.hoverDef.locations) == 1);
     utassert(InputClickDefinition(&s, nullptr, nullptr, 1, true));
     utassert(gShown);
     // An http(s) target is a page rather than a document, and the host is
@@ -2141,7 +2141,7 @@ static void TypingAWordOpensTheMenu() {
     TypeChars(&s, "co");
     utassert(asked == 2);
     utassert(s.completion.open);
-    utassert(s.completion.items.len == 3); // const, continue, core
+    utassert(len(s.completion.items) == 3); // const, continue, core
     utassert(s.completion.triggerStart == 0);
     utassert(s.completion.selected == 0);
 
@@ -2199,7 +2199,7 @@ static void AnAcceptedItemWritesItsInsertText() {
     InputSetValue(&s, StrL("x = "));
     InputSetSelectedRange(&s, nullptr, nullptr, 4, 4);
     TypeChars(&s, "cor");
-    utassert(s.completion.open && s.completion.items.len == 1);
+    utassert(s.completion.open && len(s.completion.items) == 1);
     utassert(s.completion.triggerStart == 4);
     utassert(Menu(&s, InputAction::Enter));
     utassert(ValueIs(s, "x = core::"));
@@ -2209,7 +2209,7 @@ static void AnAcceptedItemWritesItsInsertText() {
     // so the menu goes; typing again asks about the word as it now stands.
     InputSetValue(&s, Str{});
     TypeChars(&s, "cor");
-    utassert(s.completion.items.len == 1);
+    utassert(len(s.completion.items) == 1);
     InputPerform(&s, nullptr, nullptr, InputAction::Backspace, false);
     utassert(ValueIs(s, "co"));
     utassert(!s.completion.open);
@@ -2259,7 +2259,7 @@ static void TheCodeActionMenuRewritesWhatIsSelected() {
     InputSetSelectedRange(&s, nullptr, nullptr, 0, 5);
     Act(&s, InputAction::ToggleCodeActions);
     utassert(asked == 1);
-    utassert(s.codeActions.open && s.codeActions.items.len == 2);
+    utassert(s.codeActions.open && len(s.codeActions.items) == 2);
     utassert(s.codeActions.selected == 0);
 
     // The chord again asks again and replaces the menu that is up
@@ -2267,7 +2267,7 @@ static void TheCodeActionMenuRewritesWhatIsSelected() {
     uint64_t revision = s.codeActions.revision;
     Act(&s, InputAction::ToggleCodeActions);
     utassert(asked == 2);
-    utassert(s.codeActions.open && s.codeActions.items.len == 2);
+    utassert(s.codeActions.open && len(s.codeActions.items) == 2);
     utassert(s.codeActions.revision != revision);
 
     // Down walks it and enter performs the one it is on.
@@ -2329,7 +2329,7 @@ static void DocumentColorsAreAskedForAgainAfterAnEdit() {
     InputSetValue(&s, StrL("#f0a is a colour"));
     InputUpdateDocumentColors(&s);
     utassert(asked == 1);
-    utassert(s.documentColors.len == 1);
+    utassert(len(s.documentColors) == 1);
     utassert(s.documentColors[0].range.start == 0);
 
     // Asking again with nothing changed answers off what is already there.
@@ -2345,7 +2345,7 @@ static void DocumentColorsAreAskedForAgainAfterAnEdit() {
     InputState plain;
     InputSetValue(&plain, StrL("#f0a"));
     InputUpdateDocumentColors(&plain);
-    utassert(plain.documentColors.len == 0);
+    utassert(len(plain.documentColors) == 0);
 }
 
 static int ManyDocumentColors(void* data, Str text, DocumentColor* out,
@@ -2368,7 +2368,7 @@ static void DocumentColorResponsesUseTheRustLimit() {
     s.documentColorData = &total;
     InputSetValue(&s, StrL("x"));
     InputUpdateDocumentColors(&s);
-    utassert(s.documentColors.len == 1500);
+    utassert(len(s.documentColors) == 1500);
     utassert(s.documentColors[0].range.start == 0);
     utassert(s.documentColors[1499].range.start == 1499);
 
@@ -2377,7 +2377,7 @@ static void DocumentColorResponsesUseTheRustLimit() {
     total = kMaxDocumentColors + 1;
     s.documentColorsDirty = true;
     InputUpdateDocumentColors(&s);
-    utassert(s.documentColors.len == 1500);
+    utassert(len(s.documentColors) == 1500);
 }
 
 static El* FindNamedEl(El* root, const char* name) {
@@ -2690,7 +2690,7 @@ static void TheUiInputFacadeKeepsTheSourceShapes() {
         component::CompletionMenu::New(&cx, &state)
             ->UpdateQuery(0, StrL("a"))
             ->Show(1, completions, 2);
-    utassert(state.completion.open && state.completion.items.len == 2);
+    utassert(state.completion.open && len(state.completion.items) == 2);
     utassert(StrEqI(state.completion.query, "a"));
     El* completionEl = completion->IntoEl();
     utassert(completionEl && completionEl->onMouseDownOut.IsValid());
@@ -2793,7 +2793,7 @@ static void BaseInputCoreKeepsTheSourceModeAndPresentationSeams() {
     // masked value, are disabled; Select All always is not.
     NativeMenu menu;
     InputDefaultNativeMenu(&state, &menu);
-    utassert(menu.items.len == 8);
+    utassert(len(menu.items) == 8);
     utassert(menu.items[0].goToDefinition && !menu.items[0].disabled);
     utassert(menu.items[1].action == InputAction::ToggleCodeActions &&
              menu.items[1].disabled);
@@ -2813,7 +2813,7 @@ static void BaseInputCoreKeepsTheSourceModeAndPresentationSeams() {
     plain.selectedRange = {0, 2};
     NativeMenu plainMenu;
     InputDefaultNativeMenu(&plain, &plainMenu);
-    utassert(plainMenu.items.len == 5);
+    utassert(len(plainMenu.items) == 5);
     utassert(!plainMenu.items[0].disabled && !plainMenu.items[1].disabled &&
              !plainMenu.items[2].disabled);
     ArenaDelete(arena);
@@ -3329,7 +3329,7 @@ static void LspFacadesInstallCapabilitiesAndExposeOverlayState() {
     utassert(state.completionTrigger == LspFacadeTrigger);
     utassertnear(state.inlineCompletionDebounceMs, 125.f);
     utassertnear(state.completionMenuMaxW, 480.f);
-    utassert(state.codeActionProviders.len == 1);
+    utassert(len(state.codeActionProviders) == 1);
     utassert(state.definitionProvider == DummyDefinitions);
     utassert(state.semanticTokensProvider == LspFacadeSemantic);
     utassert(state.semanticLegend == legend && state.nSemanticLegend == 1);
@@ -3367,8 +3367,8 @@ static void LspFacadesInstallCapabilitiesAndExposeOverlayState() {
     utassert(spans[0].lo == 0 && spans[0].hi == 2);
 
     lsp.Reset();
-    utassert(state.documentColors.len == 0);
-    utassert(state.semanticTokens.len == 0);
+    utassert(len(state.documentColors) == 0);
+    utassert(len(state.semanticTokens) == 0);
     utassert(!CompletionMenuState::Of(&state).open);
     utassert(!CodeActionMenuState::Of(&state).open);
     utassert(!HoverPopoverState::Of(&state).open);
@@ -3603,7 +3603,7 @@ static void ScrollToCursorUsesDocumentYNotStaleWindowY() {
 // have resolved from the pointer.
 
 static bool ExtraIs(const InputState& s, int i, int start, int end) {
-    return i < s.extraCursors.len && s.extraCursors[i].range.start == start &&
+    return i < len(s.extraCursors) && s.extraCursors[i].range.start == start &&
            s.extraCursors[i].range.end == end;
 }
 
@@ -4135,7 +4135,7 @@ static void InlineTokenContentValidatesRanges() {
     InlineToken tok = InlineToken::New(StrL("person:alice"), StrL("@alice"))
                           .WithLabel(StrL("Alice"));
     utassert(c.WithToken(4, 10, tok) == InlineTokenError::Ok);
-    utassert(c.tokens.len == 1);
+    utassert(len(c.tokens) == 1);
     utassert(c.tokens[0].start == 4 && c.tokens[0].end == 10);
     utassert(c.WithToken(4, 10, tok) == InlineTokenError::OverlappingTokens);
     utassert(c.WithToken(0, 0, tok) == InlineTokenError::InvalidRange);
@@ -4147,7 +4147,7 @@ static void InlineTokenContentValidatesRanges() {
 
 static int TokenCount(const InputState& s) {
     const Vec<InlineTokenSpan>* spans = InputTokens(&s);
-    return spans ? spans->len : 0;
+    return spans ? len(*spans) : 0;
 }
 
 static void InlineTokensRespectModeAndContent() {
@@ -4662,7 +4662,7 @@ static void InputFocusCyclesThroughInputsAndAddons() {
         // element: the editor's rows bind the state without tracking it.
         for (int i = 0; i < 3; i++) {
             int tracked = 0;
-            for (int k = 0; k < win->focusEls.len; k++) {
+            for (int k = 0; k < len(win->focusEls); k++) {
                 if (win->focusEls[k].id == states[i].focus.id) tracked++;
             }
             utassert(tracked == 1);
@@ -5057,7 +5057,7 @@ static void RequestingCodeActionsAgainReplacesTheOpenMenu() {
     Type(&s, "value");
     Act(&s, InputAction::SelectLeft);
     Act(&s, InputAction::ToggleCodeActions);
-    utassert(s.codeActions.open && s.codeActions.items.len == 1);
+    utassert(s.codeActions.open && len(s.codeActions.items) == 1);
     utassert(StrEq(s.codeActions.items[0].title, StrL("4..5")));
     // Widen the selection with the menu still open and ask again.
     utassert(
@@ -5130,8 +5130,8 @@ static void WhitespaceMarksFollowTheShapedGlyphs() {
     int n = WhitespaceMarksVisit(text, 2.f, CollectWhitespaceRects,
                                  CollectWhitespaceMark, ud);
     utassert(n == 4);
-    utassert(marks.len == 4);
-    if (marks.len == 4) {
+    utassert(len(marks) == 4);
+    if (len(marks) == 4) {
         utassert(marks[0].off == 2 && !marks[0].tab);
         utassertnear(marks[0].x, 14.f + 1.75f - 1.f);
         // The line box's top, not the glyph run's: the mark is centred in
@@ -5195,8 +5195,8 @@ static void EachRowCarriesItsIndentGuides() {
     style.indentWidth = 4;
     Vec<int> counts;
     CollectGuideCounts(Textarea::New(&cx, &state, style), &counts);
-    utassert(counts.len == 4);
-    if (counts.len == 4) {
+    utassert(len(counts) == 4);
+    if (len(counts) == 4) {
         utassert(counts[0] == 4);
         utassert(counts[1] == 4);
         utassert(counts[2] == 4);
@@ -5420,7 +5420,7 @@ static void InlineTokenClickSelectsIt() {
     InputSetSelectedRange(view.input, view.app, view.win, 0, 0);
     Flush(view);
     const HitRect* chip = nullptr;
-    for (int i = 0; i < view.win->paint.hits.len; i++) {
+    for (int i = 0; i < len(view.win->paint.hits); i++) {
         const HitRect& hit = view.win->paint.hits[i];
         if (hit.onClick.IsValid() && hit.bounds.w > 0) {
             chip = &hit;
@@ -5824,7 +5824,7 @@ static void InlineTokenGeometryAndReentrantActivation() {
     // The box is where the chip was drawn, after the run "before " and its
     // trailing space.
     const HitRect* chip = nullptr;
-    for (int i = 0; i < view.win->paint.hits.len; i++) {
+    for (int i = 0; i < len(view.win->paint.hits); i++) {
         const HitRect& hit = view.win->paint.hits[i];
         if (hit.onClick.IsValid() && fabsf(hit.bounds.w - 100) < 1) {
             chip = &hit;
@@ -5996,7 +5996,7 @@ static void OnlyAMultiLineInputPaintsScrollbars() {
     ScrollbarFields* f = root.Get(app);
     const ScrollRect* single = nullptr;
     const ScrollRect* multi = nullptr;
-    for (int i = 0; i < win->paint.scrolls.len; i++) {
+    for (int i = 0; i < len(win->paint.scrolls); i++) {
         const ScrollRect& sr = win->paint.scrolls[i];
         if (sr.input == &f->single) {
             single = &sr;
@@ -6115,10 +6115,10 @@ static void SearchShortcutOpensThePanelWhenSearchable() {
 
 // InputContent's PartialEq: the same text and the same token spans.
 static bool ContentEqA(const InputContent& a, const InputContent& b) {
-    if (!base::StrEq(a.text, b.text) || a.tokens.len != b.tokens.len) {
+    if (!base::StrEq(a.text, b.text) || len(a.tokens) != len(b.tokens)) {
         return false;
     }
-    for (int i = 0; i < a.tokens.len; i++) {
+    for (int i = 0; i < len(a.tokens); i++) {
         const InlineTokenSpan& x = a.tokens[i];
         const InlineTokenSpan& y = b.tokens[i];
         if (x.start != y.start || x.end != y.end ||
@@ -6138,17 +6138,17 @@ static bool ViewContentIsA(const InputView& v, const InputContent& want) {
 
 static int TokenCountA(const InputView& v) {
     const Vec<InlineTokenSpan>* spans = InputTokens(v.input);
-    return spans ? spans->len : 0;
+    return spans ? len(*spans) : 0;
 }
 
 static bool TokenIsA(const InputView& v, int i, const InlineToken& token) {
     const Vec<InlineTokenSpan>* spans = InputTokens(v.input);
-    return spans && i < spans->len && InlineTokenEq((*spans)[i].token, token);
+    return spans && i < len(*spans) && InlineTokenEq((*spans)[i].token, token);
 }
 
 static bool TokenRangeIsA(const InputView& v, int i, int start, int end) {
     const Vec<InlineTokenSpan>* spans = InputTokens(v.input);
-    return spans && i < spans->len && (*spans)[i].start == start &&
+    return spans && i < len(*spans) && (*spans)[i].start == start &&
            (*spans)[i].end == end;
 }
 
@@ -6193,7 +6193,7 @@ static void InlineTokenEditHistoryAndValidation() {
     utassert(ViewContentIsA(view, before));
     InputSetValue(view.input, before.text);
     utassert(TokenCountA(view) == 0);
-    utassert(view.input->undo.undos.len == 0);
+    utassert(len(view.input->undo.undos) == 0);
     InputContentFree(&before);
     Flush(view);
     InputViewFree(&view);
@@ -7168,7 +7168,7 @@ static void SearchRevealsOffscreenWrappedMatch() {
     Flush(view);
     TestRunUntilParked(view.app);
     const SearchMatcher& m = view.input->search.matcher;
-    utassert(m.ranges.len > 1 && range.end == m.ranges[1].end);
+    utassert(len(m.ranges) > 1 && range.end == m.ranges[1].end);
     float lh = view.input->lastLineH;
     float y = VisibleRowTopA(view, range.end);
     utassert(y >= lh * 2 - 0.1f);
@@ -7308,7 +7308,7 @@ static int FoldClickId(const char* name) {
 static Bounds MenuHitBounds(Window* win, const char* name) {
     if (!win) return {};
     int id = FoldClickId(name);
-    for (int i = win->paint.hits.len - 1; i >= 0; i--) {
+    for (int i = len(win->paint.hits) - 1; i >= 0; i--) {
         if (win->paint.hits[i].id == id) return win->paint.hits[i].bounds;
     }
     return {};
@@ -7429,7 +7429,7 @@ static void CompletionPopupAnchorsToWrappedAndScrolledCaret() {
             for (int i = 0; i < 40; i++) text.Append(StrL("p\n"));
             text.Append(StrL("p"));
         }
-        Str value = Str(text.els, text.len);
+        Str value = Str(text.els, len(text));
         InputSetValue(&s.p->input, value);
         int n = len(value);
         InputFocus(&s.p->input, s.app, s.win);
@@ -8257,7 +8257,7 @@ static Str LongUrlB(Arena* a) {
     for (int i = 0; i < 120; i++) {
         sb.Append(StrL("x=1&"));
     }
-    return StrDup(a, Str(sb.els, sb.len));
+    return StrDup(a, Str(sb.els, len(sb)));
 }
 
 // state.rs test_set_value_single_line_caret_at_end_view_at_start: after
@@ -10094,7 +10094,7 @@ static int CursorOffsetsD(const InputState* s, int* out, int cap) {
         out[n++] = s->selectionReversed ? s->selectedRange.start
                                         : s->selectedRange.end;
     }
-    for (int i = 0; i < s->extraCursors.len && n < cap; i++) {
+    for (int i = 0; i < len(s->extraCursors) && n < cap; i++) {
         out[n++] = s->extraCursors[i].Cursor();
     }
     return n;
@@ -10892,7 +10892,7 @@ static int SelectionRangesD(const InputState* s, Selection* out, int cap) {
     if (n < cap) {
         out[n++] = s->selectedRange;
     }
-    for (int i = 0; i < s->extraCursors.len && n < cap; i++) {
+    for (int i = 0; i < len(s->extraCursors) && n < cap; i++) {
         out[n++] = s->extraCursors[i].range;
     }
     return n;
@@ -10965,7 +10965,7 @@ static void MultiCursorMultilineInsertAndDelete() {
     Flush(view);
     utassert(CursorsAreD(view, "a|1\na|2\na|3"));
     // The whole multi-edit insert is a single undo transaction.
-    utassert(view.input->undo.undos.len == 1);
+    utassert(len(view.input->undo.undos) == 1);
     ViewAct(view, InputAction::Backspace);
     Flush(view);
     utassert(CursorsAreD(view, "|1\n|2\n|3"));
@@ -10981,7 +10981,7 @@ static void AddSelection() {
     // A range that is already selected adds nothing.
     InputAddSelection(view.input, view.app, view.win, 0, 3);
     utassert(ViewRangeIs(view, 0, 3));
-    utassert(view.input->extraCursors.len == 1);
+    utassert(len(view.input->extraCursors) == 1);
     utassert(view.input->extraCursors[0].range.start == 8);
     utassert(view.input->extraCursors[0].range.end == 11);
     ViewTypeText(view, "x");
@@ -10997,7 +10997,7 @@ static void AddSelectionPreservesCrlfBoundaries() {
     InputSetSelectedRange(view.input, view.app, view.win, 4, 4);
     InputAddSelection(view.input, view.app, view.win, 2, 2);
     utassert(ViewRangeIs(view, 4, 4));
-    utassert(view.input->extraCursors.len == 1);
+    utassert(len(view.input->extraCursors) == 1);
     utassert(view.input->extraCursors[0].range.start == 1);
     utassert(view.input->extraCursors[0].range.end == 1);
     ViewTypeText(view, "x");
@@ -11030,7 +11030,7 @@ static void AddSelectionMergesOverlapsBeforeCopyAndCut() {
             InputAddSelection(view.input, view.app, view.win, ranges[s][i * 2],
                               ranges[s][i * 2 + 1]);
         }
-        utassert(view.input->extraCursors.len == 0);
+        utassert(len(view.input->extraCursors) == 0);
         utassert(ViewRangeIs(view, 0, 5));
         ViewAct(view, InputAction::Copy);
         utassert(ClipboardIsB("abcde"));
@@ -11140,7 +11140,7 @@ static void MultiCursorUndoMultipleInserts() {
         Flush(view);
     }
     utassert(CursorsAreD(view, "abc|1\nabc|2\nabc|3"));
-    utassert(view.input->undo.undos.len == 1);
+    utassert(len(view.input->undo.undos) == 1);
     ViewAct(view, InputAction::Undo);
     Flush(view);
     utassert(CursorsAreD(view, "|1\n|2\n|3"));
@@ -11159,7 +11159,7 @@ static void MultiCursorBackspaceRunIsOneUndo() {
         Flush(view);
     }
     utassert(CursorsAreD(view, "|1\n|2\n|3"));
-    utassert(view.input->undo.undos.len == 1);
+    utassert(len(view.input->undo.undos) == 1);
     ViewAct(view, InputAction::Undo);
     Flush(view);
     utassert(CursorsAreD(view, "abc|1\nabc|2\nabc|3"));
@@ -11187,7 +11187,7 @@ static void MultiCursorIndentIsOneUndo() {
     InputView view = MultiLineD();
     SetupCursorsD(view, "|1\n|2\n|3");
     ViewAct(view, InputAction::IndentInline);
-    utassert(view.input->undo.undos.len == 1);
+    utassert(len(view.input->undo.undos) == 1);
     ViewAct(view, InputAction::Undo);
     Flush(view);
     utassert(CursorsAreD(view, "|1\n|2\n|3"));
@@ -12570,7 +12570,7 @@ struct ThemedTouchRoot {
 // Whether the last frame has an accessible element labelled `want` -- a
 // button of the edit menu.
 static bool PaintedTextIs(Window* win, const char* want) {
-    for (int i = 0; i < win->accessibility.len; i++) {
+    for (int i = 0; i < len(win->accessibility); i++) {
         if (base::StrEq(win->accessibility[i].info.label, Str(want))) {
             return true;
         }

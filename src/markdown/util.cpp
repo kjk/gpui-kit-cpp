@@ -216,7 +216,7 @@ static void RehashBuckets(EditMap& map, int32_t wanted) {
     VecReserve(map.buckets, wanted);
     map.buckets.len = wanted;
     memset((void*)map.buckets.els, 0, (size_t)wanted * sizeof(int32_t));
-    for (int32_t i = 0; i < map.map.len; i++) {
+    for (int32_t i = 0; i < len(map.map); i++) {
         map.buckets[BucketFor(map.buckets, map.map, map.map[i].at)] = i + 1;
     }
 }
@@ -236,7 +236,7 @@ static void AddImpl(EditMap& map, int32_t at, int32_t remove, const Event* add,
         e.remove += remove;
         if (before) {
             ArenaVec<Event> merged{};
-            merged.Reserve(map.a, addLen + e.add.len);
+            merged.Reserve(map.a, addLen + len(e.add));
             merged.AppendMany(map.a, add, addLen);
             for (const Event& ev : e.add) {
                 merged.Append(map.a, ev);
@@ -252,7 +252,7 @@ static void AddImpl(EditMap& map, int32_t at, int32_t remove, const Event* add,
     e.remove = remove;
     e.add.AppendMany(map.a, add, addLen);
     VecAppend(map.map, e);
-    map.buckets[bucket] = map.map.len;
+    map.buckets[bucket] = len(map.map);
 }
 
 void EditMapAdd(EditMap& map, int32_t index, int32_t remove, const Event* add,
@@ -309,18 +309,18 @@ static void SortEntries(Vec<EditMap::Entry>& entries) {
 
 void EditMapConsume(EditMap& map, Vec<Event>& events) {
     SortEntries(map.map);
-    if (map.map.len == 0) {
+    if (len(map.map) == 0) {
         return;
     }
 
     // One jump per entry, and the entry count is already known.
     Vec<Jump> jumps;
-    VecReserve(jumps, map.map.len);
+    VecReserve(jumps, len(map.map));
     int32_t addAcc = 0;
     int32_t removeAcc = 0;
-    for (int32_t index = 0; index < map.map.len; index++) {
+    for (int32_t index = 0; index < len(map.map); index++) {
         removeAcc += map.map[index].remove;
-        addAcc += map.map[index].add.len;
+        addAcc += len(map.map[index].add);
         Jump j = {map.map[index].at, removeAcc, addAcc};
         VecAppend(jumps, j);
     }
@@ -332,7 +332,7 @@ void EditMapConsume(EditMap& map, Vec<Event>& events) {
     Vec<Event> out;
     VecReserve(out, len(events) + addAcc - removeAcc);
     int32_t index = 0;
-    for (int32_t i = 0; i < map.map.len; i++) {
+    for (int32_t i = 0; i < len(map.map); i++) {
         const EditMap::Entry& e = map.map[i];
         for (int32_t j = index; j < e.at; j++) {
             VecAppend(out, events[j]);

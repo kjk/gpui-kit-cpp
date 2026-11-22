@@ -675,7 +675,7 @@ static AvailableSpace LineBreakAvailableSpace(const AlgoConstants& c,
 void CollectFlexLines(const AlgoConstants& c, SizeAvail availableSpace,
                       Vec<FlexItem>* flexItems, Vec<FlexLine>* lines) {
     FlexItem* items = flexItems->els;
-    int total = flexItems->len;
+    int total = len(*flexItems);
 
     // Wrapping needs a definite main size. A main size derived from the
     // container's own content collects every item onto one line.
@@ -730,7 +730,7 @@ void CollectFlexLines(const AlgoConstants& c, SizeAvail availableSpace,
 void CollectBalancedFlexLines(const AlgoConstants& c, SizeAvail availableSpace,
                               Vec<FlexItem>* flexItems, Vec<FlexLine>* lines) {
     FlexItem* items = flexItems->els;
-    int total = flexItems->len;
+    int total = len(*flexItems);
     if (total == 0) {
         return;
     }
@@ -784,7 +784,7 @@ float LineTotalTargetSize(const FlexLine& line, const AlgoConstants& c) {
 
 float LongestLineLength(Vec<FlexLine>* lines, const AlgoConstants& c) {
     float longest = 0.0f;
-    for (int i = 0; i < lines->len; i++) {
+    for (int i = 0; i < len(*lines); i++) {
         FlexLine& line = (*lines)[i];
         float lineGap = SumAxisGaps(Main(c.gap, c.dir), line.count);
         float total = LineTotalTargetSize(line, c) + lineGap;
@@ -815,14 +815,14 @@ void DetermineContainerMainSize(TaffyTree* tree, SizeAvail availableSpace,
                 // Lines that all fit (flex-line-count) still size fit-content
                 // from the longest line of an unlimited balance.
                 int itemCount = 0;
-                for (int i = 0; i < lines->len; i++) {
+                for (int i = 0; i < len(*lines); i++) {
                     itemCount += (*lines)[i].count;
                 }
                 if (itemCount == 0) {
                     outerMainSize = size;
                 } else {
                     Vec<float> itemLengths;
-                    for (int li = 0; li < lines->len; li++) {
+                    for (int li = 0; li < len(*lines); li++) {
                         FlexLine& line = (*lines)[li];
                         for (int ii = 0; ii < line.count; ii++) {
                             const FlexItem& child = line.items[ii];
@@ -858,7 +858,7 @@ void DetermineContainerMainSize(TaffyTree* tree, SizeAvail availableSpace,
                 }
             } else {
                 outerMainSize =
-                    lines->len > 1 ? F32Max(size, mainAvail.value) : size;
+                    len(*lines) > 1 ? F32Max(size, mainAvail.value) : size;
             }
         } else if (mainAvail.kind == AvailableSpace::Kind::MinContent &&
                    c->isWrap) {
@@ -867,7 +867,7 @@ void DetermineContainerMainSize(TaffyTree* tree, SizeAvail availableSpace,
             // The flex container's max-content size is the largest sum of the
             // items' sizes within a single line.
             float mainSize = 0.0f;
-            for (int li = 0; li < lines->len; li++) {
+            for (int li = 0; li < len(*lines); li++) {
                 FlexLine& line = (*lines)[li];
                 for (int ii = 0; ii < line.count; ii++) {
                     FlexItem& item = line.items[ii];
@@ -1374,7 +1374,7 @@ void CalculateChildrenBaseLines(TaffyTree* tree, SizeFOpt nodeSize,
         return;
     }
 
-    for (int li = 0; li < lines->len; li++) {
+    for (int li = 0; li < len(*lines); li++) {
         FlexLine& line = (*lines)[li];
         // Baseline alignment is a no-op on a line with one or zero
         // participating items.
@@ -1427,7 +1427,7 @@ void CalculateChildrenBaseLines(TaffyTree* tree, SizeFOpt nodeSize,
 void CalculateCrossSize(Vec<FlexLine>* lines, SizeFOpt nodeSize,
                         const AlgoConstants& c) {
     FlexDirection dir = c.dir;
-    if (lines->len == 0) {
+    if (len(*lines) == 0) {
         return;
     }
     // A single-line container with a definite cross size gives its line the
@@ -1447,7 +1447,7 @@ void CalculateCrossSize(Vec<FlexLine>* lines, SizeFOpt nodeSize,
     // Otherwise, for each line: take the largest of the baseline-aligned
     // items' summed distances and of the other items' outer hypothetical
     // cross sizes, and zero.
-    for (int li = 0; li < lines->len; li++) {
+    for (int li = 0; li < len(*lines); li++) {
         FlexLine& line = (*lines)[li];
         float maxBaseline = 0.0f;
         for (int i = 0; i < line.count; i++) {
@@ -1486,7 +1486,7 @@ void CalculateCrossSize(Vec<FlexLine>* lines, SizeFOpt nodeSize,
 void HandleAlignContentStretch(Vec<FlexLine>* lines, SizeFOpt nodeSize,
                                const AlgoConstants& c) {
     if (c.alignContent.keyword != AlignContentKeyword::Stretch ||
-        lines->len == 0) {
+        len(*lines) == 0) {
         return;
     }
     FlexDirection dir = c.dir;
@@ -1500,16 +1500,16 @@ void HandleAlignContentStretch(Vec<FlexLine>* lines, SizeFOpt nodeSize,
                  0.0f),
         0.0f);
 
-    float totalCrossAxisGap = SumAxisGaps(Cross(c.gap, dir), lines->len);
+    float totalCrossAxisGap = SumAxisGaps(Cross(c.gap, dir), len(*lines));
     float linesTotalCross = totalCrossAxisGap;
-    for (int i = 0; i < lines->len; i++) {
+    for (int i = 0; i < len(*lines); i++) {
         linesTotalCross += (*lines)[i].crossSize;
     }
 
     if (linesTotalCross < containerMinInnerCross) {
         float addition =
-            (containerMinInnerCross - linesTotalCross) / (float)lines->len;
-        for (int i = 0; i < lines->len; i++) {
+            (containerMinInnerCross - linesTotalCross) / (float)len(*lines);
+        for (int i = 0; i < len(*lines); i++) {
             (*lines)[i].crossSize += addition;
         }
     }
@@ -1523,7 +1523,7 @@ void DetermineUsedCrossSize(TaffyTree* tree, Vec<FlexLine>* lines,
                             const AlgoConstants& c) {
     CalcResolver calc = tree->calc;
     FlexDirection dir = c.dir;
-    for (int li = 0; li < lines->len; li++) {
+    for (int li = 0; li < len(*lines); li++) {
         FlexLine& line = (*lines)[li];
         float lineCrossSize = line.crossSize;
 
@@ -1575,7 +1575,7 @@ void DetermineUsedCrossSize(TaffyTree* tree, Vec<FlexLine>* lines,
 void DistributeRemainingFreeSpace(Vec<FlexLine>* lines,
                                   const AlgoConstants& c) {
     FlexDirection dir = c.dir;
-    for (int li = 0; li < lines->len; li++) {
+    for (int li = 0; li < len(*lines); li++) {
         FlexLine& line = (*lines)[li];
         float totalMainAxisGap = SumAxisGaps(Main(c.gap, dir), line.count);
         float usedSpace = totalMainAxisGap;
@@ -1697,7 +1697,7 @@ float AlignFlexItemsAlongCrossAxis(const FlexItem& child, float freeSpace,
 
 void ResolveCrossAxisAutoMargins(Vec<FlexLine>* lines, const AlgoConstants& c) {
     FlexDirection dir = c.dir;
-    for (int li = 0; li < lines->len; li++) {
+    for (int li = 0; li < len(*lines); li++) {
         FlexLine& line = (*lines)[li];
         float lineCrossSize = line.crossSize;
         float maxBaseline = 0.0f;
@@ -1754,9 +1754,9 @@ void ResolveCrossAxisAutoMargins(Vec<FlexLine>* lines, const AlgoConstants& c) {
 float DetermineContainerCrossSize(Vec<FlexLine>* lines, SizeFOpt nodeSize,
                                   AlgoConstants* c) {
     FlexDirection dir = c->dir;
-    float totalCrossAxisGap = SumAxisGaps(Cross(c->gap, dir), lines->len);
+    float totalCrossAxisGap = SumAxisGaps(Cross(c->gap, dir), len(*lines));
     float totalLineCrossSize = 0.0f;
-    for (int i = 0; i < lines->len; i++) {
+    for (int i = 0; i < len(*lines); i++) {
         totalLineCrossSize += (*lines)[i].crossSize;
     }
 
@@ -1783,7 +1783,7 @@ float DetermineContainerCrossSize(Vec<FlexLine>* lines, SizeFOpt nodeSize,
 
 void AlignFlexLinesPerAlignContent(Vec<FlexLine>* lines, const AlgoConstants& c,
                                    float totalCrossSize) {
-    int numLines = lines->len;
+    int numLines = len(*lines);
     float gap = Cross(c.gap, c.dir);
     float totalCrossAxisGap = SumAxisGaps(gap, numLines);
     float freeSpace =
@@ -1956,9 +1956,9 @@ RectF FinalLayoutPass(TaffyTree* tree, Vec<FlexLine>* lines,
 
     RectF overflowRect = RectF::Zero();
 
-    for (int i = 0; i < lines->len; i++) {
+    for (int i = 0; i < len(*lines); i++) {
         FlexLine& line =
-            c.isWrapReverse ? (*lines)[lines->len - 1 - i] : (*lines)[i];
+            c.isWrapReverse ? (*lines)[len(*lines) - 1 - i] : (*lines)[i];
         CalculateLayoutLine(tree, &line, &totalOffsetCross, &overflowRect, c,
                             oofPool);
     }

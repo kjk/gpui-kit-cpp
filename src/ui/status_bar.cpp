@@ -52,8 +52,8 @@ El* StatusBar::IntoEl() {
             ->ItemsCenter()
             ->Gap(Rems(cx, 0.5f));
     };
-    bool hasLeft = left.len > 0;
-    bool hasRight = right.len > 0;
+    bool hasLeft = len(left) > 0;
+    bool hasRight = len(right) > 0;
     El* bar = Div(a)
                   ->FlexRowDir(cx->app)
                   ->W(kFill)
@@ -66,7 +66,7 @@ El* StatusBar::IntoEl() {
                   ->BorderT(1, th.statusBarBorder);
     if (hasLeft) {
         El* r = region();
-        for (int i = 0; i < left.len; i++) {
+        for (int i = 0; i < len(left); i++) {
             r->Child(left[i]);
         }
         bar->Child(r);
@@ -77,13 +77,13 @@ El* StatusBar::IntoEl() {
     } else if (hasLeft) {
         mid->JustifyFlexEnd();
     }
-    for (int i = 0; i < center.len; i++) {
+    for (int i = 0; i < len(center); i++) {
         mid->Child(center[i]);
     }
     bar->Child(mid);
     if (hasRight) {
         El* r = region();
-        for (int i = 0; i < right.len; i++) {
+        for (int i = 0; i < len(right); i++) {
             r->Child(right[i]);
         }
         bar->Child(r);

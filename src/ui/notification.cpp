@@ -172,7 +172,7 @@ static NotificationSystemState* SysState(Window* win) {
 }
 
 static void SysEntryRemoveAt(NotificationSystemState* state, int ix) {
-    for (int i = ix; i < state->entries.len - 1; i++) {
+    for (int i = ix; i < len(state->entries) - 1; i++) {
         state->entries[i] = state->entries[i + 1];
     }
     state->entries.len--;
@@ -204,13 +204,13 @@ void NotificationSystemInsert(const NotificationSystemEntry& e) {
     if (!state) {
         return;
     }
-    for (int i = 0; i < state->entries.len; i++) {
+    for (int i = 0; i < len(state->entries); i++) {
         if (state->entries[i].id == e.id) {
             SysEntryRemoveAt(state, i);
             break;
         }
     }
-    if (state->entries.len >= kNotificationSystemMax) {
+    if (len(state->entries) >= kNotificationSystemMax) {
         SysEntryRemoveAt(state, 0);
     }
     VecAppend(state->entries, e);
@@ -221,7 +221,7 @@ const NotificationSystemEntry* NotificationSystemFind(int id, Window* win) {
     if (!state) {
         return nullptr;
     }
-    for (int i = 0; i < state->entries.len; i++) {
+    for (int i = 0; i < len(state->entries); i++) {
         if (state->entries[i].id == id && state->entries[i].win == win) {
             return &state->entries[i];
         }
@@ -235,7 +235,7 @@ int NotificationSystemCount() {
 
 int NotificationSystemCount(const App* app) {
     NotificationSystemState* state = AppGlobalGet<NotificationSystemState>(app);
-    return state ? state->entries.len : 0;
+    return state ? len(state->entries) : 0;
 }
 
 static void SysDismissTag(int id) {
@@ -258,7 +258,7 @@ static int NotificationSystemIdentityId(const NotificationItem& item,
     if (!state) {
         return 0;
     }
-    for (int i = 0; i < state->entries.len; i++) {
+    for (int i = 0; i < len(state->entries); i++) {
         const NotificationSystemEntry& e = state->entries[i];
         if (e.win == win && e.identityType == item.identityType &&
             e.identityHasKey == item.identityHasKey &&
@@ -274,7 +274,7 @@ void NotificationSystemDismiss(int id, Window* win) {
     if (!state) {
         return;
     }
-    for (int i = 0; i < state->entries.len; i++) {
+    for (int i = 0; i < len(state->entries); i++) {
         if (state->entries[i].id == id && state->entries[i].win == win) {
             SysEntryRemoveAt(state, i);
             SysDismissTag(id);
@@ -290,7 +290,7 @@ static void NotificationSystemDismissIdentity(NotificationTypeId type,
     if (!state || !type) {
         return;
     }
-    for (int i = state->entries.len - 1; i >= 0; i--) {
+    for (int i = len(state->entries) - 1; i >= 0; i--) {
         if (state->entries[i].win != win ||
             !SystemIdentityMatches(state->entries[i], type, hasKey, key)) {
             continue;
@@ -315,7 +315,7 @@ void NotificationSystemDismissAll(Window* win) {
     if (!state) {
         return;
     }
-    for (int i = state->entries.len - 1; i >= 0; i--) {
+    for (int i = len(state->entries) - 1; i >= 0; i--) {
         if (state->entries[i].win == win) {
             int id = state->entries[i].id;
             SysEntryRemoveAt(state, i);
@@ -335,7 +335,7 @@ void NotificationSystemResponse(Str tag) {
     NotificationSystemState* state = SysState(gSysApp);
     const NotificationSystemEntry* found = nullptr;
     if (state) {
-        for (int i = 0; i < state->entries.len; i++) {
+        for (int i = 0; i < len(state->entries); i++) {
             if (state->entries[i].id == id) {
                 found = &state->entries[i];
                 break;
@@ -373,7 +373,7 @@ void NotificationListState::OnSystemResponse(NotificationListState* self,
     Listener onClick = {};
     NotificationSystemState* state = SysState(cx->app);
     if (state) {
-        for (int i = 0; i < state->entries.len; i++) {
+        for (int i = 0; i < len(state->entries); i++) {
             if (state->entries[i].id == id && state->entries[i]
                                                       .win == cx->win) {
                 onClick = state->entries[i].onClick;
@@ -393,7 +393,7 @@ void NotificationListState::OnSystemResponse(NotificationListState* self,
 }
 
 int NotificationIndexOf(const NotificationListState* s, int id) {
-    for (int i = 0; i < s->items.len; i++) {
+    for (int i = 0; i < len(s->items); i++) {
         if (s->items[i].id == id) {
             return i;
         }
@@ -412,7 +412,7 @@ bool NotificationIdentitySame(const Notification& a, const Notification& b) {
 
 static int NotificationIndexOfIdentity(const NotificationListState* s,
                                        const Notification& item) {
-    for (int i = 0; i < s->items.len; i++) {
+    for (int i = 0; i < len(s->items); i++) {
         if (NotificationIdentitySame(s->items[i], item)) {
             return i;
         }
@@ -446,7 +446,7 @@ NotificationListState::~NotificationListState() {
     isAdvancing = false;
     advanceTimer = 0;
     advanceWin = nullptr;
-    for (int i = 0; i < items.len; i++) {
+    for (int i = 0; i < len(items); i++) {
         NotificationFreeOwned(&items[i]);
     }
     VecReset(items);
@@ -464,11 +464,11 @@ bool NotificationListState::IsExpanded() const {
 static void NotificationRemoveAt(NotificationListState* s, int ix) {
     ToastRemove(&s->stack, s->items[ix].id);
     NotificationFreeOwned(&s->items[ix]);
-    for (int i = ix; i < s->items.len - 1; i++) {
+    for (int i = ix; i < len(s->items) - 1; i++) {
         s->items[i] = s->items[i + 1];
     }
-    if (s->items.len > 0) {
-        s->items[s->items.len - 1] = Notification{};
+    if (len(s->items) > 0) {
+        s->items[len(s->items) - 1] = Notification{};
     }
     s->items.len--;
 }
@@ -552,7 +552,7 @@ int NotificationPush(NotificationListState* s, Ctx* cx, Notification item,
         timeoutMs = item.autohide ? 5000 : 0;
     }
     if (!ToastPush(&s->stack, item.id, timeoutMs)) {
-        NotificationFreeOwned(&s->items[s->items.len - 1]);
+        NotificationFreeOwned(&s->items[len(s->items) - 1]);
         s->items.len--;
         return item.id;
     }
@@ -566,7 +566,7 @@ void NotificationDismiss(NotificationListState* s, Ctx* cx, int id) {
     if (cx) {
         NotificationSystemDismiss(id, cx->win);
     }
-    for (int i = 0; i < s->stack.entries.len; i++) {
+    for (int i = 0; i < len(s->stack.entries); i++) {
         if (s->stack.entries[i].id == id) {
             // The card animates out first; advance drops it when it is done.
             s->stack.entries[i].status = ToastStatus::Ending;
@@ -592,7 +592,7 @@ static void NotificationDismissIdentity(NotificationListState* s, Ctx* cx,
             NotificationSystemDismissByType(type, cx->win);
         }
     }
-    for (int i = 0; i < s->items.len; i++) {
+    for (int i = 0; i < len(s->items); i++) {
         const NotificationItem& item = s->items[i];
         bool matches =
             item.identityType == type &&
@@ -600,7 +600,7 @@ static void NotificationDismissIdentity(NotificationListState* s, Ctx* cx,
         if (!matches) {
             continue;
         }
-        for (int j = 0; j < s->stack.entries.len; j++) {
+        for (int j = 0; j < len(s->stack.entries); j++) {
             if (s->stack.entries[j].id == item.id) {
                 s->stack.entries[j].status = ToastStatus::Ending;
                 s->stack.entries[j].elapsedMs = 0;
@@ -625,7 +625,7 @@ void NotificationClear(NotificationListState* s, Ctx* cx) {
     if (cx) {
         NotificationSystemDismissAll(cx->win);
     }
-    for (int i = 0; i < s->items.len; i++) {
+    for (int i = 0; i < len(s->items); i++) {
         NotificationDismiss(s, cx, s->items[i].id);
     }
 }
@@ -643,7 +643,7 @@ void NotificationStartAdvancing(NotificationListState* s, Ctx* cx) {
 }
 
 bool NotificationNeedsClock(const NotificationListState* s) {
-    for (int i = 0; s && i < s->stack.entries.len; i++) {
+    for (int i = 0; s && i < len(s->stack.entries); i++) {
         const ToastEntry& e = s->stack.entries[i];
         // Rust keeps the autohide ids beside the manager; the entry's own
         // timeout is the same fact here.
@@ -678,14 +678,14 @@ static bool NotificationAdvanceImpl(NotificationListState* s, Ctx* cx,
     // ToastAdvance reports phase boundaries and removals. Notification also
     // paints progress within Starting/Ending, so those ticks repaint too.
     bool animating = false;
-    for (int i = 0; i < s->stack.entries.len; i++) {
+    for (int i = 0; i < len(s->stack.entries); i++) {
         animating = animating || s->stack.entries[i]
                                          .status != ToastStatus::Present;
     }
     // Whatever the stack dropped goes from the list with it.
-    for (int i = s->items.len - 1; i >= 0; i--) {
+    for (int i = len(s->items) - 1; i >= 0; i--) {
         bool alive = false;
-        for (int j = 0; j < s->stack.entries.len; j++) {
+        for (int j = 0; j < len(s->stack.entries); j++) {
             if (s->stack.entries[j].id == s->items[i].id) {
                 alive = true;
                 break;
@@ -787,7 +787,7 @@ El* NotificationList::IntoEl() {
             NotificationStartAdvancing(s, cx);
         }
     }
-    if (!s || s->items.len == 0) {
+    if (!s || len(s->items) == 0) {
         return Div(a);
     }
 
@@ -805,7 +805,7 @@ El* NotificationList::IntoEl() {
     // ToastManager::visible(max_items): newest active entries plus every
     // ending entry, kept in display order.
     int activeCount = 0;
-    for (int i = 0; i < s->stack.entries.len; i++) {
+    for (int i = 0; i < len(s->stack.entries); i++) {
         if (s->stack.entries[i].status != ToastStatus::Ending) {
             activeCount++;
         }
@@ -814,7 +814,7 @@ El* NotificationList::IntoEl() {
     int firstActive = activeCount > maxItems ? activeCount - maxItems : 0;
     int activeIx = 0;
     ArenaVec<int> shown;
-    for (int i = 0; i < s->stack.entries.len; i++) {
+    for (int i = 0; i < len(s->stack.entries); i++) {
         bool ending = s->stack.entries[i].status == ToastStatus::Ending;
         bool visible = ending || activeIx >= firstActive;
         if (!ending) {

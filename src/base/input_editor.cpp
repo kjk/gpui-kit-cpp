@@ -331,7 +331,7 @@ void InputSetLanguageConfig(App* app, Str language,
     }
     LanguageSettings* settings = AppGlobalEnsure<LanguageSettings>(app);
     Str canonical = LanguageCanonical(settings, settings->arena, language);
-    for (int i = settings->configs.len - 1; i >= 0; i--) {
+    for (int i = len(settings->configs) - 1; i >= 0; i--) {
         if (StrEq(settings->configs[i].name, canonical)) {
             settings->configs[i]
                 .config = LanguageConfigCopy(settings->arena, config);
@@ -350,7 +350,7 @@ LanguageConfig InputLanguageConfig(App* app, Str language) {
     LanguageSettings* settings = AppGlobalEnsure<LanguageSettings>(app);
     Arena* temp = GetTempArena();
     Str canonical = LanguageCanonical(settings, temp, language);
-    for (int i = settings->configs.len - 1; i >= 0; i--) {
+    for (int i = len(settings->configs) - 1; i >= 0; i--) {
         Str registered =
             LanguageCanonical(settings, temp, settings->configs[i].name);
         if (StrEq(registered, canonical)) {
@@ -662,7 +662,7 @@ static void DecorationsRelease(DecorationCollectionsState* state) {
     if (!state || --state->refs > 0) {
         return;
     }
-    for (int i = 0; i < state->entries.len; i++) {
+    for (int i = 0; i < len(state->entries); i++) {
         delete state->entries[i];
     }
     delete state;
@@ -673,7 +673,7 @@ static DecorationCollectionEntry* DecorationEntry(
     if (!state || !state->ownerAlive) {
         return nullptr;
     }
-    for (int i = 0; i < state->entries.len; i++) {
+    for (int i = 0; i < len(state->entries); i++) {
         DecorationCollectionEntry* entry = state->entries[i];
         if (entry && entry->id == id) {
             return entry;
@@ -756,10 +756,10 @@ int TextDecorationCollection::GetRanges(Selection* out, int cap) const {
     if (!entry) {
         return 0;
     }
-    for (int i = 0; out && i < entry->decorations.len && i < cap; i++) {
+    for (int i = 0; out && i < len(entry->decorations) && i < cap; i++) {
         out[i] = entry->decorations[i].range;
     }
-    return entry->decorations.len;
+    return len(entry->decorations);
 }
 
 bool TextDecorationCollection::IsValid() const {
@@ -821,7 +821,7 @@ static void DecorationsAdjust(DecorationCollectionsState* state,
     if (!state || !state->ownerAlive) {
         return;
     }
-    for (int i = 0; i < state->entries.len; i++) {
+    for (int i = 0; i < len(state->entries); i++) {
         Vec<TextDecoration>& ds = state->entries[i]->decorations;
         int write = 0;
         for (int j = 0; j < len(ds); j++) {
@@ -841,7 +841,7 @@ static void DecorationsClear(DecorationCollectionsState* state) {
     if (!state || !state->ownerAlive) {
         return;
     }
-    for (int i = 0; i < state->entries.len; i++) {
+    for (int i = 0; i < len(state->entries); i++) {
         VecClear(state->entries[i]->decorations);
     }
 }
@@ -856,7 +856,7 @@ static int DecorationsBuildSpans(const DecorationCollectionsState* state,
         return 0;
     }
     Vec<TextSpan> accepted;
-    for (int i = 0; i < state->entries.len; i++) {
+    for (int i = 0; i < len(state->entries); i++) {
         const Vec<TextDecoration>& ds = state->entries[i]->decorations;
         for (int j = 0; j < len(ds); j++) {
             Vec<Selection> pieces;
@@ -2659,8 +2659,8 @@ void DiagnosticSet::Push(const Diagnostic& diagnostic) {
     entry.diagnostic = CloneDiagnostic(arena, diagnostic);
     entry.diagnostic.range = entry.range;
     int at = 0;
-    while (at < diagnostics.len && diagnostics[at].range.start <= entry.range
-                                                                      .start) {
+    while (at < len(diagnostics) && diagnostics[at].range.start <= entry.range
+                                                                       .start) {
         at++;
     }
     VecInsertAt(diagnostics, at, entry);
@@ -2681,10 +2681,10 @@ void DiagnosticSet::Clear() {
 
 DiagnosticSummary DiagnosticSet::Summary() const {
     DiagnosticSummary result;
-    result.count = diagnostics.len;
-    if (diagnostics.len > 0) {
+    result.count = len(diagnostics);
+    if (len(diagnostics) > 0) {
         result.start = diagnostics[0].range.start;
-        result.end = diagnostics[diagnostics.len - 1].range.end;
+        result.end = diagnostics[len(diagnostics) - 1].range.end;
     }
     return result;
 }
@@ -2692,7 +2692,7 @@ DiagnosticSummary DiagnosticSet::Summary() const {
 int DiagnosticSet::Range(Selection range, const DiagnosticEntry** out,
                          int cap) const {
     int total = 0;
-    for (int i = 0; i < diagnostics.len; i++) {
+    for (int i = 0; i < len(diagnostics); i++) {
         const DiagnosticEntry& entry = diagnostics[i];
         if (entry.range.start >= range.end) {
             break;
@@ -2713,8 +2713,8 @@ const DiagnosticEntry* DiagnosticSet::ForOffset(int offset) const {
 }
 
 const DiagnosticEntry* DiagnosticSet::At(int index) const {
-    return index >= 0 && index < diagnostics.len ? &diagnostics[index]
-                                                 : nullptr;
+    return index >= 0 && index < len(diagnostics) ? &diagnostics[index]
+                                                  : nullptr;
 }
 
 DisplayMap::DisplayMap(int columns) : wrapColumns(std::max(0, columns)) {
@@ -2770,7 +2770,7 @@ BufferPoint DisplayMap::ClipBufferPoint(BufferPoint point) const {
 DisplayPoint DisplayMap::BufferPosToDisplayPos(BufferPoint point) const {
     point = ClipBufferPoint(point);
     int firstForLine = -1;
-    for (int i = 0; i < rows.len; i++) {
+    for (int i = 0; i < len(rows); i++) {
         const DisplayMapRow& row = rows[i];
         if (row.bufferLine != point.line) {
             continue;
@@ -2780,7 +2780,7 @@ DisplayPoint DisplayMap::BufferPosToDisplayPos(BufferPoint point) const {
         }
         if (point.col < row.endCol ||
             (point.col == row.endCol &&
-             (i + 1 == rows.len || rows[i + 1].bufferLine != point.line))) {
+             (i + 1 == len(rows) || rows[i + 1].bufferLine != point.line))) {
             return {i, point.col - row.startCol};
         }
     }
@@ -2788,7 +2788,7 @@ DisplayPoint DisplayMap::BufferPosToDisplayPos(BufferPoint point) const {
         return {firstForLine, 0};
     }
     int nearestLine = FoldMapNearestVisibleLine(&foldMap, point.line);
-    for (int i = 0; i < rows.len; i++) {
+    for (int i = 0; i < len(rows); i++) {
         if (rows[i].bufferLine == nearestLine) {
             return {i, 0};
         }
@@ -2797,10 +2797,10 @@ DisplayPoint DisplayMap::BufferPosToDisplayPos(BufferPoint point) const {
 }
 
 BufferPoint DisplayMap::DisplayPosToBufferPos(DisplayPoint point) const {
-    if (rows.len == 0) {
+    if (len(rows) == 0) {
         return {};
     }
-    int rowIx = std::max(0, std::min(point.row, rows.len - 1));
+    int rowIx = std::max(0, std::min(point.row, len(rows) - 1));
     const DisplayMapRow& row = rows[rowIx];
     int width = std::max(0, row.endCol - row.startCol);
     return {row.bufferLine,
@@ -2895,13 +2895,13 @@ int DisplayMap::BufferLineCount() const {
 }
 
 int DisplayMap::DisplayRowToBufferLine(int row) const {
-    return row >= 0 && row < rows.len ? rows[row].bufferLine : 0;
+    return row >= 0 && row < len(rows) ? rows[row].bufferLine : 0;
 }
 
 Selection DisplayMap::BufferLineToDisplayRowRange(int line) const {
     int start = -1;
     int end = -1;
-    for (int i = 0; i < rows.len; i++) {
+    for (int i = 0; i < len(rows); i++) {
         if (rows[i].bufferLine == line) {
             if (start < 0) {
                 start = i;

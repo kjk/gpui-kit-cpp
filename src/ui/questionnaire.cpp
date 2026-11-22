@@ -407,7 +407,7 @@ El* QuestionnaireProgress::IntoEl() {
                                   ->Fg(colors.mutedForeground),
                               resolved, cx);
     RefineWith(e, this);
-    if (children.len == 0) {
+    if (len(children) == 0) {
         e->Child(TextEl(a, label));
     }
     return AddChildren(e, this);
@@ -428,7 +428,7 @@ static El* ItemTextPart(QuestionnairePart* part, Str fallback, TextStyleFn fn,
         ReportUnknownItem(part->item);
         return nullptr;
     }
-    bool hasChildren = part->children.len > 0;
+    bool hasChildren = len(part->children) > 0;
     if (!hasChildren && len(fallback) == 0) {
         return nullptr;
     }
@@ -629,7 +629,7 @@ El* QuestionnaireChoice::IntoEl() {
     float shortcutOffset = CenterOnAnswerLine(m.shortcutSize, resolved, app);
     const FocusHandle* focus = s->ChoiceFocusHandle(item, value);
     bool focused = focus && FocusHandleIsFocused(cx->win, *focus);
-    bool hasChildren = children.len > 0;
+    bool hasChildren = len(children) > 0;
 
     // The slot, not the element, owns the vertical alignment, so a custom
     // indicator lands on the label's line without having to know the
@@ -850,7 +850,7 @@ El* QuestionnaireError::IntoEl() {
             ->Fg(tokens.colors.destructive),
         resolved, cx);
     RefineWith(e, this);
-    if (children.len == 0) {
+    if (len(children) == 0) {
         e->Child(TextEl(a, StrDup(a, QuestionnaireErrorText(*error))));
     }
     return AddChildren(e, this);
@@ -945,7 +945,7 @@ static El* ActionPart(QuestionnairePart* part, QuestionnaireAction action,
     if (primary) {
         button->Primary();
     }
-    if (part->children.len == 0) {
+    if (len(part->children) == 0) {
         button->Label(Tr(translation));
     }
     for (El* child : part->children) {

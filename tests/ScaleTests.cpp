@@ -589,7 +589,7 @@ static void PlotStackSeries() {
     for (const component::plot::StackSeries& item : series) {
         if (resolvedCount >= 3) break;
         resolvedKeys[resolvedCount] = item.key;
-        if (item.points.len > 0) {
+        if (len(item.points) > 0) {
             resolvedPoints[resolvedCount] = item.points[0];
         }
         resolvedCount++;
@@ -635,17 +635,17 @@ static void PlotAxisBuilderOrderDoesNotMoveLabels() {
     ArenaVec<component::plot::Text> lx = last.XTexts(arena, 50);
     ArenaVec<component::plot::Text> fy = first.YTexts(arena, 30);
     ArenaVec<component::plot::Text> ly = last.YTexts(arena, 30);
-    utassert(fx.len == 2 && lx.len == 2 && fy.len == 2 && ly.len == 2);
-    for (int i = 0; i < fx.len && i < lx.len; i++) {
+    utassert(len(fx) == 2 && len(lx) == 2 && len(fy) == 2 && len(ly) == 2);
+    for (int i = 0; i < len(fx) && i < len(lx); i++) {
         utassert(StrEqI(fx[i].text, lx[i].text));
         utassertnear(fx[i].origin.x, lx[i].origin.x);
         utassertnear(fx[i].origin.y, lx[i].origin.y);
     }
-    for (int i = 0; i < fy.len && i < ly.len; i++) {
+    for (int i = 0; i < len(fy) && i < len(ly); i++) {
         utassertnear(fy[i].origin.x, ly[i].origin.x);
         utassertnear(fy[i].origin.y, ly[i].origin.y);
     }
-    if (fx.len > 0) {
+    if (len(fx) > 0) {
         utassertnear(fx[0].origin.y, 50.f - component::kPlotTextGap -
                                          component::kPlotTextHeight);
     }
@@ -692,8 +692,8 @@ static void PlotBarAndAxisContracts() {
     // lands against the line.
     axis.XLabel(&tick, 1)->X(30);
     ArenaVec<component::plot::Text> xs = axis.XTexts(arena, axis.x);
-    utassert(xs.len == 1);
-    if (xs.len > 0) {
+    utassert(len(xs) == 1);
+    if (len(xs) > 0) {
         utassertnear(xs[0].origin.x, 20.f);
         utassertnear(xs[0].origin.y, 36.f);
     }
@@ -701,8 +701,8 @@ static void PlotBarAndAxisContracts() {
         ->Y(12)
         ->YLabel(&tick, 1);
     ArenaVec<component::plot::Text> ys = axis.YTexts(arena, axis.y);
-    utassert(ys.len == 1);
-    if (ys.len > 0) {
+    utassert(len(ys) == 1);
+    if (len(ys) > 0) {
         utassertnear(ys[0].origin.x, 10.f);
         utassertnear(ys[0].origin.y, 15.f);
     }
@@ -832,7 +832,7 @@ static void PlotWithoutAGenerationDoesNotAppear() {
     utassert(!plain.appear);
     gpui::plot::PlotAppear appear = gpui::plot::PlotAppear::Complete();
     utassert(appear.Progress() == 1.f && !h.win->animFrame);
-    utassert(h.win->motionSlots.len == 0);
+    utassert(len(h.win->motionSlots) == 0);
 }
 
 // test_new_generation_replays_the_appear

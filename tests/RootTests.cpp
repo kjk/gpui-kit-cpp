@@ -58,7 +58,7 @@ static void PluginRegistrationIsIdempotentAndStateIsPerWindow() {
         wins[i]->root = root.id;
         const gpui::Root* read = gpui::Root::Read(wins[i]);
         utassert(read && read->View() == content.id);
-        utassert(read && read->plugins.len == 1);
+        utassert(read && len(read->plugins) == 1);
         states[i] = read ? read->Plugin(&kLayer) : nullptr;
         utassert(states[i] != nullptr);
     }

@@ -32,7 +32,7 @@ bool HttpGetNoRedirect(Str url, HttpRsp* out) {
 }
 
 void HttpTrimMediaType(Str* s) {
-    for (int i = 0; i < s->len; i++) {
+    for (int i = 0; i < len(*s); i++) {
         char c = s->s[i];
         if (c == ';' || c == ' ') {
             s->len = i;
@@ -136,7 +136,7 @@ void HttpAsyncJobFree(HttpAsyncJob* job) {
     StrFree(job->url);
     StrFree(job->method);
     StrFree(job->body);
-    for (int i = 0; i < job->headers.len; i++) {
+    for (int i = 0; i < len(job->headers); i++) {
         StrFree(job->headers[i].name);
         StrFree(job->headers[i].value);
     }
@@ -172,8 +172,8 @@ static HttpAsyncJob* HttpAsyncJobNew(const HttpReq& req,
     }
     job->req.url = job->url;
     job->req.method = job->method;
-    job->req.headers = job->headers.len ? job->headers.els : nullptr;
-    job->req.nHeaders = job->headers.len;
+    job->req.headers = len(job->headers) ? job->headers.els : nullptr;
+    job->req.nHeaders = len(job->headers);
     job->req.body = job->body;
     job->req.noRedirect = req.noRedirect;
     job->done = done;

@@ -1111,7 +1111,7 @@ ElRefiner MaterializeRequest::TakeStyle() {
 }
 
 int MaterializeRequest::ChildrenLen() const {
-    int remaining = node->children.len - childrenTaken;
+    int remaining = len(node->children) - childrenTaken;
     for (int i = 0; i < typedCount; i++) {
         if (!typed[i].consumed) remaining++;
     }
@@ -1129,7 +1129,7 @@ bool MaterializeRequest::TakeChildren(El*** out, int* count) {
         return false;
     }
     lane = kLaneOrdinary;
-    int total = node->children.len - childrenTaken;
+    int total = len(node->children) - childrenTaken;
     if (total <= 0) return true;
     El** children = (El**)Alloc(cx->a, (int)sizeof(El*) * total);
     int at = 0;
@@ -1165,7 +1165,7 @@ bool MaterializeRequest::TakeTypedChildren(ComponentChild** out, int* count) {
         return false;
     }
     lane = kLaneTyped;
-    int total = node->children.len;
+    int total = len(node->children);
     if (total == 0 || typed) {
         *out = typed;
         *count = typedCount;
@@ -1184,7 +1184,7 @@ bool MaterializeRequest::TakeTypedChildren(ComponentChild** out, int* count) {
             entry.payload = &childNode->component.payload;
         }
     }
-    childrenTaken = node->children.len;
+    childrenTaken = len(node->children);
     *out = typed;
     *count = typedCount;
     return true;

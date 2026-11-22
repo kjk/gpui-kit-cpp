@@ -59,7 +59,7 @@ static PanelNameTable& Names() {
 static Str InternPanelName(Str name) {
     PanelNameTable& table = Names();
     table.mutex.Lock();
-    for (int i = 0; i < table.names.len; i++) {
+    for (int i = 0; i < len(table.names); i++) {
         if (StrEq(table.names[i], name)) {
             Str found = table.names[i];
             table.mutex.Unlock();
@@ -211,7 +211,7 @@ Str ShellRegisterPanel(App* app, Str application, Str panel,
     ScriptPanelManager* manager = PanelManager(app);
     if (!manager) return {};
     Str name = ShellPanelName(application, panel);
-    for (int i = 0; i < manager->registrations.len; i++) {
+    for (int i = 0; i < len(manager->registrations); i++) {
         ScriptPanelRegistration* registration = manager->registrations[i];
         if (!StrEq(registration->name, name)) continue;
         if (registration->script.release)
@@ -493,7 +493,7 @@ void ShellDropIndicatorData(const DockState* state, Bounds to,
     Bounds group = {};
     const char* placement = nullptr;
     Bounds from = to;
-    if (state && state->dropNode >= 0 && state->dropNode < state->nodes.len) {
+    if (state && state->dropNode >= 0 && state->dropNode < len(state->nodes)) {
         group = state->nodes[state->dropNode].bounds;
         placement = DropPlacementName(state->dropAt);
         from = state->dropFrom;

@@ -50,7 +50,7 @@ bool FormatHalfwidthWord(Arena* a, Str in, Str* out) {
     }
     // HALF_TIME_RE `(\d)(：)(\d)`: a fullwidth colon between digits becomes
     // ':' — 16：32 → 16:32.
-    Str cur = changed ? Str(b.els, b.len) : in;
+    Str cur = changed ? Str(b.els, len(b)) : in;
     StrBuilder t;
     bool timeHit = false;
     for (int i = 0; i < len(cur);) {

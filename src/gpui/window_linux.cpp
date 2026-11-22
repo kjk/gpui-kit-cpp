@@ -140,7 +140,7 @@ static Window* FindWindow(App* app, XWindow xwin) {
     if (!app) {
         return nullptr;
     }
-    for (int i = 0; i < app->windows.len; i++) {
+    for (int i = 0; i < len(app->windows); i++) {
         Window* w = app->windows[i];
         if (w->plat && w->plat->xwin == xwin) {
             return w;
@@ -2264,7 +2264,7 @@ static void FrameConfigured(Window* win) {
 // Reports the end of moves whose button has come up; true while one waits.
 static bool PollMoveEnds(App* app) {
     bool waiting = false;
-    for (int i = 0; i < app->windows.len; i++) {
+    for (int i = 0; i < len(app->windows); i++) {
         Window* w = app->windows[i];
         if (!w->plat || !w->plat->moveEndPending) {
             continue;

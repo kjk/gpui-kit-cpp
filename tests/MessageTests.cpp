@@ -52,7 +52,7 @@ static void TheBuilderCarriesAlignmentAndEverySlot() {
     MessageGroup* group = MessageGroup::New(&cx)
                               ->Child(TextEl(a, StrL("First")))
                               ->Child(TextEl(a, StrL("Second")));
-    utassert(group->children.len == 2);
+    utassert(len(group->children) == 2);
 
     MessageContent* content = MessageContent::New(&cx)
                                   ->Aligned(MessageAlignment::End);
@@ -60,7 +60,7 @@ static void TheBuilderCarriesAlignmentAndEverySlot() {
 
     MessageAvatar* avatar = MessageAvatar::New(&cx)
                                 ->Child(TextEl(a, StrL("ME")));
-    utassert(avatar->children.len == 1);
+    utassert(len(avatar->children) == 1);
 
     AppGlobalClear(&app);
     ArenaDelete(a);
@@ -79,7 +79,7 @@ static void AGhostBubbleRemovesTheMetadataInsets() {
             ->WithBubble(Bubble::New(&cx))
             ->WithBubble(Bubble::New(&cx)->WithVariant(BubbleVariant::Ghost));
     utassert(content->hasGhostBubble);
-    utassert(content->children.len == 2);
+    utassert(len(content->children) == 2);
 
     utassert(!MessageHeader::New(&cx)
                   ->WithInheritedContentInset(false)

@@ -51,7 +51,7 @@ static void GroupsFlattenIntoHeadingsAndItems() {
     CommandState s;
     Install(&s, entries, 2, nullptr);
     // Two headings and five items.
-    utassert(s.rows.len == 7);
+    utassert(len(s.rows) == 7);
     utassert(s.rows[0].kind == CommandRowKind::Heading);
     utassert(s.rows[1].kind == CommandRowKind::Item);
     utassert(s.rows[4].kind == CommandRowKind::Heading);
@@ -67,7 +67,7 @@ static void AHeadingIsHiddenWhileItsGroupIsFilteredOut() {
     CommandState s;
     Install(&s, entries, 2, "profile");
     // Only the Settings group kept anything, so only its heading is drawn.
-    utassert(s.rows.len == 2);
+    utassert(len(s.rows) == 2);
     utassert(s.rows[0].kind == CommandRowKind::Heading);
     utassert(CommandMatchedCount(&s) == 1);
     // And the item still reports where it was given, not where it landed.
@@ -108,18 +108,18 @@ static void ASeparatorIsDrawnOnlyWhereSomethingFollowsIt() {
     // The leading and the trailing one are dropped; the one between the two
     // groups is kept.
     int separators = 0;
-    for (int i = 0; i < s.rows.len; i++) {
+    for (int i = 0; i < len(s.rows); i++) {
         if (s.rows[i].kind == CommandRowKind::Separator) {
             separators++;
         }
     }
     utassert(separators == 1);
     utassert(s.rows[0].kind == CommandRowKind::Heading);
-    utassert(s.rows[s.rows.len - 1].kind == CommandRowKind::Item);
+    utassert(s.rows[len(s.rows) - 1].kind == CommandRowKind::Item);
 
     // And a query that empties the second group drops that one too.
     Install(&s, entries, 5, "calendar");
-    for (int i = 0; i < s.rows.len; i++) {
+    for (int i = 0; i < len(s.rows); i++) {
         utassert(s.rows[i].kind != CommandRowKind::Separator);
     }
 }
@@ -282,7 +282,7 @@ static void ReinstallingAnUnchangedModelKeepsTheMeasuredRows() {
     utassert(CommandMatchedCount(&s) == 5);
     utassert(s.measureCount == 1);
     float sizes[8] = {};
-    int nSizes = s.rowSizes.len;
+    int nSizes = len(s.rowSizes);
     utassert(nSizes == 7);
     for (int i = 0; i < nSizes && i < 8; i++) {
         sizes[i] = s.rowSizes[i];
@@ -294,7 +294,7 @@ static void ReinstallingAnUnchangedModelKeepsTheMeasuredRows() {
     Install(&s, again, 2, nullptr);
     utassert(s.measureCount == 1);
     utassert(CommandMatchedCount(&s) == 5);
-    utassert(s.rowSizes.len == nSizes);
+    utassert(len(s.rowSizes) == nSizes);
     for (int i = 0; i < nSizes && i < 8; i++) {
         utassertnear(s.rowSizes[i], sizes[i]);
     }
@@ -317,7 +317,7 @@ static void ReinstallingAnUnchangedModelKeepsTheMeasuredRows() {
     // A new query is new rows.
     Install(&s, relabeled, 2, "bill");
     utassert(s.measureCount == 4);
-    utassert(s.rowSizes.len == s.rows.len);
+    utassert(len(s.rowSizes) == len(s.rows));
 }
 
 // state.rs custom rows: each one is laid out on its own and the list is
@@ -341,7 +341,7 @@ static void ACustomRowIsMeasured() {
                                CommandEntryOf(plain), CommandEntryOf(shortRow)};
     CommandState s;
     CommandInstall(&s, &cx, entries, 4, true);
-    utassert(s.rows.len == 4 && s.rowSizes.len == 4);
+    utassert(len(s.rows) == 4 && len(s.rowSizes) == 4);
     utassertnear(s.rowSizes[0], 84.f);
     utassertnear(s.rowSizes[1], 9.f);
     utassertnear(s.rowSizes[2], 14.f * kLineHeight + 12.f);

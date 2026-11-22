@@ -32,7 +32,7 @@ static void TheFirstObjectIsKeptAndLaterCandidatesAreDropped() {
 
     WindowKeyedFree(&window);
     utassert(KeyedLifetime::dropped == 2);
-    utassert(window.keyed.len == 0);
+    utassert(len(window.keyed) == 0);
 }
 
 // UseLaidOutHeight: a virtual list's viewport is last frame's laid-out

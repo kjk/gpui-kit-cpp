@@ -257,12 +257,12 @@ struct FloatContext {
         if (atLeast > hwm) {
             hwm = atLeast;
         }
-        for (int i = hwm; i < segments.len; i++) {
+        for (int i = hwm; i < len(segments); i++) {
             if (segments[i].yEnd > *minY) {
                 return i;
             }
         }
-        return segments.len;
+        return len(segments);
     }
 
     ContentSlot FindContentSlot(float minY,
@@ -309,8 +309,8 @@ PlacedFloatedBox FloatContext::PlaceFloatedBoxInner(
     }
 
     // The float goes in a segment at or below minY.
-    int startIdx = segments.len;
-    for (int i = hwm; i < segments.len; i++) {
+    int startIdx = len(segments);
+    for (int i = hwm; i < len(segments); i++) {
         if (segments[i].yEnd > minY) {
             startIdx = i;
             break;
@@ -329,7 +329,7 @@ PlacedFloatedBox FloatContext::PlaceFloatedBoxInner(
     while (true) {
         // No existing segment can take the float, so it goes into a new one
         // below all of them; that always has room.
-        if (startIdx >= segments.len) {
+        if (startIdx >= len(segments)) {
             haveStart = false;
             haveEnd = false;
             placedInset = containingBlockInsets[slot];
@@ -357,7 +357,7 @@ PlacedFloatedBox FloatContext::PlaceFloatedBoxInner(
         // way down.
         bool restartOuter = false;
         while (true) {
-            if (endIdx >= segments.len) {
+            if (endIdx >= len(segments)) {
                 haveStart = true;
                 foundStart = startIdx;
                 haveEnd = false;
@@ -424,7 +424,7 @@ PlacedFloatedBox FloatContext::PlaceFloatedBoxInner(
         seg.hasFloat[slot] = true;
         VecAppend(segments, seg);
 
-        int si = segments.len - 1;
+        int si = len(segments) - 1;
         UpdateLastPlacedFloat(direction, {si, si + 1});
 
         out.y = newStartY;
@@ -452,7 +452,7 @@ PlacedFloatedBox FloatContext::PlaceFloatedBoxInner(
             gap.yEnd = minY;
             VecAppend(segments, gap);
         }
-        ei = segments.len - 1;
+        ei = len(segments) - 1;
     } else {
         ei = foundEnd;
         float endY = startY + floatedBox.h;
@@ -465,7 +465,7 @@ PlacedFloatedBox FloatContext::PlaceFloatedBoxInner(
     }
 
     float placedInsetPlusWidth = placedInset + floatedBox.w;
-    for (int i = si; i <= ei && i < segments.len; i++) {
+    for (int i = si; i <= ei && i < len(segments); i++) {
         segments[i].insets[slot] = placedInsetPlusWidth;
         segments[i].hasFloat[slot] = true;
     }
@@ -490,7 +490,7 @@ ContentSlot FloatContext::FindContentSlot(float minY,
     }
 
     int startIdx = FirstSlotSegment(&minY, clear, after);
-    if (startIdx >= segments.len) {
+    if (startIdx >= len(segments)) {
         return fallback;
     }
 
@@ -523,7 +523,7 @@ BfcSlot FloatContext::FindBfcSlot(float minY,
     }
 
     int startIdx = FirstSlotSegment(&minY, clear, after);
-    if (startIdx >= segments.len) {
+    if (startIdx >= len(segments)) {
         fallback.y = F32Max(LastSegmentEnd(), minY);
         return fallback;
     }
@@ -995,7 +995,7 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
     bool activeMarginSetHasClearance = false;
     bool hasActiveFloats = blockCtx->HasActiveFloats(committedYOffset);
 
-    for (int itemIdx = 0; itemIdx < items->len; itemIdx++) {
+    for (int itemIdx = 0; itemIdx < len(*items); itemIdx++) {
         BlockItem& item = (*items)[itemIdx];
         if (IsOutOfFlow(item.position)) {
             float x = direction == Direction::Ltr

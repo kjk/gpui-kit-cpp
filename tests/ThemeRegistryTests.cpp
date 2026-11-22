@@ -413,8 +413,8 @@ static void SourceRegistryAndConfigSettingsAreRetained() {
              theme.radiusLg == 11.f && theme.windowRadius == 10.f &&
              !theme.shadow);
     SemanticThemeTokens tokens = ThemeSemanticTokens(theme);
-    utassert(tokens.shadow.sm.len == 0 && tokens.shadow.md.len == 0 &&
-             tokens.shadow.lg.len == 0);
+    utassert(len(tokens.shadow.sm) == 0 && len(tokens.shadow.md) == 0 &&
+             len(tokens.shadow.lg) == 0);
     utassert(StrEqI(tokens.typography.sans, "Inter") &&
              tokens.typography.md.size == 18.f &&
              tokens.typography.monoMd.size == 14.f);

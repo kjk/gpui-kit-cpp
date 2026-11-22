@@ -43,7 +43,7 @@ static void PutBytes(DbusWriter* w, const void* data, int n) {
 }
 
 static void PutAlign(DbusWriter* w, int alignment) {
-    int n = (alignment - (w->bytes.len % alignment)) % alignment;
+    int n = (alignment - (len(w->bytes) % alignment)) % alignment;
     if (n) {
         memset(VecAppendBlanks(w->bytes, n), 0, (size_t)n);
     }
@@ -184,16 +184,16 @@ static uint32_t SendMessage(uint8_t type, uint8_t flags, DbusWriter* fields,
     PutByte(&message, type);
     PutByte(&message, flags);
     PutByte(&message, 1);
-    PutU32(&message, body ? (uint32_t)body->bytes.len : 0);
+    PutU32(&message, body ? (uint32_t)len(body->bytes) : 0);
     uint32_t serial = gA11y.serial++;
     PutU32(&message, serial);
-    PutU32(&message, (uint32_t)fields->bytes.len);
-    PutBytes(&message, fields->bytes.els, fields->bytes.len);
+    PutU32(&message, (uint32_t)len(fields->bytes));
+    PutBytes(&message, fields->bytes.els, len(fields->bytes));
     PutAlign(&message, 8);
     if (body) {
-        PutBytes(&message, body->bytes.els, body->bytes.len);
+        PutBytes(&message, body->bytes.els, len(body->bytes));
     }
-    bool ok = SendAll(message.bytes.els, message.bytes.len);
+    bool ok = SendAll(message.bytes.els, len(message.bytes));
     VecReset(message.bytes);
     return ok ? serial : 0;
 }
@@ -305,7 +305,7 @@ static void ArrayBegin(DbusWriter* w, int elementAlign, int* lengthAt,
 }
 
 static void ArrayEnd(DbusWriter* w, int lengthAt, int contentsAt) {
-    uint32_t n = (uint32_t)(w->bytes.len - contentsAt);
+    uint32_t n = (uint32_t)(len(w->bytes) - contentsAt);
     memcpy(w->bytes.els + lengthAt, &n, 4);
 }
 
@@ -408,14 +408,14 @@ static LinuxAccessible AccessibleForPath(Str path) {
     int fields = sscanf(value.s, "/org/a11y/atspi/accessible/w%d/n%u/p%d",
                         &windowIndex, &nodeId, &part);
     if (fields < 2 || (fields == 3 && part < 0) || !gA11y.app ||
-        windowIndex < 0 || windowIndex >= gA11y.app->windows.len) {
+        windowIndex < 0 || windowIndex >= len(gA11y.app->windows)) {
         return result;
     }
     Window* win = gA11y.app->windows[windowIndex];
     if (!win || !win->plat) {
         return result;
     }
-    for (int i = 0; i < win->accessibility.len; i++) {
+    for (int i = 0; i < len(win->accessibility); i++) {
         if (win->accessibility[i].id != nodeId) continue;
         if (part >= WindowAccessibilityPartCount(win->accessibility[i])) {
             break;
@@ -466,10 +466,10 @@ static int ChildCount(const LinuxAccessible& object) {
     if (object.root) {
         int n = 0;
         if (gA11y.app) {
-            for (int wi = 0; wi < gA11y.app->windows.len; wi++) {
+            for (int wi = 0; wi < len(gA11y.app->windows); wi++) {
                 Window* win = gA11y.app->windows[wi];
                 if (!win || !win->plat) continue;
-                for (int i = 0; i < win->accessibility.len; i++) {
+                for (int i = 0; i < len(win->accessibility); i++) {
                     n += win->accessibility[i].parent < 0 ? 1 : 0;
                 }
             }
@@ -480,7 +480,7 @@ static int ChildCount(const LinuxAccessible& object) {
         return 0;
     }
     int n = 0;
-    for (int i = 0; i < object.win->accessibility.len; i++) {
+    for (int i = 0; i < len(object.win->accessibility); i++) {
         n += object.win->accessibility[i].parent == object.nodeIndex ? 1 : 0;
     }
     return n;
@@ -502,10 +502,10 @@ static bool ChildAt(const LinuxAccessible& object, int wanted, int* windowIndex,
     }
     if (object.root) {
         if (!gA11y.app) return false;
-        for (int wi = 0; wi < gA11y.app->windows.len; wi++) {
+        for (int wi = 0; wi < len(gA11y.app->windows); wi++) {
             Window* win = gA11y.app->windows[wi];
             if (!win || !win->plat) continue;
-            for (int i = 0; i < win->accessibility.len; i++) {
+            for (int i = 0; i < len(win->accessibility); i++) {
                 if (win->accessibility[i].parent < 0 && wanted-- == 0) {
                     *windowIndex = wi;
                     *nodeIndex = i;
@@ -515,7 +515,7 @@ static bool ChildAt(const LinuxAccessible& object, int wanted, int* windowIndex,
         }
         return false;
     }
-    for (int i = 0; ElementNode(object) && i < object.win->accessibility.len;
+    for (int i = 0; ElementNode(object) && i < len(object.win->accessibility);
          i++) {
         if (object.win->accessibility[i].parent == object.nodeIndex &&
             wanted-- == 0) {
@@ -1010,10 +1010,10 @@ static int IndexInParent(const LinuxAccessible& object) {
     int parent = object.win->accessibility[object.nodeIndex].parent;
     int index = 0;
     if (parent < 0) {
-        for (int wi = 0; gA11y.app && wi < gA11y.app->windows.len; wi++) {
+        for (int wi = 0; gA11y.app && wi < len(gA11y.app->windows); wi++) {
             Window* win = gA11y.app->windows[wi];
             if (!win || !win->plat) continue;
-            for (int i = 0; i < win->accessibility.len; i++) {
+            for (int i = 0; i < len(win->accessibility); i++) {
                 if (win->accessibility[i].parent < 0) {
                     if (win == object.win && i == object.nodeIndex)
                         return index;
@@ -1023,7 +1023,7 @@ static int IndexInParent(const LinuxAccessible& object) {
         }
         return -1;
     }
-    for (int i = 0; i < object.win->accessibility.len; i++) {
+    for (int i = 0; i < len(object.win->accessibility); i++) {
         if (object.win->accessibility[i].parent == parent) {
             if (i == object.nodeIndex) return index;
             index++;
@@ -1379,7 +1379,7 @@ static bool HandleApplication(const Incoming& in,
 
 static bool NodeIsInSubtree(const Window* win, int index, int root) {
     if (root < 0) return true;
-    for (int at = index; at >= 0 && at < win->accessibility.len;
+    for (int at = index; at >= 0 && at < len(win->accessibility);
          at = win->accessibility[at].parent) {
         if (at == root) return true;
     }
@@ -1388,7 +1388,7 @@ static bool NodeIsInSubtree(const Window* win, int index, int root) {
 
 static int NodeAtPoint(Window* win, int root, int x, int y) {
     int found = -1;
-    for (int i = 0; win && i < win->accessibility.len; i++) {
+    for (int i = 0; win && i < len(win->accessibility); i++) {
         const Bounds& b = win->accessibility[i].bounds;
         if (NodeIsInSubtree(win, i, root) && x >= b.x && x <= b.Right() &&
             y >= b.y && y <= b.Bottom()) {
@@ -1410,7 +1410,7 @@ static Point ComponentCoordOrigin(const LinuxAccessible& object,
         origin.y = PartOwner(object).bounds.y;
     } else if (coordType == 2 && object.nodeIndex >= 0) {
         int parent = object.win->accessibility[object.nodeIndex].parent;
-        if (parent >= 0 && parent < object.win->accessibility.len) {
+        if (parent >= 0 && parent < len(object.win->accessibility)) {
             origin.x = object.win->accessibility[parent].bounds.x;
             origin.y = object.win->accessibility[parent].bounds.y;
         }
@@ -1964,7 +1964,7 @@ static bool HandleText(const Incoming& in, const LinuxAccessible& object) {
 
 static bool SelectionDescendant(const Window* win, int index, int ancestor) {
     int at = win->accessibility[index].parent;
-    while (at >= 0 && at < win->accessibility.len) {
+    while (at >= 0 && at < len(win->accessibility)) {
         if (at == ancestor) return true;
         if (IsSelectionRole(win->accessibility[at].info.role)) return false;
         at = win->accessibility[at].parent;
@@ -1973,7 +1973,7 @@ static bool SelectionDescendant(const Window* win, int index, int ancestor) {
 }
 
 static int SelectedAt(const LinuxAccessible& object, int wanted) {
-    for (int i = 0; object.win && i < object.win->accessibility.len; i++) {
+    for (int i = 0; object.win && i < len(object.win->accessibility); i++) {
         const AccessibilityNode& node = object.win->accessibility[i];
         if (node.info.hasSelected && node.info.selected &&
             SelectionDescendant(object.win, i, object.nodeIndex) &&
@@ -2109,7 +2109,7 @@ static void ProcessMessages() {
     for (;;) {
         Incoming in;
         int messageLen = 0;
-        if (!ParseIncoming(gA11y.rx.els, gA11y.rx.len, &in, &messageLen)) {
+        if (!ParseIncoming(gA11y.rx.els, len(gA11y.rx), &in, &messageLen)) {
             break;
         }
         if (in.type == 1)
@@ -2117,7 +2117,7 @@ static void ProcessMessages() {
         else if (in.type == 2)
             HandleReply(in);
         memmove(gA11y.rx.els, gA11y.rx.els + messageLen,
-                (size_t)(gA11y.rx.len - messageLen));
+                (size_t)(len(gA11y.rx) - messageLen));
         gA11y.rx.len -= messageLen;
     }
 }
@@ -2190,7 +2190,7 @@ static void SendEvent(Window* win, uint32_t nodeId, const char* member,
                       const char* detail, int detail1) {
     if (!gA11y.ready || !win || !gA11y.app) return;
     int wi = -1;
-    for (int i = 0; i < gA11y.app->windows.len; i++) {
+    for (int i = 0; i < len(gA11y.app->windows); i++) {
         if (gA11y.app->windows[i] == win) {
             wi = i;
             break;
@@ -2220,7 +2220,7 @@ void AccessibilityLinuxTreeChanged(Window* win) {
 
 void AccessibilityLinuxFocusChanged(Window* win, int focusId) {
     if (!win || !focusId) return;
-    for (int i = 0; i < win->accessibility.len; i++) {
+    for (int i = 0; i < len(win->accessibility); i++) {
         if (win->accessibility[i].focusId == focusId) {
             SendEvent(win, win->accessibility[i].id, "StateChanged", "focused",
                       1);
@@ -2255,7 +2255,7 @@ static bool SmokeCall(SmokeClient* c, Str path, const char* interfaceName,
         memcpy(VecAppendBlanks(c->rx, (int)n), block, (size_t)n);
     }
     *reply = {};
-    return ParseIncoming(c->rx.els, c->rx.len, reply, &messageLen) &&
+    return ParseIncoming(c->rx.els, len(c->rx), reply, &messageLen) &&
            reply->type == 2;
 }
 
@@ -2378,7 +2378,7 @@ bool AccessibilityLinuxPartsSmokeTest(Window* win, uint32_t nodeId) {
     gA11y.busName = StrL(":1.0");
     PlatWindow* plat = win->plat;
     if (!plat) win->plat = (PlatWindow*)win;
-    int windowIndex = win->app->windows.len;
+    int windowIndex = len(win->app->windows);
     VecAppend(win->app->windows, win);
 
     SmokeClient c;

@@ -332,8 +332,8 @@ State LabelStartImageAfter(Tokenizer* t) {
     }
     LabelStartMark start;
     start.kind = LabelKind::Image;
-    start.startA = t->events.len - 6;
-    start.startB = t->events.len - 1;
+    start.startA = len(t->events) - 6;
+    start.startB = len(t->events) - 1;
     VecAppend(t->tokenizeState.labelStarts, start);
     RegisterResolverBefore(t, ResolveName::Label);
     return StateOk();
@@ -344,7 +344,7 @@ State LabelStartImageAfter(Tokenizer* t) {
 State LabelStartLinkStart(Tokenizer* t) {
     if (t->parseState->options->constructs.labelStartLink &&
         t->current == '[') {
-        int32_t start = t->events.len;
+        int32_t start = len(t->events);
         Enter(t, Name::LabelLink);
         Enter(t, Name::LabelMarker);
         Consume(t);
@@ -353,7 +353,7 @@ State LabelStartLinkStart(Tokenizer* t) {
         LabelStartMark mark;
         mark.kind = LabelKind::Link;
         mark.startA = start;
-        mark.startB = t->events.len - 1;
+        mark.startB = len(t->events) - 1;
         VecAppend(t->tokenizeState.labelStarts, mark);
         RegisterResolverBefore(t, ResolveName::Label);
         return StateOk();
@@ -465,7 +465,7 @@ State AutolinkEmailLabel(Tokenizer* t) {
         return StateNext(StateName::AutolinkEmailAtSignOrDot);
     }
     if (t->current == '>') {
-        int32_t index = t->events.len;
+        int32_t index = len(t->events);
         Exit(t, Name::AutolinkProtocol);
         // Change the event names.
         t->events[index - 1].name = Name::AutolinkEmail;
@@ -553,7 +553,7 @@ static void GetSequences(Tokenizer* t, Vec<Sequence>& sequences) {
     Arena* a = t->parseState->scratch;
     int32_t index = 0;
     ArenaVec<int32_t> stack{};
-    while (index < t->events.len) {
+    while (index < len(t->events)) {
         const Event& enter = t->events[index];
         if (enter.name == Name::AttentionSequence) {
             if (enter.kind == Kind::Enter) {

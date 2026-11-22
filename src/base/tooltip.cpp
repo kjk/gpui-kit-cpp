@@ -586,7 +586,7 @@ void TooltipDismissRemoved(Window* win) {
         win->tooltipOwner = false;
         return;
     }
-    for (int i = 0; i < win->paint.hits.len; i++) {
+    for (int i = 0; i < len(win->paint.hits); i++) {
         const HitRect& hr = win->paint.hits[i];
         if (hr.pathId == win->tooltipOwnerPath && hr.tooltip.s) return;
     }

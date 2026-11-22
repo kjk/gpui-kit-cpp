@@ -439,7 +439,7 @@ static void VirtualListBindRows(PaintCtx* ctx, El* e, VirtualListPaint* paint,
             while (above > 0 && back > -o.overdraw) {
                 int prev = above - 1;
                 float extent =
-                    prev < layout->sizes.len ? layout->sizes[prev] : 0;
+                    prev < len(layout->sizes) ? layout->sizes[prev] : 0;
                 if (extent <= 0) {
                     El* made = nullptr;
                     if (o.row) {
@@ -453,7 +453,7 @@ static void VirtualListBindRows(PaintCtx* ctx, El* e, VirtualListPaint* paint,
                         extent =
                             VirtualListMeasureItem(ctx, e, made, axis, o.rowH);
                         const_cast<float*>(o.sizes)[prev] = extent;
-                        if (prev < layout->sizes.len)
+                        if (prev < len(layout->sizes))
                             layout->sizes[prev] = extent;
                     }
                 }
@@ -475,13 +475,13 @@ static void VirtualListBindRows(PaintCtx* ctx, El* e, VirtualListPaint* paint,
                 if (!cx.a) break;
                 made = Div(cx.a);
             }
-            float extent = ix < layout->sizes.len ? layout->sizes[ix] : o.rowH;
+            float extent = ix < len(layout->sizes) ? layout->sizes[ix] : o.rowH;
             if (extent <= 0) {
                 extent = VirtualListMeasureItem(ctx, e, made, axis, o.rowH);
                 if (o.sizes && ix < o.count) {
                     const_cast<float*>(o.sizes)[ix] = extent;
                 }
-                if (ix < layout->sizes.len) layout->sizes[ix] = extent;
+                if (ix < len(layout->sizes)) layout->sizes[ix] = extent;
             }
             VirtualListPlace(ctx, e, made, axis, pad, innerW, innerH,
                              origin - offset, extent, paint->layoutKey, ix);
@@ -499,8 +499,8 @@ static void VirtualListBindRows(PaintCtx* ctx, El* e, VirtualListPaint* paint,
     VirtualRange vis =
         uniform ? VirtualListVisibleRows(o.count, stride, offset, viewport)
                 : VirtualListVisibleRangeFromLayout(
-                      layout->origins.len ? layout->origins.els : nullptr,
-                      layout->sizes.len ? layout->sizes.els : nullptr, o.count,
+                      len(layout->origins) ? layout->origins.els : nullptr,
+                      len(layout->sizes) ? layout->sizes.els : nullptr, o.count,
                       offset, viewport);
     int visibleCount = vis.end - vis.first;
     El** rangeRows = nullptr;
@@ -519,13 +519,13 @@ static void VirtualListBindRows(PaintCtx* ctx, El* e, VirtualListPaint* paint,
             if (!cx.a) continue;
             made = Div(cx.a);
         }
-        float extent = ix < layout->sizes.len ? layout->sizes[ix] : o.rowH;
+        float extent = ix < len(layout->sizes) ? layout->sizes[ix] : o.rowH;
         float along;
         if (uniform) {
             along = VirtualListUniformAlong(ix, stride, offset);
         } else {
-            float origin = ix < layout->origins.len ? layout->origins[ix]
-                                                    : (float)ix * o.rowH;
+            float origin = ix < len(layout->origins) ? layout->origins[ix]
+                                                     : (float)ix * o.rowH;
             along = origin - offset;
         }
         VirtualListPlace(ctx, e, made, axis, pad, innerW, innerH, along, extent,
@@ -557,7 +557,7 @@ static void VirtualListPrePaint(PaintCtx* ctx, El* e, void* user) {
         else
             e->scrollY = offset;
     }
-    const float* sizes = layout.sizes.len ? layout.sizes.els : nullptr;
+    const float* sizes = len(layout.sizes) ? layout.sizes.els : nullptr;
     bool hadPending = o.handle && o.handle->pending;
     int pendingIx = hadPending ? o.handle->pendingIx : 0;
     int pendingOffset = hadPending ? o.handle->pendingOffset : 0;
@@ -596,7 +596,7 @@ static void VirtualListPrePaint(PaintCtx* ctx, El* e, void* user) {
                     layout.origins.els, layout.sizes.els, o.count, offset, 0)
                     .first;
             float anchorOrigin =
-                anchor < layout.origins.len ? layout.origins[anchor] : 0;
+                anchor < len(layout.origins) ? layout.origins[anchor] : 0;
             bool changed = false;
             for (int ix = range.first; ix < range.end; ix++) {
                 if (!o.needsMeasure[ix]) continue;
@@ -612,7 +612,7 @@ static void VirtualListPrePaint(PaintCtx* ctx, El* e, void* user) {
             ItemSizeLayoutBuild(&layout, axis, o.sizes, o.count, o.rowH, o.gap,
                                 cross);
             if (o.handle) {
-                if (!hadPending && anchor < layout.origins.len)
+                if (!hadPending && anchor < len(layout.origins))
                     o.handle->offset += layout.origins[anchor] - anchorOrigin;
                 if (hadPending) {
                     o.handle->pending = true;
@@ -768,7 +768,7 @@ El* VirtualList::New(Ctx* cx, Str id, const VirtualListOpts& o) {
         ItemSizeLayout layout;
         ItemSizeLayoutBuild(&layout, o.layoutAxis, o.sizes, o.count, o.rowH,
                             o.gap, cross);
-        const float* sizes = layout.sizes.len ? layout.sizes.els : nullptr;
+        const float* sizes = len(layout.sizes) ? layout.sizes.els : nullptr;
         VirtualListHandleLayout(o.handle, sizes, o.count, 0, viewport);
         offset = o.handle->offset;
     }

@@ -220,7 +220,7 @@ Entity<DockState> DockStateOf(ShowcaseApp* app, Ctx* cx) {
         app->dock = EntityNewState<DockState>(cx->app);
     }
     DockState* s = app->dock.Get(cx);
-    if (!s || s->panels.len > 0) {
+    if (!s || len(s->panels) > 0) {
         return app->dock;
     }
     s->hasVersion = true;

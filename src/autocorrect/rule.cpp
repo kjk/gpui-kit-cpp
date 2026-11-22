@@ -188,7 +188,7 @@ RuleResult FormatOrLintText(Arena* a, Str text, bool lint,
             joined.Append(sub.out);
             severity = sub.severity;
         }
-        result.out = base::StrDup(a, Str(joined.els, joined.len));
+        result.out = base::StrDup(a, Str(joined.els, len(joined)));
         result.severity = severity;
     } else {
         result.out = text;

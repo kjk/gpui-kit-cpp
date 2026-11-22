@@ -139,7 +139,7 @@ static El* Render(MaterializeRequest* request, const Payload* payload,
     host->confirm = confirm;
     if (!host->rows.Same(next, count)) {
         Str selected = StrDup(cx->a, state->SelectedValue());
-        bool hasSelected = state->state.selected.len > 0;
+        bool hasSelected = len(state->state.selected) > 0;
         host->rows.Set(next, count);
         state->SetItems(host->rows.items.els, len(host->rows.items));
         if (hasSelected) state->SetSelectedValues(&selected, 1, nullptr);

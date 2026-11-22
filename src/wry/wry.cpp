@@ -41,7 +41,7 @@ void CookieListFree(Vec<Cookie>* cookies) {
     if (!cookies) {
         return;
     }
-    for (int i = 0; i < cookies->len; i++) {
+    for (int i = 0; i < len(*cookies); i++) {
         Cookie& cookie = cookies->els[i];
         base::StrFree(cookie.name);
         base::StrFree(cookie.value);

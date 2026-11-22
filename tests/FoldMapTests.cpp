@@ -26,7 +26,7 @@ static void CandidatesAreSortedAndOnePerStartLine() {
     FoldRange in[] = {R(8, 12), R(2, 20), R(2, 5), R(0, 30)};
     FoldMapSetCandidates(&m, in, 4);
 
-    utassert(m.candidates.len == 3);
+    utassert(len(m.candidates) == 3);
     utassert(m.candidates[0].startLine == 0 && m.candidates[0].endLine == 30);
     // Of the two starting on line 2 the first one given wins, which is the
     // outermost node in Rust's walk.
@@ -59,7 +59,7 @@ static void NoFoldsIsTheIdentity() {
     FoldMapRebuild(&m, 6);
 
     utassert(FoldMapDisplayRowCount(&m) == 6);
-    utassert(m.hidden.len == 0);
+    utassert(len(m.hidden) == 0);
     for (int i = 0; i < 6; i++) {
         utassert(FoldMapDisplayRow(&m, i) == i);
         utassert(FoldMapLineAt(&m, i) == i);

@@ -18,7 +18,7 @@ static NativeMenuItem* PushItem(NativeMenu* m) {
     if (!m->items.Append(m->a, NativeMenuItem{})) {
         return nullptr;
     }
-    return &m->items[m->items.len - 1];
+    return &m->items[len(m->items) - 1];
 }
 
 NativeMenu* NativeMenu::Menu(Str label, int64_t id) {
@@ -119,11 +119,11 @@ int NativeMenuSelectable(const NativeMenu* m, const NativeMenuItem** out,
 // be chosen numbered by its place in the selectable order, so the id the OS
 // answers with is an index back into that table.
 static PlatMenuItem* ToPlat(Arena* a, const NativeMenu* m, int* nextId) {
-    if (!m || m->items.len == 0) {
+    if (!m || len(m->items) == 0) {
         return nullptr;
     }
     auto* out = (PlatMenuItem*)a
-                    ->Push((uint64_t)m->items.len * sizeof(PlatMenuItem),
+                    ->Push((uint64_t)len(m->items) * sizeof(PlatMenuItem),
                            alignof(PlatMenuItem), true);
     int i = -1;
     for (const NativeMenuItem& it : m->items) {
@@ -137,7 +137,7 @@ static PlatMenuItem* ToPlat(Arena* a, const NativeMenu* m, int* nextId) {
         }
         if (it.kind == NativeMenuItemKind::Submenu) {
             p.submenu = ToPlat(a, it.submenu, nextId);
-            p.submenuN = it.submenu ? it.submenu->items.len : 0;
+            p.submenuN = it.submenu ? len(it.submenu->items) : 0;
             continue;
         }
         // resolve_icon_image: SVG source is handed over as it is; a path, or
@@ -160,7 +160,7 @@ static PlatMenuItem* ToPlat(Arena* a, const NativeMenu* m, int* nextId) {
 // The OS's own menu, and onSelect for the row chosen in it.
 static bool ShowNative(NativeMenu* m, float x, float y) {
     int nextId = 1;
-    int nItems = m->items.len;
+    int nItems = len(m->items);
     PlatMenuItem* plat = ToPlat(m->a, m, &nextId);
     bool dark = ThemeGet(m->cx->app) == ThemeMode::Dark;
     Listener select = m->onSelect;

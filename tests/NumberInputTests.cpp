@@ -200,7 +200,7 @@ static void ThemedDefaultUsesOneSharedSemanticStep() {
     IdsCollect(root);
     FocusCollect(win, root);
     int editorFocus = 0;
-    for (int i = 0; i < win->focusEls.len; i++) {
+    for (int i = 0; i < len(win->focusEls); i++) {
         if (win->focusEls[i].accessibilityIncrementDirect.IsValid()) {
             editorFocus = win->focusEls[i].id;
             break;

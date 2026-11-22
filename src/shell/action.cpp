@@ -43,7 +43,7 @@ uint32_t ShellActionOf(Str id) {
 
     ActionNames& table = ActionTable();
     table.mutex.Lock();
-    for (int i = 0; i < table.ids.len; i++) {
+    for (int i = 0; i < len(table.ids); i++) {
         if (table.ids[i] == action) {
             table.mutex.Unlock();
             return action;
@@ -62,7 +62,7 @@ Str ShellActionScriptId(uint32_t action) {
     ActionNames& table = ActionTable();
     table.mutex.Lock();
     Str found = {};
-    for (int i = 0; i < table.ids.len; i++) {
+    for (int i = 0; i < len(table.ids); i++) {
         if (table.ids[i] == action) {
             found = table.scriptIds[i];
             break;
@@ -78,7 +78,7 @@ const char* ShellActionInternText(Str value) {
     }
     ActionNames& table = ActionTable();
     table.mutex.Lock();
-    for (int i = 0; i < table.texts.len; i++) {
+    for (int i = 0; i < len(table.texts); i++) {
         if (StrEq(table.texts[i], value)) {
             const char* found = table.texts[i].s;
             table.mutex.Unlock();

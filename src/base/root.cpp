@@ -38,7 +38,7 @@ void RootCapturePlugins(Root* root, Window* window) {
     root->captured = true;
     BaseRootPluginRegistry* registry =
         AppGlobalGet<BaseRootPluginRegistry>(root->app);
-    for (int i = 0; registry && i < registry->plugins.len; i++) {
+    for (int i = 0; registry && i < len(registry->plugins); i++) {
         RootPluginInstance instance;
         instance.type = registry->plugins[i];
         if (instance.type->build) {
@@ -57,7 +57,7 @@ void RootMount(Window* window, EntityId root) {
 } // namespace
 
 Root::~Root() {
-    for (int i = 0; i < plugins.len; i++) {
+    for (int i = 0; i < len(plugins); i++) {
         if (plugins[i].type->drop && plugins[i].state) {
             plugins[i].type->drop(plugins[i].state);
         }
@@ -71,7 +71,7 @@ void Root::RegisterPlugin(App* app, const RootPlugin* plugin) {
     }
     BaseRootPluginRegistry* registry =
         AppGlobalEnsure<BaseRootPluginRegistry>(app);
-    for (int i = 0; i < registry->plugins.len; i++) {
+    for (int i = 0; i < len(registry->plugins); i++) {
         if (registry->plugins[i] == plugin) {
             return;
         }
@@ -93,7 +93,7 @@ Entity<Root> Root::New(App* app, Window* window, EntityId view) {
 }
 
 void* Root::Plugin(const RootPlugin* type) const {
-    for (int i = 0; i < plugins.len; i++) {
+    for (int i = 0; i < len(plugins); i++) {
         if (plugins[i].type == type) {
             return plugins[i].state;
         }
@@ -120,7 +120,7 @@ El* RootSurface(Ctx* cx, Root* root, El* content) {
     if (root) {
         RootCapturePlugins(root, cx->win);
     }
-    int n = root ? root->plugins.len : 0;
+    int n = root ? len(root->plugins) : 0;
     const RootPluginInstance* plugins = root ? root->plugins.els : nullptr;
     for (int i = 0; i < n; i++) {
         if (plugins[i].type->prepare) {

@@ -5372,7 +5372,7 @@ void StructuredComponentsMaterializeNestedChildrenInScriptOrder() {
     int items = 0;
     for (Str rest = tree; StrContains(rest, StrL("DescriptionItem")); items++) {
         int i = StrFind(rest, StrL("DescriptionItem"));
-        rest = Str(rest.s + i + 1, rest.len - i - 1);
+        rest = Str(rest.s + i + 1, len(rest) - i - 1);
     }
     utassert(items == 2);
     utassert(at("Ada") < at("Admin"));
@@ -5690,11 +5690,11 @@ void SidebarMaterializesTypedItemsMenuHeaderAndWrapperStyleInOrder() {
     }
     int first = StrFind(tree, StrL("SidebarMenuItem"));
     utassert(first >= 0);
-    Str rest = Str(tree.s + first + 1, tree.len - first - 1);
+    Str rest = Str(tree.s + first + 1, len(tree) - first - 1);
     int second = StrFind(rest, StrL("SidebarMenuItem"));
     utassert(second >= 0);
     second += first + 1;
-    Str after = Str(tree.s + second + 1, tree.len - second - 1);
+    Str after = Str(tree.s + second + 1, len(tree) - second - 1);
     utassert(StrFind(after, StrL("SidebarMenuItem")) < 0);
     int disabled = StrFind(tree, StrL(":disabled(true)"));
     utassert(first < disabled && disabled < second);
@@ -6007,7 +6007,7 @@ void RenderLayers(Host& host) {
     if (!layers) return;
     if (layers->hasSheet)
         EntityRender(&host.app, &host.window, host.frame, layers->sheet.view);
-    for (int i = 0; i < layers->dialogs.len; i++) {
+    for (int i = 0; i < len(layers->dialogs); i++) {
         EntityRender(&host.app, &host.window, host.frame,
                      layers->dialogs[i].view);
     }
@@ -6044,9 +6044,9 @@ El* FindAction(El* element, uint32_t action) {
 // dispatch it to the focused dialog's key context.
 void DispatchToTopDialog(Host& host, uint32_t action) {
     WindowLayers* layers = WindowLayersOf(&host.window);
-    if (!layers || layers->dialogs.len == 0) return;
+    if (!layers || len(layers->dialogs) == 0) return;
     El* dialog = EntityRender(&host.app, &host.window, host.frame,
-                              layers->dialogs[layers->dialogs.len - 1].view);
+                              layers->dialogs[len(layers->dialogs) - 1].view);
     El* target = FindAction(dialog, action);
     utassert(target != nullptr);
     if (!target) return;
@@ -7055,7 +7055,7 @@ void WholeCatalogDeclarationsEqualRust() {
 
     StrBuilder rust;
     AppendRustComponentDeclarations(&rust);
-    Str expected = Str(rust.els, rust.len);
+    Str expected = Str(rust.els, len(rust));
     // The inline-token types sit between the module's import line and its
     // first state or descriptor, which is how typings.cpp finds them in the
     // runtime's own declarations too.
@@ -7066,7 +7066,7 @@ void WholeCatalogDeclarationsEqualRust() {
     utassert(StrStartsWith(expected, header));
     StrBuilder builtin;
     shell::AppendBuiltinTypeDeclarations(&builtin);
-    Str text = Str(builtin.els, builtin.len);
+    Str text = Str(builtin.els, len(builtin));
     int moduleAt = StrFind(text, header);
     Str moduleEnd = StrL("}\n\ndeclare module \"gpui-shell\" {\n");
     int endAt =
@@ -7080,7 +7080,7 @@ void WholeCatalogDeclarationsEqualRust() {
 
     StrBuilder ours;
     shell::AppendComponentDeclarations(&ours, frozen, inlineTokenTypes);
-    Str actual = Str(ours.els, ours.len);
+    Str actual = Str(ours.els, len(ours));
     bool same = StrEq(actual, expected);
     if (!same) {
         int at = 0;
@@ -7100,8 +7100,8 @@ void WholeCatalogDeclarationsEqualRust() {
     AppendRustComponentElementUnion(&rustUnion);
     StrBuilder ourUnion;
     shell::AppendComponentElementUnion(&ourUnion, frozen);
-    utassert(StrEq(Str(ourUnion.els, ourUnion.len),
-                   Str(rustUnion.els, rustUnion.len)));
+    utassert(StrEq(Str(ourUnion.els, len(ourUnion)),
+                   Str(rustUnion.els, len(rustUnion))));
 }
 
 // ─── tests/story_gallery_host.rs ───────────────────────────────────────────

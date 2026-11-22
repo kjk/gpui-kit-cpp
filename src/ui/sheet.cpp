@@ -166,7 +166,7 @@ El* Sheet::IntoEl(WinSize win) {
                     ->OnClick(onClose)
                     ->IntoEl());
     surface->Child(head);
-    if (body || children.len > 0) {
+    if (body || len(children) > 0) {
         float bodyPadL = (styleSet & StyleFieldPad) ? style.pad.left : 16.f;
         float bodyPadR = (styleSet & StyleFieldPad) ? style.pad.right : 16.f;
         El* bodyColumn = Div(a)->FlexCol()->W(kFill)->H(kFill);

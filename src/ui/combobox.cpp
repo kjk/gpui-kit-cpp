@@ -28,7 +28,7 @@ static bool SameSelectionValues(const SearchableListState& st,
 }
 
 static bool SelectionHasValue(const SearchableListState& st, Str value) {
-    for (int i = 0; i < st.selected.len; i++) {
+    for (int i = 0; i < len(st.selected); i++) {
         if (base::StrEq(ItemValueAt(st, st.selected[i]), value)) {
             return true;
         }
@@ -37,12 +37,12 @@ static bool SelectionHasValue(const SearchableListState& st, Str value) {
 }
 
 int ComboboxTriggerContext::SelectionCount() const {
-    return state ? state->selected.len : 0;
+    return state ? len(state->selected) : 0;
 }
 
 int ComboboxTriggerContext::SelectionIndex(int at) const {
-    return state && at >= 0 && at < state->selected.len ? state->selected[at]
-                                                        : -1;
+    return state && at >= 0 && at < len(state->selected) ? state->selected[at]
+                                                         : -1;
 }
 
 const SearchableListItem* ComboboxTriggerContext::SelectionItem(int at) const {
@@ -97,7 +97,7 @@ void ComboboxState::SelectedValues(Vec<Str>* out) const {
 }
 
 Str ComboboxState::SelectedValue() const {
-    if (!state.items || state.selected.len == 0) {
+    if (!state.items || len(state.selected) == 0) {
         return {};
     }
     int ix = state.selected[0];
@@ -106,7 +106,7 @@ Str ComboboxState::SelectedValue() const {
 
 void ComboboxState::SyncSnapshot() {
     VecClear(selectionSnapshot);
-    for (int i = 0; i < state.selected.len; i++) {
+    for (int i = 0; i < len(state.selected); i++) {
         VecAppend(selectionSnapshot, state.selected[i]);
     }
 }
@@ -141,7 +141,7 @@ void ComboboxState::SetSelectedValues(const Str* values, int nValues, Ctx* cx) {
             continue;
         }
         bool seen = false;
-        for (int i = 0; i < state.selected.len; i++) {
+        for (int i = 0; i < len(state.selected); i++) {
             seen = seen || state.selected[i] == found;
         }
         if (!seen) {

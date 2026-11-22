@@ -1315,8 +1315,8 @@ void ThemeApplySemanticTokens(Theme* t, const SemanticThemeTokens& tokens) {
     t->monoFontFamily = tokens.typography.mono;
     t->fontSize = tokens.typography.md.size;
     t->monoFontSize = tokens.typography.monoMd.size;
-    t->shadow = tokens.shadow.sm.len > 0 || tokens.shadow.md.len > 0 ||
-                tokens.shadow.lg.len > 0;
+    t->shadow = len(tokens.shadow.sm) > 0 || len(tokens.shadow.md) > 0 ||
+                len(tokens.shadow.lg) > 0;
     // Spacing and individual text roles have no legacy storage; callers that
     // need the complete resolved snapshot retain SemanticThemeTokens.
 }
@@ -2404,7 +2404,7 @@ static Str ThemeIntern(ThemeRegistry* state, Str s) {
     if (!s.s || !state->names) {
         return {};
     }
-    for (int i = 0; i < state->interned.len; i++) {
+    for (int i = 0; i < len(state->interned); i++) {
         if (base::StrEq(state->interned[i], s)) {
             return state->interned[i];
         }
@@ -2443,8 +2443,8 @@ static bool SortsBefore(const ThemeConfig& a, const ThemeConfig& b) {
 }
 
 static void InsertSorted(ThemeRegistry* state, const ThemeConfig& cfg) {
-    int at = state->themes.len;
-    for (int i = 0; i < state->themes.len; i++) {
+    int at = len(state->themes);
+    for (int i = 0; i < len(state->themes); i++) {
         if (SortsBefore(cfg, state->themes[i])) {
             at = i;
             break;
@@ -2550,7 +2550,7 @@ static ThemeRegistry* RegistryOf(const App* app) {
     // The two the tree was built with are what everything else resolves
     // against, so they go in first and stay first.
     ThemeRegistryLoadStr((App*)app, Str(kDefaultThemeJson));
-    for (int i = 0; i < state->themes.len; i++) {
+    for (int i = 0; i < len(state->themes); i++) {
         if (state->themes[i].isDefault) {
             state->active[(int)state->themes[i].mode] = state->themes[i].name;
         }
@@ -2610,14 +2610,14 @@ static void ApplyShadowLevel(const JsonValue* obj, const char* key,
         // supplied. Retain the port's one-object shorthand as a partial
         // overlay on the existing first shadow.
         VecClear(*level);
-    } else if (level->len == 0) {
+    } else if (len(*level) == 0) {
         VecAppend(*level, BoxShadow{});
     }
     const JsonValue* item = v->kind == JsonKind::Array ? v->first : v;
     for (; item; item = v->kind == JsonKind::Array ? item->next : nullptr) {
         if (item->kind != JsonKind::Object) continue;
         if (v->kind == JsonKind::Array) VecAppend(*level, BoxShadow{});
-        BoxShadow* out = v->kind == JsonKind::Array ? &(*level)[level->len - 1]
+        BoxShadow* out = v->kind == JsonKind::Array ? &(*level)[len(*level) - 1]
                                                     : &(*level)[0];
         ApplyFloatField(item, "x", &out->x);
         ApplyFloatField(item, "y", &out->y);
@@ -2924,7 +2924,7 @@ static bool ThemesDirResolve(Str dir, char* out) {
 // Remembers `path` as a folder the registry reads, answering false when it
 // already was one.
 static bool ThemesDirRemember(ThemeRegistry* state, const char* path) {
-    for (int i = 0; i < state->loadedDirs.len; i++) {
+    for (int i = 0; i < len(state->loadedDirs); i++) {
         if (base::StrEq(state->loadedDirs[i], Str(path))) {
             return false;
         }
@@ -3025,12 +3025,12 @@ int ThemeRegistryReload(App* app) {
     state->arena = ArenaNew();
     VecClear(state->themes);
     ThemeRegistryLoadStr(app, Str(kDefaultThemeJson));
-    for (int i = 0; i < state->loadedDirs.len; i++) {
+    for (int i = 0; i < len(state->loadedDirs); i++) {
         ThemesDirLoadFiles(app, state->loadedDirs[i].s);
     }
     ThemeRegistryReapply(app);
     ArenaDelete(replaced);
-    return state->themes.len;
+    return len(state->themes);
 }
 
 static void ThemeRegistryOnDirChange(App* app) {
@@ -3078,12 +3078,12 @@ bool ThemeRegistryWatchDir(App* app, Str dir, Func0 onLoad) {
 
 int ThemeRegistryCount(const App* app) {
     ThemeRegistry* state = RegistryOf(app);
-    return state ? state->themes.len : 0;
+    return state ? len(state->themes) : 0;
 }
 
 const ThemeConfig* ThemeRegistryAt(const App* app, int ix) {
     ThemeRegistry* state = RegistryOf(app);
-    if (!state || ix < 0 || ix >= state->themes.len) {
+    if (!state || ix < 0 || ix >= len(state->themes)) {
         return nullptr;
     }
     return &state->themes[ix];
@@ -3094,7 +3094,7 @@ const ThemeConfig* ThemeRegistryFind(const App* app, Str name) {
     if (!state) {
         return nullptr;
     }
-    for (int i = 0; i < state->themes.len; i++) {
+    for (int i = 0; i < len(state->themes); i++) {
         if (base::StrEq(state->themes[i].name, name)) {
             return &state->themes[i];
         }
@@ -3126,7 +3126,7 @@ void ThemeRegistryReset(App* app) {
     }
     ThemeInstall(app, ThemeMode::Light, ThemeDefaultLight());
     ThemeInstall(app, ThemeMode::Dark, ThemeDefaultDark());
-    for (int i = 0; i < state->themes.len; i++) {
+    for (int i = 0; i < len(state->themes); i++) {
         if (state->themes[i].isDefault) {
             state->active[(int)state->themes[i].mode] = state->themes[i].name;
         }

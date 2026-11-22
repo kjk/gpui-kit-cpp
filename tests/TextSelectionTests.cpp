@@ -603,10 +603,10 @@ static void FrameSweepDropsOnlyRegistrationsNotRenewed() {
     // The first post-paint sweep keeps registrations from that frame. Only
     // the participant painted again is present after the following frame.
     WindowSelectionFinishFrame(&win);
-    utassert(win.sel->participants.len == 2);
+    utassert(len(win.sel->participants) == 2);
     current.Register(registration.WithDocumentOrder(1), &win, &app);
     WindowSelectionFinishFrame(&win);
-    utassert(win.sel->participants.len == 1 &&
+    utassert(len(win.sel->participants) == 1 &&
              win.sel->participants[0] == current.Entity());
     utassert(!stale.HasLocalSelection(&app));
     utassert(observed->cleared == 1 && observed->changed == 1 &&
@@ -1107,7 +1107,7 @@ struct PlainRunView {
 
 // The frame's run for the n-th plain run, by its text.
 const TextHit* PlainHit(Window* win, const char* text) {
-    for (int i = 0; i < win->paint.texts.len; i++) {
+    for (int i = 0; i < len(win->paint.texts); i++) {
         if (StrEq(win->paint.texts[i].text, Str(text))) {
             return &win->paint.texts[i];
         }
@@ -2024,7 +2024,7 @@ static void UnitSelectionElementSupportsScopeAndRegistrationOnTheFirstFrame() {
 
     utassert(win->sel && win->sel->activeScope.raw == 23);
     bool registered = false;
-    for (int i = 0; win->sel && i < win->sel->participants.len; i++) {
+    for (int i = 0; win->sel && i < len(win->sel->participants); i++) {
         registered = registered || win->sel->participants[i] == p->selection
                                                                     .Entity();
     }

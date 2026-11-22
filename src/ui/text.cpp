@@ -214,12 +214,12 @@ static bool FrontmatterParse(const markdown::Node* node,
         }
     }
     finish();
-    if (data->entries.len == 0) {
+    if (len(data->entries) == 0) {
         return false;
     }
 
     StrBuilder text(a);
-    for (int i = 0; i < data->entries.len; i++) {
+    for (int i = 0; i < len(data->entries); i++) {
         if (i > 0) {
             text.AppendChar('\n');
         }
@@ -240,7 +240,7 @@ static El* FrontmatterRender(Ctx* cx, const MarkdownNode* node, void*) {
     FrontmatterData* data = (FrontmatterData*)node->data;
     DescriptionList* list =
         DescriptionList::Horizontal(cx)->LabelWidth(192)->Columns(1);
-    for (int i = 0; i < data->entries.len; i++) {
+    for (int i = 0; i < len(data->entries); i++) {
         list->Item(data->entries[i].key, data->entries[i].value);
     }
     return list->IntoEl();

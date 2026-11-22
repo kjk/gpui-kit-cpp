@@ -171,7 +171,7 @@ static void ManifestsDescribeGitDependenciesBeforeAnythingRuns() {
             StrL("{\"git\":\"https://github.com/huacnlee/omarchy-ui\","
                  "\"branch\":\"main\"}"),
             &manifest, &error));
-        utassert(manifest.dependencies.len == 1);
+        utassert(len(manifest.dependencies) == 1);
         const GitDependency& dependency = manifest.dependencies[0];
         utassert(StrEq(dependency.name, StrL("omarchy-ui")) &&
                  StrEq(dependency.git,
@@ -322,7 +322,7 @@ static void ManifestsDescribeGitDependenciesBeforeAnythingRuns() {
             "\"entry\":\"main.js\",\"dependencies\":{"
             "\"zeta\":\"a/zeta\",\"alpha\":\"a/alpha\"}}");
         utassert(PluginManifestParse(source, &manifest, &error));
-        utassert(manifest.dependencies.len == 2 &&
+        utassert(len(manifest.dependencies) == 2 &&
                  StrEq(manifest.dependencies[0].name, StrL("alpha")) &&
                  StrEq(manifest.dependencies[1].name, StrL("zeta")));
         ShellErrorClear(&error);

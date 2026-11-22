@@ -94,7 +94,7 @@ static int SectionRows(const ListState* s, int section) {
 
 int ListRowCount(const ListState* s) {
     int total = 0;
-    for (int i = 0; i < s->sectionCounts.len; i++) {
+    for (int i = 0; i < len(s->sectionCounts); i++) {
         total += SectionRows(s, i);
     }
     return total;
@@ -107,7 +107,7 @@ ListRow ListRowAt(const ListState* s, int rowIx) {
     }
     int at = 0;
     int entry = 0;
-    for (int i = 0; i < s->sectionCounts.len; i++) {
+    for (int i = 0; i < len(s->sectionCounts); i++) {
         int rows = SectionRows(s, i);
         if (rowIx >= at + rows) {
             at += rows;
@@ -143,7 +143,7 @@ void ListPrepareRowHeights(ListState* s, float itemH, float headerH,
     int total = ListRowCount(s);
     // need_update: the sections have not moved and nothing measured
     // differently, so the vector already standing is the answer.
-    bool same = s->rowHeights.len == total && s->rowH == itemH &&
+    bool same = len(s->rowHeights) == total && s->rowH == itemH &&
                 s->headerH == headerH && s->footerH == footerH;
     s->rowH = itemH;
     s->headerH = headerH;
@@ -162,7 +162,7 @@ void ListPrepareRowHeights(ListState* s, float itemH, float headerH,
 }
 
 const float* ListRowHeights(const ListState* s) {
-    if (!s || s->rowHeights.len == 0) {
+    if (!s || len(s->rowHeights) == 0) {
         return nullptr;
     }
     return s->rowHeights.els;
@@ -175,7 +175,7 @@ IndexPath ListIndexPathOf(const ListState* s, int entry) {
         return p;
     }
     int seen = 0;
-    for (int i = 0; i < s->sectionCounts.len; i++) {
+    for (int i = 0; i < len(s->sectionCounts); i++) {
         int n = s->sectionCounts[i];
         if (entry < seen + n) {
             p.section = i;
@@ -189,7 +189,7 @@ IndexPath ListIndexPathOf(const ListState* s, int entry) {
 
 int ListEntryOf(const ListState* s, IndexPath path) {
     if (!s || path.section < 0 || path.row < 0 ||
-        path.section >= s->sectionCounts.len ||
+        path.section >= len(s->sectionCounts) ||
         path.row >= s->sectionCounts[path.section]) {
         return -1;
     }
@@ -206,7 +206,7 @@ int ListRowOfEntry(const ListState* s, int entry) {
     }
     int at = 0;
     int seen = 0;
-    for (int i = 0; i < s->sectionCounts.len; i++) {
+    for (int i = 0; i < len(s->sectionCounts); i++) {
         int items = s->sectionCounts[i];
         if (items <= 0) {
             continue;

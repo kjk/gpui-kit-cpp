@@ -79,7 +79,7 @@ static void OnWheel(MonitorApp* app, Ctx* cx, const ScrollWheelEvent* ev) {
     if (app->tableScroll < 0) {
         app->tableScroll = 0;
     }
-    float maxScroll = (float)app->sys.procs.len * 28.f;
+    float maxScroll = (float)len(app->sys.procs) * 28.f;
     if (app->tableScroll > maxScroll) {
         app->tableScroll = maxScroll;
     }
@@ -307,7 +307,7 @@ static El* ProcTableRow(Arena* a, const ProcessInfo* p, int ix) {
 static El* ProcessesTab(Ctx* cx, MonitorApp* app) {
     Arena* a = cx->a;
     El* body = Div(a)->FlexCol()->Flex1()->ClipY();
-    int n = app->sys.procs.len;
+    int n = len(app->sys.procs);
     // virtualize a bit: skip rows above scroll
     int first = (int)(app->tableScroll / 28.f);
     if (first < 0) {

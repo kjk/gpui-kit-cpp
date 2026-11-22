@@ -123,7 +123,7 @@ State HtmlFlowCdataOpenInside(Tokenizer* t) {
                           .s[t->tokenizeState.size]) {
         Consume(t);
         t->tokenizeState.size += 1;
-        if (t->tokenizeState.size == kHtmlCdataPrefix.len) {
+        if (t->tokenizeState.size == len(kHtmlCdataPrefix)) {
             t->tokenizeState.size = 0;
             t->concrete = true;
             return StateNext(StateName::HtmlFlowContinuation);
@@ -559,7 +559,7 @@ State HtmlTextCdataOpenInside(Tokenizer* t) {
                           .s[t->tokenizeState.size]) {
         t->tokenizeState.size += 1;
         Consume(t);
-        if (t->tokenizeState.size == kHtmlCdataPrefix.len) {
+        if (t->tokenizeState.size == len(kHtmlCdataPrefix)) {
             t->tokenizeState.size = 0;
             return StateNext(StateName::HtmlTextCdata);
         }

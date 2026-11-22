@@ -103,7 +103,7 @@ void PopupMenuCloseSubmenu(PopupMenuState* s, Ctx* cx) {
     }
     int ix = s->openSubmenu;
     s->openSubmenu = -1;
-    if (ix < 0 || !cx || ix >= s->rows.len) {
+    if (ix < 0 || !cx || ix >= len(s->rows)) {
         return;
     }
     PopupMenuState* child = s->rows[ix].submenuState.Get(cx);
@@ -274,7 +274,7 @@ void PopupMenuPerformRows(PopupMenuState* s, Ctx* cx, PopupMenuAction act) {
     if (!s) {
         return;
     }
-    int n = s->rows.len;
+    int n = len(s->rows);
     // Escape, or the arrow that steps out, inside a submenu: the row that
     // opened it lives in the parent, so that is who closes it. Rust dismisses
     // the submenu entity, which its parent is watching; here the parent holds
@@ -321,7 +321,7 @@ void PopupMenuState::OnAction(PopupMenuState* self, Ctx* cx,
     bool root = !self->parent.IsValid();
     bool unhandledOpen =
         act == PopupMenuAction::OpenSubmenu &&
-        (self->selected < 0 || self->selected >= self->rows.len ||
+        (self->selected < 0 || self->selected >= len(self->rows) ||
          !self->rows[self->selected].submenu);
     bool unhandledClose =
         act == PopupMenuAction::CloseSubmenu && self->openSubmenu < 0;
@@ -433,7 +433,7 @@ void PopupMenuEnterSubmenu(PopupMenuState* s, Ctx* cx, int ix) {
     s->openSubmenu = ix;
     PopupMenuState* child = nullptr;
     int first = -1;
-    if (cx && ix >= 0 && ix < s->rows.len) {
+    if (cx && ix >= 0 && ix < len(s->rows)) {
         child = s->rows[ix].submenuState.Get(cx);
         first = s->rows[ix].submenuSelect;
     }

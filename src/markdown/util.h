@@ -135,7 +135,7 @@ void EditMapAdd(EditMap& map, int32_t index, int32_t remove, const Event* add,
 void EditMapAddBefore(EditMap& map, int32_t index, int32_t remove,
                       const Event* add, int32_t addLen);
 inline bool EditMapEmpty(const EditMap& map) {
-    return map.map.len == 0;
+    return len(map.map) == 0;
 }
 void EditMapConsume(EditMap& map, Vec<Event>& events);
 

@@ -204,10 +204,10 @@ static void RemoveComboBadge(ComboboxStory* self, Ctx* cx, const ClickEvent*,
                              int64_t which) {
     component::ComboboxState* owner = self->combo[which].Get(cx);
     component::SearchableListState* s = owner ? owner->List() : nullptr;
-    if (!s || s->selected.len == 0) {
+    if (!s || len(s->selected) == 0) {
         return;
     }
-    for (int i = 0; i + 1 < s->selected.len; i++) {
+    for (int i = 0; i + 1 < len(s->selected); i++) {
         s->selected[i] = s->selected[i + 1];
     }
     s->selected.len--;
@@ -248,7 +248,7 @@ static El* ComboTriggerEl(ComboboxStory* self, Ctx* cx, int i) {
     }
     component::ComboboxState* owner = self->combo[i].Get(cx);
     component::SearchableListState* st = owner ? owner->List() : nullptr;
-    int n = st ? st->selected.len : 0;
+    int n = st ? len(st->selected) : 0;
     El* row = Div(a)->FlexRow()->W(kFill)->ItemsCenter()->Gap(8)->MinW(0);
     switch (spec.trigger) {
         case ComboTrigger::Icon: {
@@ -453,12 +453,12 @@ El* ComboboxStory::Render(ComboboxStory* self, Ctx* cx) {
         component::ComboboxState* owner = self->combo[i].Get(cx);
         component::SearchableListState* s = owner ? owner->List() : nullptr;
         Str line = StoryFmt(cx, "%s: []", kSpecs[i].id);
-        if (s && s->selected.len == 1) {
+        if (s && len(s->selected) == 1) {
             line = StoryFmt(cx, "%s: [\"%s\"]", kSpecs[i].id,
                             kSpecs[i].items[s->selected[0]].title);
-        } else if (s && s->selected.len > 1) {
+        } else if (s && len(s->selected) > 1) {
             line =
-                StoryFmt(cx, "%s: %d selected", kSpecs[i].id, s->selected.len);
+                StoryFmt(cx, "%s: %d selected", kSpecs[i].id, len(s->selected));
         }
         valueCol->Child(StoryTxt(cx, line, 16, th.foreground));
     }

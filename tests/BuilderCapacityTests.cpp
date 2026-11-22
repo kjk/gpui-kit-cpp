@@ -61,24 +61,24 @@ void TestBuilderCapacity() {
         empty->Child(Div(a));
     }
 
-    utassert(avatars->avatars.len == 40);
-    utassert(descriptions->items.len == 40);
-    utassert(form->fields.len == 40);
-    utassert(radios->radios.len == 40);
-    utassert(stepper->items.len == 40);
-    utassert(menuBar->items.len == 40);
-    utassert(pie->slices.len == 40);
-    utassert(area->more.len == 40);
-    utassert(parent->children.len == 40);
-    utassert(menu->items.len == 40);
-    utassert(group->menus.len == 40);
-    utassert(sidebar->groups.len == 40);
-    utassert(accordion->items.len == 40);
-    utassert(breadcrumb->items.len == 40);
-    utassert(buttons->children.len == 40);
-    utassert(table->groupHeaders.len == 40);
-    utassert(settings->pages[0].groups[0].items[0].keywords.len == 40);
-    utassert(empty->children.len == 40);
+    utassert(len(avatars->avatars) == 40);
+    utassert(len(descriptions->items) == 40);
+    utassert(len(form->fields) == 40);
+    utassert(len(radios->radios) == 40);
+    utassert(len(stepper->items) == 40);
+    utassert(len(menuBar->items) == 40);
+    utassert(len(pie->slices) == 40);
+    utassert(len(area->more) == 40);
+    utassert(len(parent->children) == 40);
+    utassert(len(menu->items) == 40);
+    utassert(len(group->menus) == 40);
+    utassert(len(sidebar->groups) == 40);
+    utassert(len(accordion->items) == 40);
+    utassert(len(breadcrumb->items) == 40);
+    utassert(len(buttons->children) == 40);
+    utassert(len(table->groupHeaders) == 40);
+    utassert(len(settings->pages[0].groups[0].items[0].keywords) == 40);
+    utassert(len(empty->children) == 40);
 
     // Named slots replace in place and always precede direct children,
     // regardless of the order the builder methods were called in.

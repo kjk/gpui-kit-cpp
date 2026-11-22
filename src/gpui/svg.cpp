@@ -605,7 +605,7 @@ static bool ParseSvgPaint(const SvgIcon* ic, Str v, Rgba* out) {
         p++;
     }
     Str id(idStart, (int)(p - idStart));
-    for (int i = 0; i < ic->gradients.len; i++) {
+    for (int i = 0; i < len(ic->gradients); i++) {
         const SvgGradient& g = ic->gradients[i];
         if (g.hasColor && len(id) > 0 && StrEq(g.id, id)) {
             *out = g.color;
@@ -734,7 +734,7 @@ static SvgMatrix ParseTransform(Str s) {
 // it named. Every element gets one, `<line>` and `<polyline>` included — a
 // shape that is not on the list is a shape the per-colour encoding would drop.
 static void EndShape(SvgIcon* ic, int start, Str tag, const SvgMatrix& m) {
-    if (ic->ops.len <= start) {
+    if (len(ic->ops) <= start) {
         return;
     }
     // The groups this shape sits in, and its own transform after them.
@@ -744,7 +744,7 @@ static void EndShape(SvgIcon* ic, int start, Str tag, const SvgMatrix& m) {
         full = MatMul(m, ParseTransform(own));
     }
     if (!full.IsIdentity()) {
-        for (int i = start; i < ic->ops.len; i++) {
+        for (int i = start; i < len(ic->ops); i++) {
             SvgOp& o = ic->ops[i];
             if (o.cmd == kClose) {
                 continue; // carries no point
@@ -758,7 +758,7 @@ static void EndShape(SvgIcon* ic, int start, Str tag, const SvgMatrix& m) {
     }
     SvgShape sh;
     sh.start = start;
-    sh.count = ic->ops.len - start;
+    sh.count = len(ic->ops) - start;
     sh.fillPath = ic->filled;
     sh.strokePath = ic->stroked;
     TempStr fill = GetAttrTemp(tag, "fill");
@@ -1053,7 +1053,7 @@ static void ParseSvg(Str xml, SvgIcon* ic) {
                     g.id = GetAttrTemp(tag, "id");
                     if (g.id) {
                         VecAppend(ic->gradients, g);
-                        gradIx = ic->gradients.len - 1;
+                        gradIx = len(ic->gradients) - 1;
                     }
                 }
                 hidden++;
@@ -1063,7 +1063,7 @@ static void ParseSvg(Str xml, SvgIcon* ic) {
         if (hidden > 0) {
             // <stop stop-color=..>: the first one is the colour the gradient
             // reduces to, and the rest of what is in here still draws nothing.
-            if (gradIx >= 0 && gradIx < ic->gradients.len &&
+            if (gradIx >= 0 && gradIx < len(ic->gradients) &&
                 !ic->gradients[gradIx].hasColor &&
                 IsTagNamed(tagStart, tagStart + len(tag), "stop")) {
                 TempStr stop = GetAttrTemp(tag, "stop-color");
@@ -1168,7 +1168,7 @@ static void ParseSvg(Str xml, SvgIcon* ic) {
         }
         if (base::StrStartsWithI(tag, "path")) {
             TempStr d = GetAttrTemp(tag, "d");
-            int start = ic->ops.len;
+            int start = len(ic->ops);
             if (d) {
                 ParsePathD(ic, d);
             }
@@ -1176,7 +1176,7 @@ static void ParseSvg(Str xml, SvgIcon* ic) {
             continue;
         }
         if (base::StrStartsWithI(tag, "rect")) {
-            int start = ic->ops.len;
+            int start = len(ic->ops);
             float x = AttrF(tag, "x", 0);
             float y = AttrF(tag, "y", 0);
             float w = AttrF(tag, "width", 0);
@@ -1188,7 +1188,7 @@ static void ParseSvg(Str xml, SvgIcon* ic) {
         }
         if (base::StrStartsWithI(tag, "polyline")) {
             TempStr pts = GetAttrTemp(tag, "points");
-            int start = ic->ops.len;
+            int start = len(ic->ops);
             if (pts) {
                 ParsePolyline(ic, pts, false);
             }
@@ -1197,7 +1197,7 @@ static void ParseSvg(Str xml, SvgIcon* ic) {
         }
         if (base::StrStartsWithI(tag, "polygon")) {
             TempStr pts = GetAttrTemp(tag, "points");
-            int start = ic->ops.len;
+            int start = len(ic->ops);
             if (pts) {
                 ParsePolyline(ic, pts, true);
             }
@@ -1205,7 +1205,7 @@ static void ParseSvg(Str xml, SvgIcon* ic) {
             continue;
         }
         if (base::StrStartsWithI(tag, "line")) {
-            int start = ic->ops.len;
+            int start = len(ic->ops);
             float x1 = AttrF(tag, "x1", 0);
             float y1 = AttrF(tag, "y1", 0);
             float x2 = AttrF(tag, "x2", 0);
@@ -1216,7 +1216,7 @@ static void ParseSvg(Str xml, SvgIcon* ic) {
             continue;
         }
         if (base::StrStartsWithI(tag, "circle")) {
-            int start = ic->ops.len;
+            int start = len(ic->ops);
             float cx = AttrF(tag, "cx", 0);
             float cy = AttrF(tag, "cy", 0);
             float r = AttrF(tag, "r", 0);
@@ -1227,7 +1227,7 @@ static void ParseSvg(Str xml, SvgIcon* ic) {
         // No icon under assets/icons has one; a picture from anywhere else
         // may, and it used to be dropped without a word.
         if (base::StrStartsWithI(tag, "ellipse")) {
-            int start = ic->ops.len;
+            int start = len(ic->ops);
             AddEllipse(ic, AttrF(tag, "cx", 0), AttrF(tag, "cy", 0),
                        AttrF(tag, "rx", 0), AttrF(tag, "ry", 0));
             EndShape(ic, start, tag, gm);
@@ -1273,14 +1273,14 @@ static void EncodeIcon(const SvgIcon* ic, DrawOpsBuilder* b) {
     b->ViewBox(ic->vbX, ic->vbY, ic->vbW, ic->vbH);
     b->StrokeWidth(ic->strokeW > 0 ? ic->strokeW : 2.f);
     if (!ic->hasShapePaint) {
-        EmitOps(b, ic, 0, ic->ops.len);
+        EmitOps(b, ic, 0, len(ic->ops));
         if (ic->filled || ic->stroked) {
             b->Op(PathOp(ic->filled, ic->stroked));
         }
         b->End();
         return;
     }
-    for (int i = 0; i < ic->shapes.len; i++) {
+    for (int i = 0; i < len(ic->shapes); i++) {
         const SvgShape& sh = ic->shapes[i];
         if (sh.isText) {
             if (sh.hasFill) {
@@ -1326,7 +1326,7 @@ bool SvgToDrawOps(Str xml, DrawOpsBuilder* out) {
     }
     SvgIcon ic;
     ParseSvg(xml, &ic);
-    if (ic.ops.len <= 0 && !ic.hasText) {
+    if (len(ic.ops) <= 0 && !ic.hasText) {
         return false;
     }
     EncodeIcon(&ic, out);
@@ -1440,14 +1440,14 @@ const uint8_t* SvgDrawOpsFor(Str assetPath, int* lenOut) {
     if (xml.s) {
         DrawOpsBuilder b;
         if (SvgToDrawOps(xml, &b)) {
-            uint8_t* buf = AllocArray<uint8_t>(b.data.len);
+            uint8_t* buf = AllocArray<uint8_t>(len(b.data));
             if (!buf) {
                 return nullptr;
             }
-            memcpy(buf, b.data.els, (size_t)b.data.len);
+            memcpy(buf, b.data.els, (size_t)len(b.data));
             OpsCache* e = CacheSlotFor(assetPath);
             e->data = buf;
-            e->len = b.data.len;
+            e->len = len(b.data);
             e->owned = true;
             *lenOut = e->len;
             return e->data;
@@ -1539,11 +1539,11 @@ const uint8_t* SvgDrawOpsForXml(Str xml, int* lenOut) {
     if (!SvgToDrawOps(xml, &b)) {
         return nullptr;
     }
-    uint8_t* buf = AllocArray<uint8_t>(b.data.len);
+    uint8_t* buf = AllocArray<uint8_t>(len(b.data));
     if (!buf) {
         return nullptr;
     }
-    memcpy(buf, b.data.els, (size_t)b.data.len);
+    memcpy(buf, b.data.els, (size_t)len(b.data));
     if (gXmlCacheN >= kMaxXmlCache) {
         gXmlCacheN = 0; // simple wrap
     }
@@ -1554,7 +1554,7 @@ const uint8_t* SvgDrawOpsForXml(Str xml, int* lenOut) {
     e->hash = hash;
     e->xmlLen = len(xml);
     e->data = buf;
-    e->len = b.data.len;
+    e->len = len(b.data);
     *lenOut = e->len;
     return e->data;
 }

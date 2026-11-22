@@ -254,7 +254,7 @@ static void ItemSizeLayoutCarriesOriginsGapsAndCrossSize() {
     const float sizes[] = {20, 30, 40};
     ItemSizeLayout vertical;
     ItemSizeLayoutBuild(&vertical, Axis::Vertical, sizes, 3, 0, 4, 80);
-    utassert(vertical.sizes.len == 3 && vertical.origins.len == 3);
+    utassert(len(vertical.sizes) == 3 && len(vertical.origins) == 3);
     utassertnear(vertical.sizes[0], 24.f);
     utassertnear(vertical.sizes[1], 34.f);
     utassertnear(vertical.sizes[2], 40.f);

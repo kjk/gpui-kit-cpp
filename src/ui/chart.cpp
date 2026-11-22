@@ -148,8 +148,8 @@ AreaChart* AreaChart::New(Ctx* cx, const float* ys, int n, const char* file,
 AreaChart* AreaChart::Stroke(Rgba c) {
     // Every setter after a `Y()` belongs to that series, which is what
     // Rust's `.y(..).stroke(..).fill(..).name(..)` chain says.
-    if (more.len > 0) {
-        more[more.len - 1].stroke = c;
+    if (len(more) > 0) {
+        more[len(more) - 1].stroke = c;
     } else {
         stroke = c;
     }
@@ -160,9 +160,9 @@ AreaChart* AreaChart::Fill(Rgba c) {
 }
 
 AreaChart* AreaChart::Fill(Rgba top, Rgba bottom) {
-    if (more.len > 0) {
-        more[more.len - 1].fillTop = top;
-        more[more.len - 1].fillBot = bottom;
+    if (len(more) > 0) {
+        more[len(more) - 1].fillTop = top;
+        more[len(more) - 1].fillBot = bottom;
     } else {
         fill = top;
         fillBottom = bottom;
@@ -175,9 +175,9 @@ AreaChart* AreaChart::Y(const float* v) {
     series.ys = v;
     // Until it is given one of its own, a series takes the last one's
     // colours, so `.y(..)` alone still draws.
-    series.stroke = more.len > 0 ? more[more.len - 1].stroke : stroke;
-    series.fillTop = more.len > 0 ? more[more.len - 1].fillTop : fill;
-    series.fillBot = more.len > 0 ? more[more.len - 1].fillBot : fillBottom;
+    series.stroke = len(more) > 0 ? more[len(more) - 1].stroke : stroke;
+    series.fillTop = len(more) > 0 ? more[len(more) - 1].fillTop : fill;
+    series.fillBot = len(more) > 0 ? more[len(more) - 1].fillBot : fillBottom;
     more.Append(a, series);
     return this;
 }
@@ -189,8 +189,8 @@ AreaChart* AreaChart::Overlay(bool v) {
 AreaChart* AreaChart::Tooltip(Str name) {
     // `name(..)` on a later series names that one in the tooltip; on the
     // first it also turns the crosshair on, the way `id(..)` does.
-    if (more.len > 0) {
-        more[more.len - 1].name = name;
+    if (len(more) > 0) {
+        more[len(more) - 1].name = name;
     } else {
         tooltipName = name;
     }
@@ -216,7 +216,7 @@ El* AreaChart::IntoEl() {
     // The builder is on the frame arena, so the element can point at its
     // array rather than copying it.
     chart->more = more.Flatten(a);
-    chart->nMore = more.len;
+    chart->nMore = len(more);
     return e;
 }
 
@@ -238,7 +238,7 @@ LineChart* LineChart::Stroke(Rgba c) {
 void PointAxes::ApplyTo(Arena* arena, ChartSeries* chart) const {
     static_cast<ChartAxisOptions&>(*chart) = *this;
     chart->referenceLines = referenceLines.Flatten(arena);
-    chart->nReferenceLines = referenceLines.len;
+    chart->nReferenceLines = len(referenceLines);
 }
 LineChart* LineChart::Dot(bool v) {
     dot = v;
@@ -876,21 +876,21 @@ PieChart* PieChart::Slice(float value, Rgba color, float outerInset) {
 // label(): names the slice that was added last, so a caller adds a slice and
 // then says what it is called.
 PieChart* PieChart::Label(Str text) {
-    if (slices.len > 0) {
-        slices[slices.len - 1].label = text;
+    if (len(slices) > 0) {
+        slices[len(slices) - 1].label = text;
         hasLabels = true;
     }
     return this;
 }
 PieChart* PieChart::TooltipName(Str name) {
-    if (slices.len > 0) {
-        slices[slices.len - 1].tooltipName = name;
+    if (len(slices) > 0) {
+        slices[len(slices) - 1].tooltipName = name;
     }
     return this;
 }
 PieChart* PieChart::TooltipValue(Str value) {
-    if (slices.len > 0) {
-        slices[slices.len - 1].tooltipValue = value;
+    if (len(slices) > 0) {
+        slices[len(slices) - 1].tooltipValue = value;
     }
     return this;
 }
@@ -1063,7 +1063,7 @@ struct PieLabelLayout {
 // time would not settle a run of them.
 static void PieSpreadLabels(ArenaVec<PieLabelLayout>* items, float top,
                             float bottom) {
-    int n = items->len;
+    int n = len(*items);
     if (n <= 0) {
         return;
     }
@@ -1117,7 +1117,7 @@ static void PaintPieLabels(PaintCtx* ctx, PieChart* p, float cx, float cy,
     ArenaVec<PieLabelLayout> right{};
     ArenaVec<PieLabelLayout> left{};
     float angle = -kPi * 0.5f;
-    for (int i = 0; i < p->slices.len; i++) {
+    for (int i = 0; i < len(p->slices); i++) {
         const PieSlice& s = p->slices[i];
         float sweep = 2.f * kPi * (s.value / total);
         float a0 = angle, a1 = angle + sweep;
@@ -1178,13 +1178,13 @@ static void PaintPieLabels(PaintCtx* ctx, PieChart* p, float cx, float cy,
 
 static void PaintPie(PaintCtx* ctx, El* e, void* user) {
     auto* p = (PieChart*)user;
-    if (!p || !ctx->rt || p->slices.len == 0) {
+    if (!p || !ctx->rt || len(p->slices) == 0) {
         return;
     }
     float cx = e->x + e->w * 0.5f;
     float cy = e->y + e->h * 0.5f;
     float total = 0;
-    for (int i = 0; i < p->slices.len; i++) {
+    for (int i = 0; i < len(p->slices); i++) {
         total += p->slices[i].value;
     }
     if (total <= 0) {
@@ -1203,7 +1203,7 @@ static void PaintPie(PaintCtx* ctx, El* e, void* user) {
         Point local = {ctx->mouseX - e->x, ctx->mouseY - e->y};
         // Hit-test in pie angles using the same start/end as Arc::Contains.
         float pieAngle = 0;
-        for (int i = 0; i < p->slices.len; i++) {
+        for (int i = 0; i < len(p->slices); i++) {
             float sweep = 2.f * kPi * (p->slices[i].value / total);
             plot::ArcData ad = plot::ArcData::New(
                 nullptr, i, p->slices[i].value, pieAngle, pieAngle + sweep);
@@ -1225,7 +1225,7 @@ static void PaintPie(PaintCtx* ctx, El* e, void* user) {
     // The ring sweeps clockwise from its first slice as the chart appears:
     // each slice's angles are scaled toward the ring's start.
     float angle = -kPi * 0.5f;
-    for (int i = 0; i < p->slices.len; i++) {
+    for (int i = 0; i < len(p->slices); i++) {
         const PieSlice& s = p->slices[i];
         float full = 2.f * kPi * (s.value / total) * appearProgress;
         float sweep = full - p->padAngle;
@@ -1313,7 +1313,7 @@ float SankeyLabel::LineHeight() const {
 
 static int SankeyNodeLineCount(const SankeyChartNode& node, Str value) {
     if (node.hasCustomLabels) {
-        return node.labels.len;
+        return len(node.labels);
     }
     return (value.s ? 1 : 0) + (node.note.s ? 1 : 0) + (node.label.s ? 1 : 0);
 }
@@ -1387,7 +1387,7 @@ static void SankeyLabelLine(PaintCtx* ctx, Str text, float x, float y,
 
 static void PaintSankey(PaintCtx* ctx, El* e, void* user) {
     auto* c = (SankeyChart*)user;
-    if (!c || !ctx->rt || c->nodes.len == 0 || c->links.len == 0) {
+    if (!c || !ctx->rt || len(c->nodes) == 0 || len(c->links) == 0) {
         return;
     }
     float width = e->w;
@@ -1410,7 +1410,7 @@ static void PaintSankey(PaintCtx* ctx, El* e, void* user) {
     // The links as an array: the generator takes a `const SankeyLink*`, and
     // the builder's ArenaVec is segmented.
     const SankeyLink* links = c->links.Flatten(GetTempArena());
-    if (SankeyTopology(&gen, c->nodes.len, links, c->links.len, &g) !=
+    if (SankeyTopology(&gen, len(c->nodes), links, len(c->links), &g) !=
         SankeyError::None) {
         return;
     }
@@ -1419,9 +1419,9 @@ static void PaintSankey(PaintCtx* ctx, El* e, void* user) {
     // The labels read the raw throughput; the layout's own value is in
     // scaled units under a non-linear scale.
     Arena* ta = GetTempArena();
-    int nNodes = c->nodes.len;
+    int nNodes = len(c->nodes);
     double* raw = (double*)Alloc(ta, (int)sizeof(double) * nNodes);
-    SankeyChartThroughput(links, c->links.len, raw, nNodes);
+    SankeyChartThroughput(links, len(c->links), raw, nNodes);
     Str* values = (Str*)Alloc(ta, (int)sizeof(Str) * nNodes);
     int nodeIx = -1;
     for (const SankeyChartNode& node : c->nodes) {
@@ -1522,7 +1522,7 @@ static void PaintSankey(PaintCtx* ctx, El* e, void* user) {
     // interactive(false): no hitbox, so no node is hovered.
     if (ctx->window && ctx->app && c->interactive) {
         Point local = {ctx->mouseX - e->x, ctx->mouseY - e->y};
-        for (int i = 0; i < g.nodes.len; i++) {
+        for (int i = 0; i < len(g.nodes); i++) {
             const SankeyNodeLayout& node = g.nodes[i];
             float y1 = node.y1 > node.y0 + 1 ? node.y1 : node.y0 + 1;
             if (local.x >= node.x0 && local.x <= node.x1 &&
@@ -1551,7 +1551,7 @@ static void PaintSankey(PaintCtx* ctx, El* e, void* user) {
                        e->h + bleed * 2.f);
         revealed = true;
     }
-    for (int i = 0; i < g.links.len; i++) {
+    for (int i = 0; i < len(g.links); i++) {
         const SankeyLinkLayout& link = g.links[i];
         if (link.value <= 0) {
             continue;
@@ -1592,7 +1592,7 @@ static void PaintSankey(PaintCtx* ctx, El* e, void* user) {
         PathFree(p);
     }
 
-    for (int i = 0; i < g.nodes.len; i++) {
+    for (int i = 0; i < len(g.nodes); i++) {
         const SankeyNodeLayout& node = g.nodes[i];
         // A node carrying almost nothing still gets a pixel to be seen by.
         float y1 = node.y1 > node.y0 + 1 ? node.y1 : node.y0 + 1;
@@ -1622,7 +1622,7 @@ static void PaintSankey(PaintCtx* ctx, El* e, void* user) {
         paintTooltip();
         return;
     }
-    for (int i = 0; i < g.nodes.len; i++) {
+    for (int i = 0; i < len(g.nodes); i++) {
         const SankeyNodeLayout& node = g.nodes[i];
         const SankeyChartNode& chartNode = c->nodes[node.index];
         Str value = values[node.index];
@@ -1697,31 +1697,31 @@ SankeyChart* SankeyChart::Node(Str label) {
     return this;
 }
 SankeyChart* SankeyChart::NodeValue(Str text) {
-    if (nodes.len > 0) {
-        nodes[nodes.len - 1].value = text;
+    if (len(nodes) > 0) {
+        nodes[len(nodes) - 1].value = text;
     }
     return this;
 }
 SankeyChart* SankeyChart::NodeNote(Str text, Rgba color) {
-    if (nodes.len > 0) {
-        nodes[nodes.len - 1].note = text;
-        nodes[nodes.len - 1].noteColor = color;
+    if (len(nodes) > 0) {
+        nodes[len(nodes) - 1].note = text;
+        nodes[len(nodes) - 1].noteColor = color;
     }
     return this;
 }
 SankeyChart* SankeyChart::CustomLabel(SankeyLabel label) {
-    if (nodes.len > 0) {
-        SankeyChartNode& node = nodes[nodes.len - 1];
+    if (len(nodes) > 0) {
+        SankeyChartNode& node = nodes[len(nodes) - 1];
         node.hasCustomLabels = true;
         node.labels.Append(a, label);
     }
     return this;
 }
 SankeyChart* SankeyChart::CustomLabels(const SankeyLabel* labels, int n) {
-    if (nodes.len <= 0) {
+    if (len(nodes) <= 0) {
         return this;
     }
-    SankeyChartNode& node = nodes[nodes.len - 1];
+    SankeyChartNode& node = nodes[len(nodes) - 1];
     node.hasCustomLabels = true;
     for (int i = 0; labels && i < n; i++) {
         node.labels.Append(a, labels[i]);
@@ -1785,14 +1785,14 @@ SankeyChart* SankeyChart::ShowValues(bool v) {
     return this;
 }
 SankeyChart* SankeyChart::TooltipName(Str name) {
-    if (nodes.len > 0) {
-        nodes[nodes.len - 1].tooltipName = name;
+    if (len(nodes) > 0) {
+        nodes[len(nodes) - 1].tooltipName = name;
     }
     return this;
 }
 SankeyChart* SankeyChart::TooltipValue(Str value) {
-    if (nodes.len > 0) {
-        nodes[nodes.len - 1].tooltipValue = value;
+    if (len(nodes) > 0) {
+        nodes[len(nodes) - 1].tooltipValue = value;
     }
     return this;
 }

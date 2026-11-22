@@ -38,7 +38,7 @@ static void VariantBuildersAndChildrenMatchTheSourceTree() {
     for (int i = 0; i < 40; i++) {
         group->Child(Div(a));
     }
-    utassert(group->children.len == 40);
+    utassert(len(group->children) == 40);
     El* root = group->IntoEl();
     El* title = root->first;
     // title, then the slot holding the surface and any footer.

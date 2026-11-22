@@ -12,7 +12,7 @@ PathCache* PathCaches::Slot(int index) {
     if (index < 0) {
         return nullptr;
     }
-    while (slots.len <= index) {
+    while (len(slots) <= index) {
         VecAppend(slots, PathCache{});
     }
     return &slots[index];

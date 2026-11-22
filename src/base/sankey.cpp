@@ -11,7 +11,7 @@ static const float kSankeyStaggerRatio = 0.15f;
 
 int SankeyLayerCount(const SankeyGraph* g) {
     int n = 0;
-    for (int i = 0; i < g->nodes.len; i++) {
+    for (int i = 0; i < len(g->nodes); i++) {
         int layer = g->nodes[i].layer + 1;
         if (layer > n) {
             n = layer;
@@ -76,8 +76,8 @@ static void ReorderNodeLinks(SankeyGraph* g, int index) {
 
 // The link lists, as one array each with a slice per node.
 static void ComputeNodeLinks(SankeyGraph* g) {
-    int n = g->nodes.len;
-    int m = g->links.len;
+    int n = len(g->nodes);
+    int m = len(g->links);
     VecReset(g->srcLinks);
     VecReset(g->tgtLinks);
     if (m > 0) {
@@ -118,7 +118,7 @@ static void ComputeNodeLinks(SankeyGraph* g) {
 
 // A node's throughput: the larger of what comes in and what goes out.
 static void ComputeNodeValues(SankeyGraph* g) {
-    for (int i = 0; i < g->nodes.len; i++) {
+    for (int i = 0; i < len(g->nodes); i++) {
         double outgoing = 0;
         for (int k = 0; k < g->nodes[i].srcCount; k++) {
             outgoing += g->links[g->srcLinks[g->nodes[i].srcStart + k]].value;
@@ -135,7 +135,7 @@ static void ComputeNodeValues(SankeyGraph* g) {
 // one topological ordering. A node the ordering never reached has an incoming
 // link that never resolved, which is a cycle.
 static SankeyError ComputeNodeRanks(SankeyGraph* g) {
-    int n = g->nodes.len;
+    int n = len(g->nodes);
     Vec<int> incoming;
     Vec<int> order;
     Vec<int> depths;
@@ -229,7 +229,7 @@ static int AlignLayer(const Sankey* s, const SankeyGraph* g, int index, int n) {
 
 static void ComputeNodeLayers(const Sankey* s, SankeyGraph* g) {
     int n = 0;
-    for (int i = 0; i < g->nodes.len; i++) {
+    for (int i = 0; i < len(g->nodes); i++) {
         if (g->nodes[i].depth + 1 > n) {
             n = g->nodes[i].depth + 1;
         }
@@ -238,7 +238,7 @@ static void ComputeNodeLayers(const Sankey* s, SankeyGraph* g) {
         return;
     }
     float kx = n > 1 ? (s->x1 - s->x0 - s->nodeWidth) / (float)(n - 1) : 0.f;
-    for (int i = 0; i < g->nodes.len; i++) {
+    for (int i = 0; i < len(g->nodes); i++) {
         int layer = AlignLayer(s, g, i, n);
         if (layer > n - 1) {
             layer = n - 1;
@@ -256,12 +256,12 @@ static void ComputeNodeLayers(const Sankey* s, SankeyGraph* g) {
 // Every node, and the ends of every link, moved by its layer's offset. Both
 // the centring and the stagger come down to this.
 static void ApplyLayerOffsets(SankeyGraph* g, const float* offsets) {
-    for (int i = 0; i < g->nodes.len; i++) {
+    for (int i = 0; i < len(g->nodes); i++) {
         float dy = offsets[g->nodes[i].layer];
         g->nodes[i].y0 += dy;
         g->nodes[i].y1 += dy;
     }
-    for (int i = 0; i < g->links.len; i++) {
+    for (int i = 0; i < len(g->links); i++) {
         g->links[i].y0 += offsets[g->nodes[g->links[i].source].layer];
         g->links[i].y1 += offsets[g->nodes[g->links[i].target].layer];
     }
@@ -347,7 +347,7 @@ static float SourceTop(const SankeyGraph* g, int source, int target, float py) {
 // of a node share that node's height in proportion to their values, so both
 // sides are covered even where the graph does not balance.
 static void ComputeLinkBreadths(SankeyGraph* g) {
-    for (int i = 0; i < g->nodes.len; i++) {
+    for (int i = 0; i < len(g->nodes); i++) {
         const SankeyNodeLayout& node = g->nodes[i];
         float nodeY0 = node.y0;
         float nodeHeight = node.y1 - node.y0;
@@ -460,7 +460,7 @@ static void InitializeNodeBreadths(const Sankey* s, SankeyGraph* g,
         }
     }
 
-    for (int i = 0; i < g->links.len; i++) {
+    for (int i = 0; i < len(g->links); i++) {
         g->links[i].width = (float)g->links[i].value * ky;
     }
     for (int l = 0; l < layers; l++) {
@@ -560,7 +560,7 @@ static void CenterColumns(const Sankey* s, SankeyGraph* g) {
     for (int l = 0; l < layers; l++) {
         seen[l] = false;
     }
-    for (int i = 0; i < g->nodes.len; i++) {
+    for (int i = 0; i < len(g->nodes); i++) {
         int l = g->nodes[i].layer;
         if (!seen[l]) {
             seen[l] = true;
@@ -607,7 +607,7 @@ static void StaggerFlatColumns(const Sankey* s, SankeyGraph* g) {
         heights[l] = 0;
         offsets[l] = 0;
     }
-    for (int i = 0; i < g->nodes.len; i++) {
+    for (int i = 0; i < len(g->nodes); i++) {
         count[g->nodes[i].layer]++;
         single[g->nodes[i].layer] = g->nodes[i].index;
     }
@@ -728,7 +728,7 @@ SankeyError SankeyTopology(const Sankey* s, int nodeCount,
 }
 
 void SankeyLayoutFrom(const Sankey* s, SankeyGraph* g) {
-    if (g->nodes.len == 0) {
+    if (len(g->nodes) == 0) {
         return;
     }
     ComputeNodeLayers(s, g);
@@ -739,12 +739,12 @@ void SankeyLayoutFrom(const Sankey* s, SankeyGraph* g) {
     Vec<int> colItems;
     VecAppendBlanks(colStart, layers);
     VecAppendBlanks(colCount, layers);
-    VecAppendBlanks(colItems, g->nodes.len);
+    VecAppendBlanks(colItems, len(g->nodes));
     for (int l = 0; l < layers; l++) {
         colStart[l] = 0;
         colCount[l] = 0;
     }
-    for (int i = 0; i < g->nodes.len; i++) {
+    for (int i = 0; i < len(g->nodes); i++) {
         colCount[g->nodes[i].layer]++;
     }
     int at = 0;
@@ -753,7 +753,7 @@ void SankeyLayoutFrom(const Sankey* s, SankeyGraph* g) {
         at += colCount[l];
         colCount[l] = 0;
     }
-    for (int i = 0; i < g->nodes.len; i++) {
+    for (int i = 0; i < len(g->nodes); i++) {
         int l = g->nodes[i].layer;
         colItems[colStart[l] + colCount[l]] = i;
         colCount[l]++;

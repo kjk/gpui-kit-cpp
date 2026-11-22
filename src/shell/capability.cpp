@@ -119,7 +119,7 @@ ExecuteGrant ExecuteGrant::Unrestricted() {
 bool ExecuteGrant::Allows(Str command) const {
     if (kind == ExecuteGrantKind::Unrestricted) return true;
     if (kind == ExecuteGrantKind::Denied) return false;
-    for (int i = 0; i < commands.len; i++) {
+    for (int i = 0; i < len(commands); i++) {
         if (StrEq(commands[i], command)) return true;
     }
     return false;
@@ -213,14 +213,14 @@ bool HttpRequestGrant::Allows(Str requestScheme, Str requestHost,
         return false;
     }
     bool methodAllowed = false;
-    for (int i = 0; i < methods.len; i++) {
+    for (int i = 0; i < len(methods); i++) {
         if (StrEqI(methods[i], method)) methodAllowed = true;
     }
     if (!methodAllowed) return false;
-    for (int i = 0; i < paths.len; i++) {
+    for (int i = 0; i < len(paths); i++) {
         if (StrEq(paths[i], path)) return true;
     }
-    for (int i = 0; i < pathPrefixes.len; i++) {
+    for (int i = 0; i < len(pathPrefixes); i++) {
         if (PrefixAllows(pathPrefixes[i], path)) return true;
     }
     return false;
@@ -289,7 +289,7 @@ void Capabilities::Clear() {
     StrVecFree(&writeRoots);
     StrVecFree(&networkHosts);
     StrVecFree(&envVariables);
-    for (int i = 0; i < httpRequests.len; i++) delete httpRequests[i];
+    for (int i = 0; i < len(httpRequests); i++) delete httpRequests[i];
     VecReset(httpRequests);
     execute = ExecuteGrant::Denied();
 }
@@ -299,7 +299,7 @@ void Capabilities::CopyFrom(const Capabilities& other) {
     CopyStrings(&writeRoots, other.writeRoots);
     execute = other.execute;
     CopyStrings(&networkHosts, other.networkHosts);
-    for (int i = 0; i < other.httpRequests.len; i++) {
+    for (int i = 0; i < len(other.httpRequests); i++) {
         VecAppend(httpRequests, new HttpRequestGrant(*other.httpRequests[i]));
     }
     storage = other.storage;
@@ -351,7 +351,7 @@ Capabilities& Capabilities::AddEnvVariable(Str name) {
 }
 
 static bool SameRoot(const Vec<Str>& roots, Str root) {
-    for (int i = 0; i < roots.len; i++) {
+    for (int i = 0; i < len(roots); i++) {
         if (StrEq(roots[i], root)) return true;
     }
     return false;
@@ -455,16 +455,16 @@ bool Capabilities::MayShowEnvVariable(Str name) const {
     for (int i = 0; i < ShellDefaultEnvNameCount(); i++) {
         if (EqIgnoreAsciiCase(name, Str(ShellDefaultEnvName(i)))) return true;
     }
-    for (int i = 0; i < envVariables.len; i++) {
+    for (int i = 0; i < len(envVariables); i++) {
         if (EqIgnoreAsciiCase(name, envVariables[i])) return true;
     }
     return false;
 }
 bool Capabilities::HasReadAccess() const {
-    return readRoots.len != 0;
+    return len(readRoots) != 0;
 }
 bool Capabilities::HasWriteAccess() const {
-    return writeRoots.len != 0;
+    return len(writeRoots) != 0;
 }
 bool Capabilities::HasStorage() const {
     return storage;
@@ -483,7 +483,7 @@ bool Capabilities::MayRun(Str command) const {
 }
 
 bool Capabilities::MayReach(Str host) const {
-    for (int i = 0; i < networkHosts.len; i++) {
+    for (int i = 0; i < len(networkHosts); i++) {
         if (StrEqI(networkHosts[i], host)) return true;
     }
     return false;
@@ -492,7 +492,7 @@ bool Capabilities::MayReach(Str host) const {
 bool Capabilities::MayRequest(Str scheme, Str host, uint16_t port, bool hasPort,
                               Str method, Str path) const {
     if (MayReach(host)) return true;
-    for (int i = 0; i < httpRequests.len; i++) {
+    for (int i = 0; i < len(httpRequests); i++) {
         if (httpRequests[i]->Allows(scheme, host, port, hasPort, method, path))
             return true;
     }
@@ -551,10 +551,10 @@ static Str NormalizePath(Arena* arena, Str path, bool* escaped) {
         }
         at = end + 1;
     }
-    bool rootSlash = out.len > 0 && out.els[out.len - 1] == '/';
+    bool rootSlash = len(out) > 0 && out.els[len(out) - 1] == '/';
     for (int i = 0; i < len(parts); i++) {
-        if (out.len > 0 && !(rootSlash && out.len == 1) &&
-            out.els[out.len - 1] != '/')
+        if (len(out) > 0 && !(rootSlash && len(out) == 1) &&
+            out.els[len(out) - 1] != '/')
             out.AppendChar('/');
         out.Append(parts[i]);
     }
@@ -624,7 +624,7 @@ bool Capabilities::ResolvePath(Str path, CapabilityAccess access,
 
 static void AppendJoined(StrBuilder* out, const Vec<Str>& values,
                          const char* separator) {
-    for (int i = 0; i < values.len; i++) {
+    for (int i = 0; i < len(values); i++) {
         if (i) out->Append(Str(separator));
         out->Append(values[i]);
     }
@@ -632,22 +632,22 @@ static void AppendJoined(StrBuilder* out, const Vec<Str>& values,
 
 void Capabilities::AppendSummary(StrBuilder* out) const {
     if (!out) return;
-    if (readRoots.len > 0) {
+    if (len(readRoots) > 0) {
         out->Append(StrL("fs read: "));
         AppendJoined(out, readRoots, ", ");
         out->Append(StrL("\n"));
     }
-    if (writeRoots.len > 0) {
+    if (len(writeRoots) > 0) {
         out->Append(StrL("fs write: "));
         AppendJoined(out, writeRoots, ", ");
         out->Append(StrL("\n"));
     }
-    if (networkHosts.len > 0) {
+    if (len(networkHosts) > 0) {
         out->Append(StrL("network: "));
         AppendJoined(out, networkHosts, ", ");
         out->Append(StrL("\n"));
     }
-    for (int i = 0; i < httpRequests.len; i++) {
+    for (int i = 0; i < len(httpRequests); i++) {
         const HttpRequestGrant* request = httpRequests[i];
         if (!request) continue;
         out->Append(StrL("http: "));
@@ -671,7 +671,7 @@ void Capabilities::AppendSummary(StrBuilder* out) const {
     } else if (clipboardWrite) {
         out->Append(StrL("clipboard: write\n"));
     }
-    if (envVariables.len > 0) {
+    if (len(envVariables) > 0) {
         out->Append(StrL("env: "));
         AppendJoined(out, envVariables, ", ");
         out->Append(StrL("\n"));

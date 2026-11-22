@@ -129,10 +129,10 @@ bool IsVoidEvent(Name name) {
 }
 
 void SubresultAppend(Subresult& dst, Subresult& src) {
-    for (int32_t i = 0; i < src.gfmFootnoteDefinitions.len; i++) {
+    for (int32_t i = 0; i < len(src.gfmFootnoteDefinitions); i++) {
         VecAppend(dst.gfmFootnoteDefinitions, src.gfmFootnoteDefinitions[i]);
     }
-    for (int32_t i = 0; i < src.definitions.len; i++) {
+    for (int32_t i = 0; i < len(src.definitions); i++) {
         VecAppend(dst.definitions, src.definitions[i]);
     }
     src.gfmFootnoteDefinitions.len = 0;
@@ -158,7 +158,7 @@ void TokenizerFree(Tokenizer* t) {
 }
 
 void RegisterResolver(Tokenizer* t, ResolveName name) {
-    for (int32_t i = 0; i < t->resolvers.len; i++) {
+    for (int32_t i = 0; i < len(t->resolvers); i++) {
         if (t->resolvers[i] == name) {
             return;
         }
@@ -167,7 +167,7 @@ void RegisterResolver(Tokenizer* t, ResolveName name) {
 }
 
 void RegisterResolverBefore(Tokenizer* t, ResolveName name) {
-    for (int32_t i = 0; i < t->resolvers.len; i++) {
+    for (int32_t i = 0; i < len(t->resolvers); i++) {
         if (t->resolvers[i] == name) {
             return;
         }
@@ -186,7 +186,7 @@ static void MoveTo(Tokenizer* t, int32_t toIndex, int32_t toVs) {
 
 static void AccountForPotentialSkip(Tokenizer* t) {
     int32_t at = t->point.line - t->firstLine;
-    if (t->point.column == 1 && at != t->columnStart.len) {
+    if (t->point.column == 1 && at != len(t->columnStart)) {
         MoveTo(t, t->columnStart[at].index, t->columnStart[at].vs);
     }
 }
@@ -206,7 +206,7 @@ void DefineSkip(Tokenizer* t, Point point) {
     MovePointBack(t, &point);
     IndexVs info = {point.index, point.vs};
     int32_t at = point.line - t->firstLine;
-    if (at >= t->columnStart.len) {
+    if (at >= len(t->columnStart)) {
         VecAppend(t->columnStart, info);
     } else {
         t->columnStart[at] = info;
@@ -232,7 +232,7 @@ static void MoveOne(Tokenizer* t) {
     if (action.byte == '\n') {
         t->point.line += 1;
         t->point.column = 1;
-        if (t->point.line - t->firstLine + 1 > t->columnStart.len) {
+        if (t->point.line - t->firstLine + 1 > len(t->columnStart)) {
             IndexVs info = {t->point.index, t->point.vs};
             VecAppend(t->columnStart, info);
         }
@@ -296,8 +296,8 @@ static Progress Capture(Tokenizer* t) {
     p.previous = t->previous;
     p.current = t->current;
     p.point = t->point;
-    p.eventsLen = t->events.len;
-    p.stackLen = t->stack.len;
+    p.eventsLen = len(t->events);
+    p.stackLen = len(t->stack);
     return p;
 }
 
@@ -336,7 +336,7 @@ static State PushImpl(Tokenizer* t, int32_t fromIndex, int32_t fromVs,
     MoveTo(t, fromIndex, fromVs);
     for (;;) {
         if (state.kind == State::Kind::Ok || state.kind == State::Kind::Nok) {
-            if (t->attempts.len == 0) {
+            if (len(t->attempts) == 0) {
                 break;
             }
             Attempt attempt = t->attempts[--t->attempts.len];
@@ -387,11 +387,11 @@ Subresult Flush(Tokenizer* t, State state, bool resolve) {
 
     Subresult value;
     value.done = false;
-    for (int32_t i = 0; i < t->tokenizeState.gfmFootnoteDefinitions.len; i++) {
+    for (int32_t i = 0; i < len(t->tokenizeState.gfmFootnoteDefinitions); i++) {
         VecAppend(value.gfmFootnoteDefinitions, t->tokenizeState
                                                     .gfmFootnoteDefinitions[i]);
     }
-    for (int32_t i = 0; i < t->tokenizeState.definitions.len; i++) {
+    for (int32_t i = 0; i < len(t->tokenizeState.definitions); i++) {
         VecAppend(value.definitions, t->tokenizeState.definitions[i]);
     }
     t->tokenizeState.gfmFootnoteDefinitions.len = 0;

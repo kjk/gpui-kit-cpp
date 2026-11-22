@@ -28,7 +28,7 @@ static uint32_t IdGeneration(NodeId id) {
 
 NodeData* TaffyTree::Get(NodeId node) const {
     int32_t idx = IdIndex(node);
-    if (idx < 0 || idx >= slots.len) {
+    if (idx < 0 || idx >= len(slots)) {
         return nullptr;
     }
     NodeData* d = slots[idx];
@@ -50,7 +50,7 @@ void TaffyTree::Init(int capacity) {
 }
 
 void TaffyTree::Free() {
-    for (int i = 0; i < slots.len; i++) {
+    for (int i = 0; i < len(slots); i++) {
         NodeData* d = slots[i];
         if (!d) {
             continue;
@@ -65,13 +65,13 @@ void TaffyTree::Free() {
 
 // A slot for a new node, either recycled or appended.
 static int32_t AllocSlot(TaffyTree* tree) {
-    if (tree->freeSlots.len > 0) {
-        int32_t idx = tree->freeSlots[tree->freeSlots.len - 1];
+    if (len(tree->freeSlots) > 0) {
+        int32_t idx = tree->freeSlots[len(tree->freeSlots) - 1];
         tree->freeSlots.len--;
         return idx;
     }
     VecAppend(tree->slots, nullptr);
-    return tree->slots.len - 1;
+    return len(tree->slots) - 1;
 }
 
 static NodeId InsertNode(TaffyTree* tree, const Style& style) {
@@ -148,7 +148,7 @@ void TaffyTree::Clear() {
     // only the live ones left dead slots stranded when freeSlots had been
     // emptied, so the next InsertNode appended a fresh slot and `new`'d.
     VecReset(freeSlots);
-    for (int i = 0; i < slots.len; i++) {
+    for (int i = 0; i < len(slots); i++) {
         NodeData* d = slots[i];
         if (!d) {
             continue;
@@ -171,7 +171,7 @@ void TaffyTree::Remove(NodeId node) {
         NodeData* p = Get(d->parent);
         if (p) {
             int w = 0;
-            for (int i = 0; i < p->children.len; i++) {
+            for (int i = 0; i < len(p->children); i++) {
                 if (p->children[i] != node) {
                     p->children[w++] = p->children[i];
                 }
@@ -189,7 +189,7 @@ void TaffyTree::Remove(NodeId node) {
     // twice (once from the walk, once from this recurse), and the second
     // InsertNode reused a still-parented node, leaving a stale id in the
     // tree and a fresh NodeData on every rebuild.
-    for (int i = 0; i < d->children.len; i++) {
+    for (int i = 0; i < len(d->children); i++) {
         NodeData* c = Get(d->children[i]);
         if (c) {
             c->hasParent = false;
@@ -213,24 +213,24 @@ static void MarkReachable(const TaffyTree* tree, NodeId id, uint8_t* seen,
         return;
     }
     seen[idx] = 1;
-    for (int i = 0; i < d->children.len; i++) {
+    for (int i = 0; i < len(d->children); i++) {
         MarkReachable(tree, d->children[i], seen, nSlots);
     }
 }
 
 void TaffyTree::EachUnreachable(NodeId root, void (*fn)(NodeId, void*),
                                 void* user) {
-    if (!fn || slots.len <= 0) {
+    if (!fn || len(slots) <= 0) {
         return;
     }
-    uint8_t* seen = (uint8_t*)base::Alloc(nullptr, slots.len);
+    uint8_t* seen = (uint8_t*)base::Alloc(nullptr, len(slots));
     if (!seen) {
         return;
     }
-    memset(seen, 0, (size_t)slots.len);
-    MarkReachable(this, root, seen, slots.len);
+    memset(seen, 0, (size_t)len(slots));
+    MarkReachable(this, root, seen, len(slots));
     Vec<NodeId> ids;
-    for (int i = 0; i < slots.len; i++) {
+    for (int i = 0; i < len(slots); i++) {
         NodeData* d = slots[i];
         if (d && d->alive && !seen[i]) {
             VecAppend(ids, MakeId((int32_t)i, d->generation));
@@ -277,7 +277,7 @@ bool TaffyTree::InsertChildAtIndex(NodeId parent, int childIndex,
     if (!p || !c) {
         return false;
     }
-    if (childIndex > p->children.len || childIndex < 0) {
+    if (childIndex > len(p->children) || childIndex < 0) {
         return false;
     }
     c->parent = parent;
@@ -293,7 +293,7 @@ void TaffyTree::SetChildren(NodeId parent, const NodeId* children, int n) {
         return;
     }
     // Drop this node as parent from all its current children.
-    for (int i = 0; i < p->children.len; i++) {
+    for (int i = 0; i < len(p->children); i++) {
         NodeData* c = Get(p->children[i]);
         if (c) {
             c->hasParent = false;
@@ -324,7 +324,7 @@ NodeId TaffyTree::RemoveChild(NodeId parent, NodeId child) {
     if (!p) {
         return NodeId{};
     }
-    for (int i = 0; i < p->children.len; i++) {
+    for (int i = 0; i < len(p->children); i++) {
         if (p->children[i] == child) {
             return RemoveChildAtIndex(parent, i);
         }
@@ -334,11 +334,11 @@ NodeId TaffyTree::RemoveChild(NodeId parent, NodeId child) {
 
 NodeId TaffyTree::RemoveChildAtIndex(NodeId parent, int childIndex) {
     NodeData* p = Get(parent);
-    if (!p || childIndex < 0 || childIndex >= p->children.len) {
+    if (!p || childIndex < 0 || childIndex >= len(p->children)) {
         return NodeId{};
     }
     NodeId child = p->children[childIndex];
-    for (int i = childIndex; i + 1 < p->children.len; i++) {
+    for (int i = childIndex; i + 1 < len(p->children); i++) {
         p->children[i] = p->children[i + 1];
     }
     p->children.len--;
@@ -358,8 +358,8 @@ void TaffyTree::RemoveChildrenRange(NodeId parent, int start, int end) {
     if (start < 0) {
         start = 0;
     }
-    if (end > p->children.len) {
-        end = p->children.len;
+    if (end > len(p->children)) {
+        end = len(p->children);
     }
     if (end <= start) {
         return;
@@ -371,7 +371,7 @@ void TaffyTree::RemoveChildrenRange(NodeId parent, int start, int end) {
         }
     }
     int n = end - start;
-    for (int i = end; i < p->children.len; i++) {
+    for (int i = end; i < len(p->children); i++) {
         p->children[i - n] = p->children[i];
     }
     p->children.len -= n;
@@ -381,7 +381,7 @@ void TaffyTree::RemoveChildrenRange(NodeId parent, int start, int end) {
 NodeId TaffyTree::ReplaceChildAtIndex(NodeId parent, int childIndex,
                                       NodeId newChild) {
     NodeData* p = Get(parent);
-    if (!p || childIndex < 0 || childIndex >= p->children.len) {
+    if (!p || childIndex < 0 || childIndex >= len(p->children)) {
         return NodeId{};
     }
     NodeData* nc = Get(newChild);
@@ -403,7 +403,7 @@ NodeId TaffyTree::ReplaceChildAtIndex(NodeId parent, int childIndex,
 
 NodeId TaffyTree::ChildAtIndex(NodeId parent, int childIndex) const {
     NodeData* p = Get(parent);
-    if (!p || childIndex < 0 || childIndex >= p->children.len) {
+    if (!p || childIndex < 0 || childIndex >= len(p->children)) {
         return NodeId{};
     }
     return p->children[childIndex];
@@ -486,13 +486,13 @@ bool TaffyTree::Dirty(NodeId node) const {
 
 int TaffyTree::ChildCount(NodeId parent) const {
     NodeData* d = Get(parent);
-    return d ? d->children.len : 0;
+    return d ? len(d->children) : 0;
 }
 
 NodeId TaffyTree::GetChildId(NodeId parent, int index) const {
     NodeData* d = Get(parent);
-    return d && index >= 0 && index < d->children.len ? d->children[index]
-                                                      : NodeId{};
+    return d && index >= 0 && index < len(d->children) ? d->children[index]
+                                                       : NodeId{};
 }
 
 void TaffyTree::SetUnroundedLayout(NodeId node, const Layout& layout) {
@@ -530,7 +530,7 @@ const char* TaffyTree::GetDebugLabel(NodeId node) const {
     if (d->style.display == Display::None) {
         return "NONE";
     }
-    if (d->children.len == 0) {
+    if (len(d->children) == 0) {
         return "LEAF";
     }
     switch (d->style.display) {
@@ -623,7 +623,7 @@ LayoutOutput TaffyTree::ComputeBlockChildLayout(NodeId node, LayoutInput inputs,
     }
 
     Display displayMode = d->style.display;
-    bool hasChildren = d->children.len > 0;
+    bool hasChildren = len(d->children) > 0;
 
     // A previous grid snapshot must not answer a pass that is not a grid
     // PerformLayout. The grid algorithm fills it again before returning.

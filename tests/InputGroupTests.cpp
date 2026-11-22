@@ -67,9 +67,9 @@ static void TheBuilderKeepsTheLastControlAndAddonAlignment() {
     utassert(!group->input);
     utassert(group->disabled && group->invalid);
     utassert(group->size == UiSize::Small);
-    utassert(group->addons.len == 1);
+    utassert(len(group->addons) == 1);
     utassert(group->addons[0]->alignment == InputGroupAddonAlignment::BlockEnd);
-    utassert(group->addons[0]->children.len == 2);
+    utassert(len(group->addons[0]->children) == 2);
 
     InputGroupButton* icon = InputGroupButton::New(&cx, StrL("icon"))
                                  ->Icon(IconName::Copy)

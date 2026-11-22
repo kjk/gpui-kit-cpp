@@ -180,7 +180,7 @@ struct SourceScanJob {
 
 static bool WatchWindowLive(App* app, Window* window) {
     if (!app || !window) return false;
-    for (int i = 0; i < app->windows.len; i++) {
+    for (int i = 0; i < len(app->windows); i++) {
         if (app->windows[i] == window) return true;
     }
     return false;

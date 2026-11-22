@@ -1433,7 +1433,7 @@ static void TestTextCollectionsGrowWithTheDocument(Arena* a) {
         plugins->Plugin(StrL("test"), &NeverClaimPlugin, &NeverRenderPlugin,
                         (void*)(int64_t)(i + 1));
     }
-    utassert(plugins->plugins.len == 20);
+    utassert(len(plugins->plugins) == 20);
     utassert(plugins->plugins[19].data == (void*)(int64_t)20);
 
     // A marked word and a highlighted code token both used 512-byte scratch
@@ -3515,15 +3515,15 @@ static void SetTextStreamingMarkdownMatchesAFullParse() {
     const Str chunks[] = {
         StrL("\n\nfirst para"), StrL("graph with `co"),
         StrL("de`\n\n- one\n"), StrL("- two\n\n```rust\nfn main() {"),
-        StrL("}\n```\n\n"),     Str(filler.els, filler.len),
+        StrL("}\n```\n\n"),     Str(filler.els, len(filler)),
         StrL("\n\nlast")};
     for (const Str& chunk : chunks) {
         text.Append(chunk);
-        state->SetText(Str(text.els, text.len), &app);
+        state->SetText(Str(text.els, len(text)), &app);
     }
     utassert(state->selectionRevision == selection);
     RhPark();
-    utassert(base::StrEq(state->Source(), Str(text.els, text.len)));
+    utassert(base::StrEq(state->Source(), Str(text.els, len(text))));
     EntityDropAll(&app);
     AppGlobalClear(&app);
     ArenaDelete(a);
@@ -3948,7 +3948,7 @@ static Str Repeat(Arena* a, const char* pre, const char* unit, int n,
 // {renderedStart, renderedEnd, sourceStart, sourceEnd, linear}.
 static bool SegmentsAre(const Vec<SourceSegment>& got, const int (*want)[5],
                         int n) {
-    if (got.len != n) {
+    if (len(got) != n) {
         return false;
     }
     for (int i = 0; i < n; i++) {
@@ -7491,7 +7491,7 @@ static void InlineObjectsConvertWholeAndStayUnpainted() {
 
 static const TextHit* HitContaining(Window* win, const char* text) {
     Str want = Str(text);
-    for (int i = 0; i < win->paint.texts.len; i++) {
+    for (int i = 0; i < len(win->paint.texts); i++) {
         const TextHit& hit = win->paint.texts[i];
         if (StrContains(hit.text, want)) {
             return &hit;
@@ -8298,7 +8298,7 @@ static TswEnds TswRowEnds(Window* win) {
     const TextHit* first = nullptr;
     const TextHit* firstLine = nullptr;
     const TextHit* last = nullptr;
-    for (int i = 0; i < win->paint.texts.len; i++) {
+    for (int i = 0; i < len(win->paint.texts); i++) {
         const TextHit& hit = win->paint.texts[i];
         if (hit.atom || hit.blockPlugin || !hit.text.s || len(hit.text) <= 0) {
             continue;
@@ -8471,9 +8471,9 @@ static void ScrollingBeforePaintKeepsTheCompletedFrame() {
         "alpha beta gamma delta epsilon zeta",
         TswContainer::Scrollable);
     TestDraw(v.win);
-    utassert(v.win->paint.texts.len > 0);
+    utassert(len(v.win->paint.texts) > 0);
     const TextHit* hit = nullptr;
-    for (int i = 0; i < v.win->paint.texts.len; i++) {
+    for (int i = 0; i < len(v.win->paint.texts); i++) {
         const TextHit& h = v.win->paint.texts[i];
         if (h.text.s && len(h.text) >= 5 && !h.atom && !h.blockPlugin) {
             hit = &h;
@@ -8863,7 +8863,7 @@ struct TableFitView {
 
 static float TallestHit(Window* win, const char* needle) {
     float h = 0;
-    for (int i = 0; i < win->paint.texts.len; i++) {
+    for (int i = 0; i < len(win->paint.texts); i++) {
         if (!StrContains(win->paint.texts[i].text, Str(needle))) {
             continue;
         }

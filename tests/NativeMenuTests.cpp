@@ -46,7 +46,7 @@ static void ARowCarriesWhatItWasBuiltWith() {
     utassert(m.IsEmpty());
     m.MenuWithIcon(StrL("Github"), IconName::Github, 7);
     utassert(!m.IsEmpty());
-    utassert(m.items.len == 1);
+    utassert(len(m.items) == 1);
     utassert(m.items[0].kind == component::NativeMenuItemKind::Item);
     utassert(StrEqI(m.items[0].label, "Github"));
     utassert(!m.items[0].disabled);
@@ -69,7 +69,7 @@ static void ARowCarriesWhatItWasBuiltWith() {
     m.Submenu(StrL("Edit"), &sub);
     utassert(m.items[4].kind == component::NativeMenuItemKind::Submenu);
     utassert(m.items[4].submenu == &sub);
-    utassert(m.items.len == 5);
+    utassert(len(m.items) == 5);
     ArenaDelete(ta);
 }
 
@@ -82,7 +82,7 @@ static void EveryRowAddedIsKept() {
     for (int i = 0; i < 100; i++) {
         m.Menu(StrL("Item"), i);
     }
-    utassert(m.items.len == 100);
+    utassert(len(m.items) == 100);
     utassert(m.items[99].id == 99);
     ArenaDelete(ta);
 }
@@ -165,7 +165,7 @@ static void IconDataReplacesThePathAndTravelsWithTheRow() {
                                 ->Path(StrL("icons/previous.png"))
                                 ->Data(Str(kSvg));
     m.MenuWithIcon(StrL("Search"), icon, 6);
-    utassert(m.items.len == 1);
+    utassert(len(m.items) == 1);
     utassert(m.items[0].kind == component::NativeMenuItemKind::Item);
     utassert(StrEq(m.items[0].iconSvg, Str(kSvg)));
     utassert(!m.items[0].iconPath.s && m.items[0].icon == IconName::None);
@@ -178,7 +178,7 @@ static void IconDataReplacesThePathAndTravelsWithTheRow() {
 
     // The drawn fallback keeps the same source on its row.
     component::PopupMenu* drawn = m.IntoPopupMenu(StrL("fallback"));
-    utassert(drawn && drawn->items.len == 2);
+    utassert(drawn && len(drawn->items) == 2);
     utassert(StrEq(drawn->items[0].iconSvg, Str(kSvg)));
     utassert(StrEq(drawn->items[1].iconPath, StrL("icons/replacement.svg")));
     ArenaDelete(ta);
@@ -249,7 +249,7 @@ static void TheFallbackDrawsTheSameRowsAndReportsTheChosenOne() {
 
     // Drawn, the greyed row cannot be chosen and the submenu row opens one.
     utassert(NativeMenuFallbackOverlay(&cx) != nullptr);
-    utassert(root->rows.len == 5);
+    utassert(len(root->rows) == 5);
     utassert(root->rows[0].clickable && !root->rows[1].clickable);
     utassert(root->rows[3].submenu && root->rows[4].clickable);
 

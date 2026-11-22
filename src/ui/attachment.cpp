@@ -228,7 +228,7 @@ El* AttachmentMedia::IntoEl() {
         box->Child(retry.IsValid() && hasId ? RetryButton(cx, id, retry)
                                             : IconEl(a, IconName::Ban, glyph));
     } else {
-        for (int i = 0; i < children.len; i++) {
+        for (int i = 0; i < len(children); i++) {
             box->Child(children[i]);
         }
     }
@@ -252,7 +252,7 @@ El* AttachmentMedia::IntoEl() {
                        ->Bg(Rgba8(0, 0, 0, (uint8_t)(opacity * 255.f + 0.5f)))
                        ->Child(control));
     }
-    for (int i = 0; i < overlays.len; i++) {
+    for (int i = 0; i < len(overlays); i++) {
         box->Child(overlays[i]);
     }
     if (styleSet) {
@@ -389,7 +389,7 @@ AttachmentContent* AttachmentContent::Layout(
     retry = layout.retry;
     retryId = layout.id;
     progress = layout.progress;
-    for (int i = 0; i < children.len; i++) {
+    for (int i = 0; i < len(children); i++) {
         AttachmentContentChild& child = children[i];
         if (child.title && !child.title->hasStatus) {
             child.title->Status(layout.status);
@@ -428,7 +428,7 @@ El* AttachmentContent::IntoEl() {
     if (verticalLayout) {
         column->W(kFill)->PadX(Rems(cx, 0.25f));
     }
-    for (int i = 0; i < children.len; i++) {
+    for (int i = 0; i < len(children); i++) {
         const AttachmentContentChild& child = children[i];
         if (child.title) {
             column->Child(child.title->IntoEl());
@@ -483,7 +483,7 @@ El* AttachmentActions::IntoEl() {
     // The actions cluster owns its presses: an action, or the gap between
     // actions, must not also arm the whole-card click layer below.
     row->StopMouseDown();
-    for (int i = 0; i < children.len; i++) {
+    for (int i = 0; i < len(children); i++) {
         row->Child(children[i]);
     }
     if (styleSet) {
@@ -882,7 +882,7 @@ El* AttachmentGroup::IntoEl() {
     if (styleSet) {
         row->Refine(style, styleSet);
     }
-    for (int i = 0; i < children.len; i++) {
+    for (int i = 0; i < len(children); i++) {
         row->Child(children[i]);
     }
     if (!hasEdgeFade) {

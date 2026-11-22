@@ -215,9 +215,9 @@ Tooltip* Tooltip::PlainRow(Str label, Str value) {
 }
 
 Tooltip* Tooltip::ValueColor(Rgba color) {
-    if (rows.len > 0) {
-        rows[rows.len - 1].valueColor = color;
-        rows[rows.len - 1].hasValueColor = true;
+    if (len(rows) > 0) {
+        rows[len(rows) - 1].valueColor = color;
+        rows[len(rows) - 1].hasValueColor = true;
     }
     return this;
 }
@@ -304,7 +304,7 @@ El* Tooltip::IntoEl() {
                                    crossLine.point.y, policy);
             }
         }
-        for (int i = 0; i < dots.len; i++) {
+        for (int i = 0; i < len(dots); i++) {
             Str ix = StrDup(a, fmt("%d", i));
             dots[i].point.x = motion::spring(
                 cx, motion::TransitionId(StrL("__plot-hover-dot-x"), ix),
@@ -330,7 +330,7 @@ El* Tooltip::IntoEl() {
     // size for every tooltip, structured or freeform, boxed or bare: the
     // compact text_xs tier.
     El* content = Div(a)->FlexCol()->Gap(Rems(cx, 0.25f))->Font(12);
-    if (hasTitle || rows.len > 0) {
+    if (hasTitle || len(rows) > 0) {
         if (hasTitle) {
             content->Child(TextEl(a, title)->Semibold());
         }

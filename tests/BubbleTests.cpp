@@ -23,7 +23,7 @@ static void TheBuilderCarriesAlignmentVariantAndReactions() {
     utassert(bubble->hasAlignment);
     utassert(bubble->alignment == MessageAlignment::End);
     utassert(bubble->variant == BubbleVariant::Outline);
-    utassert(bubble->content->children.len == 1);
+    utassert(len(bubble->content->children) == 1);
     utassert(bubble->reactions != nullptr);
     utassert(!bubble->IsGhost());
     utassert(Bubble::New(&cx)->WithVariant(BubbleVariant::Ghost)->IsGhost());
@@ -35,7 +35,7 @@ static void TheBuilderCarriesAlignmentVariantAndReactions() {
             ->Child(TextEl(a, StrL("Existing")))
             ->Content(BubbleContent::New(&cx)
                           ->Child(TextEl(a, StrL("Configured"))));
-    utassert(reordered->content->children.len == 2);
+    utassert(len(reordered->content->children) == 2);
     utassert(
         base::StrEq(reordered->content->children[0]->text, StrL("Existing")));
     utassert(
@@ -44,7 +44,7 @@ static void TheBuilderCarriesAlignmentVariantAndReactions() {
     BubbleGroup* group = BubbleGroup::New(&cx)
                              ->Child(TextEl(a, StrL("First")))
                              ->Child(TextEl(a, StrL("Second")));
-    utassert(group->children.len == 2);
+    utassert(len(group->children) == 2);
 
     BubbleReactions* reactions = BubbleReactions::New(&cx)
                                      ->Side(BubbleReactionSide::Top)
@@ -52,13 +52,13 @@ static void TheBuilderCarriesAlignmentVariantAndReactions() {
                                      ->Child(TextEl(a, StrL("👍 2")));
     utassert(reactions->side == BubbleReactionSide::Top);
     utassert(reactions->alignment == MessageAlignment::Start);
-    utassert(reactions->children.len == 1);
+    utassert(len(reactions->children) == 1);
 
     BubbleReactions* mixed =
         BubbleReactions::New(&cx)
             ->Action(component::Button::New(&cx, StrL("reaction-action")))
             ->Child(TextEl(a, StrL("👍")));
-    utassert(mixed->children.len == 2);
+    utassert(len(mixed->children) == 2);
     utassert(mixed->children[0].action != nullptr);
     utassert(mixed->children[1].element != nullptr);
 

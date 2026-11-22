@@ -67,7 +67,7 @@ static void AColumnKeepsItsWidthOnceItHasOne() {
     // A column the table has never been asked about answers with what the
     // caller declared rather than growing the array to reach it.
     utassert(TableColWidth(&s, 40, 120) == 120);
-    utassert(s.colWidth.len == 1);
+    utassert(len(s.colWidth) == 1);
 }
 
 // column_resize_bounds_preserve_initial_widths (crates/component table)
@@ -1166,7 +1166,7 @@ struct SortableRecords {
 };
 
 static const AccessibilityNode* SortButton(const Window* win) {
-    for (int i = 0; i < win->accessibility.len; i++) {
+    for (int i = 0; i < len(win->accessibility); i++) {
         const AccessibilityNode& node = win->accessibility[i];
         if (node.info.role == AccessibilityRole::Button &&
             base::StrEq(node.info.label, StrL("Sort by Name"))) {
@@ -1186,7 +1186,7 @@ static void SortIconIsALabelledButtonThatCyclesTheSort() {
     const AccessibilityNode* icon = SortButton(win);
     utassert(icon && icon->bounds.w > 0 && icon->bounds.h > 0);
     int labelled = 0;
-    for (int i = 0; i < win->accessibility.len; i++) {
+    for (int i = 0; i < len(win->accessibility); i++) {
         const AccessibilityNode& node = win->accessibility[i];
         if (node.info.role != AccessibilityRole::Button) {
             continue;
@@ -1345,7 +1345,7 @@ static void TabMovesFocusThroughATableAsOneStop() {
 static const Bounds* ClickBounds(const Window* win, uintptr_t fn, int64_t arg,
                                  float maxW) {
     const Bounds* found = nullptr;
-    for (int i = 0; i < win->paint.hits.len; i++) {
+    for (int i = 0; i < len(win->paint.hits); i++) {
         const HitRect& hr = win->paint.hits[i];
         if (hr.listener.Fn() != fn || hr.listener.arg != arg) {
             continue;
@@ -1360,7 +1360,7 @@ static const Bounds* ClickBounds(const Window* win, uintptr_t fn, int64_t arg,
 
 static const Bounds* PressBounds(const Window* win, int64_t row) {
     const Bounds* found = nullptr;
-    for (int i = 0; i < win->paint.hits.len; i++) {
+    for (int i = 0; i < len(win->paint.hits); i++) {
         const HitRect& hr = win->paint.hits[i];
         if (hr.onMouseDown.Fn() != (uintptr_t)&PressRecords::OnCellPress ||
             hr.onMouseDown.arg != row || hr.bounds.w <= 1 || hr.bounds.h <= 1) {
@@ -2263,7 +2263,7 @@ struct RightPinView {
 
 static bool FindCol(const Window* win, AccessibilityRole role, int col,
                     Bounds* out) {
-    for (int i = 0; i < win->accessibility.len; i++) {
+    for (int i = 0; i < len(win->accessibility); i++) {
         const AccessibilityNode& node = win->accessibility[i];
         if (node.info.role == role && node.info.hasColumnIndex &&
             node.info.columnIndex == col && node.bounds.w > 0) {

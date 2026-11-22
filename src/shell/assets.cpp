@@ -75,12 +75,12 @@ bool AppAssets::Load(Str path, Vec<uint8_t>* out, Str* error) {
     if (!shell::FsRun(shell::FsOperation::Read, root, relative, {}, false,
                       &result, &failure)) {
         bool seen = false;
-        for (int i = 0; i < missing.len; i++)
+        for (int i = 0; i < len(missing); i++)
             if (StrEq(missing[i], path)) seen = true;
         if (!seen) {
-            if (missing.len == kShellMaxReportedMissingAssets) {
+            if (len(missing) == kShellMaxReportedMissingAssets) {
                 StrFree(missing[0]);
-                for (int i = 1; i < missing.len; i++)
+                for (int i = 1; i < len(missing); i++)
                     missing[i - 1] = missing[i];
                 missing.len--;
             }
@@ -97,22 +97,22 @@ bool AppAssets::Load(Str path, Vec<uint8_t>* out, Str* error) {
         result.Free();
         return false;
     }
-    if (result.bytes.len > kShellMaxAssetBytes) {
+    if (len(result.bytes) > kShellMaxAssetBytes) {
         if (error)
             *error =
                 StrDup(fmt("asset `%s` is %d bytes, over the %d-byte limit",
-                           path, result.bytes.len, kShellMaxAssetBytes));
+                           path, len(result.bytes), kShellMaxAssetBytes));
         result.Free();
         return false;
     }
-    if (result.bytes.len > 0) {
-        uint8_t* bytes = VecAppendBlanks(*out, result.bytes.len);
+    if (len(result.bytes) > 0) {
+        uint8_t* bytes = VecAppendBlanks(*out, len(result.bytes));
         if (!bytes) {
             if (error) *error = StrDup(StrL("asset allocation failed"));
             result.Free();
             return false;
         }
-        memcpy(bytes, result.bytes.s, (size_t)result.bytes.len);
+        memcpy(bytes, result.bytes.s, (size_t)len(result.bytes));
     }
     result.Free();
     return true;
@@ -140,10 +140,10 @@ bool AppAssets::List(Str path, Vec<Str>* out, Str* error) {
         result.Free();
         return false;
     }
-    for (int i = 0; i < result.entries.len; i++)
+    for (int i = 0; i < len(result.entries); i++)
         VecAppend(*out, StrDup(result.entries[i].name));
-    if (out->len > 1)
-        qsort(out->els, (size_t)out->len, sizeof(Str), CompareAssetNames);
+    if (len(*out) > 1)
+        qsort(out->els, (size_t)len(*out), sizeof(Str), CompareAssetNames);
     result.Free();
     return true;
 }

@@ -241,7 +241,7 @@ struct MarkdownExtensions {
     MarkdownExtensions& BlockSurface(Arena* a, Str name,
                                      MarkdownBlockSurfaceFn fn,
                                      void* data = nullptr);
-    bool HasBlockSurfaces() const { return blockSurfaces.len > 0; }
+    bool HasBlockSurfaces() const { return len(blockSurfaces) > 0; }
     // block_surface_name: the stored lowercase name, or empty when `written`
     // is not registered.
     Str BlockSurfaceName(Str written) const;

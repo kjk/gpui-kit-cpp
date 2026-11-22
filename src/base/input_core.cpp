@@ -19,15 +19,15 @@ bool MultiLineMode::Includes(InputKind kind) {
 }
 
 bool InputExtras::HasSemanticTokens() const {
-    return state && state->semanticTokens.len > 0;
+    return state && len(state->semanticTokens) > 0;
 }
 
 bool InputExtras::HasDocumentColors() const {
-    return state && state->documentColors.len > 0;
+    return state && len(state->documentColors) > 0;
 }
 
 bool InputExtras::HasHover() const {
-    return state && state->hoverText.len > 0;
+    return state && len(state->hoverText) > 0;
 }
 
 bool InputExtras::HasInlineCompletion() const {
@@ -48,8 +48,8 @@ bool EditorExtras::HasDefinition() const {
 
 bool EditorExtras::HasCodeActions() const {
     return state &&
-           (state->codeActionProvider || state->codeActionProviders.len > 0 ||
-            state->codeActions.items.len > 0);
+           (state->codeActionProvider || len(state->codeActionProviders) > 0 ||
+            len(state->codeActions.items) > 0);
 }
 
 InputContextMenuCapabilities InputContextMenuCapabilities::Of(
@@ -66,8 +66,8 @@ InputContextMenuCapabilities InputContextMenuCapabilities::Of(
     value.masked = state->masked || state->maskPatternSet;
     value.goToDefinition = state->definitionProvider != nullptr;
     value.codeActions = state->codeActionProvider != nullptr ||
-                        state->codeActionProviders.len > 0 ||
-                        state->codeActions.items.len > 0;
+                        len(state->codeActionProviders) > 0 ||
+                        len(state->codeActions.items) > 0;
     return value;
 }
 
@@ -161,8 +161,8 @@ NativeMenu& NativeMenu::MenuWithDisabled(Str label, bool disabled,
 }
 
 NativeMenu& NativeMenu::Separator() {
-    if (items.len > 0 && items[items.len - 1]
-                                 .kind != NativeMenuItemKind::Separator) {
+    if (len(items) > 0 && items[len(items) - 1]
+                                  .kind != NativeMenuItemKind::Separator) {
         VecAppend(items, NativeMenuItem{});
     }
     return *this;
@@ -179,7 +179,7 @@ void InputDefaultNativeMenu(const InputState* state, NativeMenu* out) {
         out->MenuWithDisabled(StrL("Go to Definition"),
                               !(enabled && c.HasDefinition()),
                               InputAction::None);
-        out->items[out->items.len - 1].goToDefinition = true;
+        out->items[len(out->items) - 1].goToDefinition = true;
         out->MenuWithDisabled(StrL("Show Code Actions"),
                               !(editable && c.HasCodeActions()),
                               InputAction::ToggleCodeActions);

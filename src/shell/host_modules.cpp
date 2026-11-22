@@ -25,14 +25,14 @@ static HostValue* CopyValue(const HostValue& value) {
 void HostValue::Free() {
     StrFree(string);
     string = {};
-    for (int i = 0; i < array.len; i++) {
+    for (int i = 0; i < len(array); i++) {
         if (array[i]) {
             array[i]->Free();
             delete array[i];
         }
     }
     VecReset(array);
-    for (int i = 0; i < object.len; i++) {
+    for (int i = 0; i < len(object); i++) {
         StrFree(object[i].name);
         if (object[i].value) {
             object[i].value->Free();
@@ -58,7 +58,7 @@ bool HostValue::CopyFrom(const HostValue& other) {
             return false;
         }
     }
-    for (int i = 0; i < other.array.len; i++) {
+    for (int i = 0; i < len(other.array); i++) {
         HostValue* value =
             other.array[i] ? CopyValue(*other.array[i]) : nullptr;
         if (!value || !VecAppend(array, value)) {
@@ -70,7 +70,7 @@ bool HostValue::CopyFrom(const HostValue& other) {
             return false;
         }
     }
-    for (int i = 0; i < other.object.len; i++) {
+    for (int i = 0; i < len(other.object); i++) {
         HostField field;
         field.name = StrDup(other.object[i].name);
         field.value =
@@ -137,7 +137,7 @@ bool HostValue::SetField(Str fieldName, const HostValue& value) {
         Free();
         kind = HostValueKind::Object;
     }
-    for (int i = 0; i < object.len; i++) {
+    for (int i = 0; i < len(object); i++) {
         if (!StrEq(object[i].name, fieldName)) continue;
         HostValue* copy = CopyValue(value);
         if (!copy) return false;
@@ -163,7 +163,7 @@ bool HostValue::SetField(Str fieldName, const HostValue& value) {
 
 const HostValue* HostValue::Get(Str fieldName) const {
     if (kind != HostValueKind::Object) return nullptr;
-    for (int i = 0; i < object.len; i++) {
+    for (int i = 0; i < len(object); i++) {
         if (StrEq(object[i].name, fieldName)) return object[i].value;
     }
     return nullptr;
@@ -198,7 +198,7 @@ void HostError::Clear() {
 }
 
 void HostArguments::Free() {
-    for (int i = 0; i < values.len; i++) {
+    for (int i = 0; i < len(values); i++) {
         if (values[i]) {
             values[i]->Free();
             delete values[i];
@@ -208,7 +208,7 @@ void HostArguments::Free() {
 }
 
 const HostValue* HostArguments::Get(int index) const {
-    return index >= 0 && index < values.len ? values[index] : nullptr;
+    return index >= 0 && index < len(values) ? values[index] : nullptr;
 }
 
 bool HostArguments::Value(int index, const HostValue** value,
@@ -220,7 +220,7 @@ bool HostArguments::Value(int index, const HostValue** value,
     }
     if (error)
         error->Set(fmt("argument %d is missing; %d were passed", index + 1,
-                       values.len));
+                       len(values)));
     return false;
 }
 
@@ -285,7 +285,7 @@ HostModule::HostModule(Str value) : name(StrDup(value)) {}
 HostModule::~HostModule() {
     StrFree(name);
     StrFree(declarations);
-    for (int i = 0; i < functions.len; i++) {
+    for (int i = 0; i < len(functions); i++) {
         StrFree(functions[i]->name);
         functions[i]->release.Call();
         delete functions[i];
@@ -307,7 +307,7 @@ void HostModule::Release() {
 }
 
 HostModule::FunctionEntry* HostModule::Find(Str function) const {
-    for (int i = 0; i < functions.len; i++) {
+    for (int i = 0; i < len(functions); i++) {
         if (StrEq(functions[i]->name, function)) return functions[i];
     }
     return nullptr;
@@ -334,7 +334,7 @@ HostModule* HostModule::SetFunction(Str function, bool async,
     entry->body = body;
     entry->begin = begin;
     entry->release = release;
-    for (int i = functions.len - 1; i > 0; i--) {
+    for (int i = len(functions) - 1; i > 0; i--) {
         if (HostStrLess(functions[i - 1]->name, functions[i]->name)) break;
         FunctionEntry* swap = functions[i - 1];
         functions[i - 1] = functions[i];
@@ -366,7 +366,8 @@ HostModule* HostModule::Declarations(Str value) {
 }
 
 Str HostModule::FunctionName(int index) const {
-    return index >= 0 && index < functions.len ? functions[index]->name : Str{};
+    return index >= 0 && index < len(functions) ? functions[index]->name
+                                                : Str{};
 }
 
 bool HostModule::Has(Str function) const {
@@ -408,7 +409,7 @@ bool HostIsIdentifier(Str value) {
 
 static void AppendNames(StrBuilder* out, const HostModule* module,
                         const Vec<Str>* names = nullptr) {
-    int count = names ? names->len : module ? module->FunctionCount() : 0;
+    int count = names ? len(*names) : module ? module->FunctionCount() : 0;
     if (count == 0) {
         out->Append(StrL("nothing"));
         return;
@@ -469,7 +470,7 @@ bool HostModule::Validate(HostError* error) const {
 
     Vec<Str> missing;
     Vec<Str> extra;
-    for (int i = 0; i < functions.len; i++) {
+    for (int i = 0; i < len(functions); i++) {
         bool found = false;
         for (int j = 0; j < len(declared); j++)
             if (StrEq(functions[i]->name, declared[j])) found = true;
@@ -557,7 +558,7 @@ HostModules* HostModulesRetain(HostModules* modules) {
 
 void HostModulesRelease(HostModules* modules) {
     if (!modules || --modules->refs != 0) return;
-    for (int i = 0; i < modules->modules.len; i++)
+    for (int i = 0; i < len(modules->modules); i++)
         modules->modules[i]->Release();
     VecReset(modules->modules);
     delete modules;
@@ -566,7 +567,7 @@ void HostModulesRelease(HostModules* modules) {
 HostModules* HostModulesClone(HostModules* source) {
     HostModules* copy = HostModulesNew();
     if (!source) return copy;
-    for (int i = 0; i < source->modules.len; i++) {
+    for (int i = 0; i < len(source->modules); i++) {
         HostModule* module = source->modules[i]->Retain();
         if (!VecAppend(copy->modules, module)) {
             module->Release();
@@ -582,18 +583,18 @@ uint64_t HostModulesGeneration(const HostModules* modules) {
 }
 
 int HostModulesCount(const HostModules* modules) {
-    return modules ? modules->modules.len : 0;
+    return modules ? len(modules->modules) : 0;
 }
 
 HostModule* HostModulesAt(const HostModules* modules, int index) {
-    return modules && index >= 0 && index < modules->modules.len
+    return modules && index >= 0 && index < len(modules->modules)
                ? modules->modules[index]
                : nullptr;
 }
 
 HostModule* HostModulesGet(const HostModules* modules, Str name) {
     if (!modules) return nullptr;
-    for (int i = 0; i < modules->modules.len; i++) {
+    for (int i = 0; i < len(modules->modules); i++) {
         if (StrEq(modules->modules[i]->Name(), name))
             return modules->modules[i];
     }
@@ -602,7 +603,7 @@ HostModule* HostModulesGet(const HostModules* modules, Str name) {
 
 bool HostModulesInsert(HostModules* modules, HostModule* module) {
     if (!modules || !module) return false;
-    for (int i = 0; i < modules->modules.len; i++) {
+    for (int i = 0; i < len(modules->modules); i++) {
         if (!StrEq(modules->modules[i]->Name(), module->Name())) continue;
         modules->modules[i]->Release();
         modules->modules[i] = module->Retain();
@@ -610,7 +611,7 @@ bool HostModulesInsert(HostModules* modules, HostModule* module) {
         return true;
     }
     if (!VecAppend(modules->modules, module->Retain())) return false;
-    for (int i = modules->modules.len - 1; i > 0; i--) {
+    for (int i = len(modules->modules) - 1; i > 0; i--) {
         if (HostStrLess(modules->modules[i - 1]->Name(), modules->modules[i]
                                                              ->Name()))
             break;
@@ -671,7 +672,7 @@ static void MissingModule(Str module, HostError* error,
     }
     StrBuilder out;
     out.Append(fmt("unknown HostModule `%s`; this Host registered: ", module));
-    for (int i = 0; i < modules->modules.len; i++) {
+    for (int i = 0; i < len(modules->modules); i++) {
         if (i) out.Append(StrL(", "));
         out.Append(modules->modules[i]->Name());
     }

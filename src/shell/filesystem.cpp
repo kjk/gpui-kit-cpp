@@ -7,7 +7,7 @@ namespace gpui::shell {
 void FsResult::Free() {
     StrFree(bytes);
     bytes = {};
-    for (int i = 0; i < entries.len; i++) StrFree(entries[i].name);
+    for (int i = 0; i < len(entries); i++) StrFree(entries[i].name);
     VecReset(entries);
     exists = false;
     hasStats = false;
@@ -23,7 +23,7 @@ void FsResult::Free() {
 
 bool FsReadAppend(StrBuilder* output, const char* bytes, int count, Str root,
                   Str relative, Str* error) {
-    if (output->len > kFsMaxReadBytes - count) {
+    if (len(*output) > kFsMaxReadBytes - count) {
         ErrorOutSet(error,
                     fmt("`%s/%s` grew over the %d-byte limit for fs.readFile",
                         root, relative, kFsMaxReadBytes));

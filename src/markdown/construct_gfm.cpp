@@ -36,8 +36,8 @@ State GfmLabelStartFootnoteOpen(Tokenizer* t) {
         Exit(t, Name::GfmFootnoteCallLabel);
         LabelStartMark mark;
         mark.kind = LabelKind::GfmFootnote;
-        mark.startA = t->events.len - 6;
-        mark.startB = t->events.len - 1;
+        mark.startA = len(t->events) - 6;
+        mark.startB = len(t->events) - 1;
         VecAppend(t->tokenizeState.labelStarts, mark);
         RegisterResolverBefore(t, ResolveName::Label);
         return StateOk();
@@ -194,7 +194,8 @@ State GfmFootnoteDefinitionLabelEscape(Tokenizer* t) {
 State GfmFootnoteDefinitionLabelAfter(Tokenizer* t) {
     if (t->current == ':') {
         Name labelString = Name::GfmFootnoteDefinitionLabelString;
-        int32_t end = SkipToBack(t->events, t->events.len - 1, &labelString, 1);
+        int32_t end =
+            SkipToBack(t->events, len(t->events) - 1, &labelString, 1);
         Position position = PositionFromExitEvent(t->events, end);
         Slice slice = SliceFromPosition(t->parseState->bytes, position);
         VecAppend(t->tokenizeState.gfmFootnoteDefinitions,
@@ -241,9 +242,9 @@ State GfmTableStart(Tokenizer* t) {
     if (!t->parseState->options->constructs.gfmTable) {
         return StateNok();
     }
-    if (!t->pierce && t->events.len > 0) {
+    if (!t->pierce && len(t->events) > 0) {
         Name names[2] = {Name::LineEnding, Name::SpaceOrTab};
-        int32_t at = SkipOptBack(t->events, t->events.len - 1, names, 2);
+        int32_t at = SkipOptBack(t->events, len(t->events) - 1, names, 2);
         Name name = t->events[at].name;
         if (name == Name::GfmTableHead || name == Name::GfmTableRow) {
             return StateRetry(StateName::GfmTableBodyRowStart);
@@ -625,7 +626,7 @@ bool GfmTableResolve(Tokenizer* t, Subresult*) {
     int32_t lastTableEnd = 0;
     bool lastTableHasBody = false;
 
-    while (index < t->events.len) {
+    while (index < len(t->events)) {
         const Event& event = t->events[index];
         if (event.kind == Kind::Enter) {
             if (event.name == Name::GfmTableHead) {
@@ -1039,7 +1040,7 @@ void GfmAutolinkLiteralResolve(Tokenizer* t) {
 
     int32_t index = 0;
     int32_t links = 0;
-    while (index < t->events.len) {
+    while (index < len(t->events)) {
         const Event& event = t->events[index];
         if (event.kind == Kind::Enter) {
             if (event.name == Name::Link) {

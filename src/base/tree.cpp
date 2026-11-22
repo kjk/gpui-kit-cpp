@@ -82,7 +82,7 @@ int TreeAddItem(TreeState* s, Str id, Str label, int parent) {
     // allocation: id and label are always a pair.
     StrDup2(id, label, it.id, it.label);
     it.parent = parent;
-    int ix = s->items.len;
+    int ix = len(s->items);
     if (parent >= 0 && parent < ix) {
         it.depth = s->items[parent].depth + 1;
         // A folder is an item something else calls its parent.
@@ -98,7 +98,7 @@ static void TreeAddEntry(TreeState* s, int item) {
     if (!s->items[item].expanded) {
         return;
     }
-    for (int i = item + 1; i < s->items.len; i++) {
+    for (int i = item + 1; i < len(s->items); i++) {
         if (s->items[i].parent == item) {
             TreeAddEntry(s, i);
         }
@@ -107,21 +107,21 @@ static void TreeAddEntry(TreeState* s, int item) {
 
 void TreeRebuild(TreeState* s) {
     s->entries.len = 0;
-    for (int i = 0; i < s->items.len; i++) {
+    for (int i = 0; i < len(s->items); i++) {
         if (s->items[i].parent < 0) {
             TreeAddEntry(s, i);
         }
     }
-    if (s->selected >= s->entries.len) {
-        s->selected = s->entries.len > 0 ? s->entries.len - 1 : -1;
+    if (s->selected >= len(s->entries)) {
+        s->selected = len(s->entries) > 0 ? len(s->entries) - 1 : -1;
     }
-    if (s->rightClicked >= s->entries.len) {
+    if (s->rightClicked >= len(s->entries)) {
         s->rightClicked = -1;
     }
 }
 
 const TreeItem* TreeEntryItem(const TreeState* s, int entryIx) {
-    if (entryIx < 0 || entryIx >= s->entries.len) {
+    if (entryIx < 0 || entryIx >= len(s->entries)) {
         return nullptr;
     }
     return &s->items[s->entries[entryIx]];
@@ -129,7 +129,7 @@ const TreeItem* TreeEntryItem(const TreeState* s, int entryIx) {
 
 TreeEntry TreeEntryAt(const TreeState* s, int entryIx) {
     TreeEntry entry;
-    if (!s || entryIx < 0 || entryIx >= s->entries.len) {
+    if (!s || entryIx < 0 || entryIx >= len(s->entries)) {
         return entry;
     }
     entry.itemIx = s->entries[entryIx];
@@ -144,7 +144,7 @@ void TreeSetItems(TreeState* s, Ctx* cx, const TreeItem* items, int count) {
     }
     // The state owns every item's strings (see TreeAddItem): the old ones go
     // with the old items, and the new ones come in as copies.
-    for (int i = 0; i < s->items.len; i++) {
+    for (int i = 0; i < len(s->items); i++) {
         StrFree(s->items[i].id);
     }
     s->items.len = 0;
@@ -164,7 +164,7 @@ void TreeSetItems(TreeState* s, Ctx* cx, const TreeItem* items, int count) {
 }
 
 int TreeIndexOf(const TreeState* s, Str id) {
-    for (int i = 0; i < s->entries.len; i++) {
+    for (int i = 0; i < len(s->entries); i++) {
         if (base::StrEq(s->items[s->entries[i]].id, id)) {
             return i;
         }
@@ -183,7 +183,7 @@ static void TreeEmit(TreeState* s, Ctx* cx, TreeEventKind kind, Str id,
 }
 
 bool TreeToggleExpandAt(TreeState* s, int entryIx, bool* expandedOut) {
-    if (entryIx < 0 || entryIx >= s->entries.len) {
+    if (entryIx < 0 || entryIx >= len(s->entries)) {
         return false;
     }
     TreeItem& it = s->items[s->entries[entryIx]];
@@ -201,7 +201,7 @@ bool TreeToggleExpandAt(TreeState* s, int entryIx, bool* expandedOut) {
 }
 
 void TreeToggleExpand(TreeState* s, Ctx* cx, int entryIx) {
-    if (entryIx < 0 || entryIx >= s->entries.len) {
+    if (entryIx < 0 || entryIx >= len(s->entries)) {
         return;
     }
     Str id = s->items[s->entries[entryIx]].id;
@@ -218,7 +218,7 @@ void TreeToggleExpand(TreeState* s, Ctx* cx, int entryIx) {
 // Which of the caller's items has `id`, in item order (not entry order: a
 // collapsed item has no entry). -1 for none.
 static int TreeItemById(const TreeState* s, Str id) {
-    for (int i = 0; i < s->items.len; i++) {
+    for (int i = 0; i < len(s->items); i++) {
         if (base::StrEq(s->items[i].id, id)) {
             return i;
         }
@@ -280,7 +280,7 @@ void TreeScrollToItem(TreeState* s, int entryIx, ScrollStrategy strategy) {
     if (s->viewportH <= 0) {
         return;
     }
-    s->scrollY = VirtualListScrollToRow(s->entries.len, s->rowH, entryIx,
+    s->scrollY = VirtualListScrollToRow(len(s->entries), s->rowH, entryIx,
                                         s->scrollY, s->viewportH, strategy);
 }
 
@@ -326,14 +326,14 @@ void TreePerform(TreeState* s, Ctx* cx, TreeAction act) {
     const TreeItem* sel = TreeEntryItem(s, s->selected);
     switch (act) {
         case TreeAction::SelectPrev:
-            s->selected = TreeSelectPrev(s->selected, s->entries.len);
+            s->selected = TreeSelectPrev(s->selected, len(s->entries));
             // Rust scrolls to the top for Up and the bottom for Down; both
             // strategies come down to the same "move as little as you can" in
             // the list, which is what keeps the row that arrived on screen.
             TreeScrollToItem(s, s->selected, ScrollStrategy::Top);
             break;
         case TreeAction::SelectNext:
-            s->selected = TreeSelectNext(s->selected, s->entries.len);
+            s->selected = TreeSelectNext(s->selected, len(s->entries));
             TreeScrollToItem(s, s->selected, ScrollStrategy::Bottom);
             break;
         case TreeAction::Collapse:
@@ -406,7 +406,7 @@ static El* TreeRows(Ctx* cx, Entity<TreeState> state, TreeRowFn row, void* user,
     }
     s->viewportH = viewH;
     VirtualRange range =
-        VirtualListVisibleRows(s->entries.len, s->rowH, s->scrollY, viewH);
+        VirtualListVisibleRows(len(s->entries), s->rowH, s->scrollY, viewH);
     if (range.first > 0) {
         list->Child(Div(a)->W(kFill)->H((float)range.first * s->rowH));
     }
@@ -434,9 +434,9 @@ static El* TreeRows(Ctx* cx, Entity<TreeState> state, TreeRowFn row, void* user,
         }
         list->Child(wrap);
     }
-    if (range.end < s->entries.len) {
-        list->Child(
-            Div(a)->W(kFill)->H((float)(s->entries.len - range.end) * s->rowH));
+    if (range.end < len(s->entries)) {
+        list->Child(Div(a)->W(kFill)->H((float)(len(s->entries) - range.end) *
+                                        s->rowH));
     }
     return list;
 }

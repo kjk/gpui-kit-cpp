@@ -125,10 +125,10 @@ El* Tag::IntoEl() {
                    ->Border(1, bd)
                    ->LineHeight(1.25f)
                    ->ItemsCenter();
-    if (text.s || children.len == 0) {
+    if (text.s || len(children) == 0) {
         root->Child(TextEl(a, text)->Font(font)->Fg(fg));
     }
-    if (children.len > 0) {
+    if (len(children) > 0) {
         // tag.rs sets the text size and colour on the chip itself, so the
         // children it holds inherit them.
         root->Font(font)->Fg(fg);

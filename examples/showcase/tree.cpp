@@ -26,7 +26,7 @@ static Entity<TreeState> ShowcaseTreeState(ShowcaseApp* app, Ctx* cx) {
         app->tree = EntityNewState<TreeState>(cx->app);
     }
     TreeState* s = app->tree.Get(cx);
-    if (!s || s->items.len > 0) {
+    if (!s || len(s->items) > 0) {
         return app->tree;
     }
     // A row is 32 here, not the ListItem's 34: the page draws its own.
@@ -37,7 +37,7 @@ static Entity<TreeState> ShowcaseTreeState(ShowcaseApp* app, Ctx* cx) {
         TempStr id = fmt("sc-tree-%d", i);
         TreeAddItem(s, id, Str(kTree[i].label), kTree[i].parent);
     }
-    for (int i = 0; i < s->items.len; i++) {
+    for (int i = 0; i < len(s->items); i++) {
         s->items[i].expanded = i == 0 || i == 1;
     }
     TreeRebuild(s);

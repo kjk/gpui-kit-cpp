@@ -651,14 +651,14 @@ float ScrollBounceOwnedOffset(ScrollOverscroll* over, Window* win, bool enabled,
 static bool DeeperVerticalScroll(Window* win, int selfId, float x, float y) {
     if (!win || selfId == 0) return false;
     const ScrollRect* self = nullptr;
-    for (int i = 0; i < win->paint.scrolls.len; i++) {
+    for (int i = 0; i < len(win->paint.scrolls); i++) {
         if (win->paint.scrolls[i].id == selfId) {
             self = &win->paint.scrolls[i];
             break;
         }
     }
     if (!self) return false;
-    for (int i = win->paint.scrolls.len - 1; i >= 0; i--) {
+    for (int i = len(win->paint.scrolls) - 1; i >= 0; i--) {
         const ScrollRect& s = win->paint.scrolls[i];
         if (s.id == selfId || !s.bounds.Contains({x, y})) continue;
         bool inside =
@@ -707,7 +707,7 @@ void ScrollBounceState::OnWheel(ScrollBounceState* self, Ctx* cx,
         ev->phase == TouchPhase::Ended || ev->phase == TouchPhase::Cancelled;
     Window* win = cx->win;
     ScrollRect* box = nullptr;
-    for (int i = win->paint.scrolls.len - 1; i >= 0; i--) {
+    for (int i = len(win->paint.scrolls) - 1; i >= 0; i--) {
         ScrollRect& s = win->paint.scrolls[i];
         if (s.onScroll.IsValid() && s.bounds.Contains({ev->x, ev->y}) &&
             s.contentH > s.bounds.h + 1.f) {

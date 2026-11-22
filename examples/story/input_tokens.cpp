@@ -172,7 +172,7 @@ static void OnOpen(const InlineTokenClickEvent* ev, Ctx* cx, void* user) {
 
 static void Describe(Arena* a, const InputContent& content, StrBuilder& out) {
     (void)a;
-    for (int i = 0; i < content.tokens.len; i++) {
+    for (int i = 0; i < len(content.tokens); i++) {
         if (i > 0) {
             out.Append(StrL(", "));
         }
@@ -216,7 +216,7 @@ void TokenExample::OnSend(TokenExample* self, Ctx* cx, const ClickEvent*) {
     }
     SetStatus(self,
               StrDup(cx->a, fmt("Sent \"%s\" with %d references",
-                                Str(content.text.s, n), content.tokens.len)));
+                                Str(content.text.s, n), len(content.tokens))));
     InputContentFree(&content);
     Notify(cx);
 }

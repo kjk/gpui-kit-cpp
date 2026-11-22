@@ -275,7 +275,7 @@ static void TheToolbarHandleContainsItsItems() {
     Rove r = RoveOpen(3);
     RoveView* v = r.View();
     FocusHandle bar = {};
-    for (int i = 0; i < r.win->focusEls.len; i++) {
+    for (int i = 0; i < len(r.win->focusEls); i++) {
         if (!r.win->focusEls[i].tabStop) {
             bar.id = r.win->focusEls[i].id;
         }
@@ -361,13 +361,13 @@ static void StyledToolbarSizesItsControls() {
     component::Init(&f.app);
     component::Toolbar* fresh = component::Toolbar::New(&f.cx, StrL("t"));
     utassert(fresh->size == UiSize::Small && !fresh->disabled &&
-             fresh->items.len == 0);
+             len(fresh->items) == 0);
     component::Toolbar* built = component::Toolbar::New(&f.cx, StrL("t"))
                                     ->Content(TextEl(f.arena, StrL("New")))
                                     ->Content(TextEl(f.arena, StrL("Open")))
                                     ->Content(TextEl(f.arena, StrL("Settings")))
                                     ->WithSize(UiSize::Small);
-    utassert(built->items.len == 3 && built->size == UiSize::Small);
+    utassert(len(built->items) == 3 && built->size == UiSize::Small);
     utassert(component::Toolbar::New(&f.cx, StrL("t"))
                  ->WithSize(UiSize::Large)
                  ->size == UiSize::Medium);

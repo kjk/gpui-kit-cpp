@@ -102,8 +102,8 @@ static void ADropInTheMiddleMerges() {
     int a = 0, b = 0;
     Seed(&s, &a, &b);
     utassert(DockMovePanelTo(&s, 1, b, DockDrop::Center));
-    utassert(s.nodes[a].panel.len == 1);
-    utassert(s.nodes[b].panel.len == 2);
+    utassert(len(s.nodes[a].panel) == 1);
+    utassert(len(s.nodes[b].panel) == 2);
     // The panel that arrived is the one showing.
     utassert(s.nodes[b].activeIx == 1);
     utassert(DockNodeOfPanel(&s, 1) == b);
@@ -120,9 +120,9 @@ static void ADropOnAnEdgeSplits() {
     // The split already ran this way, so the panel joined it rather than
     // nesting a second split inside it.
     utassert(s.center == split);
-    utassert(s.nodes[split].child.len == 3);
+    utassert(len(s.nodes[split].child) == 3);
     int fresh = s.nodes[split].child[2];
-    utassert(s.nodes[fresh].panel.len == 1 && s.nodes[fresh].panel[0] == 0);
+    utassert(len(s.nodes[fresh].panel) == 1 && s.nodes[fresh].panel[0] == 0);
     // The two share what the target had.
     utassert(s.nodes[split].size[1] == 150);
     utassert(s.nodes[split].size[2] == 150);
@@ -133,7 +133,7 @@ static void ADropOnAnEdgeSplits() {
     Seed(&s2, &a, &b);
     utassert(DockMovePanelTo(&s2, 0, b, DockDrop::Bottom));
     int outer = s2.center;
-    utassert(s2.nodes[outer].child.len == 2);
+    utassert(len(s2.nodes[outer].child) == 2);
     int nested = s2.nodes[outer].child[1];
     utassert(s2.nodes[nested].split);
     utassert(!AxisIsHorizontal(s2.nodes[nested].axis));
@@ -151,7 +151,7 @@ static void AnEmptyGroupLeavesTheSplit() {
     // second one, then the split with one child left becomes that child.
     utassert(DockClosePanelAt(&s, a, 0));
     utassert(s.nodes[a].used);
-    utassert(s.nodes[a].panel.len == 1);
+    utassert(len(s.nodes[a].panel) == 1);
     utassert(DockClosePanelAt(&s, a, 0));
     utassert(!s.nodes[a].used);
     utassert(!s.nodes[split].used);
@@ -171,7 +171,7 @@ static void ARootGroupStays() {
     // that TabPanel `closable = false`.
     utassert(DockClosePanelAt(&s, node, 0));
     utassert(s.nodes[node].used);
-    utassert(s.nodes[node].panel.len == 0);
+    utassert(len(s.nodes[node].panel) == 0);
     utassert(s.left.node == node);
 }
 
@@ -183,7 +183,7 @@ static void ADropOnATabTakesItsPlace() {
     Seed(&s, &a, &b);
     // The second tab of A dropped on the first: it goes in front of it.
     utassert(DockMovePanelTo(&s, 1, a, DockDrop::Center, 0));
-    utassert(s.nodes[a].panel.len == 2);
+    utassert(len(s.nodes[a].panel) == 2);
     utassert(s.nodes[a].panel[0] == 1);
     utassert(s.nodes[a].panel[1] == 0);
     // insert_panel_at ends with set_active_ix: what was dropped is showing.
@@ -191,7 +191,7 @@ static void ADropOnATabTakesItsPlace() {
 
     // A panel from another group inserted at a place in this one.
     utassert(DockMovePanelTo(&s, 2, a, DockDrop::Center, 1));
-    utassert(s.nodes[a].panel.len == 3);
+    utassert(len(s.nodes[a].panel) == 3);
     utassert(s.nodes[a].panel[1] == 2);
     utassert(DockNodeOfPanel(&s, 2) == a);
     // Its old group emptied and left the split, so the split is gone with it.
@@ -357,16 +357,16 @@ static void ALayoutSurvivesDumpAndLoad() {
     }
     utassert(DockLoad(&back, &state, arena));
     utassert(back.nodes[back.center].split);
-    utassert(back.nodes[back.center].child.len == 2);
+    utassert(len(back.nodes[back.center].child) == 2);
     utassertnear(back.nodes[back.center].size[0], 240.f);
     int loadedTabs = back.nodes[back.center].child[0];
-    utassert(back.nodes[loadedTabs].panel.len == 2);
+    utassert(len(back.nodes[loadedTabs].panel) == 2);
     utassert(back.nodes[loadedTabs].panel[0] == 0);
     utassert(back.nodes[loadedTabs].activeIx == 1);
     utassert(back.left.node >= 0 && !back.left.open);
     utassertnear(back.left.size, 210.f);
     // Nothing new was registered: every name was one it already had.
-    utassert(back.panels.len == 3);
+    utassert(len(back.panels) == 3);
     ArenaDelete(arena);
 }
 
@@ -391,9 +391,9 @@ static void APanelNothingAnswersToBecomesInvalid() {
     DockAddPanelDef(&s, def);
     utassert(DockLoad(&s, &state, arena));
     // The missing one was registered on the spot, under the name asked for.
-    utassert(s.panels.len == 2);
+    utassert(len(s.panels) == 2);
     utassert(StrEqI(s.panels[1].name, "GitGraphPanel"));
-    utassert(s.nodes[s.center].panel.len == 2);
+    utassert(len(s.nodes[s.center].panel) == 2);
     utassert(s.nodes[s.center].activeIx == 1);
 
     // Written out again, the layout still names it — Rust's InvalidPanel
@@ -411,7 +411,7 @@ static void ALockedDockMovesNothing() {
     Seed(&s, &a, &b);
     s.locked = true;
     utassert(!DockMovePanelTo(&s, 1, b, DockDrop::Center));
-    utassert(s.nodes[a].panel.len == 2);
+    utassert(len(s.nodes[a].panel) == 2);
 }
 
 // Panel::visible: a hidden panel has no tab, does not count towards the one
@@ -518,8 +518,8 @@ static void NormalizeCollapsesWhatAnEditNeverMakes() {
     // The same-axis split was spliced in, the single-child split is its
     // child, and the empty group is gone: three children, all tab groups.
     utassert(s.center == root);
-    utassert(s.nodes[root].child.len == 3);
-    for (int i = 0; i < s.nodes[root].child.len; i++) {
+    utassert(len(s.nodes[root].child) == 3);
+    for (int i = 0; i < len(s.nodes[root].child); i++) {
         utassert(!s.nodes[s.nodes[root].child[i]].split);
         utassert(s.nodes[s.nodes[root].child[i]].parent == root);
     }
@@ -537,10 +537,10 @@ static void NormalizeCollapsesWhatAnEditNeverMakes() {
     utassert(s.nodes[root].size[2] == 300.f);
 
     // Idempotent: normalize(normalize(t)) == normalize(t).
-    int before = s.nodes[root].child.len;
+    int before = len(s.nodes[root].child);
     float first = s.nodes[root].size[0];
     DockNormalize(&s);
-    utassert(s.nodes[root].child.len == before);
+    utassert(len(s.nodes[root].child) == before);
     utassert(s.nodes[root].size[0] == first);
 }
 
@@ -706,7 +706,7 @@ static void ThePurePaneTreeMatchesTheSourceAlgebra() {
     utassert(tree.FindNode(tabs) != nullptr);
     PaneRef top = tree.Root()->Kind();
     utassert(top.kind == PaneKind::Split);
-    utassert(top.children && top.children->len == 2);
+    utassert(top.children && len(*top.children) == 2);
     utassert(top.sizeKnown && (*top.sizeKnown)[1]);
     utassertnear((*top.sizes)[1], 240);
 
@@ -1451,7 +1451,7 @@ static void SelectingAPanelByIdentityDoesNotMoveIt() {
     utassert(s.nodes[a].activeIx == 0);
     DockSelectPanel(&s, &cx, second);
     utassert(s.nodes[a].activeIx == 1);
-    utassert(s.nodes[a].panel.len == 2);
+    utassert(len(s.nodes[a].panel) == 2);
     utassert(s.nodes[a].panel[0] == 0 && s.nodes[a].panel[1] == 1);
     DockSelectPanel(&s, &cx, unknown);
     utassert(s.nodes[a].activeIx == 1);
@@ -1477,7 +1477,7 @@ static void AMoveOfAnUnownedPanelIsIgnored() {
     Seed(&other, &a, &b);
 
     utassert(!DockMovePanelTo(&s, 9999999, a, DockDrop::Center));
-    utassert(s.nodes[a].panel.len == 2 && s.nodes[b].panel.len == 1);
+    utassert(len(s.nodes[a].panel) == 2 && len(s.nodes[b].panel) == 1);
 
     DropEvent drop;
     drop.drag.kind = kDockPanelDrag;
@@ -1489,12 +1489,12 @@ static void AMoveOfAnUnownedPanelIsIgnored() {
     DockState::OnDropPanel(&s, &cx, &drop, b);
     DockState::OnDropTab(&s, &cx, &drop, DockPack(b, 0));
     DockState::OnDropTabBar(&s, &cx, &drop, b);
-    utassert(s.nodes[a].panel.len == 2 && s.nodes[b].panel.len == 1);
+    utassert(len(s.nodes[a].panel) == 2 && len(s.nodes[b].panel) == 1);
 
     // The same drop from this area's own tab moves it.
     drop.drag.data = &s;
     DockState::OnDropPanel(&s, &cx, &drop, b);
-    utassert(s.nodes[a].panel.len == 1 && s.nodes[b].panel.len == 2);
+    utassert(len(s.nodes[a].panel) == 1 && len(s.nodes[b].panel) == 2);
     ArenaDelete(arena);
 }
 
@@ -1563,7 +1563,7 @@ static void TabCloseButtonsFollowTheSkinAndThePanel() {
     PanelId filler = s->panels[0].id;
     ClickEvent click;
     ListenerCall(&app, &win, close->listener, &click);
-    utassert(s->nodes[a].panel.len == 1 && s->nodes[a].panel[0] == 0);
+    utassert(len(s->nodes[a].panel) == 1 && s->nodes[a].panel[0] == 0);
     utassert(s->panels[s->nodes[a].panel[0]].id.value == filler.value);
     utassert(s->nodes[a].activeIx == 0);
 
@@ -1592,7 +1592,7 @@ static void ClosingTheFocusedTabHandsFocusToItsReplacement() {
     Ctx cx = {nullptr, &win, nullptr, {}};
 
     DockClosePanel(&s, &cx, a, 0);
-    utassert(s.nodes[a].panel.len == 1 && s.nodes[a].panel[0] == 1);
+    utassert(len(s.nodes[a].panel) == 1 && s.nodes[a].panel[0] == 1);
     utassert(win.focusId == 11);
 
     win.focusId = 12;

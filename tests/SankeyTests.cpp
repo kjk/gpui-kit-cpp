@@ -58,13 +58,13 @@ static void AChainFillsEveryColumn() {
     utassertnear(g.nodes[0].x0, 0.f);
     utassertnear(g.nodes[1].x0, 45.f);
     utassertnear(g.nodes[2].x0, 90.f);
-    for (int i = 0; i < g.nodes.len; i++) {
+    for (int i = 0; i < len(g.nodes); i++) {
         utassertnear(g.nodes[i].x1 - g.nodes[i].x0, 10.f);
         utassert(g.nodes[i].value == 5.);
         // Every node carries the whole flow, so each spans the height.
         utassert(Near(g.nodes[i].y1 - g.nodes[i].y0, 100.f));
     }
-    for (int i = 0; i < g.links.len; i++) {
+    for (int i = 0; i < len(g.links); i++) {
         utassert(Near(g.links[i].width, 100.f));
         // The chain balances, so both ends of a ribbon span their nodes.
         utassert(Near(g.links[i].sourceWidth, 100.f));
@@ -76,7 +76,7 @@ static void AChainFillsEveryColumn() {
     SankeyGraph topo;
     utassert(SankeyTopology(&s, 3, links, 2, &topo) == SankeyError::None);
     utassert(SankeyLayerCount(&topo) == 3);
-    for (int i = 0; i < topo.nodes.len; i++) {
+    for (int i = 0; i < len(topo.nodes); i++) {
         utassert(topo.nodes[i].depth == g.nodes[i].depth);
         utassert(topo.nodes[i].height == g.nodes[i].height);
         utassert(topo.nodes[i].layer == g.nodes[i].layer);
@@ -91,13 +91,13 @@ static void AChainFillsEveryColumn() {
     SankeyGraph second;
     utassert(SankeyTopology(&unit, 3, links, 2, &second) == SankeyError::None);
     SankeyLayoutFrom(&s, &second);
-    for (int i = 0; i < second.nodes.len; i++) {
+    for (int i = 0; i < len(second.nodes); i++) {
         utassertnear(second.nodes[i].x0, g.nodes[i].x0);
         utassertnear(second.nodes[i].y0, g.nodes[i].y0);
         utassertnear(second.nodes[i].x1, g.nodes[i].x1);
         utassertnear(second.nodes[i].y1, g.nodes[i].y1);
     }
-    for (int i = 0; i < second.links.len; i++) {
+    for (int i = 0; i < len(second.links); i++) {
         utassertnear(second.links[i].y0, g.links[i].y0);
         utassertnear(second.links[i].y1, g.links[i].y1);
         utassertnear(second.links[i].width, g.links[i].width);
@@ -170,7 +170,7 @@ static void RibbonsStackInsideTheNodeTheyLeave() {
                   second->y0 - second->sourceWidth / 2.f));
 
     // Each target has one incoming ribbon, filling it.
-    for (int i = 0; i < g.links.len; i++) {
+    for (int i = 0; i < len(g.links); i++) {
         const SankeyNodeLayout& target = g.nodes[g.links[i].target];
         utassert(Near(g.links[i].y1 - g.links[i].targetWidth / 2.f, target.y0));
         utassert(Near(g.links[i].y1 + g.links[i].targetWidth / 2.f, target.y1));
@@ -210,7 +210,7 @@ static void TheSqrtScaleStillFillsEveryNode() {
     SankeyGraph g;
     utassert(SankeyLayout(&s, 4, links, 3, &g) == SankeyError::None);
 
-    for (int i = 0; i < g.nodes.len; i++) {
+    for (int i = 0; i < len(g.nodes); i++) {
         const SankeyNodeLayout& node = g.nodes[i];
         float h = node.y1 - node.y0;
         float incoming = 0;
@@ -247,7 +247,7 @@ static void ANodeTakesTheLargerOfItsTwoSides() {
     SankeyGraph g;
     utassert(SankeyLayout(&s, 3, links, 2, &g) == SankeyError::None);
     utassert(g.nodes[1].value == 10.);
-    for (int i = 0; i < g.nodes.len; i++) {
+    for (int i = 0; i < len(g.nodes); i++) {
         utassert(g.nodes[i].y0 <= g.nodes[i].y1);
         utassert(g.nodes[i].y0 >= -kSankeyEps);
         utassert(g.nodes[i].y1 <= 100.f + kSankeyEps);
@@ -271,7 +271,7 @@ static void EveryColumnIsCentredInTheExtent() {
         bool seen = false;
         float lo = 0;
         float hi = 0;
-        for (int i = 0; i < g.nodes.len; i++) {
+        for (int i = 0; i < len(g.nodes); i++) {
             if (g.nodes[i].layer != l) {
                 continue;
             }
@@ -291,7 +291,7 @@ static void EveryColumnIsCentredInTheExtent() {
         // The extent is [10, 90], so every column is centred on 50.
         utassert(seen && Near((lo + hi) / 2.f, 50.f));
     }
-    for (int i = 0; i < g.nodes.len; i++) {
+    for (int i = 0; i < len(g.nodes); i++) {
         utassert(g.nodes[i].y0 >= 10.f - kSankeyEps);
         utassert(g.nodes[i].y1 <= 90.f + kSankeyEps);
     }
@@ -312,7 +312,7 @@ static void EqualSingleNodeColumnsAreStaggered() {
     float c0 = (g.nodes[0].y0 + g.nodes[0].y1) / 2.f;
     float c1 = (g.nodes[1].y0 + g.nodes[1].y1) / 2.f;
     utassert(!Near(c0, c1));
-    for (int i = 0; i < g.nodes.len; i++) {
+    for (int i = 0; i < len(g.nodes); i++) {
         utassert(g.nodes[i].y0 >= -kSankeyEps);
         utassert(g.nodes[i].y1 <= 100.f + kSankeyEps);
     }
@@ -320,7 +320,7 @@ static void EqualSingleNodeColumnsAreStaggered() {
     // After the stagger's per-layer shift every ribbon end is still attached
     // to its own node — which is what a source/target mix-up in the shift
     // would break.
-    for (int i = 0; i < g.nodes.len; i++) {
+    for (int i = 0; i < len(g.nodes); i++) {
         const SankeyNodeLayout& node = g.nodes[i];
         float y = node.y0;
         for (int k = 0; k < node.srcCount; k++) {
@@ -366,14 +366,14 @@ static void TheDegenerateGraphsStayFinite() {
     // Nothing at all.
     SankeyGraph empty;
     utassert(SankeyLayout(&s, 0, nullptr, 0, &empty) == SankeyError::None);
-    utassert(empty.nodes.len == 0 && empty.links.len == 0);
+    utassert(len(empty.nodes) == 0 && len(empty.links) == 0);
     utassert(SankeyLayerCount(&empty) == 0);
 
     // A flow of zero must not come out as a height of NaN.
     SankeyLink zero[] = {L(0, 1, 0)};
     SankeyGraph g;
     utassert(SankeyLayout(&s, 2, zero, 1, &g) == SankeyError::None);
-    for (int i = 0; i < g.nodes.len; i++) {
+    for (int i = 0; i < len(g.nodes); i++) {
         utassert(Near(g.nodes[i].y1 - g.nodes[i].y0, 0.f));
         utassert(g.nodes[i].x0 == g.nodes[i].x0);
         utassert(g.nodes[i].y0 == g.nodes[i].y0);
@@ -384,7 +384,7 @@ static void TheDegenerateGraphsStayFinite() {
     SankeyGraph lone;
     utassert(SankeyLayout(&s, 2, nullptr, 0, &lone) == SankeyError::None);
     utassert(SankeyLayerCount(&lone) == 1);
-    for (int i = 0; i < lone.nodes.len; i++) {
+    for (int i = 0; i < len(lone.nodes); i++) {
         utassertnear(lone.nodes[i].x0, 0.f);
         utassert(lone.nodes[i].y0 == lone.nodes[i].y0);
     }

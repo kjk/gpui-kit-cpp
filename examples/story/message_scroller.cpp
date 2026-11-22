@@ -178,13 +178,14 @@ static void MsSeed(MessageScrollerStory* self, Ctx* cx) {
     MsPreviewMessages(self->previewMessages, 3000, 18);
 
     App* app = cx->app;
-    self->scroller = MsCreateScroller(app, self->messages.len);
-    self->streamScroller = MsCreateScroller(app, self->streamMessages.len);
-    self->historyScroller = MsCreateScroller(app, self->historyMessages.len);
-    self->navigationScroller = MsCreateScroller(app, self->previewMessages.len);
-    self->customScroller = MsCreateScroller(app, self->previewMessages.len);
+    self->scroller = MsCreateScroller(app, len(self->messages));
+    self->streamScroller = MsCreateScroller(app, len(self->streamMessages));
+    self->historyScroller = MsCreateScroller(app, len(self->historyMessages));
+    self->navigationScroller =
+        MsCreateScroller(app, len(self->previewMessages));
+    self->customScroller = MsCreateScroller(app, len(self->previewMessages));
     self->applicationScroller =
-        MsCreateScroller(app, self->previewMessages.len);
+        MsCreateScroller(app, len(self->previewMessages));
     self->emptyScroller = MsCreateScroller(app, 0);
     InputSetPlaceholder(&self->composer, StrL("Write a message…"));
 }
@@ -199,7 +200,7 @@ struct MsRows {
 static El* MsRow(void* user, Ctx* cx, int index) {
     Arena* a = cx->a;
     MsRows* rows = (MsRows*)user;
-    if (!rows->list || index < 0 || index >= rows->list->len) {
+    if (!rows->list || index < 0 || index >= len(*rows->list)) {
         return Div(a);
     }
     const DemoMessage& message = (*rows->list)[index];
@@ -243,7 +244,7 @@ static void MsAppendMessage(MessageScrollerStory* self, Ctx* cx,
                             const ClickEvent*) {
     int id = self->nextId++;
     MsAppend(self->messages, id, true,
-             fmt("New message %d", self->messages.len + 1), true);
+             fmt("New message %d", len(self->messages) + 1), true);
     if (auto* st = MsState(cx, self->scroller)) {
         st->Append(cx, 1);
     }
@@ -302,7 +303,7 @@ static void MsReset(MessageScrollerStory* self, Ctx* cx, const ClickEvent*) {
     MsConversationScript(self->messages);
     self->unreadIndex = 4;
     if (auto* st = MsState(cx, self->scroller)) {
-        st->Reset(cx, self->messages.len);
+        st->Reset(cx, len(self->messages));
     }
     Notify(cx);
 }
@@ -314,7 +315,7 @@ static void MsStartStream(MessageScrollerStory* self, Ctx* cx,
     if (self->streaming) {
         return;
     }
-    self->streamMessageIx = self->streamMessages.len;
+    self->streamMessageIx = len(self->streamMessages);
     self->streamPrefix = 0;
     self->streaming = true;
     MsAppend(self->streamMessages, self->nextId++, false,
@@ -342,7 +343,8 @@ static void MsStopStream(MessageScrollerStory* self, Ctx* cx,
 // it; only its length moves.
 static void MsStreamTick(MessageScrollerStory* self, Ctx* cx,
                          const TickEvent*) {
-    if (!self->streaming || self->streamMessageIx >= self->streamMessages.len) {
+    if (!self->streaming ||
+        self->streamMessageIx >= len(self->streamMessages)) {
         return;
     }
     int total = (int)strlen(kMsStreamResponse);
@@ -377,7 +379,7 @@ static void MsResetStream(MessageScrollerStory* self, Ctx* cx,
         WindowCancelTimer(cx->win, self->streamTimer);
         self->streamTimer = 0;
     }
-    for (int i = self->streamMessages.len - 1;
+    for (int i = len(self->streamMessages) - 1;
          i >= kMsInitialStreamMessageCount; i--) {
         if (self->streamMessages[i].owned) {
             StrFree(self->streamMessages[i].body);
@@ -392,7 +394,7 @@ static void MsResetStream(MessageScrollerStory* self, Ctx* cx,
 
 static void MsExpandStream(MessageScrollerStory* self, Ctx* cx,
                            const ClickEvent*) {
-    int ix = self->streamMessages.len - 1;
+    int ix = len(self->streamMessages) - 1;
     if (ix < 0) {
         return;
     }
@@ -424,7 +426,7 @@ static void MsLoadEarlier(MessageScrollerStory* self, Ctx* cx,
 
 static void MsToggleEmpty(MessageScrollerStory* self, Ctx* cx,
                           const ClickEvent*) {
-    if (self->emptyMessages.len == 0) {
+    if (len(self->emptyMessages) == 0) {
         MsAppend(self->emptyMessages, 20000, true,
                  StrL("A first message replaces the application-owned empty "
                       "state."),
@@ -550,7 +552,7 @@ El* MessageScrollerStory::Render(MessageScrollerStory* self, Ctx* cx) {
     if (auto* st = MsState(cx, self->applicationScroller)) {
         applicationScrolledUp = st->IsScrolledUp();
     }
-    bool empty = self->emptyMessages.len == 0;
+    bool empty = len(self->emptyMessages) == 0;
     bool streamHasResponse = self->streamMessages
                                  .len > kMsInitialStreamMessageCount;
 

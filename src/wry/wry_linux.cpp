@@ -357,7 +357,7 @@ static void FlushPendingScripts(WebView* wv) {
         return;
     }
     wv->pendingOpen = false;
-    for (int i = 0; i < wv->pendingScripts.len; i++) {
+    for (int i = 0; i < len(wv->pendingScripts); i++) {
         RunJavascript(wv, wv->pendingScripts[i], nullptr, nullptr);
     }
     StrVecFree(&wv->pendingScripts);
@@ -569,7 +569,7 @@ static void OnDragDataReceived(GtkWidget*, GdkDragContext*, gint, gint,
     DragDropEvent ev;
     ev.kind = DragDropKind::Enter;
     ev.paths = paths.els;
-    ev.pathCount = paths.len;
+    ev.pathCount = len(paths);
     ev.x = wv->dragX;
     ev.y = wv->dragY;
     wv->dragDropHandler(wv->ctx, &ev);
@@ -608,7 +608,7 @@ static gboolean OnDragDrop(GtkWidget*, GdkDragContext* context, gint x, gint y,
     DragDropEvent ev;
     ev.kind = DragDropKind::Drop;
     ev.paths = paths.els;
-    ev.pathCount = paths.len;
+    ev.pathCount = len(paths);
     ev.x = x;
     ev.y = y;
     bool handled = wv->dragDropHandler(wv->ctx, &ev);
@@ -653,9 +653,9 @@ struct DownloadState {
 
 static void ForgetDownload(DownloadState* state) {
     WebView* wv = state->wv;
-    for (int i = 0; i < wv->downloads.len; i++) {
+    for (int i = 0; i < len(wv->downloads); i++) {
         if (wv->downloads[i] == state) {
-            wv->downloads.els[i] = wv->downloads.els[wv->downloads.len - 1];
+            wv->downloads.els[i] = wv->downloads.els[len(wv->downloads) - 1];
             wv->downloads.len--;
             break;
         }
@@ -787,7 +787,7 @@ static void OnUriScheme(WebKitURISchemeRequest* request, gpointer data) {
     req.uri = FromCTemp(uri);
     req.method = method ? FromCTemp(method) : StrL("GET");
     req.headers = headers.els;
-    req.headerCount = headers.len;
+    req.headerCount = len(headers);
     // The body is the `linux-body` feature's, which gpui-wry does not turn
     // on: Rust hands its handler an empty one.
 
@@ -819,7 +819,7 @@ static gboolean FinishResponse(gpointer data) {
     webkit_uri_scheme_response_set_status(response, (guint)r->status, nullptr);
     SoupMessageHeaders* headers =
         soup_message_headers_new(SOUP_MESSAGE_HEADERS_RESPONSE);
-    for (int i = 0; i < r->headers.len; i++) {
+    for (int i = 0; i < len(r->headers); i++) {
         const char* name = CStrTemp(r->headers[i].name);
         const char* value = CStrTemp(r->headers[i].value);
         if (g_ascii_strcasecmp(name, "content-type") == 0) {
@@ -833,7 +833,7 @@ static gboolean FinishResponse(gpointer data) {
     g_object_unref(input);
     g_object_unref(r->request);
     g_bytes_unref(r->body);
-    for (int i = 0; i < r->headers.len; i++) {
+    for (int i = 0; i < len(r->headers); i++) {
         StrFree(r->headers[i].name);
         StrFree(r->headers[i].value);
     }
@@ -968,7 +968,7 @@ static void FreeRelated(WebView* wv, int index, bool destroyWindow);
 
 static void OnRelatedWindowDestroy(GtkWidget* window, gpointer data) {
     WebView* wv = (WebView*)data;
-    for (int i = 0; i < wv->related.len; i++) {
+    for (int i = 0; i < len(wv->related); i++) {
         if (wv->related[i].window == window) {
             FreeRelated(wv, i, false);
             return;
@@ -1372,11 +1372,11 @@ static void FreeInner(WebView* wv) {
     if (wv->followsParent) {
         gdk_window_remove_filter(nullptr, ParentFilter, wv);
     }
-    while (wv->related.len > 0) {
-        FreeRelated(wv, wv->related.len - 1, true);
+    while (len(wv->related) > 0) {
+        FreeRelated(wv, len(wv->related) - 1, true);
     }
-    while (wv->downloads.len > 0) {
-        ForgetDownload(wv->downloads[wv->downloads.len - 1]);
+    while (len(wv->downloads) > 0) {
+        ForgetDownload(wv->downloads[len(wv->downloads) - 1]);
     }
     if (wv->dragLeaveIdle) {
         g_source_remove(wv->dragLeaveIdle);
@@ -1415,7 +1415,7 @@ static void FreeInner(WebView* wv) {
 
 static void FreeRelated(WebView* wv, int index, bool destroyWindow) {
     RelatedWebView r = wv->related[index];
-    wv->related.els[index] = wv->related.els[wv->related.len - 1];
+    wv->related.els[index] = wv->related.els[len(wv->related) - 1];
     wv->related.len--;
     g_signal_handlers_disconnect_by_data(r.window, wv);
     FreeInner(r.webview);

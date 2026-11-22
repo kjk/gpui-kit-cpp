@@ -20,7 +20,7 @@ El* MarkerIcon::IntoEl() {
     if (styleSet) {
         row->Refine(style, styleSet);
     }
-    for (int i = 0; i < children.len; i++) {
+    for (int i = 0; i < len(children); i++) {
         row->Child(children[i]);
     }
     return row;
@@ -46,7 +46,7 @@ MarkerContent* MarkerContent::Child(El* e) {
 El* MarkerContent::IntoEl() {
     bool animate = shimmer && !MotionReduced(cx->app);
     bool hasText = false;
-    for (int i = 0; i < children.len; i++) {
+    for (int i = 0; i < len(children); i++) {
         if (children[i].isText) {
             hasText = true;
         }
@@ -73,7 +73,7 @@ El* MarkerContent::IntoEl() {
     if (styleSet) {
         content->Refine(style, styleSet);
     }
-    for (int i = 0; i < children.len; i++) {
+    for (int i = 0; i < len(children); i++) {
         const MarkerContentChild& child = children[i];
         if (!child.isText) {
             content->Child(child.element);
@@ -181,7 +181,7 @@ Marker* Marker::Child(El* e) {
 El* Marker::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
     bool hasIcon = false;
-    for (int i = 0; i < children.len; i++) {
+    for (int i = 0; i < len(children); i++) {
         if (children[i].icon) {
             hasIcon = true;
         }
@@ -235,7 +235,7 @@ El* Marker::IntoEl() {
                 ->Child(Spinner::New(cx)->WithSize(UiSize::XSmall)->IntoEl())
                 ->IntoEl());
     }
-    for (int i = 0; i < children.len; i++) {
+    for (int i = 0; i < len(children); i++) {
         const MarkerChild& child = children[i];
         if (child.icon) {
             row->Child(child.icon->IntoEl());

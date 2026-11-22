@@ -80,7 +80,7 @@ State DocumentContainerNewBefore(Tokenizer* t) {
     }
 
     // Check for a new container. Block quote?
-    int32_t tail = t->tokenizeState.documentContainerStack.len;
+    int32_t tail = len(t->tokenizeState.documentContainerStack);
     ContainerState fresh;
     fresh.kind = Container::BlockQuote;
     VecAppend(t->tokenizeState.documentContainerStack, fresh);
@@ -155,13 +155,13 @@ State DocumentContainerNewAfter(Tokenizer* t) {
 State DocumentContainersAfter(Tokenizer* t) {
     Tokenizer* child = t->tokenizeState.documentChild;
     child->lazy = t->tokenizeState.documentContinued !=
-                  t->tokenizeState.documentContainerStack.len;
+                  len(t->tokenizeState.documentContainerStack);
     DefineSkip(child, t->point);
 
     if (t->current < 0) {
         return StateRetry(StateName::DocumentFlowEnd);
     }
-    int32_t current = t->events.len;
+    int32_t current = len(t->events);
     int32_t previous = t->tokenizeState.documentDataIndex;
     if (previous != -1) {
         t->events[previous].link.next = current;
@@ -214,10 +214,10 @@ State DocumentFlowEnd(Tokenizer* t) {
             documentLazyContinuationCurrent = true;
         }
     }
-    if (!documentLazyContinuationCurrent && child->events.len > 0) {
+    if (!documentLazyContinuationCurrent && len(child->events) > 0) {
         Name lineEnding = Name::LineEnding;
         int32_t before =
-            SkipOptBack(child->events, child->events.len - 1, &lineEnding, 1);
+            SkipOptBack(child->events, len(child->events) - 1, &lineEnding, 1);
         Name name = child->events[before].name;
         if (name == Name::Content || name == Name::HeadingSetextUnderline) {
             documentLazyContinuationCurrent = true;
@@ -255,7 +255,7 @@ static void ExitContainers(Tokenizer* t, Phase phase) {
     // `Vec::split_off`: what is past `document_continued`.
     Vec<ContainerState> stackClose;
     for (int32_t i = t->tokenizeState.documentContinued;
-         i < t->tokenizeState.documentContainerStack.len; i++) {
+         i < len(t->tokenizeState.documentContainerStack); i++) {
         VecAppend(stackClose, t->tokenizeState.documentContainerStack[i]);
     }
     t->tokenizeState.documentContainerStack.len = t->tokenizeState
@@ -273,7 +273,7 @@ static void ExitContainers(Tokenizer* t, Phase phase) {
     }
 
     if (len(stackClose) > 0) {
-        int32_t index = t->tokenizeState.documentExits.len -
+        int32_t index = len(t->tokenizeState.documentExits) -
                         (phase == Phase::After ? 2 : 1);
         ArenaVec<Event> exits{};
         while (len(stackClose) > 0) {
@@ -315,20 +315,20 @@ static void DocumentResolve(Tokenizer* t) {
     // First, add the exits to the child tokenizer.
     int32_t childIndex = 0;
     int32_t line = 0;
-    while (childIndex < child->events.len) {
+    while (childIndex < len(child->events)) {
         if (child->events[childIndex].kind == Kind::Exit &&
             (child->events[childIndex].name == Name::LineEnding ||
              child->events[childIndex].name == Name::BlankLineEnding)) {
             int32_t injectIndex = childIndex - 1;
             Point point = child->events[injectIndex].point;
             // Move past the exits that follow.
-            while (childIndex + 1 < child->events.len &&
+            while (childIndex + 1 < len(child->events) &&
                    child->events[childIndex + 1].kind == Kind::Exit) {
                 childIndex += 1;
                 point = child->events[childIndex].point;
                 injectIndex = childIndex + 1;
             }
-            if (line < t->tokenizeState.documentExits.len) {
+            if (line < len(t->tokenizeState.documentExits)) {
                 ArenaVec<Event> exits = t->tokenizeState.documentExits[line];
                 if (len(exits) > 0) {
                     t->tokenizeState.documentExits[line] = ArenaVec<Event>{};
@@ -349,7 +349,7 @@ static void DocumentResolve(Tokenizer* t) {
     // Now, add the child events into the parent, at the flow data.
     Name data = Name::Data;
     int32_t flowIndex = SkipTo(t->events, 0, &data, 1);
-    while (flowIndex < t->events.len &&
+    while (flowIndex < len(t->events) &&
            (!t->events[flowIndex].hasLink ||
             t->events[flowIndex].link.content != ContentKind::Flow)) {
         flowIndex = SkipTo(t->events, flowIndex + 1, &data, 1);
@@ -360,7 +360,7 @@ static void DocumentResolve(Tokenizer* t) {
     EditMapConsume(t->map, t->events);
 
     // Add the last exits, which are past everything.
-    if (line < t->tokenizeState.documentExits.len) {
+    if (line < len(t->tokenizeState.documentExits)) {
         ArenaVec<Event> exits = t->tokenizeState.documentExits[line];
         if (len(exits) > 0) {
             t->tokenizeState.documentExits[line] = ArenaVec<Event>{};
@@ -371,11 +371,11 @@ static void DocumentResolve(Tokenizer* t) {
         }
     }
 
-    for (int32_t i = 0; i < child->resolvers.len; i++) {
+    for (int32_t i = 0; i < len(child->resolvers); i++) {
         VecAppend(t->resolvers, child->resolvers[i]);
     }
     child->resolvers.len = 0;
-    for (int32_t i = 0; i < child->tokenizeState.definitions.len; i++) {
+    for (int32_t i = 0; i < len(child->tokenizeState.definitions); i++) {
         VecAppend(t->tokenizeState.definitions, child->tokenizeState
                                                     .definitions[i]);
     }
@@ -537,20 +537,20 @@ State ContentDefinitionAfter(Tokenizer* t) {
 
 bool ContentResolve(Tokenizer* t, Subresult* out) {
     int32_t index = 0;
-    while (index < t->events.len) {
+    while (index < len(t->events)) {
         const Event& event = t->events[index];
         if (event.kind == Kind::Enter && event.name == Name::Content) {
             int32_t exitIndex = index + 1;
             for (;;) {
                 int32_t enterIndex = exitIndex + 1;
-                if (enterIndex == t->events.len ||
+                if (enterIndex == len(t->events) ||
                     t->events[enterIndex].name != Name::LineEnding) {
                     break;
                 }
                 // Skip past line ending.
                 enterIndex += 2;
                 // Skip past prefix.
-                while (enterIndex < t->events.len) {
+                while (enterIndex < len(t->events)) {
                     Name name = t->events[enterIndex].name;
                     if (name != Name::SpaceOrTab &&
                         name != Name::BlockQuotePrefix &&
@@ -559,7 +559,7 @@ bool ContentResolve(Tokenizer* t, Subresult* out) {
                     }
                     enterIndex += 1;
                 }
-                if (enterIndex == t->events.len ||
+                if (enterIndex == len(t->events) ||
                     t->events[enterIndex].name != Name::Content) {
                     break;
                 }
@@ -593,7 +593,7 @@ State ParagraphLineStart(Tokenizer* t) {
     link.content = ContentKind::Text;
     EnterLink(t, Name::Data, link);
     if (t->tokenizeState.connect) {
-        SubtokenizeLink(t->events, t->events.len - 1);
+        SubtokenizeLink(t->events, len(t->events) - 1);
     } else {
         t->tokenizeState.connect = true;
     }

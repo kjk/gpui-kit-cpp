@@ -19,7 +19,7 @@ namespace gpui {
 // Draw every window that asked for a frame since the last pass.
 template <typename Plat>
 void RunLoopRedrawDirty(App* app, void (*redraw)(Window*)) {
-    for (int i = 0; i < app->windows.len; i++) {
+    for (int i = 0; i < len(app->windows); i++) {
         Window* w = app->windows[i];
         if (w->plat && w->dirty) {
             redraw(w);
@@ -35,7 +35,7 @@ double RunLoopWaitFor(App* app, bool* anyDirty) {
     double now = TimeNow();
     double waitS = 1.0;
     *anyDirty = false;
-    for (int i = 0; i < app->windows.len; i++) {
+    for (int i = 0; i < len(app->windows); i++) {
         Window* w = app->windows[i];
         Plat* plat = w->plat;
         if (!plat) {
@@ -58,7 +58,7 @@ double RunLoopWaitFor(App* app, bool* anyDirty) {
 template <typename Plat>
 void RunLoopTickDue(App* app) {
     double now = TimeNow();
-    for (int i = 0; i < app->windows.len; i++) {
+    for (int i = 0; i < len(app->windows); i++) {
         Window* w = app->windows[i];
         Plat* plat = w->plat;
         if (!plat || plat->nextTick <= 0) {

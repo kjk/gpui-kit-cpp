@@ -431,7 +431,7 @@ static void SpecDescriptionDepthIsBounded() {
         utassert(arena.Height(grafted) == 3);
         utassert(arena.Holder(grafted) == SpecArena::kNoHolder);
         const SpecNode* node = arena.Node(grafted);
-        utassert(node && node->children.len >= 1);
+        utassert(node && len(node->children) >= 1);
         utassert(arena.Holder(node->children[0]) == grafted);
         utassert(arena.Attach(before, grafted));
         utassert(arena.Height(before) == 4);
@@ -1442,7 +1442,7 @@ static bool gTvFollowed = false;
 static int gTvDelayMs = 0;
 
 static void TvRequestsClear() {
-    for (int i = 0; i < gTvRequests.len; i++) StrFree(gTvRequests[i]);
+    for (int i = 0; i < len(gTvRequests); i++) StrFree(gTvRequests[i]);
     VecClear(gTvRequests);
 }
 
@@ -1558,7 +1558,7 @@ static void TextViewDocumentImageUrlsObeyGetGrants() {
         TvRequestsClear();
         TvFetch fetch;
         utassert(TvFetchOnce(exact, url, &fetch) == c.allowed);
-        utassert(gTvRequests.len == (c.allowed ? 1 : 0));
+        utassert(len(gTvRequests) == (c.allowed ? 1 : 0));
         if (c.allowed) {
             utassert(fetch.png);
             // The fragment stays with the document.
@@ -1575,7 +1575,7 @@ static void TextViewDocumentImageUrlsObeyGetGrants() {
     TvFetch fetch;
     utassert(!TvFetchOnce(postOnly, StrL("https://images.example/image.png"),
                           &fetch));
-    utassert(gTvRequests.len == 0);
+    utassert(len(gTvRequests) == 0);
     utassert(!gTvFollowed);
     TvRequestsClear();
     FetchSetHttpSendForTests(nullptr);
@@ -1602,7 +1602,7 @@ static void TextViewDocumentImageRedirectsReauthorizeEachHop() {
         utassert(!TvFetchOnce(TvGetGrant("/image.png"),
                               StrL("https://images.example/image.png"),
                               &fetch));
-        utassert(gTvRequests.len == 1);
+        utassert(len(gTvRequests) == 1);
     }
     // Even a legacy grant to both protocols must not allow HTTPS downgrade.
     gTvRedirect = "http://images.example/image.png";
@@ -1612,7 +1612,7 @@ static void TextViewDocumentImageRedirectsReauthorizeEachHop() {
     TvFetch fetch;
     utassert(
         !TvFetchOnce(legacy, StrL("https://images.example/image.png"), &fetch));
-    utassert(gTvRequests.len == 1);
+    utassert(len(gTvRequests) == 1);
     gTvRedirect = nullptr;
     TvRequestsClear();
     FetchSetHttpSendForTests(nullptr);
@@ -1634,7 +1634,7 @@ static void TextViewDocumentImageRedirectsPreserveAuthorizedGet() {
                              StrL("https://images.example/image.png"), &fetch));
         utassert(fetch.png && !gTvFollowed);
         utassert(
-            gTvRequests.len == 2 &&
+            len(gTvRequests) == 2 &&
             StrEq(gTvRequests[0], StrL("https://images.example/image.png")) &&
             StrEq(gTvRequests[1], StrL("https://images.example/final.png")));
     }
@@ -1667,7 +1667,7 @@ static void TextViewDocumentImageRequestsBoundBodiesAndRedirects() {
         utassert(TvFetchOnce(TvGetGrant("/image.png"),
                              StrL("https://images.example/image.png"),
                              &fetch) == c.allowed);
-        utassert(gTvRequests.len == 1);
+        utassert(len(gTvRequests) == 1);
     }
     gTvBodyLen = 0;
     gTvReply = TvReply::Redirect;
@@ -1676,7 +1676,7 @@ static void TextViewDocumentImageRequestsBoundBodiesAndRedirects() {
     TvFetch fetch;
     utassert(!TvFetchOnce(TvGetGrant("/image.png"),
                           StrL("https://images.example/image.png"), &fetch));
-    utassert(gTvRequests.len == kFetchMaxRedirects + 1);
+    utassert(len(gTvRequests) == kFetchMaxRedirects + 1);
     gTvRedirect = nullptr;
     TvRequestsClear();
     FetchSetHttpSendForTests(nullptr);
@@ -1702,7 +1702,7 @@ static void TextViewDocumentImageDeadlineCoversEveryRedirect() {
                                   MkFunc1(TvFetched, &fetch), TimeNow() + 0.3));
     utassert(ExecWaitIdle(5000));
     utassert(fetch.called && !fetch.ok);
-    utassert(gTvRequests.len >= 2 && gTvRequests.len < kFetchMaxRedirects);
+    utassert(len(gTvRequests) >= 2 && len(gTvRequests) < kFetchMaxRedirects);
     // A deadline already gone fails the first hop that lands.
     TvRequestsClear();
     gTvDelayMs = 0;
@@ -1712,7 +1712,7 @@ static void TextViewDocumentImageDeadlineCoversEveryRedirect() {
                                   StrL("https://images.example/image.png"),
                                   MkFunc1(TvFetched, &fetch), TimeNow() - 1));
     utassert(ExecWaitIdle(5000));
-    utassert(fetch.called && !fetch.ok && gTvRequests.len == 1);
+    utassert(fetch.called && !fetch.ok && len(gTvRequests) == 1);
     // The default is IMAGE_TIMEOUT from now, which a prompt answer beats.
     static_assert(shell::kTextViewImageTimeoutSecs == 30, "IMAGE_TIMEOUT");
     utassert(TvFetchOnce(TvGetGrant("/image.png"),
@@ -1791,7 +1791,7 @@ static void TvDraw(TvMounted* m, Vec<El*>* images) {
         m->frame = ArenaNew();
         m->window.frameArena = m->frame;
         VecClear(*images);
-        for (int i = 0; i < m->views.len; i++) {
+        for (int i = 0; i < len(m->views); i++) {
             El* root =
                 EntityRender(&m->app, &m->window, m->frame, m->views[i].id);
             m->window.paint.app = &m->app;
@@ -1805,7 +1805,7 @@ static void TvDraw(TvMounted* m, Vec<El*>* images) {
 }
 
 static void TvUnmount(TvMounted* m) {
-    for (int i = 0; i < m->views.len; i++) EntityDrop(&m->app, m->views[i].id);
+    for (int i = 0; i < len(m->views); i++) EntityDrop(&m->app, m->views[i].id);
     WindowKeyedFree(&m->window);
     if (m->frame) ArenaDelete(m->frame);
     if (m->runtime) m->runtime->Release();
@@ -1843,9 +1843,9 @@ static void TextViewDocumentImagesRequirePolicy() {
                         1);
                 Vec<El*> images;
                 TvDraw(m, &images);
-                utassert(gTvRequests.len == (allowed ? 1 : 0));
-                utassert(images.len == 1);
-                if (images.len == 1) {
+                utassert(len(gTvRequests) == (allowed ? 1 : 0));
+                utassert(len(images) == 1);
+                if (len(images) == 1) {
                     // The fetched bytes once granted; never the URL itself.
                     ImageSourceKind kind = images[0]->imageSource.kind;
                     utassert(kind == (allowed ? ImageSourceKind::Image
@@ -1854,7 +1854,7 @@ static void TextViewDocumentImagesRequirePolicy() {
                 // Repainting must use this document's cache, not refetch or
                 // fall back.
                 TvDraw(m, &images);
-                utassert(gTvRequests.len == (allowed ? 1 : 0));
+                utassert(len(gTvRequests) == (allowed ? 1 : 0));
                 TvUnmount(m);
                 delete m;
             }
@@ -1884,17 +1884,17 @@ static void TextViewDocumentImagesGoWithTheView() {
         WindowKeyedSweep(&m->window);
         m->window.frameSeq++;
     }
-    utassert(gTvRequests.len == 1);
-    utassert(images.len == 1 &&
+    utassert(len(gTvRequests) == 1);
+    utassert(len(images) == 1 &&
              images[0]->imageSource.kind == ImageSourceKind::Image);
-    int kept = m->window.keyed.len;
+    int kept = len(m->window.keyed);
     // A frame without the view drops the owner.
     WindowKeyedSweep(&m->window);
     m->window.frameSeq++;
-    utassert(m->window.keyed.len < kept);
+    utassert(len(m->window.keyed) < kept);
     // Back on screen, it is a new owner and a new load.
     TvDraw(m, &images);
-    utassert(gTvRequests.len == 2);
+    utassert(len(gTvRequests) == 2);
     TvUnmount(m);
     delete m;
     TvRequestsClear();
@@ -1918,9 +1918,9 @@ static void TextViewDataImagesCannotBypassPolicy() {
         TvMount(m, document[0], document[1], false, &none, 1);
         Vec<El*> images;
         TvDraw(m, &images);
-        utassert(gTvRequests.len == 0);
+        utassert(len(gTvRequests) == 0);
         // Not handed to the image cache as a resource it would decode.
-        utassert(images.len == 1 &&
+        utassert(len(images) == 1 &&
                  images[0]->imageSource.kind == ImageSourceKind::Custom);
         TvUnmount(m);
         delete m;
@@ -1948,7 +1948,7 @@ static void TextViewDocumentImagesKeepPoliciesSeparate() {
     // another's cache.
     int finals = 0;
     int starts = 0;
-    for (int i = 0; i < gTvRequests.len; i++) {
+    for (int i = 0; i < len(gTvRequests); i++) {
         if (StrEq(gTvRequests[i], StrL("https://images.example/final.png"))) {
             finals++;
         } else if (StrEq(gTvRequests[i],
@@ -1956,7 +1956,7 @@ static void TextViewDocumentImagesKeepPoliciesSeparate() {
             starts++;
         }
     }
-    utassert(gTvRequests.len == 3 && finals == 1 && starts == 2);
+    utassert(len(gTvRequests) == 3 && finals == 1 && starts == 2);
     TvUnmount(m);
     delete m;
     TvRequestsClear();
@@ -3457,7 +3457,7 @@ static void ShellSchedulerResumesPromisesInTaskScope() {
         view.IsValid() ? EntityRender(&app, &window, frame, view.id) : nullptr;
     utassert(root != nullptr && !error.IsSet());
     utassert(runtime && runtime->LiveTasks() == 5);
-    for (int i = 0; i < window.timers.len; i++) window.timers[i].dueAt = 0;
+    for (int i = 0; i < len(window.timers); i++) window.timers[i].dueAt = 0;
     WindowTimerTick(&window);
     utassert(runtime->Eval(StrL("if (taskEvents !== 1111) throw new "
                                 "Error('task resumptions were not drained')"),
@@ -3545,7 +3545,7 @@ static void RecordStorageSettlement(StorageTestSettlement* state,
 
 static void SettleStorageTestWaiters(Vec<StorageWaiter*>* ready,
                                      StorageOutcome outcome) {
-    for (int i = 0; i < ready->len; i++) {
+    for (int i = 0; i < len(*ready); i++) {
         StorageWaiter* waiter = (*ready)[i];
         Func1<StorageOutcome> settle = waiter->settle;
         delete waiter;
@@ -3833,7 +3833,7 @@ static void ShellFilesystemUsesGrantedHandleRelativePaths() {
     utassert(StrEq(result.bytes, StrL("hello")));
     utassert(FsRun(FsOperation::ReadDirectory, Str(rootName),
                    StrL("nested/child"), {}, false, &result, &fsError));
-    utassert(result.entries.len == 1 &&
+    utassert(len(result.entries) == 1 &&
              StrEq(result.entries[0].name, StrL("note.txt")) &&
              !result.entries[0].isDirectory);
     utassert(FsRun(FsOperation::Exists, Str(rootName),
@@ -4615,7 +4615,7 @@ static El* RenderDockProbeChrome(Ctx* cx, void*, const DockCtx*, El* content) {
 
 static const PanelStateNode* FindPanelState(const DockAreaState& state,
                                             Str name) {
-    for (int i = 0; i < state.nodes.len; i++) {
+    for (int i = 0; i < len(state.nodes); i++) {
         if (StrEq(state.nodes[i].panelName, name)) return &state.nodes[i];
     }
     return nullptr;
@@ -4678,7 +4678,7 @@ static void ShellDockPanelsPersistAndChromeRunsInLayoutScope() {
     utassert(DockLoad(restored, &parsed, persisted, nullptr, &app, &window,
                       restoredArea));
     utassert(StrEq(gDockRestored, StrL("{\"filter\":\"unread\",\"sort\":2}")));
-    utassert(restored->panels.len == 1 && restored->panels[0].closable &&
+    utassert(len(restored->panels) == 1 && restored->panels[0].closable &&
              restored->panels[0].canZoom && restored->panels[0].visible);
 
     gDockBuildFails = true;
@@ -6420,7 +6420,7 @@ static void PumpShellTimers(ShellRuntime* runtime, Window* window, int slices) {
             // skipped survives to the next one.
             double now = TimeNow();
             if (now <= 0) now = 1;
-            for (int t = 0; t < window->timers.len; t++)
+            for (int t = 0; t < len(window->timers); t++)
                 window->timers[t].dueAt = now;
             WindowTimerTick(window);
         }
@@ -6640,7 +6640,7 @@ static void ATextareaThatSubmitsOnEnterKeepsTheLineBreakForShiftEnter() {
     }
     InputState* state = nullptr;
     if (win) {
-        for (int i = 0; i < win->accessibility.len; i++) {
+        for (int i = 0; i < len(win->accessibility); i++) {
             InputState* field = win->accessibility[i].input;
             if (field && InputIsMultiLine(field)) state = field;
         }

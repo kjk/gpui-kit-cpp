@@ -106,8 +106,8 @@ bool LineCarryPush(LineCarry* carry, Str text, Vec<Str>* lines, Str* error) {
         while (newline < len(text) && text.s[newline] != '\n') newline++;
         if (newline >= len(text)) break;
         carry->partial.Append(Str(text.s + at, newline - at));
-        if (carry->partial.len > 0 &&
-            carry->partial.els[carry->partial.len - 1] == '\r') {
+        if (len(carry->partial) > 0 &&
+            carry->partial.els[len(carry->partial) - 1] == '\r') {
             carry->partial.len--;
         }
         Str line = carry->partial.TakeStr();
@@ -119,7 +119,7 @@ bool LineCarryPush(LineCarry* carry, Str text, Vec<Str>* lines, Str* error) {
         at = newline + 1;
     }
     if (at < len(text)) carry->partial.Append(Str(text.s + at, len(text) - at));
-    if (carry->partial.len > kProcessMaxLineBytes) {
+    if (len(carry->partial) > kProcessMaxLineBytes) {
         if (error) {
             StrFree(*error);
             *error =
@@ -133,7 +133,7 @@ bool LineCarryPush(LineCarry* carry, Str text, Vec<Str>* lines, Str* error) {
 }
 
 Str LineCarryFinish(LineCarry* carry) {
-    if (!carry || carry->partial.len <= 0) return {};
+    if (!carry || len(carry->partial) <= 0) return {};
     return carry->partial.TakeStr();
 }
 
@@ -280,14 +280,14 @@ bool ProcessStdinTake(ProcessEventBox* box, Vec<char>* out, bool* ended) {
     if (ended) *ended = false;
     if (!box || !out) return false;
     box->stdinMutex.Lock();
-    while (box->stdinBytes.len == 0 && !box->stdinEnded && !box->stdinStop &&
+    while (len(box->stdinBytes) == 0 && !box->stdinEnded && !box->stdinStop &&
            !box->stdinFailed) {
         box->stdinCv.Wait(&box->stdinMutex, 200);
     }
     bool stop = box->stdinStop || box->stdinFailed;
     bool done = box->stdinEnded;
-    if (box->stdinBytes.len > 0 && !stop) {
-        for (int i = 0; i < box->stdinBytes.len; i++)
+    if (len(box->stdinBytes) > 0 && !stop) {
+        for (int i = 0; i < len(box->stdinBytes); i++)
             VecAppend(*out, box->stdinBytes[i]);
         box->stdinBytes.len = 0;
         if (ended) *ended = done;
@@ -433,8 +433,8 @@ void ProcessStdinPump(ProcessEventBox* box,
         if (!ProcessStdinTake(box, &bytes, &ended)) break;
         int offset = 0;
         bool ok = true;
-        while (offset < bytes.len) {
-            int wrote = writeSome(ctx, bytes.els + offset, bytes.len - offset);
+        while (offset < len(bytes)) {
+            int wrote = writeSome(ctx, bytes.els + offset, len(bytes) - offset);
             if (wrote <= 0) {
                 ok = false;
                 break;
@@ -463,7 +463,7 @@ void ProcessEventPushExit(ProcessEventBox* box, ProcessStreamEvent event) {
 bool ProcessCaptureAppend(StrBuilder* out, const char* bytes, int count,
                           Str* error, const char* name) {
     constexpr int kProcessStreamLimit = 8 * 1024 * 1024;
-    if (out->len > kProcessStreamLimit - count) {
+    if (len(*out) > kProcessStreamLimit - count) {
         ErrorOutSet(error, fmt("child %s exceeded 8 MiB", Str(name)));
         return false;
     }

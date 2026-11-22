@@ -28,10 +28,10 @@ Node* ToMdast(Arena* a, Str source, const ParseOptions& options,
         if (positions) VecClear(positions->spans);
         return nullptr;
     }
-    if (positions && positions->spans.len > 1) {
+    if (positions && len(positions->spans) > 1) {
         // Recorded in the order the nodes were pushed; sorted by node so
         // NodePosition is a binary search rather than a walk per lookup.
-        qsort(positions->spans.els, (size_t)positions->spans.len,
+        qsort(positions->spans.els, (size_t)len(positions->spans),
               sizeof(NodeSpan), [](const void* l, const void* r) -> int {
                   uintptr_t a = (uintptr_t)((const NodeSpan*)l)->node;
                   uintptr_t b = (uintptr_t)((const NodeSpan*)r)->node;
@@ -47,7 +47,7 @@ bool NodePosition(const NodePositions* positions, const Node* n, int32_t* start,
         return false;
     }
     int32_t lo = 0;
-    int32_t hi = positions->spans.len;
+    int32_t hi = len(positions->spans);
     while (lo < hi) {
         int32_t mid = lo + (hi - lo) / 2;
         const NodeSpan& span = positions->spans[mid];
@@ -57,7 +57,7 @@ bool NodePosition(const NodePositions* positions, const Node* n, int32_t* start,
             hi = mid;
         }
     }
-    if (lo >= positions->spans.len || positions->spans[lo].node != n) {
+    if (lo >= len(positions->spans) || positions->spans[lo].node != n) {
         return false;
     }
     *start = positions->spans[lo].start;

@@ -323,7 +323,7 @@ static bool DynamicTables(BitReader* reader, Huffman* literals,
 }
 
 static bool AppendOutput(Vec<uint8_t>* output, uint8_t value) {
-    return output->len < kStandardDataLimit && VecAppend(*output, value);
+    return len(*output) < kStandardDataLimit && VecAppend(*output, value);
 }
 
 static bool InflateCodes(BitReader* reader, const Huffman& literals,
@@ -358,11 +358,11 @@ static bool InflateCodes(BitReader* reader, const Huffman& literals,
         if (distanceSymbol < 0 || distanceSymbol >= 30) return false;
         if (!reader->Read(distanceExtra[distanceSymbol], &extra)) return false;
         int distance = distanceBase[distanceSymbol] + (int)extra;
-        if (distance <= 0 || distance > output->len ||
-            length > kStandardDataLimit - output->len)
+        if (distance <= 0 || distance > len(*output) ||
+            length > kStandardDataLimit - len(*output))
             return false;
         for (int i = 0; i < length; i++) {
-            uint8_t byte = (*output)[output->len - distance];
+            uint8_t byte = (*output)[len(*output) - distance];
             if (!VecAppend(*output, byte)) return false;
         }
     }
@@ -386,7 +386,7 @@ static bool InflateRaw(const uint8_t* bytes, int length, Vec<uint8_t>* output,
             reader.offset += 4;
             if (((count ^ inverted) & 0xffff) != 0xffff ||
                 count > reader.length - reader.offset ||
-                count > kStandardDataLimit - output->len)
+                count > kStandardDataLimit - len(*output))
                 return false;
             for (int i = 0; i < count; i++) {
                 if (!VecAppend(*output, reader.bytes[reader.offset + i]))

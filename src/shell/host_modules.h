@@ -100,7 +100,7 @@ class HostModule {
 
     Str Name() const { return name; }
     Str Declared() const { return declarations; }
-    int FunctionCount() const { return functions.len; }
+    int FunctionCount() const { return len(functions); }
     Str FunctionName(int index) const;
     bool Has(Str function) const;
     bool IsAsync(Str function) const;

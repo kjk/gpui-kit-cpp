@@ -256,7 +256,7 @@ static void AddPanelTo(DockApp* self, Ctx* cx, DockPlacement where) {
         if (node < 0 || s->nodes[node].split) {
             // A split centre: the first group under it takes the panel, the
             // way Rust's add_panel walks to a TabPanel.
-            node = node >= 0 && s->nodes[node].child.len > 0
+            node = node >= 0 && len(s->nodes[node].child) > 0
                        ? s->nodes[node].child[0]
                        : DockNewTabs(s);
             if (s->center < 0) {
@@ -271,7 +271,7 @@ static void AddPanelTo(DockApp* self, Ctx* cx, DockPlacement where) {
         int node = *side;
         if (s->nodes[node].split) {
             node =
-                s->nodes[node].child.len > 0 ? s->nodes[node].child[0] : node;
+                len(s->nodes[node].child) > 0 ? s->nodes[node].child[0] : node;
         }
         DockTabsAdd(s, node, panel);
     }

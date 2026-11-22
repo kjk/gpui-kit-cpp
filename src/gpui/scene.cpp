@@ -312,7 +312,7 @@ bool Recording() {
     return gActive && gActive->recording;
 }
 static void AppendEntry(int parent, StackEntry entry) {
-    int ix = gEntries.len;
+    int ix = len(gEntries);
     VecAppend(gEntries, entry);
     StackContext& c = gContexts[parent];
     if (c.last >= 0) {
@@ -326,7 +326,7 @@ static void AppendEntry(int parent, StackEntry entry) {
 int ContextPush(PaintCtx* ctx, int z) {
     if (!Recording() || !ctx || ctx->sceneState != gActive) return -1;
     int parent = gActive->currentContext;
-    int child = gContexts.len;
+    int child = len(gContexts);
     StackContext c;
     c.parent = parent;
     VecAppend(gContexts, c);
@@ -415,9 +415,9 @@ static uint64_t HashPrim(const Prim& p) {
     memcpy(&c1, &p.color2, 4);
     w[9] = ((uint64_t)c1 << 32) | c0;
     w[10] = p.resourceGeneration;
-    w[11] = p.kind == kPTextSpans                  ? gActive->texts[p.path].hash
-            : (p.path >= 0 && p.path < gPaths.len) ? gPaths[p.path].hash
-                                                   : 0;
+    w[11] = p.kind == kPTextSpans ? gActive->texts[p.path].hash
+            : (p.path >= 0 && p.path < len(gPaths)) ? gPaths[p.path].hash
+                                                    : 0;
     uint64_t h = kHashSeed;
     for (int i = 0; i < 12; i++) {
         h ^= w[i];
@@ -522,10 +522,10 @@ static Prim* Emit(PaintCtx* ctx, uint8_t kind, Bounds bbox) {
     p.bbox = Intersect(bbox, gClip);
     VecAppend(gCur, p);
     StackEntry entry;
-    entry.prim = gCur.len - 1;
+    entry.prim = len(gCur) - 1;
     entry.z = gActive->currentContext == 0 && ctx ? ctx->paintLayer : 0;
     AppendEntry(gActive->currentContext, entry);
-    return &gCur[gCur.len - 1];
+    return &gCur[len(gCur) - 1];
 }
 
 static void ReleaseResources(State* s) {
@@ -665,10 +665,10 @@ void RecPushClip(PaintCtx* ctx, float x, float y, float w, float h) {
 
 void RecPopClip(PaintCtx* ctx) {
     (void)ctx;
-    if (gClipStack.len < 4) {
+    if (len(gClipStack) < 4) {
         return;
     }
-    int n = gClipStack.len;
+    int n = len(gClipStack);
     gClip = Bounds{gClipStack[n - 4], gClipStack[n - 3], gClipStack[n - 2],
                    gClipStack[n - 1]};
     gClipStack.len -= 4;
@@ -685,7 +685,7 @@ static Path* PathHandle(int idx) {
 }
 static PathRec* PathOf(Path* p) {
     int idx = (int)(uintptr_t)p - 1;
-    if (idx < 0 || idx >= gPaths.len) {
+    if (idx < 0 || idx >= len(gPaths)) {
         return nullptr;
     }
     return &gPaths[idx];
@@ -698,10 +698,10 @@ Path* RecPathNew(PaintCtx* ctx, bool winding) {
     }
     PathRec pr;
     pr.winding = winding;
-    pr.verbFirst = gVerbs.len;
-    pr.ptFirst = gPts.len;
+    pr.verbFirst = len(gVerbs);
+    pr.ptFirst = len(gPts);
     VecAppend(gPaths, pr);
-    return PathHandle(gPaths.len - 1);
+    return PathHandle(len(gPaths) - 1);
 }
 
 void RecPathFree(Path* p) {
@@ -967,9 +967,9 @@ bool RecTextDrawSpans(PaintCtx* ctx, TextLayout* tl, Str text, float x, float y,
         hash = (hash ^ color) * 0x100000001b3ull;
     }
     RecTextDraw(ctx, tl, x, y, base, false, 0);
-    Prim& p = gCur[gCur.len - 1];
+    Prim& p = gCur[len(gCur) - 1];
     p.kind = kPTextSpans;
-    p.path = gActive->texts.len;
+    p.path = len(gActive->texts);
     VecAppend(gActive->texts, TextRec{copy, runs, n, hash});
     return true;
 }
@@ -1009,7 +1009,7 @@ static void FlattenContext(int context, Vec<Prim>& out, int* nextRank) {
     }
     Vec<int> order;
     for (int e = gContexts[context].first; e >= 0; e = gEntries[e].next) {
-        int at = order.len;
+        int at = len(order);
         VecAppend(order, e);
         while (at > 0 && gEntries[order[at - 1]].z > gEntries[e].z) {
             order[at] = order[at - 1];
@@ -1017,16 +1017,16 @@ static void FlattenContext(int context, Vec<Prim>& out, int* nextRank) {
         }
         order[at] = e;
     }
-    for (int i = 0; i < order.len; i++) {
+    for (int i = 0; i < len(order); i++) {
         FlattenEntry(order[i], out, nextRank);
     }
     VecReset(order);
 }
 
 static void OrderHits(PaintCtx* ctx) {
-    if (!ctx || ctx->hits.len < 2) return;
+    if (!ctx || len(ctx->hits) < 2) return;
     bool mixed = false;
-    for (int i = 1; i < ctx->hits.len; i++) {
+    for (int i = 1; i < len(ctx->hits); i++) {
         if (gContexts[ctx->hits[i].sceneContext]
                 .rank < gContexts[ctx->hits[i - 1].sceneContext].rank) {
             mixed = true;
@@ -1035,9 +1035,9 @@ static void OrderHits(PaintCtx* ctx) {
     }
     if (!mixed) return;
     Vec<int> order, inverse;
-    for (int i = 0; i < ctx->hits.len; i++) {
+    for (int i = 0; i < len(ctx->hits); i++) {
         int rank = gContexts[ctx->hits[i].sceneContext].rank;
-        int at = order.len;
+        int at = len(order);
         VecAppend(order, i);
         while (at > 0 && gContexts[ctx->hits[order[at - 1]].sceneContext]
                                  .rank > rank) {
@@ -1046,15 +1046,15 @@ static void OrderHits(PaintCtx* ctx) {
         }
         order[at] = i;
     }
-    VecAppendBlanks(inverse, ctx->hits.len);
-    for (int i = 0; i < order.len; i++) inverse[order[i]] = i;
+    VecAppendBlanks(inverse, len(ctx->hits));
+    for (int i = 0; i < len(order); i++) inverse[order[i]] = i;
     Vec<HitRect> sorted;
-    for (int i = 0; i < order.len; i++) {
+    for (int i = 0; i < len(order); i++) {
         HitRect h = ctx->hits[order[i]];
         if (h.parent >= 0) h.parent = inverse[h.parent];
         VecAppend(sorted, h);
     }
-    for (int i = 0; i < sorted.len; i++) ctx->hits[i] = sorted[i];
+    for (int i = 0; i < len(sorted); i++) ctx->hits[i] = sorted[i];
     for (ScrollRect& scroll : ctx->scrolls) {
         if (scroll.maskHit >= 0) scroll.maskHit = inverse[scroll.maskHit];
     }
@@ -1244,7 +1244,7 @@ static Path* PathFor(PaintCtx* ctx, const Prim& prim, bool* owned, float* dx,
     *owned = true;
     *dx = 0;
     *dy = 0;
-    if (prim.path < 0 || prim.path >= gPaths.len) {
+    if (prim.path < 0 || prim.path >= len(gPaths)) {
         return nullptr;
     }
     const PathRec& pr = gPaths[prim.path];
@@ -1416,7 +1416,7 @@ static void MaskDrop(int slot) {
 }
 
 static MaskEntry* MaskFor(PaintCtx* ctx, const Prim& prim) {
-    if (!ctx || !ctx->pa || prim.path < 0 || prim.path >= gPaths.len ||
+    if (!ctx || !ctx->pa || prim.path < 0 || prim.path >= len(gPaths) ||
         (prim.kind != kPPathFill &&
          !(prim.kind == kPPathStroke && (prim.flags & kFRoundCaps)))) {
         return nullptr;
@@ -1448,7 +1448,7 @@ static MaskEntry* MaskFor(PaintCtx* ctx, const Prim& prim) {
     Vec<MaskEdge> edges;
     MaskEdges(pr, prim.kind == kPPathFill, edges);
     // Bound the first-frame software work as well as retained bitmap size.
-    if (edges.len == 0 || (int64_t)w * h * 16 * edges.len > 4000000) {
+    if (len(edges) == 0 || (int64_t)w * h * 16 * len(edges) > 4000000) {
         VecReset(edges);
         return nullptr;
     }
@@ -1678,7 +1678,7 @@ static Bounds ScrollKept(Bounds clip, float shiftX, float shiftY) {
 static bool ScrollMark(Bounds* clip, float* scrollX, float* scrollY) {
     int best = -1;
     float bestArea = 0;
-    for (int i = 0; i < gCur.len; i++) {
+    for (int i = 0; i < len(gCur); i++) {
         const Prim& p = gCur[i];
         if (p.kind != kPScroll) {
             continue;
@@ -1709,7 +1709,7 @@ static ScrollSnap ScrollCapture() {
     uint64_t outside = kHashSeed;
     int outsideN = 0;
     bool overflow = false;
-    for (int i = 0; i < gCur.len; i++) {
+    for (int i = 0; i < len(gCur); i++) {
         const Prim& p = gCur[i];
         if (p.kind == kPScroll || p.kind == kPClear) {
             continue;
@@ -1898,31 +1898,31 @@ bool FrameEnd(PaintCtx* ctx, Bounds* damage) {
     Vec<Prim> ordered;
     int rank = 0;
     FlattenContext(0, ordered, &rank);
-    for (int i = 0; i < gCur.len; i++) gCur[i] = ordered[i];
+    for (int i = 0; i < len(gCur); i++) gCur[i] = ordered[i];
     VecReset(ordered);
     OrderHits(ctx);
 
     uint64_t frameHash = kHashSeed;
-    for (int i = 0; i < gCur.len; i++) {
+    for (int i = 0; i < len(gCur); i++) {
         gCur[i].hash = HashPrim(gCur[i]);
         frameHash = HashBytes(frameHash, &gCur[i].hash, 8);
     }
     int nLayers = 0;
     {
         int last = -1;
-        for (int i = 0; i < gCur.len; i++) {
+        for (int i = 0; i < len(gCur); i++) {
             if (gCur[i].layer != last) {
                 nLayers++;
                 last = gCur[i].layer;
             }
         }
     }
-    gStats.prims = gCur.len;
-    gStats.contexts = gContexts.len;
+    gStats.prims = len(gCur);
+    gStats.contexts = len(gContexts);
     gStats.layers = nLayers;
     gStats.pathPrims = 0;
-    gStats.pathVerbs = gVerbs.len;
-    for (int i = 0; i < gCur.len; i++) {
+    gStats.pathVerbs = len(gVerbs);
+    for (int i = 0; i < len(gCur); i++) {
         if (gCur[i].kind >= kPPathFill &&
             gCur[i].kind <= kPPathStrokeGradient) {
             gStats.pathPrims++;
@@ -1932,10 +1932,10 @@ bool FrameEnd(PaintCtx* ctx, Bounds* damage) {
 
     Bounds whole = Bounds{0, 0, gViewW, gViewH};
     Bounds dmg = whole;
-    int changed = gCur.len;
+    int changed = len(gCur);
     bool identical = false;
     if (gHavePrev) {
-        if (frameHash == gPrevFrameHash && gPrev.len == gCur.len) {
+        if (frameHash == gPrevFrameHash && len(gPrev) == len(gCur)) {
             // Identical, which is worth knowing whether or not this level
             // acts on it. `dmg` stays the whole view: a level below `skip`
             // draws the frame again, and handing it an empty rectangle would
@@ -1948,7 +1948,7 @@ bool FrameEnd(PaintCtx* ctx, Bounds* damage) {
         changed = 0;
         Bounds d = {};
         BagBuild(gBagA, gPrev);
-        for (int i = 0; i < gCur.len; i++) {
+        for (int i = 0; i < len(gCur); i++) {
             if (BagTake(gBagA, gCur[i].hash)) {
                 continue;
             }
@@ -1956,7 +1956,7 @@ bool FrameEnd(PaintCtx* ctx, Bounds* damage) {
             d = Union(d, gCur[i].bbox);
         }
         BagBuild(gBagB, gCur);
-        for (int i = 0; i < gPrev.len; i++) {
+        for (int i = 0; i < len(gPrev); i++) {
             if (BagTake(gBagB, gPrev[i].hash)) {
                 continue;
             }
@@ -2017,7 +2017,7 @@ bool FrameEnd(PaintCtx* ctx, Bounds* damage) {
     // This frame becomes the one the next is compared against, whether or not
     // it was drawn: what is on screen did not change either way.
     VecClear(gPrev);
-    for (int i = 0; i < gCur.len; i++) {
+    for (int i = 0; i < len(gCur); i++) {
         Prim previous = gCur[i];
         previous.ref = nullptr; // Only the hash and bounds survive this frame.
         VecAppend(gPrev, previous);
@@ -2058,7 +2058,7 @@ void Replay(PaintCtx* ctx, const Bounds* damage) {
     Bounds cur = whole;
     bool pushed = false;
     gStats.maskChanges = 0;
-    for (int i = 0; i < gCur.len; i++) {
+    for (int i = 0; i < len(gCur); i++) {
         const Prim& p = gCur[i];
         if (p.kind == kPScroll) {
             continue;

@@ -26,7 +26,7 @@ static int IMax(int a, int b) {
 
 static Str Slice(Str s, int start, int end) {
     if (!s.s || start < 0) start = 0;
-    if (end > s.len) end = s.len;
+    if (end > len(s)) end = len(s);
     if (start > end) start = end;
     return Str(s.s + start, end - start);
 }
@@ -40,7 +40,7 @@ static bool Starts(Str s, const char* prefix) {
 }
 
 static Str StripSuffix(Str s, char c) {
-    if (s.len > 0 && s.s[s.len - 1] == c) return Str(s.s, s.len - 1);
+    if (len(s) > 0 && s.s[len(s) - 1] == c) return Str(s.s, len(s) - 1);
     return s;
 }
 
@@ -365,16 +365,16 @@ static void PushChunk(Vec<DiffChunk>* out, int start, int end) {
 void DiffDisplayChunks(Str text, Vec<DiffChunk>* out) {
     const int kMax = 512;
     VecClear(*out);
-    if (text.len <= kMax) {
-        PushChunk(out, 0, text.len);
+    if (len(text) <= kMax) {
+        PushChunk(out, 0, len(text));
         return;
     }
     int start = 0;
     int end = 0;
     int i = 0;
-    while (i < text.len) {
+    while (i < len(text)) {
         int next = i + Utf8LeadLen((uint8_t)text.s[i]);
-        if (next > text.len) next = text.len;
+        if (next > len(text)) next = len(text);
         if (next - start > kMax && start < i) {
             PushChunk(out, start, i);
             start = i;
@@ -404,31 +404,31 @@ static void FinishLine(DiffFile* file, DiffFileSide* side, Str source,
                        int number, int rangeStart, int rangeEnd) {
     Str raw = Slice(source, rangeStart, rangeEnd);
     Str content = raw;
-    if (content.len > 0 && content.s[content.len - 1] == '\n')
-        content = Str(content.s, content.len - 1);
-    if (content.len > 0 && content.s[content.len - 1] == '\r')
-        content = Str(content.s, content.len - 1);
+    if (len(content) > 0 && content.s[len(content) - 1] == '\n')
+        content = Str(content.s, len(content) - 1);
+    if (len(content) > 0 && content.s[len(content) - 1] == '\r')
+        content = Str(content.s, len(content) - 1);
     DiffSourceLine line;
     line.lineNumber = number;
-    line.text = Slice(source, rangeStart, rangeStart + content.len);
+    line.text = Slice(source, rangeStart, rangeStart + len(content));
     line.sourceStart = rangeStart;
     line.sourceEnd = rangeEnd;
-    line.contentEnd = rangeStart + content.len;
+    line.contentEnd = rangeStart + len(content);
     line.counterpart = -1;
     line.tabBegin = len(side->tabs);
     bool hasTab = false;
-    for (int i = 0; i < content.len; i++) {
+    for (int i = 0; i < len(content); i++) {
         if (content.s[i] == '\t') hasTab = true;
     }
     StrBuilder display;
     if (hasTab) {
         int column = 0;
-        for (int i = 0; i < content.len;) {
+        for (int i = 0; i < len(content);) {
             if (content.s[i] == '\t') {
                 int spaces = 4 - column % 4;
                 DiffDisplayTab tab;
                 tab.sourceOffset = i;
-                tab.displayOffset = display.len;
+                tab.displayOffset = len(display);
                 tab.width = spaces;
                 VecAppend(side->tabs, tab);
                 for (int s = 0; s < spaces; s++) display.AppendChar(' ');
@@ -436,13 +436,13 @@ static void FinishLine(DiffFile* file, DiffFileSide* side, Str source,
                 i++;
             } else {
                 int step = ColumnStep((unsigned char)content.s[i]);
-                if (i + step > content.len) step = 1;
+                if (i + step > len(content)) step = 1;
                 display.Append(Slice(content, i, i + step));
                 column += 1;
                 i += step;
             }
         }
-        line.display = Own(file->arena, Str(display.els, display.len));
+        line.display = Own(file->arena, Str(display.els, len(display)));
     } else {
         line.display = line.text;
     }
@@ -529,8 +529,8 @@ static void Seal(DiffFile* file, DiffFileStatus status, StrBuilder* origSrc,
                  StrBuilder* modSrc, Vec<int>* modNum, Vec<int>* modStart,
                  Vec<int>* modEnd) {
     file->status = status;
-    file->original.source = Own(file->arena, Str(origSrc->els, origSrc->len));
-    file->modified.source = Own(file->arena, Str(modSrc->els, modSrc->len));
+    file->original.source = Own(file->arena, Str(origSrc->els, len(*origSrc)));
+    file->modified.source = Own(file->arena, Str(modSrc->els, len(*modSrc)));
     for (int i = 0; i < len(*origNum); i++) {
         FinishLine(file, &file->original, file->original.source, (*origNum)[i],
                    (*origStart)[i], (*origEnd)[i]);
@@ -576,26 +576,26 @@ struct SideBuild {
     Vec<int> end;
     bool noNewline = false;
     int Push(int lineNumber, Str content) {
-        int at = source.len;
+        int at = len(source);
         source.Append(content);
         source.AppendChar('\n');
         VecAppend(number, lineNumber);
         VecAppend(start, at);
-        VecAppend(end, source.len);
+        VecAppend(end, len(source));
         return len(number) - 1;
     }
     void RemoveFinalNewline() {
         if (len(end) == 0) return;
-        if (source.len > 0) source.len--;
+        if (len(source) > 0) source.len--;
         end[len(end) - 1]--;
         noNewline = true;
     }
 };
 
 static bool ParseU64(Str s, uint64_t* out) {
-    if (s.len <= 0) return false;
+    if (len(s) <= 0) return false;
     uint64_t v = 0;
-    for (int i = 0; i < s.len; i++) {
+    for (int i = 0; i < len(s); i++) {
         char c = s.s[i];
         if (c < '0' || c > '9') return false;
         uint64_t d = (uint64_t)(c - '0');
@@ -607,9 +607,9 @@ static bool ParseU64(Str s, uint64_t* out) {
 }
 
 static int QuotedEnd(Str value) {
-    if (value.len < 2 || value.s[0] != '"') return -1;
+    if (len(value) < 2 || value.s[0] != '"') return -1;
     bool escaped = false;
-    for (int i = 1; i < value.len; i++) {
+    for (int i = 1; i < len(value); i++) {
         char c = value.s[i];
         if (escaped) {
             escaped = false;
@@ -640,17 +640,17 @@ static bool Utf8Ok(const uint8_t* b, int n) {
 
 static bool DecodePath(Arena* a, Str value, int number, Str* out,
                        DiffParseError* error) {
-    if (value.len == 0 || value.s[0] != '"') {
+    if (len(value) == 0 || value.s[0] != '"') {
         *out = Own(a, value);
         return true;
     }
-    if (QuotedEnd(value) != value.len) {
+    if (QuotedEnd(value) != len(value)) {
         *error = Err(number, "invalid quoted file path");
         return false;
     }
     Vec<uint8_t> bytes;
     const uint8_t* in = (const uint8_t*)value.s + 1;
-    int n = value.len - 2;
+    int n = len(value) - 2;
     int ix = 0;
     while (ix < n) {
         if (in[ix] != '\\') {
@@ -736,7 +736,7 @@ static const PrefixPair kGitPrefixes[7] = {
 static Str StripPrefix(Arena* a, Str path, const char* prefix) {
     int n = (int)strlen(prefix);
     if (n > 0 && StrStartsWith(path, prefix))
-        return Own(a, Slice(path, n, path.len));
+        return Own(a, Slice(path, n, len(path)));
     return path;
 }
 
@@ -754,26 +754,26 @@ static bool GitPaths(Arena* a, Str value, Str* oldOut, Str* newOut,
     Str oldPath;
     Str newPath;
     PrefixPair prefixes = kGitPrefixes[6];
-    if (value.len && value.s[0] == '"') {
+    if (len(value) && value.s[0] == '"') {
         int end = QuotedEnd(value);
         if (end < 0) return false;
         if (!DecodePath(a, Slice(value, 0, end), 1, &oldPath, error))
             return false;
-        Str rest = Slice(value, end, value.len);
-        while (rest.len && rest.s[0] == ' ') rest = Slice(rest, 1, rest.len);
+        Str rest = Slice(value, end, len(value));
+        while (len(rest) && rest.s[0] == ' ') rest = Slice(rest, 1, len(rest));
         if (!DecodePath(a, rest, 1, &newPath, error)) return false;
         prefixes = detect(oldPath, newPath);
-    } else if (value.len && value.s[value.len - 1] == '"') {
+    } else if (len(value) && value.s[len(value) - 1] == '"') {
         int start = -1;
-        for (int i = 0; i + 1 < value.len; i++) {
+        for (int i = 0; i + 1 < len(value); i++) {
             if (value.s[i] == ' ' && value.s[i + 1] == '"') {
-                int q = QuotedEnd(Slice(value, i + 1, value.len));
-                if (q == value.len - (i + 1)) start = i + 1;
+                int q = QuotedEnd(Slice(value, i + 1, len(value)));
+                if (q == len(value) - (i + 1)) start = i + 1;
             }
         }
         if (start < 0) return false;
         oldPath = Own(a, Slice(value, 0, start - 1));
-        if (!DecodePath(a, Slice(value, start, value.len), 1, &newPath, error))
+        if (!DecodePath(a, Slice(value, start, len(value)), 1, &newPath, error))
             return false;
         prefixes = detect(oldPath, newPath);
     } else {
@@ -781,17 +781,17 @@ static bool GitPaths(Arena* a, Str value, Str* oldOut, Str* newOut,
         for (int p = 0; p < 7 && !found; p++) {
             int oldN = (int)strlen(kGitPrefixes[p].oldP);
             int newN = (int)strlen(kGitPrefixes[p].newP);
-            for (int i = 0; i < value.len; i++) {
+            for (int i = 0; i < len(value); i++) {
                 if (value.s[i] != ' ') continue;
                 Str oldS = Slice(value, 0, i);
-                Str newS = Slice(value, i + 1, value.len);
+                Str newS = Slice(value, i + 1, len(value));
                 if (!Starts(oldS, kGitPrefixes[p].oldP) ||
                     !Starts(newS, kGitPrefixes[p].newP))
                     continue;
-                Str path = Slice(oldS, oldN, oldS.len);
-                if (path.len == 0) continue;
-                if (newS.len == newN + path.len &&
-                    memcmp(newS.s + newN, path.s, (size_t)path.len) == 0) {
+                Str path = Slice(oldS, oldN, len(oldS));
+                if (len(path) == 0) continue;
+                if (len(newS) == newN + len(path) &&
+                    memcmp(newS.s + newN, path.s, (size_t)len(path)) == 0) {
                     oldPath = Own(a, oldS);
                     newPath = Own(a, newS);
                     prefixes = kGitPrefixes[p];
@@ -806,8 +806,8 @@ static bool GitPaths(Arena* a, Str value, Str* oldOut, Str* newOut,
                 Str mark = fmt(" %s", Str(kGitPrefixes[p].newP));
                 int at = -1;
                 int from = 0;
-                while (from < value.len) {
-                    int hit = StrFind(Slice(value, from, value.len), mark);
+                while (from < len(value)) {
+                    int hit = StrFind(Slice(value, from, len(value)), mark);
                     if (hit < 0) break;
                     at = from + hit;
                     from = at + 1;
@@ -815,7 +815,7 @@ static bool GitPaths(Arena* a, Str value, Str* oldOut, Str* newOut,
                 if (at < 0) continue;
                 if (!Starts(value, kGitPrefixes[p].oldP)) continue;
                 oldPath = Own(a, Slice(value, 0, at));
-                newPath = Own(a, Slice(value, at + 1, value.len));
+                newPath = Own(a, Slice(value, at + 1, len(value)));
                 prefixes = kGitPrefixes[p];
                 found = true;
             }
@@ -824,7 +824,7 @@ static bool GitPaths(Arena* a, Str value, Str* oldOut, Str* newOut,
             int sp = StrFind(value, " ");
             if (sp < 0) return false;
             oldPath = Own(a, Slice(value, 0, sp));
-            newPath = Own(a, Slice(value, sp + 1, value.len));
+            newPath = Own(a, Slice(value, sp + 1, len(value)));
             prefixes = kGitPrefixes[6];
         }
     }
@@ -892,7 +892,7 @@ static bool HunkHeader(Str line, int number, int* oldStart, int* oldCount,
         *error = Err(number, "invalid hunk header");
         return false;
     }
-    Str body = Slice(line, 3, line.len);
+    Str body = Slice(line, 3, len(line));
     int at = StrFind(body, " @@");
     if (at < 0) {
         *error = Err(number, "invalid hunk header");
@@ -902,21 +902,21 @@ static bool HunkHeader(Str line, int number, int* oldStart, int* oldCount,
     Str fields[4];
     int nFields = 0;
     int i = 0;
-    while (i < ranges.len && nFields < 4) {
-        while (i < ranges.len && ranges.s[i] == ' ') i++;
+    while (i < len(ranges) && nFields < 4) {
+        while (i < len(ranges) && ranges.s[i] == ' ') i++;
         int b = i;
-        while (i < ranges.len && ranges.s[i] != ' ') i++;
+        while (i < len(ranges) && ranges.s[i] != ' ') i++;
         if (b < i) fields[nFields++] = Slice(ranges, b, i);
     }
-    if (nFields != 2 || fields[0].len < 1 || fields[0].s[0] != '-' ||
-        fields[1].len < 1 || fields[1].s[0] != '+') {
+    if (nFields != 2 || len(fields[0]) < 1 || fields[0].s[0] != '-' ||
+        len(fields[1]) < 1 || fields[1].s[0] != '+') {
         *error = Err(number, "invalid hunk header");
         return false;
     }
     auto range = [&](Str value, int* start, int* count) -> bool {
         int comma = StrFind(value, ",");
         Str sPart = comma < 0 ? value : Slice(value, 0, comma);
-        Str cPart = comma < 0 ? StrL("1") : Slice(value, comma + 1, value.len);
+        Str cPart = comma < 0 ? StrL("1") : Slice(value, comma + 1, len(value));
         uint64_t s = 0;
         uint64_t c = 0;
         if (!ParseU64(sPart, &s) || !ParseU64(cPart, &c)) return false;
@@ -933,8 +933,8 @@ static bool HunkHeader(Str line, int number, int* oldStart, int* oldCount,
         *count = (int)c;
         return true;
     };
-    if (!range(Slice(fields[0], 1, fields[0].len), oldStart, oldCount) ||
-        !range(Slice(fields[1], 1, fields[1].len), newStart, newCount)) {
+    if (!range(Slice(fields[0], 1, len(fields[0])), oldStart, oldCount) ||
+        !range(Slice(fields[1], 1, len(fields[1])), newStart, newCount)) {
         *error = Err(number, "invalid hunk header");
         return false;
     }
@@ -962,7 +962,7 @@ static bool TruncatedFileHeader(Str* lines, int nLines, int start,
             header = true;
             headerIx = ix;
         }
-        char tag = line.len == 0 ? ' ' : line.s[0];
+        char tag = len(line) == 0 ? ' ' : line.s[0];
         if (tag == ' ' && oldRemaining > 0 && newRemaining > 0) {
             oldRemaining--;
             newRemaining--;
@@ -1045,13 +1045,13 @@ static bool ParseHunk(OpenFile* open, Str* lines, int nLines, int* ix,
         // The first byte decides the tag. A truncated hunk stops before
         // a line whose first byte is not a source tag, so a multibyte
         // character is never sliced.
-        char tag = content.len == 0 ? ' ' : content.s[0];
+        char tag = len(content) == 0 ? ' ' : content.s[0];
         if (tag != ' ' && tag != '+' && tag != '-') {
             if (options.truncatedHunks) break;
             *error = Err(*ix + 1, "hunk ended before its declared line counts");
             return false;
         }
-        Str text = content.len == 0 ? Str{} : Slice(content, 1, content.len);
+        Str text = len(content) == 0 ? Str{} : Slice(content, 1, len(content));
         if ((tag != '+' && open->original.noNewline) ||
             (tag != '-' && open->modified.noNewline)) {
             *error = Err(*ix + 1,
@@ -1153,26 +1153,26 @@ bool DiffFile::ParseWith(Str patch, DiffParseOptions options,
                          Vec<DiffFile*>* out, DiffParseError* error) {
     Vec<Str> raw;
     int i = 0;
-    if (patch.len == 0) {
+    if (len(patch) == 0) {
         // An empty patch is no files. A patch of only a newline still splits.
     }
-    while (i < patch.len || (patch.len == 0 && len(raw) == 0 && false)) {
-        if (i >= patch.len) break;
+    while (i < len(patch) || (len(patch) == 0 && len(raw) == 0 && false)) {
+        if (i >= len(patch)) break;
         int b = i;
-        while (i < patch.len && patch.s[i] != '\n') i++;
+        while (i < len(patch) && patch.s[i] != '\n') i++;
         int e = i;
-        if (i < patch.len && patch.s[i] == '\n') i++;
+        if (i < len(patch) && patch.s[i] == '\n') i++;
         VecAppend(raw, Slice(patch, b, e));
         if (i == b) break;
     }
-    if (patch.len == 0) {
+    if (len(patch) == 0) {
         return true;
     }
     bool crlf = false;
     for (int k = 0; k < len(raw); k++) {
         Str line = raw[k];
         if (Starts(line, "diff --git ") || Starts(line, "--- ")) {
-            crlf = line.len > 0 && line.s[line.len - 1] == '\r';
+            crlf = len(line) > 0 && line.s[len(line) - 1] == '\r';
             break;
         }
     }
@@ -1205,8 +1205,8 @@ bool DiffFile::ParseWith(Str patch, DiffParseOptions options,
             const char* op = "";
             const char* np = "";
             DiffParseError local;
-            if (!GitPaths(open.file->arena, Slice(line, 11, line.len), &oldPath,
-                          &newPath, &op, &np, &local)) {
+            if (!GitPaths(open.file->arena, Slice(line, 11, len(line)),
+                          &oldPath, &newPath, &op, &np, &local)) {
                 dropParsed();
                 *error =
                     local.line ? local : Err(ix + 1, "invalid Git file header");
@@ -1242,7 +1242,7 @@ bool DiffFile::ParseWith(Str patch, DiffParseOptions options,
             bool newPresent = false;
             Str oldPath;
             Str newPath;
-            if (!HeaderPath(open.file->arena, Slice(line, 4, line.len), ix + 1,
+            if (!HeaderPath(open.file->arena, Slice(line, 4, len(line)), ix + 1,
                             &oldPresent, &oldPath, error)) {
                 dropParsed();
                 return false;
@@ -1253,7 +1253,7 @@ bool DiffFile::ParseWith(Str patch, DiffParseOptions options,
                 *error = Err(ix + 1, "expected modified file header");
                 return false;
             }
-            if (!HeaderPath(open.file->arena, Slice(raw[ix], 4, raw[ix].len),
+            if (!HeaderPath(open.file->arena, Slice(raw[ix], 4, len(raw[ix])),
                             ix + 1, &newPresent, &newPath, error)) {
                 dropParsed();
                 return false;
@@ -1323,7 +1323,7 @@ bool DiffFile::ParseWith(Str patch, DiffParseOptions options,
                 open.file->binary = true;
             if (Starts(line, "rename from ")) {
                 Str path;
-                if (!DecodePath(open.file->arena, Slice(line, 12, line.len),
+                if (!DecodePath(open.file->arena, Slice(line, 12, len(line)),
                                 ix + 1, &path, error)) {
                     dropParsed();
                     return false;
@@ -1334,7 +1334,7 @@ bool DiffFile::ParseWith(Str patch, DiffParseOptions options,
             }
             if (Starts(line, "copy from ")) {
                 Str path;
-                if (!DecodePath(open.file->arena, Slice(line, 10, line.len),
+                if (!DecodePath(open.file->arena, Slice(line, 10, len(line)),
                                 ix + 1, &path, error)) {
                     dropParsed();
                     return false;
@@ -1346,7 +1346,7 @@ bool DiffFile::ParseWith(Str patch, DiffParseOptions options,
             if (Starts(line, "rename to ") || Starts(line, "copy to ")) {
                 int skip = Starts(line, "rename to ") ? 10 : 8;
                 Str path;
-                if (!DecodePath(open.file->arena, Slice(line, skip, line.len),
+                if (!DecodePath(open.file->arena, Slice(line, skip, len(line)),
                                 ix + 1, &path, error)) {
                     dropParsed();
                     return false;
@@ -1358,7 +1358,7 @@ bool DiffFile::ParseWith(Str patch, DiffParseOptions options,
                 open.file->original.hasPath = false;
             if (Starts(line, "deleted file mode "))
                 open.file->modified.hasPath = false;
-            if (line.len > 0)
+            if (len(line) > 0)
                 VecAppend(open.file->extendedHeaders,
                           Own(open.file->arena, line));
         }
@@ -1366,7 +1366,7 @@ bool DiffFile::ParseWith(Str patch, DiffParseOptions options,
     }
     if (open.file) FinishOpen(&open, out);
     bool blank = true;
-    for (int k = 0; k < patch.len; k++) {
+    for (int k = 0; k < len(patch); k++) {
         char c = patch.s[k];
         if (c != ' ' && c != '\t' && c != '\n' && c != '\r') {
             blank = false;
@@ -1381,12 +1381,12 @@ bool DiffFile::ParseWith(Str patch, DiffParseOptions options,
 }
 
 static void LineRanges(Str text, Vec<int>* start, Vec<int>* end) {
-    if (text.len == 0) return;
+    if (len(text) == 0) return;
     int i = 0;
-    while (i < text.len) {
+    while (i < len(text)) {
         int b = i;
-        while (i < text.len && text.s[i] != '\n') i++;
-        if (i < text.len && text.s[i] == '\n') i++;
+        while (i < len(text) && text.s[i] != '\n') i++;
+        if (i < len(text) && text.s[i] == '\n') i++;
         VecAppend(*start, b);
         VecAppend(*end, i);
         if (i == b) break;
@@ -1420,11 +1420,11 @@ DiffFile* DiffFile::Unchanged(Str path, Str text) {
 static bool MarkerLabel(Str content, const char* prefix, Str* label) {
     int n = (int)strlen(prefix);
     if (!StrStartsWith(content, prefix)) return false;
-    Str rest = Slice(content, n, content.len);
-    if (rest.len && rest.s[0] != ' ') return false;
-    while (rest.len && (rest.s[0] == ' ' || rest.s[0] == '\t'))
-        rest = Slice(rest, 1, rest.len);
-    int end = rest.len;
+    Str rest = Slice(content, n, len(content));
+    if (len(rest) && rest.s[0] != ' ') return false;
+    while (len(rest) && (rest.s[0] == ' ' || rest.s[0] == '\t'))
+        rest = Slice(rest, 1, len(rest));
+    int end = len(rest);
     while (end > 0 && (rest.s[end - 1] == ' ' || rest.s[end - 1] == '\t'))
         end--;
     *label = Str(rest.s, end);
@@ -1444,17 +1444,17 @@ DiffFile* DiffFile::ParseConflicts(Str path, Str text, DiffParseError* error) {
     Vec<int> lineEnd;
     LineRanges(text, &lineStart, &lineEnd);
     int lineCount = 0;
-    for (int i = 0; i < text.len; i++) {
+    for (int i = 0; i < len(text); i++) {
         if (text.s[i] == '\n') lineCount++;
     }
-    if (text.len && text.s[text.len - 1] != '\n') lineCount++;
+    if (len(text) && text.s[len(text) - 1] != '\n') lineCount++;
     for (int ix = 0; ix < len(lineStart); ix++) {
         Str line = Slice(text, lineStart[ix], lineEnd[ix]);
         Str content = line;
-        if (content.len && content.s[content.len - 1] == '\n')
-            content = Str(content.s, content.len - 1);
-        if (content.len && content.s[content.len - 1] == '\r')
-            content = Str(content.s, content.len - 1);
+        if (len(content) && content.s[len(content) - 1] == '\n')
+            content = Str(content.s, len(content) - 1);
+        if (len(content) && content.s[len(content) - 1] == '\r')
+            content = Str(content.s, len(content) - 1);
         Str label;
         bool opening = MarkerLabel(content, "<<<<<<<", &label);
         Str openLabel = label;
@@ -1533,11 +1533,11 @@ DiffFile* DiffFile::ParseConflicts(Str path, Str text, DiffParseError* error) {
                 continue;
             }
         }
-        int at = source.len;
+        int at = len(source);
         source.Append(line);
         VecAppend(numbers, ix + 1);
         VecAppend(starts, at);
-        VecAppend(ends, source.len);
+        VecAppend(ends, len(source));
         DiffLinePair pair;
         pair.original = -1;
         pair.modified = len(numbers) - 1;
@@ -1555,7 +1555,7 @@ DiffFile* DiffFile::ParseConflicts(Str path, Str text, DiffParseError* error) {
     file->original.hasPath = true;
     file->original.path = file->modified.path;
     file->path = file->modified.path;
-    file->modified.source = Own(file->arena, Str(source.els, source.len));
+    file->modified.source = Own(file->arena, Str(source.els, len(source)));
     for (int i = 0; i < len(numbers); i++) {
         FinishLine(file, &file->modified, file->modified.source, numbers[i],
                    starts[i], ends[i]);
@@ -1565,17 +1565,17 @@ DiffFile* DiffFile::ParseConflicts(Str path, Str text, DiffParseError* error) {
 
 static Str DetectedLanguage(Str path) {
     int base = 0;
-    for (int i = 0; i < path.len; i++) {
+    for (int i = 0; i < len(path); i++) {
         if (path.s[i] == '/' || path.s[i] == '\\') base = i + 1;
     }
-    Str name = Slice(path, base, path.len);
+    Str name = Slice(path, base, len(path));
     StrBuilder lower;
-    for (int i = 0; i < name.len; i++) {
+    for (int i = 0; i < len(name); i++) {
         char c = name.s[i];
         if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
         lower.AppendChar(c);
     }
-    Str n = Str(lower.els, lower.len);
+    Str n = Str(lower.els, len(lower));
     const char* language = "text";
     if (StrEq(n, "makefile") || StrEq(n, "gnumakefile"))
         language = "make";
@@ -1583,10 +1583,10 @@ static Str DetectedLanguage(Str path) {
         language = "cmake";
     else {
         int dot = -1;
-        for (int i = 0; i < n.len; i++)
+        for (int i = 0; i < len(n); i++)
             if (n.s[i] == '.') dot = i;
         if (dot >= 0) {
-            Str ext = Slice(n, dot + 1, n.len);
+            Str ext = Slice(n, dot + 1, len(n));
             if (StrEq(ext, "jsx") || StrEq(ext, "mjs") || StrEq(ext, "cjs"))
                 language = "javascript";
             else if (StrEq(ext, "mts") || StrEq(ext, "cts"))
@@ -1652,22 +1652,22 @@ static bool TokSame(Str oldText, Str newText, Tok x, Tok y) {
 
 static void WordTokens(Str text, Vec<Tok>* out) {
     int i = 0;
-    while (i < text.len) {
+    while (i < len(text)) {
         unsigned char c = (unsigned char)text.s[i];
         int step = ColumnStep(c);
-        if (i + step > text.len) step = 1;
+        if (i + step > len(text)) step = 1;
         bool space = step == 1 && IsSpace(text.s[i]);
         bool word = !space && (step > 1 || (c >= '0' && c <= '9') ||
                                (c >= 'A' && c <= 'Z') ||
                                (c >= 'a' && c <= 'z') || c == '_');
         int b = i;
         if (space) {
-            while (i < text.len && IsSpace(text.s[i])) i++;
+            while (i < len(text) && IsSpace(text.s[i])) i++;
         } else if (word) {
-            while (i < text.len) {
+            while (i < len(text)) {
                 unsigned char d = (unsigned char)text.s[i];
                 int s = ColumnStep(d);
-                if (i + s > text.len) s = 1;
+                if (i + s > len(text)) s = 1;
                 bool sp = s == 1 && IsSpace(text.s[i]);
                 bool w = !sp && (s > 1 || (d >= '0' && d <= '9') ||
                                  (d >= 'A' && d <= 'Z') ||
@@ -1687,9 +1687,9 @@ static void WordTokens(Str text, Vec<Tok>* out) {
 
 static void CharTokens(Str text, Vec<Tok>* out) {
     int i = 0;
-    while (i < text.len) {
+    while (i < len(text)) {
         int step = ColumnStep((unsigned char)text.s[i]);
-        if (i + step > text.len) step = 1;
+        if (i + step > len(text)) step = 1;
         Tok t;
         t.start = i;
         t.end = i + step;
@@ -1703,10 +1703,10 @@ static void PushRun(Vec<DiffRun>* runs, int start, int end, Str text,
     if (len(*runs)) {
         DiffRun& last = (*runs)[len(*runs) - 1];
         Str gap = Slice(text, last.end, start);
-        bool blank = gap.len == 0;
+        bool blank = len(gap) == 0;
         if (!blank && mergeSpace) {
             blank = true;
-            for (int i = 0; i < gap.len; i++) {
+            for (int i = 0; i < len(gap); i++) {
                 if (!IsSpace(gap.s[i])) blank = false;
             }
         }
@@ -1812,7 +1812,7 @@ void DiffChangedRuns(Str oldText, Str newText, DiffInlineUnit unit,
         VecAppend(ops, Op{2, b[j].start, b[j].end});
         j++;
     }
-    int total = oldText.len + newText.len;
+    int total = len(oldText) + len(newText);
     float ratio = total == 0 ? 1.f : (2.f * (float)equalBytes) / (float)total;
     if (ratio < 0.25f) return;
     bool merge = unit == DiffInlineUnit::Word;
@@ -1857,7 +1857,7 @@ void DiffFile::PrepareInline(DiffInlineUnit unit, int maxLineLength) {
             const DiffLinePair& pair = pairs[pairOf[line]];
             Str oldText = original.lines[pair.original].text;
             Str newText = modified.lines[pair.modified].text;
-            if (oldText.len > maxLineLength || newText.len > maxLineLength)
+            if (len(oldText) > maxLineLength || len(newText) > maxLineLength)
                 continue;
             DiffChangedRuns(oldText, newText, unit, &perOld, &perNew);
             const Vec<DiffRun>& runs = which == 0 ? perOld : perNew;
@@ -1892,14 +1892,14 @@ bool DiffHasLineEndingChange(const DiffFile* file, DiffSide side, int ix,
         side == DiffSide::Original ? DiffSide::Modified : DiffSide::Original;
     const DiffSourceLine& line = SideOf(file, side)->lines[ix];
     const DiffSourceLine& peer = SideOf(file, other)->lines[counterpart];
-    if (line.text.len != peer.text.len) return false;
-    if (line.text.len &&
-        memcmp(line.text.s, peer.text.s, (size_t)line.text.len) != 0)
+    if (len(line.text) != len(peer.text)) return false;
+    if (len(line.text) &&
+        memcmp(line.text.s, peer.text.s, (size_t)len(line.text)) != 0)
         return false;
     Str a = Slice(SideOf(file, side)->source, line.contentEnd, line.sourceEnd);
     Str b = Slice(SideOf(file, other)->source, peer.contentEnd, peer.sourceEnd);
-    if (a.len != b.len) return true;
-    return a.len && memcmp(a.s, b.s, (size_t)a.len) != 0;
+    if (len(a) != len(b)) return true;
+    return len(a) && memcmp(a.s, b.s, (size_t)len(a)) != 0;
 }
 
 // ─── Rows ──────────────────────────────────────────────────────────────────
@@ -2244,7 +2244,7 @@ static void Rebuild(DiffState* state, bool reset) {
 static int DisplayOff(const DiffFileSide* side, const DiffSourceLine& line,
                       int sourceOff) {
     if (sourceOff < 0) sourceOff = 0;
-    if (sourceOff > line.text.len) sourceOff = line.text.len;
+    if (sourceOff > len(line.text)) sourceOff = len(line.text);
     int lo = 0, hi = line.tabCount;
     while (lo < hi) {
         int mid = lo + (hi - lo) / 2;
@@ -2275,7 +2275,7 @@ static void CollectSyntaxSide(const DiffFile* file, int fileIx, DiffSide side,
     int nLines = len(src->lines);
     if (nLines == 0 || !fn) return;
     Str language = SyntaxLanguage(file, src);
-    if (!language.s || language.len == 0 || StrEq(language, "text")) return;
+    if (!language.s || len(language) == 0 || StrEq(language, "text")) return;
     int nHunks = len(file->hunks);
     int ranges = nHunks == 0 ? 1 : nHunks;
     for (int h = 0; h < ranges; h++) {
@@ -2298,7 +2298,7 @@ static void CollectSyntaxSide(const DiffFile* file, int fileIx, DiffSide side,
         for (int k = 0; k < len(hits); k++) {
             int hs = hits[k].start;
             int he = hits[k].end;
-            if (hs < 0 || he < hs || he > text.len) continue;
+            if (hs < 0 || he < hs || he > len(text)) continue;
             if (!Utf8IsCharBoundary(text, hs) || !Utf8IsCharBoundary(text, he))
                 continue;
             int absStart = hs + base;
@@ -2797,12 +2797,12 @@ Str DiffState::SelectedText(Arena* a) const {
             sideIx = file->patchLines[i].Line(DiffSide::Original);
         }
         if (sideIx < 0) continue;
-        if (text.len && text.els[text.len - 1] != '\n') text.AppendChar('\n');
+        if (len(text) && text.els[len(text) - 1] != '\n') text.AppendChar('\n');
         const DiffSourceLine& line = SideOf(file, side)->lines[sideIx];
         text.Append(Slice(SideOf(file, side)->source, line.sourceStart,
                           line.sourceEnd));
     }
-    return Own(a, Str(text.els, text.len));
+    return Own(a, Str(text.els, len(text)));
 }
 
 static int SourceRow(const DiffState* state, DiffLinePosition position) {
@@ -3409,7 +3409,7 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
                 8);
         head->Bg(Tint(tint, 40));
         Str label = conflict.Label(row.part);
-        head->Child(TextEl(cx->a, label.len ? label : Tr(key)));
+        head->Child(TextEl(cx->a, len(label) ? label : Tr(key)));
         if (row.part == DiffConflictPart::Current) {
             int64_t pack =
                 ((int64_t)row.file << 16) | ((int64_t)row.conflict << 8);
@@ -3641,7 +3641,7 @@ static void OnDiffAction(DiffState* self, Ctx* cx, const ActionEvent* ev) {
     }
     if (ev->action == input::Copy()) {
         Str text = self->SelectedText(cx->a);
-        if (cx->win && text.len) ClipboardSetText(cx->win, text);
+        if (cx->win && len(text)) ClipboardSetText(cx->win, text);
         return;
     }
     const_cast<ActionEvent*>(ev)->propagate = true;

@@ -162,7 +162,7 @@ static void SourceConstructorsAndHandleAppearanceRemainConcrete() {
         if (growthCount < 2) growth[growthCount] = value;
         growthCount++;
     }
-    utassert(horizontal->panels.len == 2 && growthCount == 2 &&
+    utassert(len(horizontal->panels) == 2 && growthCount == 2 &&
              growth[0] == false && growth[1] == true);
     El* root = horizontal->IntoEl();
     utassert(root && root->style.dir == FlexDir::Row);
@@ -650,7 +650,7 @@ static void FixedPanelKeepsItsSizeAcrossAContainerResize() {
     ResizablePanelGroup* plain =
         h_resizable(&cx, StrL("unfixed"))
             ->Child(resizable_panel(&cx)->Fixed()->Child(Div(arena)));
-    utassert(plain->fixed.len == 1 && !plain->fixed[0]);
+    utassert(len(plain->fixed) == 1 && !plain->fixed[0]);
 
     WindowKeyedFree(win);
     EntityDropAll(&app);
@@ -758,7 +758,7 @@ static void DraggingBeforeTheNextPaintResizesAndEmitsOnce() {
     DragHarness harness = OpenDragHarness();
     ResizableState* state = DragState(harness);
     DragGesturePage* page = harness.page.Get(harness.app);
-    utassert(state && state->sizes.len == 2);
+    utassert(state && len(state->sizes) == 2);
     utassertnear(state->sizes[0], 150.f);
     utassertnear(state->sizes[1], 250.f);
     float boundary = state->bounds.x + state->sizes[0];
@@ -789,7 +789,7 @@ static void CancelledDragDoesNotReuseThePaintedIndex() {
     DragHarness harness = OpenDragHarness();
     ResizableState* state = DragState(harness);
     DragGesturePage* page = harness.page.Get(harness.app);
-    utassert(state && state->sizes.len == 2);
+    utassert(state && len(state->sizes) == 2);
     float boundary = state->bounds.x + state->sizes[0];
     float y = state->bounds.y + 50.f;
 

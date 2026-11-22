@@ -201,7 +201,7 @@ static void PushOwnsItsTextAndHonorsBuilderAutohide() {
     n.Autohide(false);
     int id = NotificationPush(&s, nullptr, n);
     text[0] = 'X';
-    utassert(id > 0 && s.items.len == 1);
+    utassert(id > 0 && len(s.items) == 1);
     utassert(base::StrEq(s.items[0].message, StrL("borrowed")));
     utassert(s.items[0].ownsText);
     utassert(!s.stack.entries[0].hasTimeout);
@@ -445,20 +445,20 @@ static void TheLifecycleClockRestsOverPersistentNotifications() {
     // Once both have entered, nothing is left to time.
     tickUntilRest();
     utassert(!s->isAdvancing);
-    utassert(s->items.len == 2);
+    utassert(len(s->items) == 2);
 
     // A programmatic close restarts the clock to finish the exit.
     NotificationDismiss(s, &cx, first);
     utassert(s->isAdvancing);
     tickUntilRest();
-    utassert(s->items.len == 1 && NotificationIndexOf(s, second) == 0);
+    utassert(len(s->items) == 1 && NotificationIndexOf(s, second) == 0);
     utassert(!s->isAdvancing);
 
     // So does a dismiss requested by the notification itself.
     NotificationListState::OnCloseClick(s, &cx, nullptr, second);
     utassert(s->isAdvancing);
     tickUntilRest();
-    utassert(s->items.len == 0);
+    utassert(len(s->items) == 0);
     utassert(!s->isAdvancing);
 
     EntityDropAll(&app);
@@ -469,7 +469,7 @@ static void SystemOnlyDeliveryShowsNoCard() {
     NotificationListState s;
     NotificationItem it = Item(0, "in-app");
     utassert(NotificationPush(&s, nullptr, it, 1000) > 0);
-    utassert(s.items.len == 1);
+    utassert(len(s.items) == 1);
 
     // The delivery that has no in-app half pushes nothing onto the stack —
     // and still answers with the id, which is what a later dismiss names.
@@ -478,19 +478,19 @@ static void SystemOnlyDeliveryShowsNoCard() {
     it.delivery = NotificationDelivery::System;
     int id = NotificationPush(&s, nullptr, it, 1000);
     utassert(id > 0);
-    utassert(s.items.len == 1);
+    utassert(len(s.items) == 1);
 
     // The list's own delivery is what an item with none of its own takes.
     s.delivery = NotificationDelivery::System;
     utassert(NotificationPush(&s, nullptr, Item(0, "by default"), 1000) > 0);
-    utassert(s.items.len == 1);
+    utassert(len(s.items) == 1);
 
     // And an item that overrides it the other way is still shown.
     it = Item(0, "override");
     it.hasDelivery = true;
     it.delivery = NotificationDelivery::InAppAndSystem;
     utassert(NotificationPush(&s, nullptr, it, 1000) > 0);
-    utassert(s.items.len == 2);
+    utassert(len(s.items) == 2);
 }
 
 static void AutohideExpiryDoesNotRetractTheSystemHalf() {
@@ -507,7 +507,7 @@ static void AutohideExpiryDoesNotRetractTheSystemHalf() {
     for (int i = 0; i < 20; i++) {
         NotificationAdvance(&s, 100);
     }
-    utassert(s.items.len == 0);
+    utassert(len(s.items) == 0);
     // Gone from the screen, kept in the notification center: only an explicit
     // dismissal retracts one.
     utassert(NotificationSystemFind(11, kWinA) != nullptr);
@@ -522,11 +522,11 @@ static void MaxItemsLimitsVisibilityWithoutEvictingMountedToasts() {
     NotificationPush(&s, nullptr, Item(3, "three"), 0);
     // ToastManager::visible(1) chooses what renders. All three remain mounted
     // and addressable, which is how an ending older toast can finish exiting.
-    utassert(s.items.len == 3);
-    utassert(s.stack.entries.len == 3);
+    utassert(len(s.items) == 3);
+    utassert(len(s.stack.entries) == 3);
     NotificationDismiss(&s, nullptr, 1);
     utassert(s.stack.entries[0].status == ToastStatus::Ending);
-    utassert(s.items.len == 3);
+    utassert(len(s.items) == 3);
 }
 
 namespace {
@@ -535,7 +535,7 @@ struct DeployNotice {};
 } // namespace
 
 static ToastStatus StatusOf(const NotificationListState& s, int id) {
-    for (int i = 0; i < s.stack.entries.len; i++) {
+    for (int i = 0; i < len(s.stack.entries); i++) {
         if (s.stack.entries[i].id == id) {
             return s.stack.entries[i].status;
         }
@@ -553,7 +553,7 @@ static void TypedIdentityReplacesAndRemovesLikeRust() {
     replacement.Id1<BuildNotice>(1);
     int replacementId = NotificationPush(&s, nullptr, replacement, 0);
     utassert(replacementId == firstId);
-    utassert(s.items.len == 1);
+    utassert(len(s.items) == 1);
 
     NotificationItem second = Item(0, "build two");
     second.Id1<BuildNotice>(2);
@@ -564,7 +564,7 @@ static void TypedIdentityReplacesAndRemovesLikeRust() {
     NotificationItem other = Item(0, "deploy");
     other.Id<DeployNotice>();
     int otherId = NotificationPush(&s, nullptr, other, 0);
-    utassert(s.items.len == 4);
+    utassert(len(s.items) == 4);
     utassert(NotificationTypeOf<BuildNotice>() !=
              NotificationTypeOf<DeployNotice>());
 

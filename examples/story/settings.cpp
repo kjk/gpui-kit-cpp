@@ -100,7 +100,7 @@ static void ResetDensity(SettingsStory* self, Ctx* cx, const ClickEvent*) {
 static int SelectedIndex(Entity<component::SearchableListState> e, Ctx* cx,
                          int fallback) {
     component::SearchableListState* st = e.Get(cx);
-    return st && st->selected.len > 0 ? st->selected[0] : fallback;
+    return st && len(st->selected) > 0 ? st->selected[0] : fallback;
 }
 
 // OpenURLSettingField::render_field: an outline button of the field's size.

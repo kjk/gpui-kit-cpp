@@ -609,11 +609,11 @@ struct Builder {
 };
 
 static Node* Current(Builder* b) {
-    return b->open.len ? b->open[b->open.len - 1] : b->doc;
+    return len(b->open) ? b->open[len(b->open) - 1] : b->doc;
 }
 
 static int OpenIndex(Builder* b, Str name) {
-    for (int i = b->open.len - 1; i >= 0; i--) {
+    for (int i = len(b->open) - 1; i >= 0; i--) {
         if (StrEq(NodeName(b->a, b->open[i]), name)) return i;
     }
     return -1;
@@ -665,7 +665,7 @@ static bool AllSpace(Str value) {
 }
 
 static Node* TableInScope(Builder* b) {
-    for (int i = b->open.len - 1; i >= 0; i--) {
+    for (int i = len(b->open) - 1; i >= 0; i--) {
         if (StrEq(NodeName(b->a, b->open[i]), StrL("table"))) {
             return b->open[i];
         }
@@ -793,7 +793,7 @@ static void CloseImplied(Builder* b, Str name) {
     }
     if (len(name) == 2 && name.s[0] == 'h' && name.s[1] >= '1' &&
         name.s[1] <= '6') {
-        for (int i = b->open.len - 1; i >= 0; i--) {
+        for (int i = len(b->open) - 1; i >= 0; i--) {
             Str n = NodeName(b->a, b->open[i]);
             if (len(n) == 2 && n.s[0] == 'h' && n.s[1] >= '1' &&
                 n.s[1] <= '6') {
@@ -845,7 +845,7 @@ static void StartTag(Builder* b, const Token* token) {
         Node* html = EnsureWrapper(b, &b->html, StrL("html"), b->doc);
         html->implicit = false;
         MergeAttrs(b->a, html, TokenAttrs(b->a, token));
-        if (b->open.len == 0) b->open.Append(b->a, html);
+        if (len(b->open) == 0) b->open.Append(b->a, html);
         return;
     }
     if (!b->fragment && StrEq(name, StrL("head"))) {
@@ -859,7 +859,7 @@ static void StartTag(Builder* b, const Token* token) {
     if (!b->fragment && StrEq(name, StrL("body"))) {
         Body(b)->implicit = false;
         MergeAttrs(b->a, b->body, TokenAttrs(b->a, token));
-        while (b->open.len && b->open[b->open.len - 1] != b->html)
+        while (len(b->open) && b->open[len(b->open) - 1] != b->html)
             b->open.Pop();
         if (!HasOpen(b, StrL("html"))) b->open.Append(b->a, b->html);
         b->open.Append(b->a, b->body);
@@ -876,7 +876,7 @@ static void StartTag(Builder* b, const Token* token) {
         return;
     }
     Body(b);
-    if (!b->fragment && b->open.len == 0) {
+    if (!b->fragment && len(b->open) == 0) {
         b->open.Append(b->a, b->html);
         b->open.Append(b->a, b->body);
     } else if (!b->fragment && Current(b) == b->html) {
@@ -921,7 +921,7 @@ static void EndFormatting(Builder* b, Str name) {
     int at = OpenIndex(b, name);
     if (at < 0) return;
     ArenaVec<Node*> reopen;
-    for (int i = at + 1; i < b->open.len; i++) {
+    for (int i = at + 1; i < len(b->open); i++) {
         if (IsFormatting(NodeName(b->a, b->open[i]))) {
             reopen.Append(b->a, b->open[i]);
         }
@@ -945,7 +945,7 @@ static void EndTag(Builder* b, const Token* token) {
         return;
     }
     if (StrEq(name, StrL("body")) || StrEq(name, StrL("html"))) {
-        while (b->open.len && b->open[b->open.len - 1] != b->html)
+        while (len(b->open) && b->open[len(b->open) - 1] != b->html)
             b->open.Pop();
         return;
     }

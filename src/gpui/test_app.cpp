@@ -275,7 +275,7 @@ int TestSimulateNextFrame(Window* win) {
 
 static bool DrawDirty(App* app) {
     bool drew = false;
-    for (int i = 0; i < app->windows.len; i++) {
+    for (int i = 0; i < len(app->windows); i++) {
         Window* win = app->windows[i];
         // A window WindowClosed has let go of — window.remove_window() —
         // draws no more frames.
@@ -325,7 +325,7 @@ static double NextDeadline(Window* win) {
 static bool FireDueTimers(App* app) {
     bool fired = false;
     double now = gTestPlatform.now;
-    for (int i = 0; i < app->windows.len; i++) {
+    for (int i = 0; i < len(app->windows); i++) {
         Window* win = app->windows[i];
         if (!win) {
             continue;
@@ -333,12 +333,12 @@ static bool FireDueTimers(App* app) {
         double due = NextDeadline(win);
         if (due > 0 && due <= now) {
             uint64_t before = win->invalidations;
-            int timersBefore = win->timers.len;
+            int timersBefore = len(win->timers);
             WindowTimerTick(win);
             // A tick that only re-armed an animation frame nothing is
             // waiting on has done nothing a test could see.
             if (win->invalidations != before ||
-                win->timers.len != timersBefore || NextDeadline(win) != due) {
+                len(win->timers) != timersBefore || NextDeadline(win) != due) {
                 fired = true;
             }
         }
@@ -381,7 +381,7 @@ void TestAdvanceClock(App* app, double ms) {
     // and sees the clock where it expected it.
     for (int round = 0; round < kMaxParkRounds * 10; round++) {
         double soonest = -1;
-        for (int i = 0; i < app->windows.len; i++) {
+        for (int i = 0; i < len(app->windows); i++) {
             Window* win = app->windows[i];
             if (!win) {
                 continue;
@@ -401,7 +401,7 @@ void TestAdvanceClock(App* app, double ms) {
         // A deadline that did not move after its turn would hold the clock
         // where it is; step past it.
         double after = -1;
-        for (int i = 0; i < app->windows.len; i++) {
+        for (int i = 0; i < len(app->windows); i++) {
             Window* win = app->windows[i];
             double due = win ? NextDeadline(win) : -1;
             if (due > 0 && (after < 0 || due < after)) {

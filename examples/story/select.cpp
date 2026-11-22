@@ -604,7 +604,7 @@ El* SelectStory::Render(SelectStory* self, Ctx* cx) {
         const component::SearchableItem* items =
             slots[i] == SelCountry ? gCountryItems : gItems[slots[i]];
         Str line = StoryFmt(cx, "%s: None", labels[i]);
-        if (s && s->state.selected.len > 0) {
+        if (s && len(s->state.selected) > 0) {
             // selected_value(): the item's value, which for a country is its
             // code rather than its name.
             line = StoryFmt(cx, "%s: Some(\"%s\")", labels[i],
