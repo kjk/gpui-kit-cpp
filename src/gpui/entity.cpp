@@ -134,6 +134,8 @@ bool EntityHasDrop(App* app, EntityId id, DropFn drop) {
     return s.gen == id.gen && s.ptr && s.drop == drop;
 }
 
+static void DropListenersOf(App* app, EntityId id);
+
 void EntityDrop(App* app, EntityId id) {
     if (!app || !id.IsValid() || id.index >= app->entities.len) {
         return;
@@ -157,6 +159,7 @@ void EntityDrop(App* app, EntityId id) {
         s.gen = 1;
     }
     VecAppend(app->freeSlots, id.index);
+    DropListenersOf(app, id);
     if (drop) {
         drop(ptr);
     }
@@ -955,6 +958,27 @@ static void ObserverRemoveAt(App* app, int ix) {
         app->observers[k] = app->observers[k + 1];
     }
     app->observers.len--;
+}
+
+// Rust drops an entity's observers and subscriptions with it, at either
+// end. Without this the lists only grow, and every notify walks all of it.
+// Walks over the lists find entries by id each time, so compacting here
+// while a handler runs is safe.
+static void DropFrom(Vec<EntitySub>& list, EntityId id) {
+    int keep = 0;
+    for (int i = 0; i < len(list); i++) {
+        const EntitySub& s = list[i];
+        if (s.emitter == id || s.handler.view == id) {
+            continue;
+        }
+        list[keep++] = list[i];
+    }
+    list.len = keep;
+}
+
+static void DropListenersOf(App* app, EntityId id) {
+    DropFrom(app->observers, id);
+    DropFrom(app->subs, id);
 }
 
 Subscription EntityObserveRaw(App* app, EntityId observed, Listener handler) {

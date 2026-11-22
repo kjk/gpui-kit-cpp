@@ -112,7 +112,15 @@ static void AnObserverThatWentAwayIsSwept() {
 
     ObserveTo(&app, model, watcher, &Watcher::OnChanged);
     EntityDrop(&app, watcher.id);
+    // Gone from the list itself, not just skipped by the count.
+    utassert(len(app.observers) == 0);
     utassert(EntityObserverCount(&app, model.id) == 0);
+    // And with the observed entity, as Rust drops its observers with it.
+    Entity<Watcher> second = EntityNew<Watcher>(&app);
+    ObserveTo(&app, model, second, &Watcher::OnChanged);
+    utassert(len(app.observers) == 1);
+    EntityDrop(&app, model.id);
+    utassert(len(app.observers) == 0);
     // The notify still runs; there is simply nobody left to hear it.
     NotifyEntity(&app, model.id, win);
 
