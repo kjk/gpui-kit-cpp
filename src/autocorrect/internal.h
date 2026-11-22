@@ -96,8 +96,6 @@ int Utf8Len(Str s, int i);
 void Utf8CopyNext(Str s, int* i, StrBuilder* out);
 // Decode without advancing.
 uint32_t Utf8At(Str s, int i);
-// How many codepoints s holds — Rust's chars().count().
-int Utf8Count(Str s);
 
 bool IsHan(uint32_t cp);
 bool IsHangul(uint32_t cp);

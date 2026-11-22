@@ -7190,7 +7190,6 @@ const ScrollRect* WindowLastScrollRect(const Window* win, int id);
 // those that asked for one at all. A drop target that does not want what is
 // being dragged is not in the way of one that does.
 const HitRect* HitTestDrop(PaintCtx* ctx, float x, float y, Str kind);
-const ScrollRect* HitScrollRect(PaintCtx* ctx, float x, float y);
 int TextHitOffsetAt(PaintCtx* ctx, float x, float y, bool nearest);
 // The same, confined to one selection scope (-1 for any), and reporting the
 // scope the point landed in. `minLayer` skips runs painted on a stacking

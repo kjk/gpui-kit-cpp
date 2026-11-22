@@ -67,10 +67,6 @@ DockPanelDef ScriptPanelNew(App* app, Str name, Entity<ScriptView> view,
                             const ShellPanelScript* script = nullptr);
 Str ShellRegisterPanel(App* app, Str application, Str panel,
                        const ShellPanelScript& script);
-// The panel a `DockPanelDef` was built from, or null for one that is not a
-// script panel. What a `remove_panel(id)` needs in order to answer whether
-// anything was removed.
-bool ShellIsScriptPanel(const DockPanelDef& def);
 
 // Script-owned appearance over Base's dock behavior. Hooks run in a nested
 // Layout scope and may return null to preserve Base's no-chrome default.

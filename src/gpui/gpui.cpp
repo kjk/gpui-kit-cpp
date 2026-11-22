@@ -9654,16 +9654,6 @@ int HitTest(PaintCtx* ctx, float x, float y) {
     return h ? h->id : 0;
 }
 
-const ScrollRect* HitScrollRect(PaintCtx* ctx, float x, float y) {
-    for (int i = len(ctx->scrolls) - 1; i >= 0; i--) {
-        const ScrollRect& s = ctx->scrolls[i];
-        if (s.bounds.Contains({x, y})) {
-            return &ctx->scrolls[i];
-        }
-    }
-    return nullptr;
-}
-
 static float DistToInterval(float v, float lo, float hi) {
     if (v < lo) {
         return lo - v;

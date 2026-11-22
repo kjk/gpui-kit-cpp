@@ -1467,15 +1467,6 @@ const uint8_t* SvgDrawOpsFor(Str assetPath, int* lenOut) {
     return built;
 }
 
-bool SvgViewBox(Str assetPath, Size* out) {
-    int len = 0;
-    const uint8_t* ops = SvgDrawOpsFor(assetPath, &len);
-    if (!ops || !out) {
-        return false;
-    }
-    return DrawOpsViewBox(ops, len, out);
-}
-
 bool SvgDrawOps(PaintCtx* ctx, const uint8_t* ops, int len, float x, float y,
                 float w, float h, Rgba color, float turns, bool grayscale) {
     if (!ctx || !ctx->rt || w <= 0 || h <= 0 || !ops || len <= 0) {

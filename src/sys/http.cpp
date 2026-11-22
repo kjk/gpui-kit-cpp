@@ -9,13 +9,8 @@
 
 namespace gpui {
 
-static thread_local char gLastError[512];
-
 bool HttpSend(const HttpReq& req, HttpRsp* out) {
-    bool ok = HttpSendPlatform(req, out);
-    Str why = !ok && out ? out->error : Str{};
-    StrCopyCapped(gLastError, (int)sizeof(gLastError), why);
-    return ok;
+    return HttpSendPlatform(req, out);
 }
 
 bool HttpGet(Str url, HttpRsp* out) {
@@ -42,10 +37,6 @@ void HttpTrimMediaType(Str* s) {
             s->s[i] = (char)(c - 'A' + 'a');
         }
     }
-}
-
-Str HttpLastError() {
-    return Str(gLastError);
 }
 
 void HttpRspFree(HttpRsp* r) {

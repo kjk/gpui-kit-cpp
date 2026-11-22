@@ -36,15 +36,6 @@ uint32_t Utf8At(Str s, int i) {
     return Utf8Next(s, &at);
 }
 
-int Utf8Count(Str s) {
-    int n = 0;
-    for (int i = 0; i < len(s);) {
-        Utf8Next(s, &i);
-        n++;
-    }
-    return n;
-}
-
 struct CpRange {
     uint32_t lo;
     uint32_t hi;

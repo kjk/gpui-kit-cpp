@@ -185,21 +185,6 @@ inline UiSize UiSizeMin(UiSize a, UiSize b) {
     return UiSizeAsF32(a) > UiSizeAsF32(b) ? a : b;
 }
 
-inline float UiSizePx(UiSize s) {
-    switch (s) {
-        case UiSize::Size:
-            return s.pixels;
-        case UiSize::XSmall:
-            return 20;
-        case UiSize::Small:
-            return 24;
-        case UiSize::Large:
-            return 36;
-        default:
-            return 28;
-    }
-}
-
 // Icon::with_size, crates/ui/src/icon.rs: size_3 / size_3p5 / size_4 / size_6,
 // rems at the window's rem size; a custom Size is pixels. Not the
 // control-height scale above — an icon inside a Medium control is size_4.

@@ -529,8 +529,4 @@ void ShellDropIndicatorData(const DockState* state, Bounds to,
     json.EndObject();
 }
 
-bool ShellIsScriptPanel(const DockPanelDef& def) {
-    return def.render == RenderPanel;
-}
-
 } // namespace gpui::shell
