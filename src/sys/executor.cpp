@@ -202,6 +202,10 @@ static void WorkerMain() {
         gPoolLock.Unlock();
 
         job.work.Call();
+        // A pool thread lives until shutdown, and only the main thread's
+        // temp arena is reset by a frame, so each job's temp allocations go
+        // with the job. What `done` reads is the job's own heap struct.
+        ResetTempArena();
         // Posted from here rather than by the caller, so that a job which
         // wants its result on the main thread cannot forget to.
         ExecPost(job.done);

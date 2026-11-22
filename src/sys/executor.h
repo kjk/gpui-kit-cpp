@@ -92,7 +92,9 @@ int ExecQueued();
 // cx.background_spawn. `work` runs on a pool thread; when it returns, `done`
 // is posted to the main thread. Either may be empty. Both usually close over
 // the same heap job struct — `work` fills it in, `done` reads it and frees
-// it, and nothing needs a lock because the two never run at once.
+// it, and nothing needs a lock because the two never run at once. The pool
+// thread's temp arena is reset after `work`, so a result `done` reads must
+// be on the heap, never a TempStr.
 //
 // Returns the handle to cancel it with, or 0 if the job could not be taken at
 // all — the pool is shutting down, or there was no room to record it — and

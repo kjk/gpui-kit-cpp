@@ -194,6 +194,8 @@ static void* ThreadMain(void* arg) {
     auto* call = (Func0*)arg;
     call->Call();
     free(call);
+    // The temp arena is thread_local; nothing else frees this thread's.
+    DestroyTempArena();
     return nullptr;
 }
 
