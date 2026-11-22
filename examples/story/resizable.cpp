@@ -40,10 +40,10 @@ static void SetPanelSize(ResizableStory* self, Ctx* cx, const ClickEvent*,
         if (packed & 1) {
             ResizablePanelResize(st->sizes.els, st->mins.els, st->maxs.els,
                                  len(st->sizes), 1,
-                                 container - size - st->sizes[0], container);
+                                 container - size - st->sizes[0]);
         } else {
             ResizablePanelResize(st->sizes.els, st->mins.els, st->maxs.els,
-                                 len(st->sizes), 0, size, container);
+                                 len(st->sizes), 0, size);
         }
     }
     Notify(cx);

@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `1539e07abd38589626697f0b24e3d6bf46f5df71` (2026-11-22,
-webview: Fix gaps at fractional viewport sizes on macOS (#4065)).
-On macOS a webview's width and height round up to whole points so no strip of
-background shows at fractional sizes (WebViewDocumentFrame); the top edge stays
-put.
+Processed through `f5030e8364366f17a296a2aeba0574b2df15070e` (2026-11-22,
+resizable: Skip hidden panels when resizing (#4064)).
+Resizing transfers size across the handle to the next visible panel and stops
+at the receiver's own maximum; a hidden panel keeps its slot at size 0 and its
+preferred size for when it returns.
 The current update target is
 `1c7e7f7c6c8d6585da909804496614da01bb8663`.
 

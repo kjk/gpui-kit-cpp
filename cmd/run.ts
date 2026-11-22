@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "1539e07abd38589626697f0b24e3d6bf46f5df71",
+  sha: "f5030e8364366f17a296a2aeba0574b2df15070e",
   date: "2026-11-22",
-  subject: "webview: Fix gaps at fractional viewport sizes on macOS (#4065)",
+  subject: "resizable: Skip hidden panels when resizing (#4064)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",

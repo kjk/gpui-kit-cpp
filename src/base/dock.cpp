@@ -1592,8 +1592,7 @@ void DockState::OnResizeDrag(DockState* self, Ctx* cx,
         start += n.size[i];
     }
     float want = (horizontal ? ev->event.x : ev->event.y) - start;
-    ResizablePanelResize(n.size.els, nullptr, nullptr, len(n.child), ix, want,
-                         container);
+    ResizablePanelResize(n.size.els, nullptr, nullptr, len(n.child), ix, want);
     Notify(cx);
 }
 

@@ -9,7 +9,7 @@
 
 static void ResizingOnePanelTakesFromTheNext() {
     float sizes[2] = {200, 200};
-    utassert(ResizablePanelResize(sizes, nullptr, nullptr, 2, 0, 220, 400));
+    utassert(ResizablePanelResize(sizes, nullptr, nullptr, 2, 0, 220));
     utassertnear(sizes[0], 220.f);
     utassertnear(sizes[1], 180.f);
 }
@@ -17,18 +17,18 @@ static void ResizingOnePanelTakesFromTheNext() {
 static void TheLastPanelHasNoHandle() {
     float sizes[2] = {200, 200};
     // The handle sits between ix and ix + 1, so there is none below the last.
-    utassert(!ResizablePanelResize(sizes, nullptr, nullptr, 2, 1, 300, 400));
+    utassert(!ResizablePanelResize(sizes, nullptr, nullptr, 2, 1, 300));
     utassertnear(sizes[0], 200.f);
     utassertnear(sizes[1], 200.f);
     // And no move is no resize.
-    utassert(!ResizablePanelResize(sizes, nullptr, nullptr, 2, 0, 200, 400));
+    utassert(!ResizablePanelResize(sizes, nullptr, nullptr, 2, 0, 200));
 }
 
 static void GrowingWalksOnPastANeighbourThatIsSpent() {
     // Three panels of 200; the middle one can only give 100 before it hits
     // the default minimum, so the last one gives the rest.
     float sizes[3] = {200, 200, 200};
-    utassert(ResizablePanelResize(sizes, nullptr, nullptr, 3, 0, 350, 600));
+    utassert(ResizablePanelResize(sizes, nullptr, nullptr, 3, 0, 350));
     utassertnear(sizes[0], 350.f);
     utassertnear(sizes[1], 100.f);
     utassertnear(sizes[2], 150.f);
@@ -37,11 +37,11 @@ static void GrowingWalksOnPastANeighbourThatIsSpent() {
 static void APanelWillNotShrinkBelowItsMinimum() {
     float sizes[2] = {200, 200};
     // 40 is under the default minimum of 100, so it stops there.
-    utassert(ResizablePanelResize(sizes, nullptr, nullptr, 2, 0, 40, 400));
+    utassert(ResizablePanelResize(sizes, nullptr, nullptr, 2, 0, 40));
     utassertnear(sizes[0], 100.f);
-    // Rust hands the neighbour what the drag actually asked for, less what
-    // the panels before could not absorb; the first panel has nothing before
-    // it, so the full remainder stays with it.
+    // Only what the first panel gave reaches the neighbour, so the total
+    // stays the same.
+    utassertnear(sizes[1], 300.f);
     utassertnear(sizes[0] + sizes[1], 400.f);
 }
 
@@ -49,7 +49,7 @@ static void ARangeOfItsOwnBeatsTheDefault() {
     float sizes[2] = {200, 200};
     const float mins[2] = {150, 100};
     const float maxs[2] = {250, 1e9f};
-    utassert(ResizablePanelResize(sizes, mins, maxs, 2, 0, 400, 400));
+    utassert(ResizablePanelResize(sizes, mins, maxs, 2, 0, 400));
     // Clamped to its own ceiling rather than the space available.
     utassertnear(sizes[0], 250.f);
     utassertnear(sizes[1], 150.f);
@@ -548,11 +548,11 @@ static void AFixedPanelKeepsItsShareOfTheArithmetic() {
     utassertnear(sizes[2], 120.f);
 
     const float mins[3] = {100, 100, 100};
-    utassert(ResizablePanelResize(sizes, mins, nullptr, 3, 1, 50, 600, fixed));
+    utassert(ResizablePanelResize(sizes, mins, nullptr, 3, 1, 50, fixed));
     utassertnear(sizes[0], 240.f);
     utassertnear(sizes[1], 100.f);
     utassertnear(sizes[2], 260.f);
-    utassert(ResizablePanelResize(sizes, mins, nullptr, 3, 0, 300, 600, fixed));
+    utassert(ResizablePanelResize(sizes, mins, nullptr, 3, 0, 300, fixed));
     utassertnear(sizes[0], 300.f);
     utassertnear(sizes[1], 100.f);
     utassertnear(sizes[2], 200.f);
@@ -562,7 +562,7 @@ static void AFixedPanelKeepsItsShareOfTheArithmetic() {
     float along[3] = {100, 300, 200};
     const bool both[3] = {false, true, true};
     const float loose[3] = {50, 50, 50};
-    utassert(ResizablePanelResize(along, loose, nullptr, 3, 0, 200, 600, both));
+    utassert(ResizablePanelResize(along, loose, nullptr, 3, 0, 200, both));
     utassertnear(along[0], 200.f);
     utassertnear(along[1], 200.f);
     utassertnear(along[2], 200.f);
@@ -820,6 +820,72 @@ static void CancelledDragDoesNotReuseThePaintedIndex() {
     CloseDragHarness(harness);
 }
 
+// resizing_uses_measured_sizes_and_respects_both_limits. Rust skews
+// `sizes[0]` away from the measured bounds to show the bounds win; a panel
+// here is drawn at exactly its size, so the two cannot differ and only the
+// limits are left to check: the shrinking panel stops at its minimum and the
+// growing one at its maximum.
+static void ResizingUsesMeasuredSizesAndRespectsBothLimits() {
+    DragHarness harness = OpenDragHarness();
+    ResizableState* state = DragState(harness);
+    utassert(state && len(state->sizes) == 2);
+    float first = state->sizes[0];
+    float second = state->sizes[1];
+    state->mins[0] = first - 30.f;
+    state->maxs[1] = second + 10.f;
+    utassert(ResizablePanelResize(state->sizes.els, state->mins.els,
+                                  state->maxs.els, 2, 0, first - 50.f));
+    utassertnear(state->sizes[0], first - 10.f);
+    utassertnear(state->sizes[1], second + 10.f);
+
+    state->maxs[1] = second + 60.f;
+    utassert(ResizablePanelResize(state->sizes.els, state->mins.els,
+                                  state->maxs.els, 2, 0, first - 50.f));
+    utassertnear(state->sizes[0], first - 30.f);
+    utassertnear(state->sizes[1], second + 30.f);
+    CloseDragHarness(harness);
+}
+
+// hiding_a_panel_preserves_its_slot_and_preferred_size.
+static void HidingAPanelPreservesItsSlotAndPreferredSize() {
+    App app = {};
+    Arena* arena = ArenaNew();
+    Window* win = new Window();
+    win->app = &app;
+    Ctx cx = {};
+    cx.app = &app;
+    cx.a = arena;
+    cx.win = win;
+    ResizableState state;
+    state.bounds = {0, 0, 600, 100};
+    // sync_panels_count(Horizontal, 3) then adopt_sizes([Some(200); 3]).
+    for (int i = 0; i < 3; i++) {
+        VecAppend(state.sizes, 200.f);
+        VecAppend(state.mins, PANEL_MIN_SIZE);
+        VecAppend(state.maxs, 1e9f);
+        VecAppend(state.grows, false);
+        VecAppend(state.shown, true);
+        VecAppend(state.preferred, 200.f);
+        VecAppend(state.laid, {});
+    }
+
+    const bool middleHidden[3] = {true, false, true};
+    utassert(state.SyncPanelVisibility(middleHidden, 3));
+    utassertnear(state.sizes[0], 200.f);
+    utassertnear(state.sizes[1], 0.f);
+    utassertnear(state.sizes[2], 200.f);
+    utassert(state.NextVisiblePanel(0) == 2);
+    utassert(state.PreviousVisiblePanel(2) == 0);
+
+    utassert(state.InsertPanel(&cx, 100));
+    const bool allShown[4] = {true, true, true, true};
+    utassert(state.SyncPanelVisibility(allShown, 4));
+    utassertnear(state.sizes[1], 200.f);
+    utassert(state.NextVisiblePanel(0) == 1);
+    delete win;
+    ArenaDelete(arena);
+}
+
 static void StoppingOrClearingTheDragEndsResizing() {
     for (bool clear : {false, true}) {
         DragHarness harness = OpenDragHarness();
@@ -857,6 +923,8 @@ void TestResizable() {
     TestSuite("resizable");
     DraggingBeforeTheNextPaintResizesAndEmitsOnce();
     CancelledDragDoesNotReuseThePaintedIndex();
+    ResizingUsesMeasuredSizesAndRespectsBothLimits();
+    HidingAPanelPreservesItsSlotAndPreferredSize();
     ResizingOnePanelTakesFromTheNext();
     TheLastPanelHasNoHandle();
     GrowingWalksOnPastANeighbourThatIsSpent();

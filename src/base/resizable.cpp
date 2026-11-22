@@ -32,80 +32,83 @@ static float PanelMax(const float* maxs, int ix) {
     return maxs ? maxs[ix] : 1e9f;
 }
 
+static bool PanelHidden(const bool* shown, int ix) {
+    return shown && !shown[ix];
+}
+
+// transfer_size: move up to `delta` into `receiver`, no further than its own
+// maximum, from `count` donors starting at `first` and stepping by `step`.
+// The first donor borders the dragged handle; a fixed panel gives only from
+// there. Answers how much moved.
+static float ResizableTransferSize(float* sizes, const float* mins,
+                                   const float* maxs, const bool* fixed,
+                                   const bool* shown, int receiver, int first,
+                                   int step, int count, float delta) {
+    float capacity = PanelMax(maxs, receiver) - sizes[receiver];
+    if (capacity < 0) {
+        capacity = 0;
+    }
+    float remaining = delta < capacity ? delta : capacity;
+    float moved = 0;
+    for (int index = 0; index < count; index++) {
+        if (remaining == 0) {
+            break;
+        }
+        int donor = first + index * step;
+        // A fixed panel can shrink only if it borders the dragged handle.
+        if (PanelHidden(shown, donor) ||
+            (fixed && fixed[donor] && index != 0)) {
+            continue;
+        }
+        float spare = sizes[donor] - PanelMin(mins, donor);
+        if (spare < 0) {
+            spare = 0;
+        }
+        float amount = remaining < spare ? remaining : spare;
+        sizes[donor] -= amount;
+        sizes[receiver] += amount;
+        remaining -= amount;
+        moved += amount;
+    }
+    return moved;
+}
+
 bool ResizablePanelResize(float* sizes, const float* mins, const float* maxs,
-                          int n, int ix, float size, float containerSize,
-                          const bool* fixed) {
-    // The handle sits between ix and ix + 1, so the last panel has none.
-    if (n <= 1 || ix < 0 || ix >= n - 1) {
+                          int n, int ix, float size, const bool* fixed,
+                          const bool* shown) {
+    if (ix < 0 || ix >= n || PanelHidden(shown, ix)) {
         return false;
     }
-    float moved = size - sizes[ix];
-    if (moved == 0) {
-        return false;
-    }
-    float lo = PanelMin(mins, ix);
-    float hi = PanelMax(maxs, ix);
-    float newSize = size < lo ? lo : (size > hi ? hi : size);
-    int mainIx = ix;
-    float old = sizes[ix];
-
-    if (moved > 0) {
-        // Growing: the panels after it give up what they can spare, nearest
-        // first, each stopping at its own minimum.
-        float changed = newSize - sizes[ix];
-        sizes[ix] = newSize;
-        int i = ix;
-        while (changed > 0 && i < n - 1) {
-            i++;
-            // A fixed panel only gives up space to a drag on its own handle.
-            if (fixed && fixed[i] && i != mainIx + 1) {
-                continue;
-            }
-            float spare = sizes[i] - PanelMin(mins, i);
-            if (spare < 0) {
-                spare = 0;
-            }
-            float take = changed < spare ? changed : spare;
-            sizes[i] -= take;
-            changed -= take;
+    int next = -1;
+    for (int i = ix + 1; i < n && next < 0; i++) {
+        if (!PanelHidden(shown, i)) {
+            next = i;
         }
+    }
+    if (next < 0) {
+        return false;
+    }
+    float delta = size - sizes[ix];
+    if (delta == 0) {
+        return false;
+    }
+    // The donors in Rust's order: `next..len` when growing, `(0..=ix).rev()`
+    // when shrinking. Hidden ones stay in the walk so the first donor is
+    // always the panel bordering the handle. Space only moves, so the sizes
+    // changed exactly when some of it did.
+    float moved;
+    if (delta > 0) {
+        moved = ResizableTransferSize(sizes, mins, maxs, fixed, shown, ix, next,
+                                      1, n - next, delta);
     } else {
-        // Shrinking. Rust measures what is left to give from the requested
-        // size rather than the clamped one, so a request below the minimum
-        // stops there and the remainder is not handed on.
-        float changed = newSize - size;
-        sizes[ix] = newSize;
-        int i = ix;
-        while (changed > 0 && i > 0) {
-            i--;
-            if (fixed && fixed[i]) {
-                continue;
-            }
-            float spare = sizes[i] - PanelMin(mins, i);
-            if (spare < 0) {
-                spare = 0;
-            }
-            float take = changed < spare ? changed : spare;
-            changed -= take;
-            sizes[i] -= take;
-        }
-        sizes[mainIx + 1] += old - size - changed;
+        moved = ResizableTransferSize(sizes, mins, maxs, fixed, shown, next, ix,
+                                      -1, ix + 1, -delta);
     }
-
-    float total = 0;
-    for (int i = 0; i < n; i++) {
-        total += sizes[i];
-    }
-    if (total > containerSize) {
-        float overflow = total - containerSize;
-        float shrunk = sizes[mainIx] - overflow;
-        sizes[mainIx] = shrunk < lo ? lo : shrunk;
-    }
-    return true;
+    return moved > 0;
 }
 
 void ResizableAdjustToContainer(float* sizes, int n, float containerSize,
-                                const bool* fixed) {
+                                const bool* fixed, const bool* shown) {
     if (containerSize <= 0) {
         return;
     }
@@ -116,6 +119,9 @@ void ResizableAdjustToContainer(float* sizes, int n, float containerSize,
     float fixedSize = 0;
     float total = 0;
     for (int i = 0; i < n; i++) {
+        if (PanelHidden(shown, i)) {
+            continue;
+        }
         if (fixed && fixed[i]) {
             fixedSize += sizes[i];
         } else {
@@ -130,7 +136,7 @@ void ResizableAdjustToContainer(float* sizes, int n, float containerSize,
         return;
     }
     for (int i = 0; i < n; i++) {
-        if (fixed && fixed[i]) {
+        if (PanelHidden(shown, i) || (fixed && fixed[i])) {
             continue;
         }
         sizes[i] = available * (sizes[i] / total);
@@ -159,56 +165,33 @@ void ResizableState::OnHandleDown(ResizableState* self, Ctx* cx,
 void ResizableState::OnHandleDrag(ResizableState* self, Ctx* cx,
                                   const DragMoveEvent* ev) {
     int ix = self->dragging;
-    if (ix < 0 || ix + 1 >= len(self->sizes) ||
+    if (ix < 0 || ix >= len(self->sizes) ||
         !StrEq(ev->drag.kind, kResizeDrag)) {
         return;
     }
-    // A hidden panel is not on the boundary being dragged and must not be
-    // given or taken space, so the arithmetic sees the panels that are drawn
-    // and nothing else. Rust leaves the hidden slot in its array and lets its
-    // number drift; the sizes are compacted here and written back instead.
-    int cap = len(self->sizes);
-    float* sizes = (float*)Alloc(cx->a, (int)sizeof(float) * cap);
-    float* mins = (float*)Alloc(cx->a, (int)sizeof(float) * cap);
-    float* maxs = (float*)Alloc(cx->a, (int)sizeof(float) * cap);
-    bool* fixed = (bool*)Alloc(cx->a, (int)sizeof(bool) * cap);
-    int* back = (int*)Alloc(cx->a, (int)sizeof(int) * cap);
-    int n = 0;
-    int at = -1;
-    for (int i = 0; i < len(self->sizes); i++) {
-        if (i < len(self->shown) && !self->shown[i]) {
-            continue;
-        }
-        sizes[n] = self->sizes[i];
-        mins[n] = self->mins[i];
-        maxs[n] = self->maxs[i];
-        fixed[n] = i < len(self->fixed) && self->fixed[i];
-        back[n] = i;
-        if (i == ix) {
-            at = n;
-        }
-        n++;
-    }
-    if (at < 0 || at + 1 >= n) {
-        return;
-    }
     // Where the boundary now is, in the group's own coordinates: the size the
-    // panels before it take up plus what the pointer has moved to.
+    // visible panels before it take up plus what the pointer has moved to. A
+    // hidden panel is not on the boundary and neither gives nor takes space.
+    const bool* shown =
+        len(self->shown) == len(self->sizes) ? self->shown.els : nullptr;
     float before = 0;
-    for (int i = 0; i < at; i++) {
-        before += sizes[i];
+    for (int i = 0; i < ix; i++) {
+        if (!shown || shown[i]) {
+            before += self->sizes[i];
+        }
     }
     bool horiz = AxisIsHorizontal(self->axis);
     float pt =
         horiz ? ev->event.x - self->bounds.x : ev->event.y - self->bounds.y;
     float want = pt - before;
-    float container = horiz ? self->bounds.w : self->bounds.h;
-    if (!ResizablePanelResize(sizes, mins, maxs, n, at, want, container,
-                              fixed)) {
+    const bool* fixed =
+        len(self->fixed) == len(self->sizes) ? self->fixed.els : nullptr;
+    // Rust reads the measured bounds here rather than the flex basis. A
+    // panel here is drawn at exactly its entry in `sizes` once it has one,
+    // so those are the measured sizes.
+    if (!ResizablePanelResize(self->sizes.els, self->mins.els, self->maxs.els,
+                              len(self->sizes), ix, want, fixed, shown)) {
         return;
-    }
-    for (int i = 0; i < n; i++) {
-        self->sizes[back[i]] = sizes[i];
     }
     Notify(cx);
 }
@@ -227,21 +210,64 @@ void ResizableState::OnHandleUp(ResizableState* self, Ctx* cx,
     Notify(cx);
 }
 
+int ResizableState::PreviousVisiblePanel(int ix) const {
+    for (int i = (ix < len(sizes) ? ix : len(sizes)) - 1; i >= 0; i--) {
+        if (i >= len(shown) || shown[i]) return i;
+    }
+    return -1;
+}
+
+int ResizableState::NextVisiblePanel(int ix) const {
+    for (int i = ix + 1; i < len(sizes); i++) {
+        if (i >= len(shown) || shown[i]) return i;
+    }
+    return -1;
+}
+
+bool ResizableState::SyncPanelVisibility(const bool* visible, int n) {
+    while (len(shown) < len(sizes)) VecAppend(shown, true);
+    while (len(preferred) < len(sizes)) VecAppend(preferred, 0.f);
+    bool changed = false;
+    for (int i = 0; i < n && i < len(sizes); i++) {
+        if (shown[i] == visible[i]) {
+            continue;
+        }
+        shown[i] = visible[i];
+        // Hidden panels keep their slot and preferred size but occupy no
+        // space.
+        if (visible[i]) {
+            sizes[i] = preferred[i] > 0 ? preferred[i] : PANEL_MIN_SIZE;
+        } else {
+            preferred[i] = sizes[i];
+            sizes[i] = 0;
+        }
+        changed = true;
+    }
+    if (changed) {
+        dragging = -1;
+    }
+    return changed;
+}
+
 bool ResizableState::ResizePanel(Ctx* cx, int ix, float size) {
-    if (ix < 0 || ix >= len(sizes)) {
+    if (ix < 0 || ix >= len(sizes) || (ix < len(shown) && !shown[ix])) {
         return false;
     }
-    int handle = ix;
-    float requested = size;
-    if (ix == len(sizes) - 1) {
-        if (ix == 0) return false;
-        handle = ix - 1;
-        requested = sizes[handle] + sizes[ix] - size;
-    }
     const bool* fixedFlags = len(fixed) == len(sizes) ? fixed.els : nullptr;
-    bool changed =
-        ResizablePanelResize(sizes.els, mins.els, maxs.els, len(sizes), handle,
-                             requested, ContainerSize(), fixedFlags);
+    const bool* shownFlags = len(shown) == len(sizes) ? shown.els : nullptr;
+    bool changed = false;
+    if (NextVisiblePanel(ix) >= 0) {
+        changed =
+            ResizablePanelResize(sizes.els, mins.els, maxs.els, len(sizes), ix,
+                                 size, fixedFlags, shownFlags);
+    } else if (int previous = PreviousVisiblePanel(ix); previous >= 0) {
+        // Last panel: drive its size by resizing the previous sibling so the
+        // freed space lands here.
+        float delta = sizes[ix] - size;
+        changed = ResizablePanelResize(
+            sizes.els, mins.els, maxs.els, len(sizes), previous,
+            sizes[previous] + delta, fixedFlags, shownFlags);
+    }
     // done_resizing: a programmatic resize ends the gesture. Move and release
     // handlers read `dragging` when the event arrives, so a release still
     // queued from the frame that painted the drag must not reuse this index.
@@ -264,12 +290,18 @@ bool ResizableState::InsertPanel(Ctx* cx, float size, int ix) {
     float container = ContainerSize();
     if (container < 1.f) container = 1.f;
     float left = container > size ? container - size : 1.f;
-    for (int i = 0; i < n; i++) sizes[i] = left * sizes[i] / container;
+    for (int i = 0; i < n; i++) {
+        if (i < len(shown) && !shown[i]) continue;
+        sizes[i] = left * sizes[i] / container;
+    }
+    while (len(shown) < n) VecAppend(shown, true);
+    while (len(preferred) < n) VecAppend(preferred, 0.f);
     VecInsertAt(sizes, ix, size);
     VecInsertAt(mins, ix, PANEL_MIN_SIZE);
     VecInsertAt(maxs, ix, 1e9f);
     VecInsertAt(grows, ix, false);
     VecInsertAt(shown, ix, true);
+    VecInsertAt(preferred, ix, size);
     if (len(fixed) == n) VecInsertAt(fixed, ix, false);
     VecInsertAt(laid, ix, Bounds{});
     Notify(cx);
@@ -285,6 +317,7 @@ bool ResizableState::RemovePanel(Ctx* cx, int ix) {
     ResizableVecRemove(&maxs, ix);
     if (ix < len(grows)) ResizableVecRemove(&grows, ix);
     if (ix < len(shown)) ResizableVecRemove(&shown, ix);
+    if (ix < len(preferred)) ResizableVecRemove(&preferred, ix);
     if (hadFixed) ResizableVecRemove(&fixed, ix);
     if (ix < len(laid)) ResizableVecRemove(&laid, ix);
     if (dragging == ix)
@@ -292,8 +325,9 @@ bool ResizableState::RemovePanel(Ctx* cx, int ix) {
     else if (dragging > ix)
         dragging--;
     const bool* fixedFlags = hadFixed ? fixed.els : nullptr;
+    const bool* shownFlags = len(shown) == len(sizes) ? shown.els : nullptr;
     ResizableAdjustToContainer(sizes.els, len(sizes), ContainerSize(),
-                               fixedFlags);
+                               fixedFlags, shownFlags);
     Notify(cx);
     return true;
 }
@@ -303,12 +337,14 @@ bool ResizableState::ResetPanel(Ctx* cx, int ix) {
     mins[ix] = PANEL_MIN_SIZE;
     maxs[ix] = 1e9f;
     if (ix < len(grows)) grows[ix] = false;
-    if (ix < len(shown)) shown[ix] = true;
+    // A hidden panel stays hidden and keeps its preferred size; a visible one
+    // keeps its current size, as before.
     if (len(fixed) == len(sizes)) fixed[ix] = false;
     if (ix < len(laid)) laid[ix] = {};
     const bool* fixedFlags = len(fixed) == len(sizes) ? fixed.els : nullptr;
+    const bool* shownFlags = len(shown) == len(sizes) ? shown.els : nullptr;
     ResizableAdjustToContainer(sizes.els, len(sizes), ContainerSize(),
-                               fixedFlags);
+                               fixedFlags, shownFlags);
     Notify(cx);
     return true;
 }
@@ -319,6 +355,7 @@ void ResizableState::Clear() {
     VecClear(maxs);
     VecClear(grows);
     VecClear(shown);
+    VecClear(preferred);
     VecClear(fixed);
     VecClear(laid);
     dragging = -1;
@@ -743,8 +780,10 @@ static void MeasureResizableGroup(PaintCtx* paint, El* root, void* data) {
     } else {
         const bool* fixed =
             len(state->fixed) == len(state->sizes) ? state->fixed.els : nullptr;
+        const bool* shown =
+            len(state->shown) == len(state->sizes) ? state->shown.els : nullptr;
         ResizableAdjustToContainer(state->sizes.els, len(state->sizes),
-                                   container, fixed);
+                                   container, fixed, shown);
     }
     state->lastContainer = container;
     WindowPost(paint->window, ListenTo(entity, &ResizableState::OnSettled));
@@ -789,6 +828,11 @@ El* ResizablePanelGroup::IntoEl() {
             // arithmetic takes a number, not a flag.
             VecAppend(s->maxs, maxs[i] > 0 ? maxs[i] : 1e9f);
         }
+        // Rust's new panel states start visible; the sync below hides the
+        // ones declared hidden, keeping their declared size as the
+        // preference.
+        VecClear(s->shown);
+        VecClear(s->preferred);
         s->lastContainer = 0;
     } else {
         for (int i = 0; i < len(panels); i++) {
@@ -796,12 +840,13 @@ El* ResizablePanelGroup::IntoEl() {
             s->maxs[i] = maxs[i] > 0 ? maxs[i] : 1e9f;
         }
     }
+    bool* visible = (bool*)Alloc(a, (int)sizeof(bool) * (len(shown) + 1));
+    for (int i = 0; i < len(shown); i++) visible[i] = shown[i];
+    s->SyncPanelVisibility(visible, len(shown));
     VecClear(s->grows);
-    VecClear(s->shown);
     VecClear(s->fixed);
     for (int i = 0; i < len(panels); i++) {
         VecAppend(s->grows, grows[i]);
-        VecAppend(s->shown, shown[i]);
         // Stored at build, before this frame's container adjustment, so a
         // panel made fixed while its bounds stay put is already fixed when
         // the container next changes size. Rust learns the same fact from
