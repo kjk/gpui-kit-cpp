@@ -6429,6 +6429,37 @@ void InputSetSelectedTextRangeUtf16(InputState* s, App* app, Window* win,
     Notify(app, win);
 }
 
+TempStr InputTextForRangeUtf16Temp(const InputState* s, int startUtf16,
+                                   int endUtf16, int* adjustedStart,
+                                   int* adjustedEnd) {
+    Str text = s ? InputValue(s) : Str{};
+    int a = RopeOffsetUtf16ToOffset(text, startUtf16 < 0 ? 0 : startUtf16);
+    int b = RopeOffsetUtf16ToOffset(text, endUtf16 < 0 ? 0 : endUtf16);
+    if (b < a) {
+        b = a;
+    }
+    int a16 = RopeOffsetToOffsetUtf16(text, a);
+    int b16 = RopeOffsetToOffsetUtf16(text, b);
+    if (adjustedStart) {
+        *adjustedStart = a16;
+    }
+    if (adjustedEnd) {
+        *adjustedEnd = b16;
+    }
+    if (s && s->masked) {
+        // Keep the redacted text aligned with the platform's UTF-16 range:
+        // one MASK_CHAR per UTF-16 unit, not per character.
+        int units = b16 - a16;
+        char* dots = (char*)Alloc(GetTempArena(), units * 3 + 1);
+        for (int i = 0; i < units; i++) {
+            memcpy(dots + i * 3, "\xE2\x80\xA2", 3); // U+2022 BULLET
+        }
+        dots[units * 3] = 0;
+        return Str(dots, units * 3);
+    }
+    return StrDupTemp(Str(text.s + a, b - a));
+}
+
 // selection.rs: what a double and a triple click take.
 void InputSelectWord(InputState* s, App* app, Window* win, int offset) {
     int a = 0;

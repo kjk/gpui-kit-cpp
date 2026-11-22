@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `401fc33f66d31391d7d61eb927636d13bf492064` (2026-11-20,
-text_selection: Clear the press latch after mouse-down dispatch (#4054)).
-Upstream clears the text-selection press latch after mouse-down dispatch. A
-press here always runs once on the window's single selection and clears it, so
-only the test is ported.
+Processed through `4373234ff46df3a3227972788a41dc6603d352ce` (2026-11-20,
+input: Redact IME surrounding text for masked inputs (#4059)).
+A masked input answers the input method's text-for-range query with mask
+characters, one per UTF-16 unit, through the new InputTextForRangeUtf16Temp
+seam; macOS reads the query through it.
 The current update target is
 `1c7e7f7c6c8d6585da909804496614da01bb8663`.
 

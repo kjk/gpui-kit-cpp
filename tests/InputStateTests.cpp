@@ -98,6 +98,25 @@ static void AMaskedValueStaysInTheField() {
     utassert(InputIsCopyable(&s));
 }
 
+// state.rs test_masked_input_redacts_ime_text. The input method reads the
+// text around the caret; a masked field answers one bullet per UTF-16 unit
+// of the range it actually covers, and the real text once unmasked.
+static void MaskedInputRedactsImeText() {
+    InputState s;
+    s.masked = true;
+    InputSetValue(&s, StrL("a🦀b"));
+    int start = -1;
+    int end = -1;
+    utassert(
+        base::StrEq(InputTextForRangeUtf16Temp(&s, 1, 5, &start, &end), "•••"));
+    utassert(start == 1 && end == 4);
+
+    s.masked = false;
+    utassert(
+        base::StrEq(InputTextForRangeUtf16Temp(&s, 1, 5, &start, &end), "🦀b"));
+    utassert(start == 1 && end == 4);
+}
+
 static bool ConfigEq(const TextInputConfiguration& a,
                      const TextInputConfiguration& b) {
     return a.inputAction == b.inputAction && a.autocorrect == b.autocorrect &&
@@ -14338,6 +14357,7 @@ void TestInputState() {
     MaskPatternAcceptsNonAsciiText();
     MaskedRedoRestoresActualCursor();
     AMaskedValueStaysInTheField();
+    MaskedInputRedactsImeText();
     RevealingAPasswordKeepsTextAssistanceDisabled();
     TextInputConfigurationFollowsTheInput();
     AFocusedFieldGoingTakesItsRegistrationWithIt();

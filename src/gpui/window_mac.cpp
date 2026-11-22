@@ -1087,17 +1087,17 @@ static gpui::Str TextInputString(id string) {
     if (!in || range.location == NSNotFound) {
         return nil;
     }
-    gpui::Str doc = gpui::InputValue(in);
-    int lo = gpui::Utf16OffsetToUtf8(doc, (int)range.location);
-    int hi = gpui::Utf16OffsetToUtf8(doc, (int)(range.location + range.length));
-    if (lo < 0 || hi > len(doc) || hi < lo) {
-        return nil;
-    }
+    // text_for_range: a masked field answers bullets, never its text.
+    int lo16 = 0;
+    int hi16 = 0;
+    gpui::TempStr sub = gpui::InputTextForRangeUtf16Temp(
+        in, (int)range.location, (int)(range.location + range.length), &lo16,
+        &hi16);
     if (actual) {
-        *actual = range;
+        *actual = NSMakeRange((NSUInteger)lo16, (NSUInteger)(hi16 - lo16));
     }
-    NSString* str = [[NSString alloc] initWithBytes:doc.s + lo
-                                             length:(NSUInteger)(hi - lo)
+    NSString* str = [[NSString alloc] initWithBytes:sub.s
+                                             length:(NSUInteger)len(sub)
                                            encoding:NSUTF8StringEncoding];
     return str ? [[NSAttributedString alloc] initWithString:str] : nil;
 }

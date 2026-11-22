@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "401fc33f66d31391d7d61eb927636d13bf492064",
+  sha: "4373234ff46df3a3227972788a41dc6603d352ce",
   date: "2026-11-20",
-  subject: "text_selection: Clear the press latch after mouse-down dispatch (#4054)",
+  subject: "input: Redact IME surrounding text for masked inputs (#4059)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",

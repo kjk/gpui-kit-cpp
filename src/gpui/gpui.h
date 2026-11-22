@@ -6447,6 +6447,15 @@ void InputSetSelectedRangeWithDirection(InputState* s, App* app, Window* win,
 // Text and undo history are left alone. Out of range clamps to the document.
 void InputSetSelectedTextRangeUtf16(InputState* s, App* app, Window* win,
                                     int startUtf16, int endUtf16);
+// EntityInputHandler::text_for_range: the text the platform's input method
+// asks for around the caret, `startUtf16..endUtf16` snapped to characters
+// and clamped to the document. `*adjustedStart`/`*adjustedEnd` (either may
+// be null) receive the UTF-16 range actually answered. A masked field
+// answers one bullet per UTF-16 unit instead, so the redacted text stays
+// aligned with the platform's range and the secret never leaves the field.
+TempStr InputTextForRangeUtf16Temp(const InputState* s, int startUtf16,
+                                   int endUtf16, int* adjustedStart,
+                                   int* adjustedEnd);
 // selection.rs: what a double and a triple click take.
 void InputSelectWord(InputState* s, App* app, Window* win, int offset);
 void InputSelectLine(InputState* s, App* app, Window* win, int offset);
