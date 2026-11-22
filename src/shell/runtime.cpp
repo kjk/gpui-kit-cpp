@@ -8374,6 +8374,17 @@ static JSValue NativeFetch(JSContext* ctx, JSValueConst, int argc,
             Str value;
             if (JsString(ctx, nameValue, arena, &name) &&
                 JsString(ctx, valueValue, arena, &value)) {
+                if (!shell::FetchHeaderIsValid(name, value)) {
+                    JS_FreeValue(ctx, nameValue);
+                    JS_FreeValue(ctx, valueValue);
+                    JSValue thrown = JS_ThrowTypeError(
+                        ctx,
+                        "fetch(url, options).headers has an invalid header "
+                        "name or value");
+                    request.Free();
+                    ArenaDelete(arena);
+                    return thrown;
+                }
                 if (shell::FetchHeaderIsProhibited(name)) {
                     JS_FreeValue(ctx, nameValue);
                     JS_FreeValue(ctx, valueValue);
@@ -8418,6 +8429,14 @@ static JSValue NativeFetch(JSContext* ctx, JSValueConst, int argc,
                 request.Free();
                 ArenaDelete(arena);
                 return JS_EXCEPTION;
+            }
+            if (count > (size_t)shell::kFetchMaxRequestBody) {
+                JSValue thrown = JS_ThrowRangeError(
+                    ctx, "fetch request body exceeded the %d byte limit",
+                    shell::kFetchMaxRequestBody);
+                request.Free();
+                ArenaDelete(arena);
+                return thrown;
             }
             request.body = StrDup(Str((const char*)bytes, (int)count));
             ok = request.body.s || count == 0;

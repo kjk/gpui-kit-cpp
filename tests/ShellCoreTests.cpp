@@ -171,6 +171,7 @@ static void AGetNeedsAGrantForItsSchemeHostPortAndPath() {
     }
     const char* denied[] = {"https://docs.example.com/admin",
                             "https://docs.example.com/guide/../admin",
+                            "https://docs.example.com/guide/%2E%2e/admin",
                             "http://docs.example.com/guide/intro",
                             "https://docs.example.com:8443/guide/intro",
                             "http://127.0.0.1/",
@@ -4288,6 +4289,30 @@ static void ShellFetchGrantsBindMethodSchemePortAndPath() {
     utassert(
         !FetchAuthorize(StrL("https://api.example.test/v1/accounts-delete"),
                         StrL("GET"), scoped));
+    // The URL parser and the server resolve dot segments, literal or
+    // percent-encoded, so the grant check has to as well.
+    for (const char* url : {"https://api.example.test/v1/account/../admin",
+                            "https://api.example.test/v1/account/%2e%2e/admin",
+                            "https://api.example.test/v1/account/.%2E/admin",
+                            "https://api.example.test/v1/account/./../x"}) {
+        utassert(!FetchAuthorize(Str(url), StrL("GET"), scoped));
+    }
+    utassert(FetchAuthorize(
+        StrL("https://api.example.test/v1/other/../account/profile"),
+        StrL("GET"), scoped));
+    utassert(
+        FetchAuthorize(StrL("https://api.example.test/v1/account/%2e/profile"),
+                       StrL("GET"), scoped));
+}
+
+static void ShellFetchRejectsMalformedHeaders() {
+    utassert(FetchHeaderIsValid(StrL("X-Api-Key"), StrL("a\tb c")));
+    utassert(!FetchHeaderIsValid(StrL(""), StrL("v")));
+    utassert(!FetchHeaderIsValid(StrL("X: Y"), StrL("v")));
+    utassert(!FetchHeaderIsValid(StrL("X\r\nHost"), StrL("v")));
+    utassert(!FetchHeaderIsValid(StrL("X"), StrL("v\r\nHost: evil")));
+    utassert(!FetchHeaderIsValid(StrL("X"), StrL("v\nY: z")));
+    utassert(!FetchHeaderIsValid(StrL("X"), Str("a\0b", 3)));
 }
 
 static void ShellFetchProhibitsTheHeadersTheClientOwns() {
@@ -6979,6 +7004,7 @@ void TestShellCore() {
     ShellFetchRedirectsKeepCredentialsOnTheirOrigin();
     ShellFetchGrantsBindMethodSchemePortAndPath();
     ShellFetchProhibitsTheHeadersTheClientOwns();
+    ShellFetchRejectsMalformedHeaders();
     ShellFetchChecksEveryGetTargetBeforeContact();
     ShellAccessibilityRolesMirrorUpstream();
     ShellDockPanelsPersistAndChromeRunsInLayoutScope();

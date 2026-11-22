@@ -31,6 +31,10 @@ bool FetchIsHttpMethod(Str method);
 // about to describe differently, and Host picks the connection.
 bool FetchHeaderIsProhibited(Str name);
 
+// Whether a script-supplied header is well formed: the name an RFC 7230
+// token, the value free of control characters other than tab.
+bool FetchHeaderIsValid(Str name, Str value);
+
 // One request header, owned by the request that carries it.
 struct FetchHeader {
     Str name;

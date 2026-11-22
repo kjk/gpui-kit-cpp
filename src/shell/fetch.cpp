@@ -162,17 +162,34 @@ static bool ParseFetchUrl(Str url, FetchUrl* parsed, Str* error) {
     return true;
 }
 
-// RFC 7230's `token`, which is what `reqwest::Method::from_bytes` accepts.
-bool FetchIsHttpMethod(Str method) {
-    if (!method.s || len(method) <= 0) return false;
-    for (int i = 0; i < len(method); i++) {
-        char c = method.s[i];
+// RFC 7230's `token`, which is what `reqwest::Method::from_bytes` and
+// `HeaderName::from_bytes` accept.
+static bool IsHttpToken(Str s) {
+    if (!s.s || len(s) <= 0) return false;
+    for (int i = 0; i < len(s); i++) {
+        char c = s.s[i];
         bool token = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
                      (c >= '0' && c <= '9') || c == '!' || c == '#' ||
                      c == '$' || c == '%' || c == '&' || c == '\'' ||
                      c == '*' || c == '+' || c == '-' || c == '.' || c == '^' ||
                      c == '_' || c == '`' || c == '|' || c == '~';
         if (!token) return false;
+    }
+    return true;
+}
+
+bool FetchIsHttpMethod(Str method) {
+    return IsHttpToken(method);
+}
+
+// `HeaderName::from_bytes` + `HeaderValue::from_str`: a token name and a
+// value of tab, visible ASCII and obs-text. CR, LF and NUL would let a script
+// splice headers the client owns into the transport's header block.
+bool FetchHeaderIsValid(Str name, Str value) {
+    if (!IsHttpToken(name)) return false;
+    for (int i = 0; i < len(value); i++) {
+        uint8_t c = (uint8_t)value.s[i];
+        if (c != '\t' && (c < 0x20 || c == 0x7f)) return false;
     }
     return true;
 }
@@ -190,16 +207,71 @@ bool FetchParseUrl(Str url, FetchParsedUrl* out) {
     return true;
 }
 
+// A path segment the WHATWG URL parser reads as `.` or `..`: the literal
+// spellings and the percent-encoded ones (`%2e`, `.%2E`, `%2e%2e`, ...).
+static int DotSegmentKind(Str part) {
+    int dots = 0;
+    int i = 0;
+    while (i < len(part)) {
+        if (part.s[i] == '.') {
+            i++;
+        } else if (i + 2 < len(part) && part.s[i] == '%' &&
+                   part.s[i + 1] == '2' &&
+                   (part.s[i + 2] == 'e' || part.s[i + 2] == 'E')) {
+            i += 3;
+        } else {
+            return 0;
+        }
+        dots++;
+        if (dots > 2) return 0;
+    }
+    return dots;
+}
+
+// RFC 3986 remove_dot_segments over the path the grant check sees, the way
+// the URL parser that sends the request (and the server) would resolve it,
+// so a prefix grant cannot be left by climbing out of it. `..` that would
+// leave the root is dropped.
+static Str NormalizeUrlPath(Arena* arena, Str path) {
+    Vec<Str> parts;
+    int i = 0;
+    if (len(path) > 0 && path.s[0] == '/') i = 1;
+    while (i <= len(path)) {
+        int end = i;
+        while (end < len(path) && path.s[end] != '/') end++;
+        Str part(path.s + i, end - i);
+        int dots = DotSegmentKind(part);
+        if (len(part) == 0 || dots == 1) {
+        } else if (dots == 2) {
+            if (len(parts) > 0) parts.len--;
+        } else {
+            VecAppend(parts, part);
+        }
+        if (end >= len(path)) break;
+        i = end + 1;
+    }
+    StrBuilder out(arena);
+    out.AppendChar('/');
+    for (int s = 0; s < len(parts); s++) {
+        if (s > 0) out.AppendChar('/');
+        out.Append(parts[s]);
+    }
+    VecReset(parts);
+    return Str(out.els, out.len);
+}
+
 bool FetchAuthorize(Str url, Str method, const Capabilities& capabilities,
                     Str* error) {
     ErrorOutClear(error);
     FetchUrl parsed;
     if (!ParseFetchUrl(url, &parsed, error)) return false;
     Str verb = len(method) > 0 ? method : StrL("GET");
-    if (capabilities.MayRequest(parsed.scheme, parsed.host, parsed.port,
-                                parsed.hasPort, verb, parsed.path)) {
-        return true;
-    }
+    Arena* arena = ArenaNew();
+    Str path = NormalizeUrlPath(arena, parsed.path);
+    bool allowed = capabilities.MayRequest(
+        parsed.scheme, parsed.host, parsed.port, parsed.hasPort, verb, path);
+    ArenaDelete(arena);
+    if (allowed) return true;
     ErrorOutSet(error,
                 fmt("HTTP request %s %s is not granted; add it to "
                     "capabilities.network.hosts or capabilities.network.http",
