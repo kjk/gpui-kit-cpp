@@ -145,13 +145,19 @@ static void ShortStreamStops() {
     b.LineTo(3, 4);
     b.Op(kOpStrokePath);
     b.End();
-    Size vb = {};
-    for (int n = 0; n <= b.data.len; n++) {
+    // The opcode plus the viewBox's four floats.
+    const int kViewBoxBytes = 2 + 4 * 4;
+    for (int n = 0; n <= len(b.data); n++) {
         // No PaintCtx here, so this is the reader that can be driven without
         // one; ExecuteDrawOps is exercised by every icon the examples draw.
-        DrawOpsViewBox(b.data.els, n, &vb);
+        Size vb = {};
+        bool ok = DrawOpsViewBox(b.data.els, n, &vb);
+        utassert(ok == (n >= kViewBoxBytes));
+        if (ok) {
+            utassertnear(vb.w, 24.f);
+            utassertnear(vb.h, 24.f);
+        }
     }
-    utassert(true);
 }
 
 // ─── the reader, on SVG that is not a lucide icon ────────────────────────

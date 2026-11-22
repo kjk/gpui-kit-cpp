@@ -105,14 +105,13 @@ void VirtualListStory::OnScroll(VirtualListStory* self, Ctx* cx,
 }
 
 // The row the list builds for each index: one cell naming the row, and a run
-// of numbered cells after it.
-static int gVlColumns = 7;
-
-static El* VlRow(Ctx* cx, int ix) {
+// of numbered cells after it. The column count rides in `user`.
+static El* VlRow(void* user, Ctx* cx, int ix) {
+    int columns = (int)(intptr_t)user;
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
     El* row = Div(a)->FlexRow()->Gap(4)->ItemsCenter()->H(kRowH);
-    for (int c = 0; c < gVlColumns; c++) {
+    for (int c = 0; c < columns; c++) {
         Str label =
             c == 0 ? StrDup(a, fmt("row: %d", ix)) : StrDup(a, fmt("%d", c));
         row->Child(Div(a)
@@ -184,7 +183,6 @@ El* VirtualListStory::Render(VirtualListStory* self, Ctx* cx) {
     toolbarRow->Child(group);
     page->Child(toolbarRow);
 
-    gVlColumns = self->columns;
     int rows = self->rows;
     El* list = component::VirtualList::New(cx, rows)
                    ->Id(StrL("virtual-list-story"))
@@ -193,7 +191,7 @@ El* VirtualListStory::Render(VirtualListStory* self, Ctx* cx) {
                    ->ScrollX(self->scrollX)
                    ->Axis(kVlAxisOf[self->axis])
                    ->Scroll(1, Listen(cx, &VirtualListStory::OnScroll))
-                   ->Row(VlRow)
+                   ->Row(VlRow, (void*)(intptr_t)self->columns)
                    ->IntoEl();
     self->visible = VirtualListHandleRange(&self->handle, nullptr, rows, kRowH);
     // The range the list reports, read after it was built rather than before:

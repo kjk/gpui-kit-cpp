@@ -46,10 +46,10 @@ static const int kNPanels = (int)(sizeof(kPanels) / sizeof(kPanels[0]));
 
 // The panels a menu can add, cycled the way Rust's AddPanel does — it makes
 // a StoryContainer of a random story each time.
-static int gNextPanel = 0;
-
 struct DockApp {
     Entity<DockState> dock = {};
+    // The next of kPanels AddPanelTo adds, cycling.
+    int nextPanel = 0;
     bool seeded = false;
     bool toggleButtonVisible = true;
     // The layout as it was last written, so a change that says nothing new
@@ -228,8 +228,8 @@ static void AddPanelTo(DockApp* self, Ctx* cx, DockPlacement where) {
     if (!s) {
         return;
     }
-    const DockPanelData& d = kPanels[gNextPanel % kNPanels];
-    gNextPanel++;
+    const DockPanelData& d = kPanels[self->nextPanel % kNPanels];
+    self->nextPanel++;
     DockPanelDef def;
     def.name = Str(d.name);
     def.title = Str(d.title);

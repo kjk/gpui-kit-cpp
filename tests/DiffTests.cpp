@@ -586,8 +586,11 @@ static void TestInlineAndRows() {
         DiffLinePosition::New(StrL("first.txt"), DiffSide::Modified, 2),
         &fix.cx);
     utassert(!fix.state->IsFileCollapsed(StrL("first.txt")));
+    int lineRow = fix.state->ScrollItem();
+    utassert(lineRow > 0);
     fix.state->ScrollToFile(StrL("first.txt"), &fix.cx);
-    utassert(fix.state->ScrollItem() >= 0);
+    // first.txt's header is the first row.
+    utassert(fix.state->ScrollItem() == 0);
 
     DiffLineRange cross =
         DiffLineRange::New(StrL("first.txt"), DiffSide::Original, 1, 2)
