@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `144fb7102bf5cbb9144c38010ca62b8b97670ed9` (2026-11-22,
-fix(motion): Report a Presence that starts closed as Absent instead of Running
-(#4062)).
-A Presence first sampled closed reports Absent with no animation frame pending,
-so a nav-stack page covered before it is drawn is dropped at once.
+Processed through `cf945af2d6491ff9bc175f3f1656a14793987db2` (2026-11-22,
+editor: Let an editor show its active line only while focused (#4067)).
+A code editor can show its active line only while focused
+(InputSetActiveLineOnlyWhenFocused): the active line number, wash and fold
+control follow focus while the caret row is unchanged.
 The current update target is
 `1c7e7f7c6c8d6585da909804496614da01bb8663`.
 

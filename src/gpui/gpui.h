@@ -4735,10 +4735,17 @@ struct LayoutMode {
     // turns it off; it is off here until something asks, because a plain
     // textarea has no gutter to hang the chevrons in.
     bool folding = false;
+    // LayoutMode::CodeEditor { active_line_only_when_focused }: an editor
+    // without focus (its own or an owned popup's) shows no active line.
+    // Off, as in Rust. Kept whatever the kind, since a façade may make the
+    // state a code editor only at render; the query below gates on the kind.
+    bool activeLineOnlyWhenFocused = false;
 };
 
 // LayoutMode::is_folding(): a code editor, with folding left on.
 bool LayoutModeIsFolding(const LayoutMode& m);
+// LayoutMode::is_active_line_only_when_focused(): a code editor that opted in.
+bool LayoutModeIsActiveLineOnlyWhenFocused(const LayoutMode& m);
 
 void LayoutModeSetRows(LayoutMode* m, int rows);
 int LayoutModeRows(const LayoutMode& m);
@@ -6744,6 +6751,12 @@ void InputSetSmartIndent(InputState* s, bool enabled, App* app,
 // nothing. Any other layout mode still notifies, and changes nothing.
 void InputSetLineNumber(InputState* s, bool lineNumber, App* app,
                         Window* win = nullptr);
+// EditorState::active_line_only_when_focused / its runtime setter: when on,
+// the active line number, the active-line wash and the caret's fold control
+// show only while the editor or a popup it owns (SetSelectionFocus) has
+// focus. Notifies only when the value changes.
+void InputSetActiveLineOnlyWhenFocused(InputState* s, bool enabled, App* app,
+                                       Window* win = nullptr);
 // Input methods count in UTF-16 on both platforms that have one to talk to;
 // a field counts in bytes. These are the two directions across. An offset
 // past the end clamps to it, which is what a platform handing over a stale

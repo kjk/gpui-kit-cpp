@@ -1849,6 +1849,18 @@ static void LayoutModeRowsClamp() {
     utassert(LayoutModeRows(grow) == 5);
 }
 
+// mode.rs test_code_editor, the is_active_line_only_when_focused half: off by
+// default, on when the code editor opts in, and never on for another kind.
+static void CodeEditorActiveLineOnlyWhenFocused() {
+    LayoutMode mode;
+    mode.kind = LayoutModeKind::CodeEditor;
+    utassert(!LayoutModeIsActiveLineOnlyWhenFocused(mode));
+    mode.activeLineOnlyWhenFocused = true;
+    utassert(LayoutModeIsActiveLineOnlyWhenFocused(mode));
+    mode.kind = LayoutModeKind::PlainText;
+    utassert(!LayoutModeIsActiveLineOnlyWhenFocused(mode));
+}
+
 // A field twenty lines tall inside a box that shows five of them.
 static void SeedScroll(InputState* s) {
     s->lastLineH = 20;
@@ -3531,6 +3543,79 @@ static void TheActiveLineWashCoversTheLeftPadding() {
     utassert(InputLastActiveLine(&r->input, win, &wash));
     utassertnear(wash.x, r->input.gutterBox.x);
     TestAppFree(app);
+}
+
+// element.rs active_line_follows_the_input_and_its_menu_focus. A recording
+// EditorLineNumberRenderer collects the line numbers shaped as active.
+namespace {
+struct ActiveLineNumbers {
+    int numbers[8] = {};
+    int n = 0;
+};
+
+El* RecordActiveLineNumber(Ctx* cx, const void* user, int number, bool active,
+                           const EditorLineNumberLayout& layout, float lineH) {
+    ActiveLineNumbers* rec = (ActiveLineNumbers*)user;
+    if (active && rec->n < 8) {
+        rec->numbers[rec->n++] = number;
+    }
+    return InputRenderLineNumber(cx, number, Rgba8(0, 0, 0, 255), layout,
+                                 lineH);
+}
+
+// Draws the editor afresh and answers the one active line, 0 for none and
+// -1 for two different ones.
+int ActiveLineDrawn(Window* win, ActiveLineNumbers* rec) {
+    rec->n = 0;
+    AppInvalidate(win);
+    TestDraw(win);
+    if (rec->n == 0) {
+        return 0;
+    }
+    for (int i = 1; i < rec->n; i++) {
+        if (rec->numbers[i] != rec->numbers[0]) {
+            return -1;
+        }
+    }
+    return rec->numbers[0];
+}
+} // namespace
+
+static void ActiveLineFollowsTheInputAndItsMenuFocus() {
+    for (int pass = 0; pass < 2; pass++) {
+        bool onlyWhenFocused = pass == 1;
+        App* app = TestAppNew();
+        Entity<ActiveLineRoot> root = EntityNew<ActiveLineRoot>(app);
+        ActiveLineRoot* r = root.Get(app);
+        ActiveLineNumbers rec;
+        r->input.kind = InputKind::Editor;
+        r->input.mode.kind = LayoutModeKind::CodeEditor;
+        InputSetActiveLineOnlyWhenFocused(&r->input, onlyWhenFocused, app);
+        InputSetValue(&r->input, StrL("one\ntwo\nthree"));
+        r->style.lineNumbers.user = &rec;
+        r->style.lineNumbers.render = RecordActiveLineNumber;
+        Window* win = TestWindowOpen(app, root, 240, 140);
+        FocusHandle menuFocus = FocusHandleNew(app);
+        FocusHandle otherFocus = FocusHandleNew(app);
+
+        // set_cursor_position(Position::new(1, 0)), then focus.
+        InputFocus(&r->input, app, win);
+        InputMoveTo(&r->input, app, win, 4);
+        utassert(ActiveLineDrawn(win, &rec) == 2);
+
+        FocusHandleFocus(win, otherFocus);
+        utassert(ActiveLineDrawn(win, &rec) == (onlyWhenFocused ? 0 : 2));
+
+        // A popup the editor owns keeps its active line shown.
+        r->input.SetSelectionFocus(menuFocus);
+        FocusHandleFocus(win, menuFocus);
+        utassert(ActiveLineDrawn(win, &rec) == 2);
+
+        FocusHandleFocus(win, otherFocus);
+        InputSetActiveLineOnlyWhenFocused(&r->input, false, app, win);
+        utassert(ActiveLineDrawn(win, &rec) == 2);
+        TestAppFree(app);
+    }
 }
 
 // A click in a scrolled editor must use the clip box plus live scrollY.
@@ -14424,6 +14509,7 @@ void TestInputState() {
     TheBlockPairMovesTheWholeLine();
     ActionForKey();
     LayoutModeRowsClamp();
+    CodeEditorActiveLineOnlyWhenFocused();
     ScrollToBringsTheCaretIntoView();
     RowRevealContainsTheWholeRowAndHasAStableOffset();
     UndersizedRowRevealAlignsTheStartWithoutOscillating();
@@ -14467,6 +14553,7 @@ void TestInputState() {
     SoftWrapBoundariesKeepTheVisualRowAffinity();
     ALongDocumentBuildsOnlyTheVisibleBand();
     TheActiveLineWashCoversTheLeftPadding();
+    ActiveLineFollowsTheInputAndItsMenuFocus();
     AClickInAScrolledEditorMapsThroughScrollY();
     AClickInAWrappedScrolledEditorIgnoresStaleWindowY();
     ScrollToCursorUsesDocumentYNotStaleWindowY();

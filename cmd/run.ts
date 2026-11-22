@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "144fb7102bf5cbb9144c38010ca62b8b97670ed9",
+  sha: "cf945af2d6491ff9bc175f3f1656a14793987db2",
   date: "2026-11-22",
-  subject: "fix(motion): Report a Presence that starts closed as Absent instead of Running (#4062)",
+  subject: "editor: Let an editor show its active line only while focused (#4067)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",

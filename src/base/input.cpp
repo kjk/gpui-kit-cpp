@@ -3369,6 +3369,15 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         caretRow = InputOffsetToPoint(state, cursor).row;
         caretRow = FoldMapNearestVisibleLine(&state->folds, caretRow);
     }
+    // prepaint's active_row: the caret row as the highlights see it — the
+    // active line number, the wash and the caret's fold chevron. An editor
+    // that opted in shows none without focus in it or a popup it owns. The
+    // caret itself still follows caretRow.
+    int activeRow = caretRow;
+    if (LayoutModeIsActiveLineOnlyWhenFocused(state->mode) &&
+        !state->HasSelectionFocus(cx->win)) {
+        activeRow = -1;
+    }
     bool caretFolded =
         folding && caret &&
         FoldMapLineHidden(&state->folds, InputOffsetToPoint(state, cursor).row);
@@ -4181,7 +4190,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         // active_line: the wash under the line the caret is on, gutter and
         // all, and the editor's padding left of the gutter. The column
         // paints it under every row, before the decorations.
-        if (row == caretRow && style.activeLine.a != 0 && underlay) {
+        if (row == activeRow && style.activeLine.a != 0 && underlay) {
             underlay->activeLine = band;
         }
         if (underlay && foldedLine && state->hasFoldBackground &&
@@ -4196,7 +4205,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             El* num = renderer.render
                           ? renderer
                                 .render(cx, renderer.user, number,
-                                        row == caretRow, numberLayout, lineH)
+                                        row == activeRow, numberLayout, lineH)
                           : InputRenderLineNumber(cx, number, style.foreground,
                                                   numberLayout, lineH);
             numCell =
@@ -4213,7 +4222,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             El* gutter = Div(a)->FlexRow()->ItemsCenter()->H(lineH)->PathClick(
                 StrDup(a, fmt("gutter-%d", row)));
             gutter->Child(numCell);
-            gutter->Child(FoldChevron(a, state, style, row, caretRow, lineH,
+            gutter->Child(FoldChevron(a, state, style, row, activeRow, lineH,
                                       gutterHover));
             if (row == firstRow) {
                 gutter->BoundsOut(&state->gutterBox);
@@ -4748,6 +4757,10 @@ int LayoutModeMinRows(const LayoutMode& m) {
 
 bool LayoutModeIsFolding(const LayoutMode& m) {
     return m.kind == LayoutModeKind::CodeEditor && m.folding;
+}
+
+bool LayoutModeIsActiveLineOnlyWhenFocused(const LayoutMode& m) {
+    return m.kind == LayoutModeKind::CodeEditor && m.activeLineOnlyWhenFocused;
 }
 
 int InputFoldPlaceholderAt(const InputState* s, float x, float y) {
@@ -7649,6 +7662,17 @@ void InputSetLineNumber(InputState* s, bool lineNumber, App* app, Window* win) {
         }
         s->mode.lineNumber = lineNumber;
     }
+    Notify(app, win);
+}
+
+void InputSetActiveLineOnlyWhenFocused(InputState* s, bool enabled, App* app,
+                                       Window* win) {
+    // Rust changes it only on a CodeEditor; the flag is kept for any kind
+    // here (see LayoutMode) and LayoutModeIsActiveLineOnlyWhenFocused gates.
+    if (!s || s->mode.activeLineOnlyWhenFocused == enabled) {
+        return;
+    }
+    s->mode.activeLineOnlyWhenFocused = enabled;
     Notify(app, win);
 }
 
