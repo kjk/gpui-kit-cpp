@@ -977,14 +977,34 @@ static void MiniBlocks(MiniParser* p, Node* parent, int32_t start,
 
         int32_t paragraphEnd = line.end;
         int32_t scan = line.next;
+        int32_t setextLevel = 0;
         while (scan < end) {
             MiniLine part = MiniReadLine(p->source, scan);
             Str partText = MiniLineText(p->source, part);
+            // An underline under a paragraph of several lines makes the whole
+            // paragraph the heading (CommonMark 4.3), and it has to be seen
+            // before `---` is taken for a thematic break.
+            if (p->options->constructs.headingSetext &&
+                MiniIndent(partText) <= 3 &&
+                MiniSetext(partText, &setextLevel)) {
+                scan = part.next;
+                break;
+            }
+            setextLevel = 0;
             if (MiniBlank(partText) || MiniBlockStart(p, partText)) {
                 break;
             }
             paragraphEnd = part.end;
             scan = part.next;
+        }
+        if (setextLevel > 0) {
+            Node* heading = MiniNode(p, NodeKind::Heading, parent);
+            NodeSetPerKind(p->a, heading, (uint32_t)setextLevel);
+            MiniInline(
+                p, heading,
+                MiniTrim(MiniSlice(p->source, line.start, paragraphEnd)));
+            at = scan;
+            continue;
         }
         Node* paragraph = MiniNode(p, NodeKind::Paragraph, parent);
         MiniInline(p, paragraph,

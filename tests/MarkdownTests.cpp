@@ -70,6 +70,15 @@ void TestMarkdown() {
     utassert(NodePerKind(a, heading) == 1);
     utassert(MiniChild(a, paragraph, 1)->kind == NodeKind::Break);
 
+    // An underline under a paragraph of several lines heads all of it, and
+    // `---` there is the underline, not a thematic break.
+    root = ToMdast(a, StrL("a\nb\n---\n\nc\n"), options);
+    heading = MiniChild(a, root, 0);
+    utassert(heading && heading->kind == NodeKind::Heading);
+    utassert(heading && NodePerKind(a, heading) == 2);
+    utassert(NodeChildCount(a, root) == 2);
+    utassert(MiniChild(a, root, 1)->kind == NodeKind::Paragraph);
+
     root = ToMdast(a,
                    StrL("> quote with `code`\n\n---\n\n"
                         "```cpp\nint x;\n```\n"),
