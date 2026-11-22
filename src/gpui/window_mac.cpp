@@ -2578,8 +2578,10 @@ static NSString* KeyEquivalent(Str key) {
         {"tab", 0x09},
         {"escape", 0x1b},
         {"space", ' '},
+        // zed#65744: menu key equivalents are 0x08 / 0x7f for these, not the
+        // codes NSEvent reports (NSMenuItem keyEquivalent docs)
         {"backspace", 0x08},
-        {"delete", NSDeleteFunctionKey},
+        {"delete", 0x7f},
         {"up", NSUpArrowFunctionKey},
         {"down", NSDownArrowFunctionKey},
         {"left", NSLeftArrowFunctionKey},
