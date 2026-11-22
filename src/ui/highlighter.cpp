@@ -800,18 +800,28 @@ struct SyntaxInputHighlighter {
     TaskId flightTask = 0;
     double lexDueAt = 0;
     uint64_t lexDueVersion = ~(uint64_t)0;
+    // The deadline the armed debounce timer fires at, so a render inside the
+    // debounce arms one timer rather than asking for every frame.
+    double lexTimerDue = 0;
 };
 
 /* input_adapter.rs's policy, constants and all: a document at or under
    SYNC_PARSE_MAX_BYTES is lexed synchronously in update(); a bigger one
    keeps showing its stale styles, waits out PARSE_DEBOUNCE, and is lexed on
-   the pool from a snapshot — the frame is the debounce clock, the way the
-   hover delay keeps time. What the simplification drops is the 2 ms
+   the pool from a snapshot — a one-shot window timer is the debounce
+   clock. What the simplification drops is the 2 ms
    sync-parse timeout: the lexer cannot stop halfway the way tree-sitter's
    progress callback can, so the size cap alone decides which side a
    document lands on. */
 static const int kSyncLexMaxBytes = 256 * 1024;
 static const double kLexDebounce = 0.150;
+
+// The debounce timer's listener: a render of the view that owns the input,
+// which then finds the debounce run out (or arms the next timer if the
+// document moved again meanwhile).
+static void SynHlDebounceElapsed(void*, Ctx* cx, const void*) {
+    Notify(cx);
+}
 
 // The snapshot a pool thread lexes. The worker touches only the text and
 // the two result Vecs; `hl` is read and written on the main thread alone,
@@ -1393,7 +1403,7 @@ El* Highlighter::IntoEl() {
                 } else if (!hl->flight) {
                     // Past the sync budget: stale styles stay up while the
                     // debounce runs out, then a snapshot goes to the pool.
-                    // The frame is the clock, as it is for the hover delay.
+                    // A one-shot timer is the clock.
                     // A version that moves while a flight is up is caught
                     // when it lands: the landed version still differs from
                     // docVersion, so this path debounces again.
@@ -1401,8 +1411,21 @@ El* Highlighter::IntoEl() {
                         hl->lexDueVersion = state->docVersion;
                         hl->lexDueAt = TimeNow() + kLexDebounce;
                     }
-                    if (TimeNow() < hl->lexDueAt) {
-                        WindowRequestAnimationFrame(cx->win);
+                    double now = TimeNow();
+                    if (now < hl->lexDueAt) {
+                        // One timer per deadline, re-armed when an edit moved
+                        // the deadline past the one armed; not a frame per
+                        // vsync for 150 ms.
+                        bool armed = hl->lexTimerDue > now &&
+                                     hl->lexTimerDue >= hl->lexDueAt;
+                        if (!armed && cx->win) {
+                            Listener l;
+                            l.view = cx->self;
+                            l.SetFn((ListenerFn)&SynHlDebounceElapsed);
+                            int ms = (int)((hl->lexDueAt - now) * 1000.0) + 1;
+                            WindowSetTimeout(cx->win, ms, l);
+                            hl->lexTimerDue = hl->lexDueAt;
+                        }
                     } else {
                         auto* job = new SynHlJob();
                         job->hl = hl;

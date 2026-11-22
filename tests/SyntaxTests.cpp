@@ -244,6 +244,42 @@ static void TestSyntaxColors() {
     utassert(text.r == 1 && text.g == 2 && text.b == 3);
 }
 
+// A document past the sync budget waits out a debounce before it is lexed
+// on the pool. One timer keeps that time, not an animation frame requested
+// every frame for the 150 ms.
+struct LargeEditorView {
+    InputState input;
+    static El* Render(LargeEditorView* self, Ctx* cx) {
+        return component::Editor::New(cx, StrL("large"), &self->input)
+            ->H(200)
+            ->Language(StrL("rust"))
+            ->IntoEl();
+    }
+};
+
+static void TheLexDebounceIsOneTimer() {
+    App* app = TestAppNew();
+    component::Init(app);
+    Entity<LargeEditorView> view = EntityNew<LargeEditorView>(app);
+    StrBuilder text;
+    while (len(text) < 300 * 1024) {
+        text.Append(StrL("fn main() { let x = 1; }\n"));
+    }
+    Window* win = TestWindowOpen(app, view, 400, 300);
+    TestDraw(win);
+    InputSetValue(&view.Get(app)->input, Str(text.els, len(text)));
+    TestDraw(win);
+    utassert(!win->animFrame);
+    int timers = len(win->timers);
+    utassert(timers >= 1);
+    // Another frame inside the debounce arms nothing new.
+    TestDraw(win);
+    utassert(!win->animFrame);
+    utassert(len(win->timers) == timers);
+    TestAdvanceClock(app, 400);
+    TestAppFree(app);
+}
+
 void TestSyntax() {
     TestSuite("Syntax");
     TestSyntaxLangFor();
@@ -257,4 +293,5 @@ void TestSyntax() {
     TestSyntaxUnterminated();
     TestSyntaxUnknownLang();
     TestSyntaxColors();
+    TheLexDebounceIsOneTimer();
 }
