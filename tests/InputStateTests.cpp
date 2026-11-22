@@ -12784,6 +12784,64 @@ static void NativeTouchSelectionLeavesTheHandlesAndMenuToThePlatform() {
     TestAppFree(app);
 }
 
+// input.rs input_text_takes_the_theme_foreground_without_root. An input
+// placed straight in a window, with no Root to set the text color, and a
+// prefix that records the color the frame hands down to its addons.
+struct BareInput {
+    InputState state;
+    Rgba color = {};
+    bool saw = false;
+    bool hasTextColor = false;
+    Rgba textColor = {};
+
+    static void OnPrepare(PaintCtx*, El*, Rgba inherited, void* user) {
+        BareInput* self = (BareInput*)user;
+        self->color = inherited;
+        self->saw = true;
+    }
+
+    static El* Render(BareInput* self, Ctx* cx) {
+        El* probe = Div(cx->a)->W(8)->H(8);
+        ElLifecycle* life = ArenaNew<ElLifecycle>(cx->a);
+        life->prepareStyle = &BareInput::OnPrepare;
+        life->user = self;
+        probe->lifecycle = life;
+        component::Input* input =
+            component::Input::New(cx, StrL("bare"), &self->state)
+                ->Prefix(probe);
+        if (self->hasTextColor) {
+            input->TextColor(self->textColor);
+        }
+        return input->IntoEl();
+    }
+};
+
+static void InputTextTakesTheThemeForegroundWithoutRoot() {
+    App* app = TestAppNew();
+    component::Init(app);
+    Rgba foreground = {};
+    {
+        ThemeUpdateScope scope;
+        Theme* theme = ThemeBeginUpdate(app, false, &scope);
+        theme->foreground = Rgb(255, 255, 255);
+        foreground = theme->foreground;
+        ThemeEndUpdate(&scope);
+    }
+    Rgba red = Rgb(255, 0, 0);
+    for (int pass = 0; pass < 2; pass++) {
+        Entity<BareInput> view = EntityNew<BareInput>(app);
+        BareInput* v = view.Get(app);
+        v->hasTextColor = pass == 1;
+        v->textColor = red;
+        Window* win = TestWindowOpen(app, view, 400, 100);
+        TestRunUntilParked(app);
+        TestDraw(win);
+        utassert(v->saw);
+        utassert(RgbaEq(v->color, pass == 1 ? red : foreground));
+    }
+    TestAppFree(app);
+}
+
 // touch.rs open_input: a single-line input holding `value`, painted.
 static InputView OpenTouchInput(const char* value) {
     InputView view = InputViewBuild();
@@ -13065,6 +13123,7 @@ static void RunTouchWindowTests() {
     LongPressSelectsWordThenReleaseOpensMenu();
     ThemedInputDrawsTouchHandlesAndEditMenu();
     NativeTouchSelectionLeavesTheHandlesAndMenuToThePlatform();
+    InputTextTakesTheThemeForegroundWithoutRoot();
     DoubleTapSelectsWordWithHandlesAndMenu();
     LongPressOnEmptyInputPlacesCaretWithMenu();
     DraggingAHandleMovesThatEndOnly();

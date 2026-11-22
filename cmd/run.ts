@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "7f199f397ae4c823e93f1f6e8c3a0730679397ac",
+  sha: "7b1770d30419ab3dc4df46b3b05a1ea854fb0386",
   date: "2026-11-22",
-  subject: "input: Drop tabs from a single-line input like newlines (#4071)",
+  subject: "input: Hand the theme foreground to the input's text (#4051)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",

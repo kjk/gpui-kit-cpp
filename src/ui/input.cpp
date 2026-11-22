@@ -1389,6 +1389,12 @@ El* Input::IntoEl() {
                     ->PadY(padY)
                     ->Gap(kInputGap)
                     ->ItemsCenter()
+                    // The text element paints in the color it inherits, and
+                    // a host other than Root may hand down none: the prefix
+                    // and suffix take the theme foreground (or the caller's
+                    // text_color) from the frame. The refinement below
+                    // still wins.
+                    ->Fg(hasTextColor ? textColor : th.foreground)
                     // The editor paints its own line into the field's box;
                     // a value wider than the field scrolls under it rather
                     // than spilling out past whatever is next to it.
