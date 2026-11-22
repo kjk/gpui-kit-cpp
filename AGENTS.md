@@ -392,7 +392,9 @@ login session).
 
 CI builds all examples, tests and non-amalgamated sources on Windows/Linux/Mac;
 Windows cross-compiles Android, Mac cross-compiles iOS. Separate clang lanes
-check mini markdown and full-parser tests; wasm builds supported examples and
+build every example with `-markdown=mini -html=mini` and run the tests with
+both the mini and the full parsers; a test of what the mini contract omits is
+gated on `TestMarkdownIsFull()`. Wasm builds supported examples and
 runs tests under node. `GPUI_NO_RUST_TREE=1` skips cloning Rust in CI.
 
 **Warnings are errors:** `/W4 /WX`, `-Wall -Wextra -Werror`. Fix them, never

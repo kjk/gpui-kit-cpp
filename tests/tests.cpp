@@ -34,6 +34,17 @@ void TestFailed(const char* cond, const char* file, int line) {
     fflush(stdout);
 }
 
+// Built with -markdown=full rather than -markdown=mini. Defined here, out of
+// line, so a suite that skips on it does not leave code the compiler can
+// prove unreachable.
+bool TestMarkdownIsFull() {
+#if GPUI_MARKDOWN_FULL
+    return true;
+#else
+    return false;
+#endif
+}
+
 bool TestNear(float a, float b) {
     return fabsf(a - b) < 0.001f;
 }

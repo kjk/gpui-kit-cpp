@@ -46,6 +46,10 @@ void TestSuite(const char* name);
 // The tolerance is a thousandth of a pixel: tight enough that a wrong formula
 // fails, loose enough that the order of two additions does not.
 bool TestNear(float a, float b);
+// False under -markdown=mini, whose contract (src/markdown-mini/readme.md)
+// leaves out raw HTML, task lists, math, frontmatter, reference definitions
+// and source positions; a test of those runs only against the full parser.
+bool TestMarkdownIsFull();
 
 #define utassertnear(a, b) utassert(TestNear((a), (b)))
 

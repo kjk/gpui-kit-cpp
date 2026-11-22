@@ -4,7 +4,9 @@ name: build
 # the test suite on each. It also cross-compiles the portable library for
 # Android and iOS with their vendor SDKs. The desktop jobs compile the source
 # tree as separate translation units. Dedicated Windows and Linux jobs repeat
-# the build with clang and the mini markdown parser. The wasm job runs the same suite under node, which is the only
+# the build with clang and the mini markdown and HTML parsers, and run the test
+# suite against both the mini and the full parsers (tests of what the mini
+# contract leaves out skip themselves, see TestMarkdownIsFull). The wasm job runs the same suite under node, which is the only
 # place this tree is checked on a 32-bit word.
 
 on:
@@ -222,10 +224,12 @@ jobs:
           call "%VSPATH%\VC\Auxiliary\Build\vcvars64.bat" || exit /b 1
           clang-cl --version 2>&1 | findstr /C:"22.1.7" >nul || (echo expected clang-cl 22.1.7, the runner image's 20.1.8 miscompiles shell coroutines & clang-cl --version & exit /b 1)
           bun cmd/build.ts -clang -rel -markdown=mini -html=mini -all || exit /b 1
+          bun cmd/test.ts -clang -rel -markdown=mini -html=mini || exit /b 1
           bun cmd/test.ts -clang -rel -markdown=full -html=full
 
       - name: Build and test (clang++)
         if: matrix.name == 'linux-clang-mini'
         run: |
           bun cmd/build.ts -clang -rel -markdown=mini -html=mini -all
+          xvfb-run -a bun cmd/test.ts -clang -rel -markdown=mini -html=mini
           xvfb-run -a bun cmd/test.ts -clang -rel -markdown=full -html=full

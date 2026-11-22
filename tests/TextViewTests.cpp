@@ -5718,8 +5718,6 @@ static void ARevealFollowsItsText() {
     RhClose(&v);
 }
 
-#endif
-
 // state.rs an_append_adding_blocks_keeps_the_scroll_position (#3261):
 // streaming a new paragraph into a scrolled view leaves the scroll where it
 // was. Upstream had reset its ListState on every append; the scroll box here
@@ -5735,6 +5733,8 @@ static void AnAppendAddingBlocksKeepsTheScrollPosition() {
     utassertnear(s->scrollY, 120.f);
     RhClose(&v);
 }
+
+#endif
 
 // ─── text/state.rs window tests ───────────────────────────────────────────
 //
@@ -8846,6 +8846,7 @@ static void BlockPluginSelectionCopiesBothFormats() {
     VecReset(ctx.texts);
 }
 
+#if GPUI_MARKDOWN_FULL
 // text_view.rs table_keeps_narrow_columns_on_one_line_while_wide_ones_wrap.
 // A short column stays one line at 700px; the long column wraps.
 struct TableFitView {
@@ -8901,6 +8902,7 @@ static void TableKeepsNarrowColumnsOnOneLine() {
         TestAppFree(app);
     }
 }
+#endif
 
 struct EditorHostView {
     MdNode* doc = nullptr;
@@ -9234,6 +9236,7 @@ static void CollectLeafGeometryNestsAndRestores() {
     utassert(!EditorHostActive());
 }
 
+#if GPUI_MARKDOWN_FULL
 static MdNode* FindKind(MdNode* n, MdKind kind) {
     for (MdNode* c = n ? n->first : nullptr; c; c = c->next) {
         if (c->kind == kind) {
@@ -9282,6 +9285,7 @@ static void ParseMarkdownReadsWhatAnEditorRoundTrips(Arena* a) {
         utassert(c->blockStart >= 0);
     }
 }
+#endif
 
 static void ParseMarkdownMatchesTextViewParse(Arena* a) {
     Str source = StrL(
@@ -9458,6 +9462,7 @@ static void DrawStyledBlocks(Window* win, Entity<StyledBlocksView> view,
     LayoutEl(&win->paint, *root, 0, 0, 800, 400, th.fontSize, th.foreground);
 }
 
+#if GPUI_MARKDOWN_FULL
 static int CountListMarker(El* el, Str marker) {
     int count = StrEq(el->text, marker) ? 1 : 0;
     for (El* child = el->first; child; child = child->next) {
@@ -9493,6 +9498,7 @@ static void ParagraphAfterSublistUsesTheSameItemMarker() {
     }
     TswClose(&v);
 }
+#endif
 
 // list_and_blockquote_view_refinements_keep_unspecified_style_properties
 static void ListAndBlockquoteViewRefinementsKeepUnspecifiedStyleProperties() {
@@ -10447,6 +10453,7 @@ struct TextViewLinkRewriteProbe {
     }
 };
 
+#if GPUI_MARKDOWN_FULL
 static const HitRect* FindRewrittenLink(const Window* win, Str url) {
     for (const HitRect& hit : win->paint.hits) {
         if (hit.linkTooltip && StrEq(hit.linkTooltip->url, url)) return &hit;
@@ -10500,6 +10507,7 @@ static void TextViewRewritesLinksOnEachFrame() {
     utassert(FindRewrittenLink(win, StrL("app://deleted")));
     TestAppFree(app);
 }
+#endif
 
 struct TextFlowBubbleView {
     Entity<TextViewState> text;
@@ -10687,14 +10695,18 @@ void TestTextView() {
     WrappedMixedLeafCaretsKeepTheirLine();
     LinkTooltipFollowsThePointerAndClearsOnExit();
     ALinkTooltipTracksOneRenderingOfASharedDocument();
+#if GPUI_MARKDOWN_FULL
     TextViewRewritesLinksOnEachFrame();
+#endif
     RekeyingClonedLeavesPreservesEachIdentity();
     GeometryIsAnImmutableSnapshot();
     EmptyKeyedLeafHasALineBox();
     HostForegroundsFollowTheRenderContext();
     HtmlParagraphsPaintTheirOwnText();
     CollectLeafGeometryNestsAndRestores();
+#if GPUI_MARKDOWN_FULL
     ParseMarkdownReadsWhatAnEditorRoundTrips(a);
+#endif
     ParseMarkdownMatchesTextViewParse(a);
     TableAndParagraphBuildersReadBack(a);
     TestMarkdownBlocks(a);
@@ -10708,12 +10720,20 @@ void TestTextView() {
     TestMarkdownHtmlBlock(a);
 #endif
     TestMarkdownImage(a);
+#if !GPUI_MARKDOWN_MINI
     InlineImageWithoutExplicitSizeIsDrawnAtItsIntrinsicSize();
+#endif
     FirstFrameShapesTextAroundTheDecodedInlineImage();
+#if !GPUI_MARKDOWN_MINI
     InlineImageBeforeItLoadsKeepsACompactSquare();
+#endif
+#if !GPUI_MARKDOWN_MINI
     SeveralImagesShareAnInlineFlow();
+#endif
     ShrinkToFitTextFlowKeepsItsMeasurements();
+#if !GPUI_MARKDOWN_MINI
     InlineImageWiderThanTheWrapIsNarrowedToIt();
+#endif
 #if GPUI_MARKDOWN_FULL
     TestMarkdownReferenceImages(a);
     TestMarkdownReferenceImageDefinitions(a);
@@ -10730,7 +10750,7 @@ void TestTextView() {
     TestAlphabeticListItemPrefix(a);
     TestOrderedListStarts(a);
     TestHtmlPre(a);
-    HtmlPreIsAStandaloneCodeBlock(a);
+    if (TestMarkdownIsFull()) HtmlPreIsAStandaloneCodeBlock(a);
     TestPreTextStaysText(a);
     TestPreKeepsWhitespaceInNestedElements(a);
     TestHtmlTable(a);
@@ -10743,7 +10763,7 @@ void TestTextView() {
     TestHtmlTrailingBreaksAtTextBlocks(a);
     TestMarkdownHardBreak(a);
     TestMarkdownSoftBreak(a);
-    TestMarkdownWhitespaceFoldsLikeHtml(a);
+    if (TestMarkdownIsFull()) TestMarkdownWhitespaceFoldsLikeHtml(a);
     TestMarkdownWhitespaceKeepsLeadingCodeSpaces(a);
     TestHtmlImage(a);
     TestImageSrc();
@@ -10770,9 +10790,11 @@ void TestTextView() {
     TextColorOfAnInvertedSurfaceDerivesEveryColorFromIt();
     TextViewFollowsTheTextColorOfItsContainer();
     TestTextViewBuilder();
-    TaskMarkerIsTheBracketedCheckWhereverTheItemTextStarts(a);
-    TaskCheckboxClickReportsItsNewStateItemAndMarker();
-    TaskCheckboxesWithoutAHandlerAreNotInteractive();
+    if (TestMarkdownIsFull())
+        TaskMarkerIsTheBracketedCheckWhereverTheItemTextStarts(a);
+    if (TestMarkdownIsFull())
+        TaskCheckboxClickReportsItsNewStateItemAndMarker();
+    if (TestMarkdownIsFull()) TaskCheckboxesWithoutAHandlerAreNotInteractive();
     TestTextViewDefaultsAndOptInHighlighting();
     InheritedInvertedColorSuppressesTheDefaultHighlighter();
     TestTextViewRootNamesItsForeground();
@@ -10780,40 +10802,41 @@ void TestTextView() {
 #if !GPUI_MARKDOWN_MINI
     RawHtmlOffKeepsHtmlAsText(a);
 #endif
-    TestBlockSurfaces(a);
-    ANewSurfaceContainerNeedsNoNewParse();
-    TestMarkdownFrontmatter();
-    TestMarkdownInlinePlugin();
-    UnclaimedInlineMathParsesItsSpanAsProse();
-    ClaimedInlineMathSurvivesProseFlattening();
-    InlineHtmlFormattingTagsPairAcrossSiblings();
-    InlineHtmlMarkAppliesHighlightColors();
+    if (TestMarkdownIsFull()) TestBlockSurfaces(a);
+    if (TestMarkdownIsFull()) ANewSurfaceContainerNeedsNoNewParse();
+    if (TestMarkdownIsFull()) TestMarkdownFrontmatter();
+    if (TestMarkdownIsFull()) TestMarkdownInlinePlugin();
+    if (TestMarkdownIsFull()) UnclaimedInlineMathParsesItsSpanAsProse();
+    if (TestMarkdownIsFull()) ClaimedInlineMathSurvivesProseFlattening();
+    if (TestMarkdownIsFull()) InlineHtmlFormattingTagsPairAcrossSiblings();
+    if (TestMarkdownIsFull()) InlineHtmlMarkAppliesHighlightColors();
     MarkSetsAReadableTextColorWithItsBackground();
     HeadingRefinementChangesRenderedHeadingGeometry();
-    FlowPositionSkipsBlocksThatRenderNothing();
+    if (TestMarkdownIsFull()) FlowPositionSkipsBlocksThatRenderNothing();
     FlowPositionReportsThePreviousHeadingOrRule();
     AnUnchangedFlowIsNotLaidOutAgain();
     InlineCodeLineIsAsTallAsAPlainLine();
     OversizedInlineCodeWrapsWithOneInsetPerSide();
     FittedListsKeepTheirBodyWidth();
     TestStatelessMarkdownSettles();
-    TestStreamFadeTracksRenderedAppends();
+    if (TestMarkdownIsFull()) TestStreamFadeTracksRenderedAppends();
     StreamFadeUnitsAreWordsOrCjkCharacters();
     FadesLayerOverHighlightsInsideTheirRange();
     FadesExplicitDecorationColorsWithTheText();
     BlockPluginGeometrySelectsWholeBlocks();
     TableRowBackgroundsFollowTheFrameCornerRadius();
     BlockPluginSelectionCopiesBothFormats();
-    StreamedWordsFadeInOneAfterAnother();
+    if (TestMarkdownIsFull()) StreamedWordsFadeInOneAfterAnother();
     SetTextExtendingMarkdownAppendsAndKeepsSelection();
     SetTextStreamingMarkdownMatchesAFullParse();
     SetTextExtendingHtmlParsesItAgain();
-    AFadeRepaintsOnATimerUntilNothingFades();
+    if (TestMarkdownIsFull()) AFadeRepaintsOnATimerUntilNothingFades();
     TestStreamFadeStaggerStep();
     TestManagedTextViewAndParseTimePlugins(a);
-    TestMarkdownTableThemeTokens();
+    if (TestMarkdownIsFull()) TestMarkdownTableThemeTokens();
     TableColumnOfAnImageCellFitsTheImageWidth();
-    TableBodyRowUnderThePointerTakesTheHoverBackground();
+    if (TestMarkdownIsFull())
+        TableBodyRowUnderThePointerTakesTheHoverBackground();
     TestTextViewMaxLines();
 #if GPUI_MARKDOWN_FULL
     InvalidParserEventsKeepAllSourceText(a);
@@ -10888,11 +10911,15 @@ void TestTextView() {
 #endif
     InlineCodeRefinementsStayExplicitOnAnInvertedSurface();
     InlineCodeStyleKeepsEqualSizeProseSeparateAndMeasuresItsBox();
-    FadesInlineCodeStyleBackgroundAndBorder();
+    if (TestMarkdownIsFull()) FadesInlineCodeStyleBackgroundAndBorder();
     ListAndBlockquoteRefinementsStayExplicitOnAnInvertedSurface();
     ListAndBlockquoteViewRefinementsKeepUnspecifiedStyleProperties();
+#if GPUI_MARKDOWN_FULL
     ParagraphAfterSublistUsesTheSameItemMarker();
-    BlockquoteTypographyReachesNestedTableMeasurement();
-    BlockSurfaceTypographyReachesNestedTableMeasurement();
+#endif
+    if (TestMarkdownIsFull())
+        BlockquoteTypographyReachesNestedTableMeasurement();
+    if (TestMarkdownIsFull())
+        BlockSurfaceTypographyReachesNestedTableMeasurement();
     ArenaDelete(a);
 }

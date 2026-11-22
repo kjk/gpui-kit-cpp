@@ -20,6 +20,15 @@ For size, it omits GFM tables, task lists, footnotes, raw HTML, autolinks,
 reference-style links, math/frontmatter, strikethrough, and the full HTML5
 named-entity database. Unsupported syntax remains ordinary readable text.
 
+It also keeps no source positions (`NodePosition` answers false). What the
+TextView builds from them is therefore absent under `-markdown=mini`: block
+surfaces (`> [!name]`), inline plugins, stream fades, and source ranges for
+selection.
+
+The test suite runs against both parsers (CI's clang lanes run
+`bun cmd/test.ts -markdown=mini -html=mini`). A test of something this
+contract leaves out runs only when `TestMarkdownIsFull()` says so.
+
 ## The standalone extras/ pair
 
 Besides being compiled into the gpui amalgam, this library is also
