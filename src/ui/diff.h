@@ -113,6 +113,21 @@ struct DiffLinePosition {
     int Line() const { return line; }
 };
 
+// One character of a source line, as the pointer finds it.
+struct DiffTextPosition {
+    DiffLinePosition position = {};
+    int offset = 0;
+    Str text = {};
+    // The line the character is on.
+    const DiffLinePosition& Position() const { return position; }
+    // The character's byte offset in the line's content, before tab
+    // expansion: the unit DiffSpanHighlight spans use.
+    int Offset() const { return offset; }
+    // The line's content, so the handler can read the word around the
+    // offset without a copy of the patch.
+    Str Text() const { return text; }
+};
+
 struct DiffLineRange {
     Str path = {};
     DiffSide side = DiffSide::Original;
@@ -158,17 +173,23 @@ struct DiffDecoration {
 };
 
 // Highlights a half-open byte range in the source line, before tab
-// expansion. The default background is the theme warning color at 50%.
+// expansion. The default background is the theme warning color at 50%. A
+// fully transparent fill leaves whatever the line shows beneath the span:
+// for emphasis carried by the text itself, such as a link.
 struct DiffSpanHighlight {
     DiffLinePosition position = {};
     ByteRange span = {};
     bool hasBackground = false;
     bool hasForeground = false;
+    bool underlined = false;
     Rgba background = {};
     Rgba foreground = {};
     static DiffSpanHighlight New(DiffLinePosition position, ByteRange span);
+    // Underlines the span in its text color, the way a link reads.
+    DiffSpanHighlight WithUnderline() const;
     DiffSpanHighlight WithBackground(Rgba fill) const;
     DiffSpanHighlight WithForeground(Rgba color) const;
+    bool IsUnderlined() const { return underlined; }
     const DiffLinePosition& Position() const { return position; }
     ByteRange Span() const { return span; }
     const Rgba* Background() const {
@@ -487,6 +508,12 @@ struct DiffState {
     void* syntaxData = nullptr;
     bool syntaxPrepared = false;
     Vec<DiffSyntaxSpan> syntaxSpans;
+    // What the text hover handler heard last, so it only hears changes:
+    // the character (none when !textHoverHasHit) and the modifiers.
+    bool textHoverHeard = false;
+    bool textHoverHasHit = false;
+    DiffTextPosition textHover = {};
+    Modifiers textHoverModifiers = {};
 
     DiffState() = default;
     ~DiffState();
@@ -549,6 +576,10 @@ struct DiffState {
     bool ResolvedText(Arena* a, Str path, Str* out) const;
     void SetSelectedLines(bool has, DiffLineRange range, Ctx* cx);
     Str SelectedText(Arena* a) const;
+    // Whether the patch carries the source line at `position`, shown or
+    // folded. A line beyond the context the patch was made with is not
+    // there to scroll to.
+    bool HasLine(DiffLinePosition position) const;
     void ScrollToLine(DiffLinePosition position, Ctx* cx);
     void ScrollToFile(Str path, Ctx* cx);
     void NextChange(Ctx* cx);
@@ -617,6 +648,14 @@ struct Diff {
     void* clickUser = nullptr;
     void (*onLineHover)(Ctx*, const DiffLinePosition*, bool, void*) = nullptr;
     void* hoverUser = nullptr;
+    void (*onTextHover)(Ctx*, const DiffTextPosition*, Modifiers,
+                        void*) = nullptr;
+    void* textHoverUser = nullptr;
+    bool (*onTextClick)(Ctx*, const DiffTextPosition*, const ClickEvent*,
+                        void*) = nullptr;
+    void* textClickUser = nullptr;
+    bool hasTextCursor = false;
+    CursorKind textCursor = CursorKind::Arrow;
     static Diff* New(Ctx* cx, Entity<DiffState> state);
     Diff* LineNumber(bool v);
     Diff* SyntaxHighlight(bool v);
@@ -653,15 +692,41 @@ struct Diff {
     Diff* HeaderSuffix(El* (*fn)(Ctx*, const DiffFile*, void*), void* user);
     Diff* OnAddAnnotation(void (*fn)(Ctx*, const DiffLineRange*, void*),
                           void* user);
+    // Handles a click on a line's code, outside a text-selection drag. A
+    // click that OnTextClick claims does not reach this handler.
     Diff* OnLineClick(void (*fn)(Ctx*, const DiffLinePosition*,
                                  const ClickEvent*, void*),
                       void* user);
+    // Reports the character under the pointer and the held modifiers, or
+    // null when the pointer is over no source text. Fires as the pointer
+    // moves and, while the diff has focus, when a modifier goes down or up
+    // with the pointer at rest - so a link can light up on the key alone.
+    Diff* OnTextHover(void (*fn)(Ctx*, const DiffTextPosition*, Modifiers,
+                                 void*),
+                      void* user);
+    // Handles a click on a character of source text, outside a
+    // text-selection drag. The text handler runs first and its return value
+    // decides who wins: true claims the click and OnLineClick is not called
+    // for it; false lets the click fall through to the line handler. A
+    // click that lands on no character goes to the line handler directly.
+    Diff* OnTextClick(bool (*fn)(Ctx*, const DiffTextPosition*,
+                                 const ClickEvent*, void*),
+                      void* user);
+    // The pointer shown over source text, such as a pointing hand while the
+    // hovered span is a link.
+    Diff* TextCursor(CursorKind cursor);
     Diff* OnLineHover(void (*fn)(Ctx*, const DiffLinePosition*, bool, void*),
                       void* user);
     El* IntoEl();
 };
 
 void DiffInitKeys();
+
+// Where `side`'s line `lineIx` (an index into DiffFile::Lines) of the first
+// file showing it was painted in `win`'s last frame, clipped to what is
+// visible: SelectionGeometry::run_bounds, which Rust keeps for tests.
+// False when no such line is on screen.
+bool DiffRunBounds(Window* win, DiffSide side, int lineIx, Bounds* out);
 
 // True when the paired line's text matches and only the ending differs.
 bool DiffHasLineEndingChange(const DiffFile* file, DiffSide side, int ix,

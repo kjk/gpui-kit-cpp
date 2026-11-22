@@ -1437,10 +1437,28 @@ static void WindowTrackModifiers(Window* win, int key, bool down, bool shift,
     } else if (key == 0x5B || key == 0x5C) {
         m.platform = down;
     }
-    bool secondaryChanged = m.Secondary() != win->modifiers.Secondary();
+    WindowModifiersChanged(win, m);
+}
+
+void WindowModifiersChanged(Window* win, Modifiers m) {
+    if (!win) {
+        return;
+    }
+    const Modifiers& was = win->modifiers;
+    bool changed = m.control != was.control || m.alt != was.alt ||
+                   m.shift != was.shift || m.platform != was.platform ||
+                   m.function != was.function;
+    bool secondaryChanged = m.Secondary() != was.Secondary();
     win->modifiers = m;
     if (secondaryChanged && win->debugLabelShown) {
         AppInvalidate(win);
+    }
+    // PlatformInput::ModifiersChanged, which GPUI dispatches on the focus
+    // path. A key that leaves the modifiers as they were is not one.
+    if (changed) {
+        ModifiersChangedEvent ev;
+        ev.modifiers = m;
+        WindowDispatchModifiersChanged(win, &ev);
     }
 }
 

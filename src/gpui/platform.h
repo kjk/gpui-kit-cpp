@@ -213,6 +213,10 @@ bool WindowKeyDown(Window* win, int key, bool shift, bool ctrl, bool alt,
 // give loses nothing else.
 void WindowKeyUp(Window* win, int key, bool shift, bool ctrl, bool alt,
                  bool platform = false, bool function = false);
+// The modifiers now held, after a key went down or up: window.modifiers()
+// takes them, and a change is dispatched as ModifiersChanged to the
+// El::OnModifiersChanged listeners on the focus path.
+void WindowModifiersChanged(Window* win, Modifiers modifiers);
 // A typed character, already decoded to a codepoint.
 void WindowChar(Window* win, uint32_t ch, bool ctrl, bool alt);
 // GPUI's Window::dispatch_event: every mouse event the platform produces

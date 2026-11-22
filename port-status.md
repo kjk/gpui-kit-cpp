@@ -16,14 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `012cfa034885a4eee2820d3517487fd2f420504f` (2026-11-20,
-text_view: Expose the rendered body to the accessibility tree (#4056)).
-Expose the rendered TextView body as a read-only accessible document with
-cached per-line runs and whole-document selection. UIA, AT-SPI and AppKit read
-the same snapshot. Partial selections and per-character bounds follow the
-upstream limits.
+Processed through `a9d53719f109a8c6b89cfc9733e90e127fe3be52` (2026-11-20, diff:
+Report the character under the pointer so a diff can host links (#4042)).
+A diff reports the character under the pointer (DiffPointerPosition) so a host
+can resolve links in its lines.
 The current update target is
-`012cfa034885a4eee2820d3517487fd2f420504f`.
+`1c7e7f7c6c8d6585da909804496614da01bb8663`.
 
 ## Known gaps vs Rust
 
@@ -600,7 +598,10 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   selects source lines and copies them. It does not drive GPUI's
   `TextSelection`, so the hit-tested caret, word sweeps and chunk clipping
   in `selection_tests.rs` and `header_tests.rs` are not ported. Inline
-  emphasis is computed on the frame that asks. An application syntax
+  emphasis is computed on the frame that asks. Character hover and click
+  (`OnTextHover`, `OnTextClick`) find the character from the line's glyph
+  boxes and the hit box rather than from TextSelection's painted runs, and
+  the hover box spans the row height. An application syntax
   highlighter is prepared there too, once per hunk side, rather than on
   the background executor. A rebuild keeps the
   scroll index rather than the source line that was at the top. Soft wrap

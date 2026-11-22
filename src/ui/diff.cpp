@@ -115,6 +115,12 @@ DiffSpanHighlight DiffSpanHighlight::New(DiffLinePosition position,
     return highlight;
 }
 
+DiffSpanHighlight DiffSpanHighlight::WithUnderline() const {
+    DiffSpanHighlight highlight = *this;
+    highlight.underlined = true;
+    return highlight;
+}
+
 DiffSpanHighlight DiffSpanHighlight::WithBackground(Rgba fill) const {
     DiffSpanHighlight highlight = *this;
     highlight.hasBackground = true;
@@ -2414,6 +2420,11 @@ void DiffState::SetFiles(DiffFile** next, int count, Ctx* cx) {
     VecClear(files);
     for (int i = 0; i < count; i++) VecAppend(files, next[i]);
     horizontalCodeFont = 0;
+    // The last hover borrowed its path and text from the files just freed.
+    // Rust compares an owned copy; here the next report is heard afresh.
+    if (textHoverHasHit) textHoverHeard = false;
+    textHoverHasHit = false;
+    textHover = {};
     for (int i = len(collapsed) - 1; i >= 0; i--) {
         if (FileIx(this, collapsed[i]) < 0) {
             StrFree(collapsed[i]);
@@ -2815,6 +2826,12 @@ static int SourceRow(const DiffState* state, DiffLinePosition position) {
     return state->rowOfModified[state->rowFileBase[file * 2 + 1] + ix];
 }
 
+bool DiffState::HasLine(DiffLinePosition position) const {
+    int file = FileIx(this, position.path);
+    return file >= 0 && files[file]
+                                ->LineIndex(position.side, position.line) >= 0;
+}
+
 void DiffState::ScrollToLine(DiffLinePosition position, Ctx* cx) {
     if (FileIx(this, position.path) < 0) return;
     if (files[FileIx(this, position.path)]
@@ -3119,8 +3136,12 @@ static int CompareDiffPositions(const DiffLinePosition& a,
 struct DiffHighlightRuns {
     TextSpan* washes = nullptr;
     TextSpan* colors = nullptr;
+    // UnderlineStyle runs in supply order. Alpha 0 is the text's own colour,
+    // Rust's `color: None`, resolved per text run.
+    TextSpan* underlines = nullptr;
     int washCount = 0;
     int colorCount = 0;
+    int underlineCount = 0;
 };
 
 static int InsertDiffHighlight(TextSpan* runs, int count, const TextSpan& span,
@@ -3162,6 +3183,8 @@ static DiffHighlightRuns BuildDiffHighlightRuns(Ctx* cx, const Diff* diff,
     runs.washes = (TextSpan*)Alloc(cx->a, cap * (int)sizeof(TextSpan));
     runs.colors = (TextSpan*)Alloc(cx->a, cap * (int)sizeof(TextSpan));
     auto* scratch = (TextSpan*)Alloc(cx->a, cap * (int)sizeof(TextSpan));
+    runs.underlines =
+        (TextSpan*)Alloc(cx->a, (end - lo) * (int)sizeof(TextSpan));
     Rgba fill = RgbaOpacity(ActiveTheme(cx->app).warning, 0.5f);
     for (int i = lo; i < end; i++) {
         const DiffSpanHighlight& item = *diff->spanHighlights[i];
@@ -3176,6 +3199,16 @@ static DiffHighlightRuns BuildDiffHighlightRuns(Ctx* cx, const Diff* diff,
         span.bg = item.hasBackground ? item.background : fill;
         runs.washCount = InsertDiffHighlight(runs.washes, runs.washCount, span,
                                              cap, scratch);
+        if (item.underlined) {
+            // thickness px(1.), color span.foreground(), not wavy.
+            TextSpan rule;
+            rule.lo = span.lo;
+            rule.hi = span.hi;
+            rule.underline = true;
+            rule.color =
+                item.hasForeground ? item.foreground : Rgba{0, 0, 0, 0};
+            runs.underlines[runs.underlineCount++] = rule;
+        }
         if (item.hasForeground) {
             span.bg = {0, 0, 0, 0};
             span.color = item.foreground;
@@ -3220,6 +3253,36 @@ static void StyleDiffRun(El* bit, const DiffSyntaxSpan* span) {
     }
 }
 
+// The span highlights' underlines over each text run of `row`, every run a
+// slice of `display`. A rule with no colour of its own takes the run's.
+static void UnderlineDiffRuns(Ctx* cx, El* row, Str display,
+                              const DiffHighlightRuns& runs) {
+    if (!runs.underlineCount) return;
+    Rgba text = ActiveTheme(cx->app).foreground;
+    for (El* bit = row->first; bit; bit = bit->next) {
+        if (!bit->text.s || !len(bit->text)) continue;
+        int lo = (int)(bit->text.s - display.s);
+        int hi = lo + len(bit->text);
+        auto* rules = (TextSpan*)Alloc(
+            cx->a, runs.underlineCount * (int)sizeof(TextSpan));
+        int n = 0;
+        for (int i = 0; i < runs.underlineCount; i++) {
+            TextSpan rule = runs.underlines[i];
+            if (rule.hi <= lo || rule.lo >= hi) continue;
+            rule.lo = IMax(lo, rule.lo) - lo;
+            rule.hi = IMin(hi, rule.hi) - lo;
+            if (rule.color.a == 0)
+                rule.color = bit->style.hasColor ? bit->style.color : text;
+            rules[n++] = rule;
+        }
+        if (n) bit->Underlines(rules, n);
+    }
+}
+
+static El* CodeTextRuns(Ctx* cx, const DiffState* state, int fileIx,
+                        const DiffFile* file, DiffSide side, int ix,
+                        bool syntax, const DiffHighlightRuns& runs);
+
 static El* CodeText(Ctx* cx, const Diff* diff, const DiffState* state,
                     int fileIx, const DiffFile* file, DiffSide side, int ix,
                     bool syntax) {
@@ -3227,6 +3290,15 @@ static El* CodeText(Ctx* cx, const Diff* diff, const DiffState* state,
     const DiffSourceLine& line = source->lines[ix];
     const auto runs =
         BuildDiffHighlightRuns(cx, diff, file->path, side, source, line);
+    El* row = CodeTextRuns(cx, state, fileIx, file, side, ix, syntax, runs);
+    UnderlineDiffRuns(cx, row, line.display, runs);
+    return row;
+}
+
+static El* CodeTextRuns(Ctx* cx, const DiffState* state, int fileIx,
+                        const DiffFile* file, DiffSide side, int ix,
+                        bool syntax, const DiffHighlightRuns& runs) {
+    const DiffSourceLine& line = SideOf(file, side)->lines[ix];
     El* row = Div(cx->a)->FlexRow();
     auto textRun = [&](Str text, int lo) {
         El* bit = TextEl(cx->a, text)->Mono();
@@ -3283,6 +3355,214 @@ static El* CodeText(Ctx* cx, const Diff* diff, const DiffState* state,
             bit->Fg(SyntaxTokColor(lx.tok, ActiveTheme(cx->app).mode, fg));
     }
     return row;
+}
+
+// DiffLine::source_offset: the source byte a display offset falls on. An
+// offset inside a tab's expansion is the tab.
+static int SourceOff(const DiffFileSide* side, const DiffSourceLine& line,
+                     int displayOff) {
+    displayOff = IMin(IMax(displayOff, 0), len(line.display));
+    int lo = 0, hi = line.tabCount;
+    while (lo < hi) {
+        int mid = lo + (hi - lo) / 2;
+        if (side->tabs[line.tabBegin + mid].displayOffset <= displayOff)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    if (lo == 0) return displayOff;
+    const DiffDisplayTab& tab = side->tabs[line.tabBegin + lo - 1];
+    if (displayOff < tab.displayOffset + tab.width) return tab.sourceOffset;
+    return displayOff - (tab.displayOffset + tab.width - tab.sourceOffset - 1);
+}
+
+// One painted source line, as the pointer listeners of the frame that
+// built it see it: Rust's SelectionGeometry CodeRun. Frame-arena, carried
+// as the listeners' argument, the way input.cpp's TokenHover is. `diff`
+// is that frame's Diff, for its handlers.
+struct DiffTextRun {
+    const Diff* diff = nullptr;
+    int file = 0;
+    DiffSide side = DiffSide::Original;
+    int ix = 0;
+    // The paint offset the source was drawn at, and its font size.
+    float scrollX = 0;
+    float font = 0;
+};
+
+// SelectionGeometry::text_at: the character painted at window x, given
+// the box the event landed in. That box is the source or the clip around
+// it, masked to what is visible, so its left edge less the horizontal
+// scroll is where the text starts. Unlike a caret hit it never snaps to
+// the nearest text: past a line's end is over no character.
+static bool DiffTextAt(const DiffState* state, PaintCtx* paint,
+                       const DiffTextRun* run, float x, Bounds box,
+                       DiffTextPosition* out) {
+    if (!run || run->file < 0 || run->file >= len(state->files)) return false;
+    const DiffFile* file = state->files[run->file];
+    const DiffFileSide* source = SideOf(file, run->side);
+    if (run->ix < 0 || run->ix >= len(source->lines)) return false;
+    const DiffSourceLine& line = source->lines[run->ix];
+    float relX = x - (box.x - run->scrollX);
+    if (relX < 0 || !len(line.display)) return false;
+    Size extent;
+    TextLayout* layout = TextLayoutNew(paint, line.display, run->font, 0, false,
+                                       kFontMono, 0, &extent);
+    if (!layout) return false;
+    Vec<TextGlyphBox> glyphs;
+    int n = TextGlyphBoxes(layout, line.display, &glyphs);
+    TextLayoutRelease(layout);
+    int at = -1;
+    for (int i = 0; i < n; i++) {
+        if (relX >= glyphs[i].left && relX < glyphs[i].right) {
+            at = glyphs[i].lo;
+            break;
+        }
+    }
+    if (at < 0 || at >= len(line.display)) return false;
+    out->position =
+        DiffLinePosition::New(file->path, run->side, line.lineNumber);
+    out->offset = SourceOff(source, line, at);
+    out->text = line.text;
+    return true;
+}
+
+static bool SameTextHover(const DiffState* state, const DiffTextPosition* hit,
+                          Modifiers modifiers) {
+    if (!state->textHoverHeard) return false;
+    const Modifiers& was = state->textHoverModifiers;
+    if (was.control != modifiers.control || was.alt != modifiers.alt ||
+        was.shift != modifiers.shift || was.platform != modifiers.platform ||
+        was.function != modifiers.function)
+        return false;
+    if (state->textHoverHasHit != (hit != nullptr)) return false;
+    if (!hit) return true;
+    const DiffTextPosition& seen = state->textHover;
+    return SamePosition(seen.position, hit->position) &&
+           seen.offset == hit->offset && StrEq(seen.text, hit->text);
+}
+
+static void HearTextHover(DiffState* state, Ctx* cx, const Diff* diff,
+                          const DiffTextPosition* hit, Modifiers modifiers) {
+    state->textHoverHeard = true;
+    state->textHoverHasHit = hit != nullptr;
+    state->textHover = hit ? *hit : DiffTextPosition{};
+    state->textHoverModifiers = modifiers;
+    if (diff->onTextHover)
+        diff->onTextHover(cx, hit, modifiers, diff->textHoverUser);
+}
+
+static void OnDiffTextMove(DiffState* self, Ctx* cx, const MouseMoveEvent* ev,
+                           int64_t arg) {
+    const auto* run = (const DiffTextRun*)(intptr_t)arg;
+    if (!cx->win || !run) return;
+    DiffTextPosition hit;
+    bool has = DiffTextAt(self, &cx->win->paint, run, ev->x, ev->el, &hit);
+    const DiffTextPosition* now = has ? &hit : nullptr;
+    if (SameTextHover(self, now, ev->modifiers)) return;
+    HearTextHover(self, cx, run->diff, now, ev->modifiers);
+}
+
+static Listener DiffTextMoveListener(Entity<DiffState> state,
+                                     const DiffTextRun* run) {
+    return ListenTo(state, &OnDiffTextMove, (int64_t)(intptr_t)run);
+}
+
+// The text run under the window point in the last frame, with the box its
+// move listener was registered on.
+static const DiffTextRun* DiffTextRunAt(Window* win, Entity<DiffState> state,
+                                        float x, float y, Bounds* box) {
+    const HitRect* hit = HitTestRect(&win->paint, x, y);
+    if (!hit || hit->onMouseMove.Fn() != DiffTextMoveListener(state, nullptr)
+                                             .Fn())
+        return nullptr;
+    *box = hit->bounds;
+    return (const DiffTextRun*)(intptr_t)hit->onMouseMove.arg;
+}
+
+// The pointer left the text. Rust's layer hears every move and reports
+// None when the point is over no character; here a move onto another line's
+// text reports that line instead, so the leave says nothing.
+static void OnDiffTextLeave(DiffState* self, Ctx* cx, const HoverEvent* ev,
+                            int64_t arg) {
+    const auto* run = (const DiffTextRun*)(intptr_t)arg;
+    if (!cx->win || !run || (ev && ev->hovered)) return;
+    Bounds box;
+    if (cx->win->pointerInWindow &&
+        DiffTextRunAt(cx->win, run->diff->state, cx->win->mouseX,
+                      cx->win->mouseY, &box))
+        return;
+    Modifiers modifiers = cx->win->modifiers;
+    if (SameTextHover(self, nullptr, modifiers)) return;
+    HearTextHover(self, cx, run->diff, nullptr, modifiers);
+}
+
+// SelectionGeometry::text_hover_after: a modifier went down or up with the
+// pointer at rest. Only a pointer last heard over text hears it, at the
+// character there now, since the rows may have scrolled under it.
+static void OnDiffModifiersChanged(DiffState* self, Ctx* cx,
+                                   const ModifiersChangedEvent* ev,
+                                   int64_t arg) {
+    const auto* diff = (const Diff*)(intptr_t)arg;
+    if (!cx->win || !diff || !self->textHoverHeard || !self->textHoverHasHit)
+        return;
+    const Modifiers& was = self->textHoverModifiers;
+    const Modifiers& now = ev->modifiers;
+    if (was.control == now.control && was.alt == now.alt &&
+        was.shift == now.shift && was.platform == now.platform &&
+        was.function == now.function)
+        return;
+    Bounds box;
+    float x = cx->win->mouseX;
+    float y = cx->win->mouseY;
+    const DiffTextRun* run = DiffTextRunAt(cx->win, diff->state, x, y, &box);
+    DiffTextPosition hit;
+    bool has = run && DiffTextAt(self, &cx->win->paint, run, x, box, &hit);
+    HearTextHover(self, cx, diff, has ? &hit : nullptr, now);
+}
+
+static void OnDiffTextClick(DiffState* self, Ctx* cx, const ClickEvent* ev,
+                            int64_t arg) {
+    const auto* run = (const DiffTextRun*)(intptr_t)arg;
+    if (!run || run->file < 0 || run->file >= len(self->files)) return;
+    const DiffFile* file = self->files[run->file];
+    const DiffFileSide* source = SideOf(file, run->side);
+    if (run->ix < 0 || run->ix >= len(source->lines)) return;
+    const Diff* diff = run->diff;
+    if (!ev->keyboard) {
+        // A drag selects text; only a stationary press is a click.
+        if (cx->win && (fabsf(ev->x - cx->win->pressedX) > 3.f ||
+                        fabsf(ev->y - cx->win->pressedY) > 3.f))
+            return;
+        DiffTextPosition hit;
+        if (diff->onTextClick && cx->win &&
+            DiffTextAt(self, &cx->win->paint, run, ev->x, ev->el, &hit) &&
+            diff->onTextClick(cx, &hit, ev, diff->textClickUser))
+            return;
+    }
+    if (diff->onLineClick) {
+        DiffLinePosition position = DiffLinePosition::New(
+            file->path, run->side, source->lines[run->ix].lineNumber);
+        diff->onLineClick(cx, &position, ev, diff->clickUser);
+    }
+}
+
+bool DiffRunBounds(Window* win, DiffSide side, int lineIx, Bounds* out) {
+    if (!win || !out) return false;
+    uintptr_t fn = DiffTextMoveListener(Entity<DiffState>{}, nullptr).Fn();
+    // The source and the clip around it both listen; the source is the
+    // narrower of the two.
+    int64_t found = 0;
+    for (int i = 0; i < len(win->paint.hits); i++) {
+        const HitRect& hit = win->paint.hits[i];
+        if (hit.onMouseMove.Fn() != fn || !hit.onMouseMove.arg) continue;
+        const auto* run = (const DiffTextRun*)(intptr_t)hit.onMouseMove.arg;
+        if (run->side != side || run->ix != lineIx) continue;
+        if (found && found != hit.onMouseMove.arg) continue;
+        if (!found || hit.bounds.w < out->w) *out = hit.bounds;
+        found = hit.onMouseMove.arg;
+    }
+    return found != 0;
 }
 
 static El* RenderRow(void* user, Ctx* cx, int ix) {
@@ -3560,13 +3840,46 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
                               diff->syntaxHighlight &&
                                   len(SideOf(file, side)->lines[line].text) <=
                                       state->syntaxMaxLineLength);
+        bool hover = diff->onTextHover != nullptr;
+        bool click = diff->onLineClick || diff->onTextClick;
+        DiffTextRun* run = nullptr;
+        if (hover || click) {
+            run = ArenaNew<DiffTextRun>(cx->a);
+            run->diff = diff;
+            run->file = row.file;
+            run->side = side;
+            run->ix = line;
+            run->scrollX = diff->softWrap ? 0 : state->horizontalScrollX;
+            run->font = ThemeFontSize(cx->app);
+        }
+        if (diff->hasTextCursor) source->Cursor(diff->textCursor);
+        if (click) {
+            source->OnClick(ListenTo(diff->state, &OnDiffTextClick,
+                                     (int64_t)(intptr_t)run));
+        }
+        if (hover) source->OnMouseMove(DiffTextMoveListener(diff->state, run));
+        El* hoverBox = source;
         if (!diff->softWrap) {
             // The gutters stay inside their columns as the code moves.
             source->Shrink(0)->PaintOffset(-state->horizontalScrollX, 0);
-            box->Child(Div(cx->a)->FlexRow()->Flex1()->MinW(0)->ClipX()->Child(
-                source));
+            El* clip =
+                Div(cx->a)->FlexRow()->Flex1()->MinW(0)->ClipX()->Child(source);
+            if (hover) {
+                // The whole row height, as Rust's run is a row tall, so the
+                // pointer crossing between lines stays over text. A move
+                // past the line's end lands here and is over no character.
+                clip->H(kFill)
+                    ->ItemsCenter()
+                    ->OnMouseMove(DiffTextMoveListener(diff->state, run));
+                hoverBox = clip;
+            }
+            box->Child(clip);
         } else {
             box->Child(source);
+        }
+        if (hover) {
+            hoverBox->OnHover(ListenTo(diff->state, &OnDiffTextLeave,
+                                       (int64_t)(intptr_t)run));
         }
         // Annotation content shares the uniform row. Rust remeasures the row
         // when the comment's height changes; see port-status.md.
@@ -3812,6 +4125,28 @@ Diff* Diff::OnLineHover(void (*fn)(Ctx*, const DiffLinePosition*, bool, void*),
     return this;
 }
 
+Diff* Diff::OnTextHover(void (*fn)(Ctx*, const DiffTextPosition*, Modifiers,
+                                   void*),
+                        void* user) {
+    onTextHover = fn;
+    textHoverUser = user;
+    return this;
+}
+
+Diff* Diff::OnTextClick(bool (*fn)(Ctx*, const DiffTextPosition*,
+                                   const ClickEvent*, void*),
+                        void* user) {
+    onTextClick = fn;
+    textClickUser = user;
+    return this;
+}
+
+Diff* Diff::TextCursor(CursorKind cursor) {
+    hasTextCursor = true;
+    textCursor = cursor;
+    return this;
+}
+
 static void MeasureDiffCode(Ctx* cx, DiffState* state, float font) {
     // Shape the widest candidates once per file set and font size, as the
     // Rust viewer does. Rank by decoded character count for our mono font.
@@ -3884,6 +4219,12 @@ El* Diff::IntoEl() {
     root->OnAction(Act("diff::ExtendUp"), ListenTo(state, &OnDiffAction));
     root->OnAction(Act("diff::ExtendDown"), ListenTo(state, &OnDiffAction));
     root->OnAction(input::Copy(), ListenTo(state, &OnDiffAction));
+    // A key alone changes what the pointer is over: with it held, the word
+    // beneath may be a link. Heard only while the diff has focus.
+    if (onTextHover) {
+        root->OnModifiersChanged(
+            ListenTo(state, &OnDiffModifiersChanged, (int64_t)(intptr_t)this));
+    }
     El* rows = VirtualList::New(cx, len(st->rows))
                    ->RowH(24)
                    ->Handle(&st->listScroll)

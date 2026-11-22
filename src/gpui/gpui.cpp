@@ -2652,6 +2652,9 @@ El* El::CaptureKeyDown(Listener fn) {
 El* El::OnKeyUp(Listener fn) {
     return OnAction(ActionOf(StrL("gpui::KeyUp")), fn);
 }
+El* El::OnModifiersChanged(Listener fn) {
+    return OnAction(ActionOf(StrL("gpui::ModifiersChanged")), fn);
+}
 El* El::OnScrollWheel(Listener fn) {
     onScrollWheel = fn;
     return this;
@@ -10563,6 +10566,31 @@ bool WindowDispatchKeyUpEvent(Window* win, KeyEvent* ev) {
         return false;
     }
     return DispatchKeyChain(win, ev, KeyUpAction(), false);
+}
+
+void WindowDispatchModifiersChanged(Window* win,
+                                    const ModifiersChangedEvent* ev) {
+    if (!win || !ev) {
+        return;
+    }
+    // Window::dispatch_modifiers_changed_event: every listener on the focus
+    // path, innermost first. The handlers are copied out first: one of them
+    // can rebuild the frame the dispatch entries live in.
+    uint32_t action = ActionOf(StrL("gpui::ModifiersChanged"));
+    int ix = DispatchAnchor(win);
+    const int kMaxHeard = 16;
+    Listener heard[kMaxHeard];
+    int n = 0;
+    for (int k = 0; k < ix && n < kMaxHeard; k++) {
+        int i = ix - 1 - k;
+        if (DispatchHandlerOnPath(win, i, ix, action)) {
+            heard[n++] = win->dispatch[i].fn;
+        }
+    }
+    for (int i = 0; i < n; i++) {
+        ModifiersChangedEvent copy = *ev;
+        ListenerCall(win->app, win, heard[i], &copy);
+    }
 }
 
 bool WindowDispatchKeyCaptureEvent(Window* win, KeyEvent* ev) {

@@ -989,6 +989,12 @@ struct HoverEvent {
     bool hovered = false;
 };
 
+// ModifiersChangedEvent: what `div().on_modifiers_changed(..)` hears when a
+// modifier key goes down or up, with the modifiers now held.
+struct ModifiersChangedEvent {
+    Modifiers modifiers = {};
+};
+
 // TextView::max_lines reports whether its natural content ran past the capped
 // box after layout. Kept in gpui because the line clamp itself is an element
 // seam: ui/text supplies the state listener, while the runtime owns the final
@@ -3659,6 +3665,10 @@ struct El {
     // walked. GPUI's `InteractiveElement::on_key_up`; the KeyEvent it carries
     // has `down` false and no character half.
     El* OnKeyUp(Listener fn);
+    // div().on_modifiers_changed(..): a ModifiersChangedEvent, heard on the
+    // focus path like the key listeners, so only while this element or one
+    // inside it has focus. Every listener on the path hears it.
+    El* OnModifiersChanged(Listener fn);
     // div().on_scroll_wheel(..): the gesture, before the scrolled box under
     // the pointer takes it. A handler that leaves `propagate` set lets the
     // scroll carry on, which is `cx.propagate()`.
@@ -9138,6 +9148,10 @@ bool WindowDispatchActionAtFocus(Window* win, FocusHandle focus,
 bool WindowDispatchKeyEvent(Window* win, KeyEvent* ev);
 // The `El::OnKeyUp` half of the same chain, run when the key comes back up.
 bool WindowDispatchKeyUpEvent(Window* win, KeyEvent* ev);
+// The `El::OnModifiersChanged` handlers over the focused element, innermost
+// first. None of them can stop the others, as in GPUI.
+void WindowDispatchModifiersChanged(Window* win,
+                                    const ModifiersChangedEvent* ev);
 // The `El::CaptureKeyDown` handlers over the focused element, outermost
 // first, before the focused field or the keymap hears the key. Answers true
 // when one of them stopped propagating.

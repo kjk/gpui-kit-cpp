@@ -1518,6 +1518,217 @@ static void AllFilesCollapseAndExpandTogether() {
     utassert(len(state->emitted) == 0);
 }
 
+// diff/pointer_tests.rs Host: a diff with an underlined, transparent span
+// highlight and every pointer handler, recording what each heard.
+struct PointerHost {
+    struct Heard {
+        bool has = false;
+        int line = 0;
+        int offset = 0;
+        Str text = {};
+        bool platform = false;
+    };
+    Entity<DiffState> state;
+    DiffSpanHighlight span = {};
+    // Whether the text handler claims the clicks it hears.
+    bool claim = true;
+    Heard hovered[8] = {};
+    int hoveredCount = 0;
+    int textClicks[8][2] = {};
+    int textClickCount = 0;
+    int lineClicks[8] = {};
+    int lineClickCount = 0;
+
+    static void OnTextHover(Ctx*, const DiffTextPosition* hit,
+                            Modifiers modifiers, void* user) {
+        auto* self = (PointerHost*)user;
+        if (self->hoveredCount >= 8) return;
+        Heard& heard = self->hovered[self->hoveredCount++];
+        heard.has = hit != nullptr;
+        if (hit) {
+            heard.line = hit->Position().Line();
+            heard.offset = hit->Offset();
+            heard.text = hit->Text();
+        }
+        heard.platform = modifiers.platform;
+    }
+    static bool OnTextClick(Ctx*, const DiffTextPosition* hit,
+                            const ClickEvent*, void* user) {
+        auto* self = (PointerHost*)user;
+        if (self->textClickCount < 8) {
+            self->textClicks[self->textClickCount][0] = hit->Position().Line();
+            self->textClicks[self->textClickCount][1] = hit->Offset();
+            self->textClickCount++;
+        }
+        return self->claim;
+    }
+    static void OnLineClick(Ctx*, const DiffLinePosition* position,
+                            const ClickEvent*, void* user) {
+        auto* self = (PointerHost*)user;
+        if (self->lineClickCount < 8)
+            self->lineClicks[self->lineClickCount++] = position->Line();
+    }
+    static El* Render(PointerHost* self, Ctx* cx) {
+        return Div(cx->a)->W(600)->H(400)->Child(
+            Diff::New(cx, self->state)
+                ->SpanHighlights(&self->span, 1)
+                ->OnTextHover(&PointerHost::OnTextHover, self)
+                ->OnTextClick(&PointerHost::OnTextClick, self)
+                ->OnLineClick(&PointerHost::OnLineClick, self)
+                ->IntoEl());
+    }
+};
+
+struct PointerStage {
+    App* app = nullptr;
+    Window* win = nullptr;
+    PointerHost* host = nullptr;
+};
+
+static PointerStage StagePointer(bool claim) {
+    PointerStage stage;
+    stage.app = TestAppNew();
+    Init(stage.app);
+    auto view = EntityNew<PointerHost>(stage.app);
+    PointerHost* host = view.Get(stage.app);
+    host->claim = claim;
+    host->state = EntityNew<DiffState>(stage.app);
+    DiffState* state = host->state.Get(stage.app);
+    state->Bind(stage.app, host->state);
+    Vec<DiffFile*> files;
+    DiffParseError error;
+    utassert(DiffFile::Parse(StrL("--- a/file.rs\n+++ b/file.rs\n"
+                                  "@@ -1 +1,2 @@\n"
+                                  " fn place() {}\n"
+                                  "+fn other() {}\n"),
+                             &files, &error));
+    state->SetFiles(files.els, len(files), nullptr);
+    host->span =
+        DiffSpanHighlight::New(
+            DiffLinePosition::New(StrL("file.rs"), DiffSide::Modified, 1),
+            {3, 8})
+            .WithBackground(Rgba{0, 0, 0, 0})
+            .WithUnderline();
+    stage.win = TestWindowOpen(stage.app, view, 600, 400);
+    for (int i = 0; i < 3; i++) TestDraw(stage.win);
+    stage.host = host;
+    return stage;
+}
+
+// A point inside the painted run of the modified side's `lineIx`, `inset`
+// from its left edge, and one past the run's right edge.
+static bool PointerPoints(Window* win, int lineIx, float inset, Point* onText,
+                          Point* pastEnd) {
+    Bounds bounds;
+    if (!DiffRunBounds(win, DiffSide::Modified, lineIx, &bounds)) return false;
+    float y = bounds.CenterY();
+    *onText = Point{bounds.x + inset, y};
+    *pastEnd = Point{bounds.Right() + 40, y};
+    return true;
+}
+
+static bool HeardHit(const PointerHost::Heard& heard, int line, int offset,
+                     const char* text, bool platform) {
+    return heard.has && heard.line == line && heard.offset == offset &&
+           StrEq(heard.text, text) && heard.platform == platform;
+}
+
+// pointer_tests.rs text_hover_reports_the_character_and_only_changes.
+static void TextHoverReportsTheCharacterAndOnlyChanges() {
+    PointerStage stage = StagePointer(true);
+    Point onText, pastEnd;
+    utassert(PointerPoints(stage.win, 1, 1, &onText, &pastEnd));
+    TestSimulateMouseMove(stage.win, onText);
+    // The same character again says nothing new.
+    TestSimulateMouseMove(stage.win, onText);
+    TestSimulateMouseMove(stage.win, pastEnd);
+    PointerHost* host = stage.host;
+    utassert(host->hoveredCount == 2);
+    utassert(HeardHit(host->hovered[0], 2, 0, "fn other() {}", false));
+    // Past the line's end is over no character, not the nearest one.
+    utassert(!host->hovered[1].has && !host->hovered[1].platform);
+    TestAppFree(stage.app);
+}
+
+// pointer_tests.rs a_modifier_alone_reports_the_character_again.
+static void AModifierAloneReportsTheCharacterAgain() {
+    PointerStage stage = StagePointer(true);
+    Point onText, pastEnd;
+    utassert(PointerPoints(stage.win, 0, 1, &onText, &pastEnd));
+    DiffState* state = stage.host->state.Get(stage.app);
+    TestFocus(stage.win, state->focus);
+    TestDraw(stage.win);
+
+    TestSimulateMouseMove(stage.win, onText);
+    Modifiers command;
+    command.platform = true;
+    TestSimulateModifiersChange(stage.win, command);
+    PointerHost* host = stage.host;
+    utassert(host->hoveredCount == 2);
+    utassert(HeardHit(host->hovered[0], 1, 0, "fn place() {}", false));
+    utassert(HeardHit(host->hovered[1], 1, 0, "fn place() {}", true));
+    TestAppFree(stage.app);
+}
+
+// pointer_tests.rs a_claimed_text_click_keeps_the_line_handler_quiet.
+static void AClaimedTextClickKeepsTheLineHandlerQuiet() {
+    PointerStage stage = StagePointer(true);
+    Point onText, pastEnd;
+    utassert(PointerPoints(stage.win, 1, 1, &onText, &pastEnd));
+    Modifiers command;
+    command.platform = true;
+    TestSimulateClick(stage.win, onText, command);
+    PointerHost* host = stage.host;
+    utassert(host->textClickCount == 1 && host->textClicks[0][0] == 2 &&
+             host->textClicks[0][1] == 0);
+    utassert(host->lineClickCount == 0);
+
+    // Off the text there is no character to claim: the line still hears it.
+    TestSimulateClick(stage.win, pastEnd);
+    utassert(host->textClickCount == 1);
+    TestAppFree(stage.app);
+}
+
+// pointer_tests.rs an_unclaimed_text_click_falls_through_to_the_line.
+static void AnUnclaimedTextClickFallsThroughToTheLine() {
+    PointerStage stage = StagePointer(false);
+    Point onText, pastEnd;
+    utassert(PointerPoints(stage.win, 1, 1, &onText, &pastEnd));
+    TestSimulateClick(stage.win, onText);
+    PointerHost* host = stage.host;
+    utassert(host->textClickCount == 1 && host->textClicks[0][0] == 2 &&
+             host->textClicks[0][1] == 0);
+    utassert(host->lineClickCount == 1 && host->lineClicks[0] == 2);
+    TestAppFree(stage.app);
+}
+
+// pointer_tests.rs has_line_counts_folded_lines_but_not_absent_ones. The
+// fixture is one full-context hunk, as document::fixture writes it.
+static void HasLineCountsFoldedLinesButNotAbsentOnes() {
+    DiffFix fix;
+    StrBuilder patch;
+    patch.Append(StrL("--- a/long.txt\n+++ b/long.txt\n@@ -1,200 +1,200 @@\n"));
+    patch.Append(StrL("-line 0\n+first\n"));
+    for (int i = 1; i < 200; i++) patch.Append(fmt(" line %d\n", i));
+    utassert(fix.LoadStr(Str(patch.els, len(patch))));
+    DiffState* state = fix.state;
+    DiffLinePosition distant =
+        DiffLinePosition::New(StrL("long.txt"), DiffSide::Modified, 150);
+    int ix = state->FileAt(0)->LineIndex(DiffSide::Modified, 150);
+    bool shown = false;
+    for (int i = 0; i < state->RowCount(); i++) {
+        const DiffRow& row = state->Rows()[i];
+        if (row.kind == DiffRowKind::Code && row.modified == ix) shown = true;
+    }
+    // Far from the change, the line is folded.
+    utassert(ix >= 0 && !shown);
+    utassert(state->HasLine(distant));
+    utassert(!state->HasLine(
+        DiffLinePosition::New(StrL("long.txt"), DiffSide::Modified, 9000)));
+    utassert(!state->HasLine(
+        DiffLinePosition::New(StrL("other.txt"), DiffSide::Modified, 1)));
+}
+
 void TestDiff() {
     TestParser();
     TestTruncatedHunks();
@@ -1539,4 +1750,9 @@ void TestDiff() {
     DecorationsCoverTheirRangeAndTheLastSuppliedWins();
     SpanHighlightsKeepLineAndOrderThroughTabExpansion();
     GutterMarkersActivateWithoutSelectingLines();
+    TextHoverReportsTheCharacterAndOnlyChanges();
+    AModifierAloneReportsTheCharacterAgain();
+    AClaimedTextClickKeepsTheLineHandlerQuiet();
+    AnUnclaimedTextClickFallsThroughToTheLine();
+    HasLineCountsFoldedLinesButNotAbsentOnes();
 }

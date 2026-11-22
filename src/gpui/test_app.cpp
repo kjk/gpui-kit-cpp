@@ -585,6 +585,15 @@ void TestSimulateClick(Window* win, Point position, Modifiers modifiers) {
     TestSimulateMouseUp(win, position, MouseButton::Left, modifiers);
 }
 
+void TestSimulateModifiersChange(Window* win, Modifiers modifiers) {
+    if (!win) {
+        return;
+    }
+    WindowModifiersChanged(win, modifiers);
+    TestFlushEffects(win->app);
+    TestRunUntilParked(win->app);
+}
+
 // ─── actions, clipboard, focus ────────────────────────────────────────────
 
 void TestDispatchInputRaw(Window* win, const PlatformInput& input) {
