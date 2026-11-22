@@ -391,22 +391,22 @@ void ParserProcess(Parser* parser, Str chunk) {
     if (!impl || !parser->a) return;
     int n = len(chunk);
     if (n > 0) {
-        int need = len(*impl) + n;
+        int need = impl->len + n;
         if (need > impl->cap) {
             int cap = impl->cap > 0 ? impl->cap * 2 : 256;
             while (cap < need) cap *= 2;
             char* fresh = (char*)parser->a->Push((uint64_t)cap, 1, false);
-            if (len(*impl) > 0 && impl->buf) {
-                memcpy(fresh, impl->buf, (size_t)len(*impl));
+            if (impl->len > 0 && impl->buf) {
+                memcpy(fresh, impl->buf, (size_t)impl->len);
             }
             impl->buf = fresh;
             impl->cap = cap;
         }
-        memcpy(impl->buf + len(*impl), chunk.s, (size_t)n);
+        memcpy(impl->buf + impl->len, chunk.s, (size_t)n);
         impl->len += n;
     }
     if (parser->options.scriptingEnabled && !impl->sawScriptEnd) {
-        Str all = Str(impl->buf, len(*impl));
+        Str all = Str(impl->buf, impl->len);
         if (StrContainsI(all, StrL("</script>"))) {
             impl->sawScriptEnd = true;
             impl->paused = true;
@@ -428,7 +428,7 @@ Node* ParserFinish(Parser* parser) {
     MiniParser* impl = parser ? (MiniParser*)parser->impl : nullptr;
     if (!impl) return nullptr;
     impl->paused = false;
-    Str source = Str(impl->buf, len(*impl));
+    Str source = Str(impl->buf, impl->len);
     if (impl->fragment) {
         return ParseFragment(parser->a, source, impl->context, parser->options);
     }
