@@ -1,5 +1,19 @@
 # Scene graph: scope, value and next steps
 
+> **Status (Nov 2026): historical in parts.** The measurements below were
+> taken when Windows also had custom D3D11/D3D12 renderers and the scene had
+> `skip` and `damage` levels. Since then:
+>
+> - The D3D11/D3D12 renderers are removed; Direct2D is the only Windows
+>   renderer. See [obsolete-windows-backends.md](obsolete-windows-backends.md).
+> - The scene is only on or off (`__scene=off`). There is no `skip`/`damage`
+>   choice; Windows uses partial damage whenever `SceneDamageSupported`.
+> - Relative path-cache keys are always on. `GPUI_PATH_CACHE_TRANSLATION` and
+>   `cmd/bench-scene.ts -absolute-paths` no longer exist.
+>
+> `src/gpui/scene.h` is the current description. The comparison with Zed's
+> scene graph and the reasons not to port it still stand.
+
 This note compares the scene support in this tree with Zed GPUI at the pinned
 `zedGpui` revision (`f66ed399cdde86092af8af3dc7b418abf45f37f8`). The short
 answer is that porting Zed's scene graph as a whole is not currently worth the
