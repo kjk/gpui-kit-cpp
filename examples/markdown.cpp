@@ -979,7 +979,7 @@ static void OpenDocument(MarkdownApp* self, Ctx* cx) {
     if (!path) {
         return;
     }
-    FILE* f = fopen(path.s, "rb");
+    FILE* f = PlatFileOpen(path, "rb");
     if (!f) {
         return;
     }

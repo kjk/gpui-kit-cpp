@@ -326,8 +326,7 @@ static void OpenFile(EditorApp* self, Str path) {
     if (!path) {
         return;
     }
-    TempStr pathZ = StrDupTemp(path);
-    FILE* f = fopen(pathZ.s, "rb");
+    FILE* f = PlatFileOpen(path, "rb");
     if (!f) {
         return;
     }

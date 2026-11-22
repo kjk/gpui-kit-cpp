@@ -163,7 +163,7 @@ void AssetsAddDefaultRoots(Str exampleName) {
 }
 
 static bool ReadFileAll(const char* path, Vec<uint8_t>* out) {
-    FILE* f = fopen(path, "rb");
+    FILE* f = PlatFileOpen(Str(path), "rb");
     if (!f) {
         return false;
     }

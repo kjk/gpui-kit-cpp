@@ -64,15 +64,13 @@ static bool ReplaceFile(Str destination, Str bytes, Str* error) {
     Str partial = StrDup(fmt("%s.partial", destination));
     bool ok = WriteWholeFile(partial, bytes, error);
     if (ok) {
-        remove(destination.s);
-        TempStr from = StrDupTemp(partial);
-        TempStr to = StrDupTemp(destination);
-        if (rename(from.s, to.s) != 0) {
-            remove(partial.s);
+        PlatFileRemove(destination);
+        if (!PlatFileRename(partial, destination)) {
+            PlatFileRemove(partial);
             ok = BundleFail(error, fmt("cannot write %s", destination));
         }
     } else {
-        remove(partial.s);
+        PlatFileRemove(partial);
     }
     StrFree(partial);
     return ok;

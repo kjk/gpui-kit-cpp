@@ -292,8 +292,35 @@ static void StartsWithAnyChecksFirstCharInSet() {
     utassert(!StrStartsWithAny(s, nullptr));
 }
 
+// base.h's file wrappers take UTF-8 paths on every target. Windows' C
+// runtime read a char* path in the ANSI code page, so a non-ASCII name
+// (a user profile's, say) could not be opened.
+static void FilePathsAreUtf8() {
+    Str name = StrL(
+        "gpui-utf8-\xc5\x81\xc3\xb3"
+        "d\xc5\xba-test.txt");
+    Str renamed = StrL(
+        "gpui-utf8-\xc5\x81\xc3\xb3"
+        "d\xc5\xba-moved.txt");
+    PlatFileRemove(name);
+    PlatFileRemove(renamed);
+    FILE* f = PlatFileOpen(name, "wb");
+    utassert(f != nullptr);
+    if (!f) return;
+    fputs("hello", f);
+    fclose(f);
+    utassert(PlatFileExists(StrDupTemp(name).s));
+    utassert(StrEq(ReadBoundedFileTemp(name, 64), StrL("hello")));
+    utassert(PlatFileRename(name, renamed));
+    utassert(!PlatFileExists(StrDupTemp(name).s));
+    utassert(StrEq(ReadBoundedFileTemp(renamed, 64), StrL("hello")));
+    utassert(PlatFileRemove(renamed));
+    utassert(!PlatFileExists(StrDupTemp(renamed).s));
+}
+
 void TestStr() {
     TestSuite("str");
+    FilePathsAreUtf8();
     CaseInsensitiveEqualityRejectsLengthFirst();
     TrimTakesUnicodeWhiteSpace();
     CaseInsensitiveEqualityKeepsEmptySliceSemantics();

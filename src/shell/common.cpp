@@ -59,8 +59,7 @@ bool WriteWholeFile(Str path, Str contents, Str* error) {
         ErrorOutSet(error, StrL("cannot write: the path is empty or too long"));
         return false;
     }
-    TempStr name = StrDupTemp(path);
-    FILE* file = fopen(name.s, "wb");
+    FILE* file = PlatFileOpen(path, "wb");
     if (!file) {
         ErrorOutSet(error, fmt("cannot write %s", path));
         return false;
@@ -78,8 +77,7 @@ bool ReadWholeFile(Str path, int limit, Str* out, Str* error) {
         ErrorOutSet(error, StrL("cannot read: the path is empty or too long"));
         return false;
     }
-    TempStr name = StrDupTemp(path);
-    FILE* file = fopen(name.s, "rb");
+    FILE* file = PlatFileOpen(path, "rb");
     if (!file) {
         ErrorOutSet(error, fmt("cannot read %s", path));
         return false;

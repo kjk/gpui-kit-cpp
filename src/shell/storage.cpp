@@ -64,7 +64,7 @@ bool Storage::SetPath(Str value, Str* error) {
 
 bool Storage::Load(Str* error) {
     if (!persisted || !path) return true;
-    FILE* file = fopen(path.s, "rb");
+    FILE* file = PlatFileOpen(path, "rb");
     if (!file) {
         if (errno == ENOENT) return true;
         StorageError(error, fmt("cannot read storage file `%s`", path));
@@ -378,13 +378,13 @@ bool StoragePersist(const StorageWrite& write, Str* error) {
         return false;
     }
     Str temporary = StrDup(fmt("%s.tmp", write.path));
-    FILE* file = temporary.s ? fopen(temporary.s, "wb") : nullptr;
+    FILE* file = temporary.s ? PlatFileOpen(temporary, "wb") : nullptr;
     bool ok = file && fwrite(write.body.s, 1, (size_t)len(write.body), file) ==
                           (size_t)len(write.body);
     if (file && fclose(file) != 0) ok = false;
     if (ok) ok = StorageReplaceFile(temporary, write.path, error);
     if (!ok) {
-        if (temporary.s) remove(temporary.s);
+        if (temporary.s) PlatFileRemove(temporary);
         if (!error || !*error) {
             StorageError(error,
                          fmt("cannot write storage file `%s`", write.path));

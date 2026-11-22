@@ -148,6 +148,14 @@ TempStr AllocStrTemp(int size);
 TempStr StrDupTemp(Str s);
 TempStr ReadBoundedFileTemp(Str path, int limit);
 
+// fopen, remove and rename for a UTF-8 path. Windows' C runtime reads a
+// char* path in the ANSI code page, so a user profile with a non-ASCII name
+// broke every file under it; these widen the path there instead.
+FILE* PlatFileOpen(Str path, const char* mode);
+bool PlatFileRemove(Str path);
+// Replaces nothing on Windows: remove the destination first if it may exist.
+bool PlatFileRename(Str from, Str to);
+
 #if GPUI_OS_WINDOWS
 WCHAR* ToCWstrTemp(Str s);
 #endif

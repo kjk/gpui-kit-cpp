@@ -1423,7 +1423,7 @@ void ThemeSyncBase(App* app) {
 // the asset loader's own reader answers for one relative path, and this walks
 // a directory it has already resolved.
 static Str ReadTextFile(const char* path) {
-    FILE* f = fopen(path, "rb");
+    FILE* f = PlatFileOpen(Str(path), "rb");
     if (!f) {
         return {};
     }

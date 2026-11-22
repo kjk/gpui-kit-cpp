@@ -375,8 +375,7 @@ static void BenchTick(FpsApp* app, Ctx* cx) {
     for (int i = 0; i < count; i++) {
         total += app->benchDraws[i];
     }
-    TempStr benchOut = StrDupTemp(app->benchOut);
-    FILE* f = fopen(benchOut.s, "w");
+    FILE* f = PlatFileOpen(app->benchOut, "w");
     if (f && count > 0) {
         double secs = elapsed - 1.0;
         fprintf(f, "frames    %d over %.1fs (%.1f fps)\n", count, secs,

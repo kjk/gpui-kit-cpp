@@ -190,7 +190,7 @@ static void AddPatternsFromFile(base::Vec<IgnorePattern>& out, Str workDir,
     if (len(path) >= 1024) {
         return;
     }
-    FILE* f = fopen(path.s, "rb");
+    FILE* f = base::PlatFileOpen(path, "rb");
     if (!f) {
         return;
     }

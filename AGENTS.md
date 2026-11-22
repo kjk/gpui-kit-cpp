@@ -332,7 +332,9 @@ respective `readme.md` files.
 - `logf` for debug prints; prefer `int32_t` indexes, `int` for existing base
   APIs such as `len(v)`.
 - **UTF-8 Str throughout our APIs.** Convert using `ToCWstrTemp(s)` only at
-  OS calls needing UTF-16; do not widen signatures to `wchar_t*`.
+  OS calls needing UTF-16; do not widen signatures to `wchar_t*`. Open,
+  remove and rename files by path with `PlatFileOpen`/`PlatFileRemove`/
+  `PlatFileRename`, not `fopen`/`remove`/`rename` (ANSI on Windows).
 - Pair successful COM Create with Release; no `CComPtr`.
 - Port Base primitives one Rust module at a time into `src/base/`, preserving
   type names. Primitives own interaction (click/focus/open/checked), not paint;

@@ -244,7 +244,7 @@ static bool WriteEditorConfig(Str directory, bool* wrote, ShellError* error) {
         PlatFileExists(existing.s) || PlatDirExists(existing.s))
         return true;
     Str contents(kEditorConfig);
-    FILE* file = fopen(path.s, "wb");
+    FILE* file = PlatFileOpen(path, "wb");
     if (!file) {
         ShellErrorSet(error, fmt("cannot write `%s`", path));
         return false;
@@ -291,7 +291,7 @@ static bool RefreshTypes(Str directory, Str declarations, DirEntry* entries,
     if (current.s && StrEq(current, declarations)) {
         return true;
     }
-    FILE* file = fopen(path.s, "wb");
+    FILE* file = PlatFileOpen(path, "wb");
     if (!file) {
         ShellErrorSet(error, fmt("cannot write `%s`", path));
         return false;
