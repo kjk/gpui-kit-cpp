@@ -8422,6 +8422,29 @@ static void ReplaceAllSingleLine() {
     InputViewFree(&view);
 }
 
+// state.rs test_single_line_removes_tabs. Tab is bound to IndentInline,
+// which a single-line input propagates; unhandled, the keystroke reaches the
+// input as text, so the field drops the tab as it drops a newline.
+static void SingleLineRemovesTabs() {
+    InputView view = InputViewBuild();
+    InputFocus(view.input, view.app, view.win);
+    TestRunUntilParked(view.app);
+
+    TestSimulateInput(view.win, StrL("a"));
+    // Rust simulates the "tab" keystroke in a bare test window, where the
+    // propagated IndentInline leaves it to arrive as text. This runtime
+    // walks the focus ring with a tab nobody wanted (window_common.cpp, the
+    // binding gpui-kit's Root adds), so the field would lose focus instead;
+    // feed it the text the keystroke becomes.
+    TestSimulateInput(view.win, StrL("\t"));
+    TestSimulateInput(view.win, StrL("b"));
+    utassert(ViewValueIs(view, "ab"));
+
+    InputSetValue(view.input, StrL("c\td\ne"));
+    utassert(ViewValueIs(view, "cde"));
+    InputViewFree(&view);
+}
+
 // state.rs test_single_line_removes_newlines.
 static void SingleLineRemovesNewlines() {
     InputView view = InputViewBuild([](InputState* s, App*) {
@@ -9078,6 +9101,7 @@ static void RunWindowTestsB() {
     SetValueSingleLineCaretAtEndViewAtStart();
     ReplaceAllSingleLine();
     SingleLineRemovesNewlines();
+    SingleLineRemovesTabs();
     ReplaceAllMultiLine();
     ReplaceAllPreservesUndoHistory();
     ReplaceAllCodeEditor();

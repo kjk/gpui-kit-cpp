@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `cf945af2d6491ff9bc175f3f1656a14793987db2` (2026-11-22,
-editor: Let an editor show its active line only while focused (#4067)).
-A code editor can show its active line only while focused
-(InputSetActiveLineOnlyWhenFocused): the active line number, wash and fold
-control follow focus while the caret row is unchanged.
+Processed through `7f199f397ae4c823e93f1f6e8c3a0730679397ac` (2026-11-22,
+input: Drop tabs from a single-line input like newlines (#4071)).
+Text entering a single-line input loses its tabs along with its newlines
+(NormalizeInput).
 The current update target is
 `1c7e7f7c6c8d6585da909804496614da01bb8663`.
 

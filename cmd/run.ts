@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "cf945af2d6491ff9bc175f3f1656a14793987db2",
+  sha: "7f199f397ae4c823e93f1f6e8c3a0730679397ac",
   date: "2026-11-22",
-  subject: "editor: Let an editor show its active line only while focused (#4067)",
+  subject: "input: Drop tabs from a single-line input like newlines (#4071)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",

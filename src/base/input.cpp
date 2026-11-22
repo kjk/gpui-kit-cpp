@@ -6942,7 +6942,12 @@ static bool IsValidInput(const InputState* s, Str text) {
 }
 
 // normalize_input: a number mask folds full-width digits to ASCII, and a
-// single-line field never takes a newline.
+// single-line field drops line breaks and tabs: a one-line field has no line
+// to break and no column to indent, and a tab in it is invisible.
+static bool IsSingleLineDropped(char c) {
+    return c == '\n' || c == '\r' || c == '\t';
+}
+
 static Str NormalizeInput(Arena* a, const InputState* s, Str newText) {
     Str out = s->maskPattern.kind == MaskKind::Number
                   ? NormalizeNumberInput(a, newText)
@@ -6952,7 +6957,7 @@ static Str NormalizeInput(Arena* a, const InputState* s, Str newText) {
     }
     bool hasBreak = false;
     for (int i = 0; i < len(out) && !hasBreak; i++) {
-        hasBreak = out.s[i] == '\n' || out.s[i] == '\r';
+        hasBreak = IsSingleLineDropped(out.s[i]);
     }
     if (!hasBreak) {
         return out;
@@ -6960,7 +6965,7 @@ static Str NormalizeInput(Arena* a, const InputState* s, Str newText) {
     char* buf = (char*)Alloc(a, len(out) + 1);
     int n = 0;
     for (int i = 0; i < len(out); i++) {
-        if (out.s[i] != '\n' && out.s[i] != '\r') {
+        if (!IsSingleLineDropped(out.s[i])) {
             buf[n++] = out.s[i];
         }
     }
