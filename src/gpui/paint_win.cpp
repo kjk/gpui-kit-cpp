@@ -1,6 +1,7 @@
 /* Windows Paint.h front end: Direct2D on a D3D11 device over a flip-model
    swap chain, DirectWrite shaping, WIC decode. */
 
+#include "gpui/bidi.h"
 #include "gpui/paint.h"
 #include "gpui/paint_backend.h"
 #include "gpui/scene.h"
@@ -1812,17 +1813,30 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
     layout->SetWordWrapping(wrap && maxW > 0 ? DWRITE_WORD_WRAPPING_WRAP
                                              : DWRITE_WORD_WRAPPING_NO_WRAP);
     ApplyLineHeight(layout, fontSize, lineH);
+    // The paragraph takes its first strong character's direction, as Pango
+    // and Core Text do. DirectWrite defaults to LTR, which put the trailing
+    // "..." of an Arabic or Hebrew label on the right, before the words.
+    bool rtl = FirstStrongBidi(s) == ParagraphBidi::Right;
+    if (rtl) {
+        layout->SetReadingDirection(DWRITE_READING_DIRECTION_RIGHT_TO_LEFT);
+    }
     DWRITE_TEXT_METRICS m = {};
     layout->GetMetrics(&m);
-    if (align != TextAlign::Left) {
+    if (align != TextAlign::Left || rtl) {
         // An unconstrained run was laid into a 10000-DIP box; its lines align
         // inside the widest of them instead, as they do on the other backends.
         if (maxW <= 0) {
             layout->SetMaxWidth(m.widthIncludingTrailingWhitespace);
         }
-        layout->SetTextAlignment(align == TextAlign::Center
-                                     ? DWRITE_TEXT_ALIGNMENT_CENTER
-                                     : DWRITE_TEXT_ALIGNMENT_TRAILING);
+        // TextAlign is visual; in an RTL paragraph DirectWrite's leading
+        // edge is the right one.
+        DWRITE_TEXT_ALIGNMENT a = DWRITE_TEXT_ALIGNMENT_LEADING;
+        if (align == TextAlign::Center) {
+            a = DWRITE_TEXT_ALIGNMENT_CENTER;
+        } else if ((align == TextAlign::Right) != rtl) {
+            a = DWRITE_TEXT_ALIGNMENT_TRAILING;
+        }
+        layout->SetTextAlignment(a);
     }
     if (outSize) {
         outSize->w = m.widthIncludingTrailingWhitespace;

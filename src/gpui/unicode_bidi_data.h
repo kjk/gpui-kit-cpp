@@ -1,20 +1,12 @@
 // Unicode 16.0 Bidi_Class ranges from unicode-bidi 0.3.18's generated
 // DerivedBidiClass table. Classes equivalent for UAX #9 P2/P3 are merged.
-#ifndef GPUI_BASE_UNICODE_BIDI_DATA_H_
-#define GPUI_BASE_UNICODE_BIDI_DATA_H_
+#ifndef GPUI_GPUI_UNICODE_BIDI_DATA_H_
+#define GPUI_GPUI_UNICODE_BIDI_DATA_H_
 
-#include "base.h"
+#include "gpui/bidi.h"
 
 namespace gpui {
 
-enum class ParagraphBidi : uint8_t {
-    Left,
-    Right,
-    Break,
-    Isolate,
-    EndIsolate,
-    Neutral
-};
 struct ParagraphBidiRange {
     uint32_t first;
     uint32_t last;
@@ -628,4 +620,4 @@ static constexpr ParagraphBidiRange kParagraphBidiRanges[] = {
 };
 
 } // namespace gpui
-#endif // GPUI_BASE_UNICODE_BIDI_DATA_H_
+#endif // GPUI_GPUI_UNICODE_BIDI_DATA_H_
