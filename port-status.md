@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `c11ce78b0c8a70eecca27bc226f0fc3bfa3b52ff` (2026-11-25,
-editor: Name a fold test's byte offset `next_statement` and word `extract_fold_ranges_in_rows` docs in rows (#4109)).
-Renamed the SQL fold test position to identify the next statement. The scanner continues to compute a complete candidate snapshot.
+Processed through `82f1c1dc1f2970d93f1adfe10cbd772516c21ce7` (2026-11-25,
+webview: Switch from lb-wry to upstream Wry 0.57.3 (#4104)).
+The webview facade now targets upstream Wry 0.57.3. C++ uses the updated native adapters through its existing API.
 The current update target is
 `832cfdc0baef92855191dfdbbbcacd75f59d3df0`.
 

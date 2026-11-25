@@ -532,10 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "c11ce78b0c8a70eecca27bc226f0fc3bfa3b52ff",
+  sha: "82f1c1dc1f2970d93f1adfe10cbd772516c21ce7",
   date: "2026-11-25",
-  subject:
-    "editor: Name a fold test's byte offset `next_statement` and word `extract_fold_ranges_in_rows` docs in rows (#4109)",
+  subject: "webview: Switch from lb-wry to upstream Wry 0.57.3 (#4104)",
   crates: {
     "gpui-kit": "0.11.0",
     "gpui-base": "0.11.0",
