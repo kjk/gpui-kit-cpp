@@ -2197,6 +2197,8 @@ static void Rebuild(DiffState* state, bool reset) {
         // Best-effort: keep the scroll index. Rust restores the source line.
     }
     VecClear(state->rows);
+    VecClear(state->rowHeights);
+    VecClear(state->measuredAnnotations);
     VecClear(state->headerRows);
     VecClear(state->changeRows);
     for (int ix = 0; ix < len(state->files); ix++) {
@@ -2917,6 +2919,14 @@ void DiffState::ScrollToFile(Str path, Ctx* cx) {
 }
 
 static int ScrollTop(const DiffState* self) {
+    if (len(self->rowHeights) == self->listScroll.itemsCount &&
+        self->listScroll.itemsCount > 0) {
+        int top = 0;
+        float into = 0.f;
+        VirtualListLogicalFromPixel(self->rowHeights.els, len(self->rowHeights),
+                                    24.f, self->listScroll.offset, &top, &into);
+        return top;
+    }
     if (self->listScroll.itemsCount > 0 && self->listScroll.contentSize > 0) {
         float row = self->listScroll.contentSize / (float)self->listScroll
                                                        .itemsCount;
@@ -3304,6 +3314,76 @@ static void StyleDiffRun(El* bit, const DiffSyntaxSpan* span) {
     }
 }
 
+static void StyleWrappedDiffLine(Ctx* cx, El* text, const DiffState* state,
+                                 int file, DiffSide side, int line, bool syntax,
+                                 const DiffHighlightRuns& runs) {
+    ArenaVec<TextHighlight> styled;
+    if (syntax && state->syntaxFn) {
+        for (const DiffSyntaxSpan& span : state->syntaxSpans) {
+            if (span.file != file || span.side != (uint8_t)side ||
+                span.line != line)
+                continue;
+            HighlightStyle style;
+            style.weight = (FontWeight)span.weight;
+            if (span.italic) style.fontStyle = HighlightFontStyle::Italic;
+            style.hasColor = span.hasColor;
+            style.color = span.color;
+            if (span.hasBackground) style.background = span.background;
+            if (span.underline) style.underline.thickness = 1;
+            styled.Append(cx->a, {span.start, span.end, style});
+        }
+    } else if (syntax) {
+        SyntaxLexer lexer;
+        SyntaxLexStart(&lexer, SyntaxLangFor(state->files[file]->Language()),
+                       text->text);
+        const Theme& theme = ActiveTheme(cx->app);
+        while (SyntaxLexNext(&lexer)) {
+            if (lexer.tok == SyntaxTok::Text) continue;
+            HighlightStyle style;
+            style.hasColor = true;
+            style.color =
+                SyntaxTokColor(lexer.tok, theme.mode, theme.foreground);
+            int at = (int)(lexer.text.s - text->text.s);
+            styled.Append(cx->a, {at, at + len(lexer.text), style});
+        }
+    }
+    if (!len(styled)) return;
+    // Explicit diff span colours take precedence over the syntax colour. Cut
+    // both lists at each boundary to keep the shaped font ranges disjoint.
+    ArenaVec<TextHighlight> merged;
+    int i = 0, c = 0;
+    for (int at = 0; at < len(text->text);) {
+        while (i < len(styled) && styled[i].hi <= at) ++i;
+        while (c < runs.colorCount && runs.colors[c].hi <= at) ++c;
+        int end = len(text->text);
+        HighlightStyle style;
+        bool use = false;
+        if (i < len(styled)) {
+            const TextHighlight& span = styled[i];
+            if (span.lo > at) {
+                end = IMin(end, span.lo);
+            } else {
+                end = IMin(end, span.hi);
+                style = span.style;
+                use = true;
+            }
+        }
+        if (c < runs.colorCount) {
+            const TextSpan& span = runs.colors[c];
+            if (span.lo > at) {
+                end = IMin(end, span.lo);
+            } else {
+                end = IMin(end, span.hi);
+                style.color = span.color;
+                style.hasColor = use = true;
+            }
+        }
+        if (use) merged.Append(cx->a, {at, end, style});
+        at = end;
+    }
+    text->Highlights(merged.Flatten(cx->a), len(merged));
+}
+
 // The span highlights' underlines over each text run of `row`, every run a
 // slice of `display`. A rule with no colour of its own takes the run's.
 static void UnderlineDiffRuns(Ctx* cx, El* row, Str display,
@@ -3356,7 +3436,7 @@ static void RecordDiffCodeRun(PaintCtx* paint, El* el, void* data) {
 
 static El* CodeTextRuns(Ctx* cx, const DiffState* state, int fileIx,
                         const DiffFile* file, DiffSide side, int ix,
-                        bool syntax, const DiffHighlightRuns& runs);
+                        bool syntax, bool wrap, const DiffHighlightRuns& runs);
 
 static El* CodeText(Ctx* cx, const Diff* diff, const DiffState* state,
                     int fileIx, const DiffFile* file, DiffSide side, int ix,
@@ -3365,14 +3445,15 @@ static El* CodeText(Ctx* cx, const Diff* diff, const DiffState* state,
     const DiffSourceLine& line = source->lines[ix];
     const auto runs =
         BuildDiffHighlightRuns(cx, diff, file->path, side, source, line);
-    El* row = CodeTextRuns(cx, state, fileIx, file, side, ix, syntax, runs);
+    El* row = CodeTextRuns(cx, state, fileIx, file, side, ix, syntax,
+                           diff->softWrap, runs);
     UnderlineDiffRuns(cx, row, line.display, runs);
     return row;
 }
 
 static El* CodeTextRuns(Ctx* cx, const DiffState* state, int fileIx,
                         const DiffFile* file, DiffSide side, int ix,
-                        bool syntax, const DiffHighlightRuns& runs) {
+                        bool syntax, bool wrap, const DiffHighlightRuns& runs) {
     const DiffSourceLine& line = SideOf(file, side)->lines[ix];
     const DiffFileSide* source = SideOf(file, side);
     const DiffTextSelection& selection = state->textSelection;
@@ -3425,6 +3506,17 @@ static El* CodeTextRuns(Ctx* cx, const DiffState* state, int fileIx,
     if (!len(line.display)) {
         textRun(StrL(""), 0)->W(1)->H(ThemeFontSize(cx->app));
         return row;
+    }
+    if (wrap) {
+        float font = ThemeFontSize(cx->app);
+        El* text = textRun(line.display, 0)
+                       ->Font(font)
+                       ->LineHeight(24.f / font)
+                       ->Wrap()
+                       ->Flex1()
+                       ->MinW(0);
+        StyleWrappedDiffLine(cx, text, state, fileIx, side, ix, syntax, runs);
+        return row->Flex1()->MinW(0);
     }
     if (syntax && state && state->syntaxFn) {
         int at = 0;
@@ -3719,14 +3811,35 @@ static void OnDiffGutterMove(DiffState* self, Ctx* cx, const MouseMoveEvent* ev,
 // scroll is where the text starts. Unlike a caret hit it never snaps to
 // the nearest text: past a line's end is over no character.
 static bool DiffTextAt(const DiffState* state, PaintCtx* paint,
-                       const DiffTextRun* run, float x, Bounds box,
+                       const DiffTextRun* run, Point point, Bounds box,
                        DiffTextPosition* out) {
     if (!run || run->file < 0 || run->file >= len(state->files)) return false;
     const DiffFile* file = state->files[run->file];
     const DiffFileSide* source = SideOf(file, run->side);
     if (run->ix < 0 || run->ix >= len(source->lines)) return false;
     const DiffSourceLine& line = source->lines[run->ix];
-    float relX = x - (box.x - run->scrollX);
+    if (run->diff->softWrap) {
+        const auto* shaped =
+            DiffSelectionRun(state, point, run->file, run->side);
+        if (!shaped || shaped->line != run->ix || !shaped->layout ||
+            !shaped->visible.Contains(point))
+            return false;
+        Vec<TextGlyphBox> glyphs;
+        TextGlyphBoxes(shaped->layout, shaped->text, &glyphs);
+        Point local = {point.x - shaped->bounds.x, point.y - shaped->bounds.y};
+        for (const TextGlyphBox& glyph : glyphs) {
+            if (local.x >= glyph.left && local.x < glyph.right &&
+                local.y >= glyph.top && local.y < glyph.top + glyph.h) {
+                out->position = DiffLinePosition::New(file->path, run->side,
+                                                      line.lineNumber);
+                out->offset = SourceOff(source, line, glyph.lo);
+                out->text = line.text;
+                return true;
+            }
+        }
+        return false;
+    }
+    float relX = point.x - (box.x - run->scrollX);
     if (relX < 0 || !len(line.display)) return false;
     Size extent;
     TextLayout* layout = TextLayoutNew(paint, line.display, run->font, 0, false,
@@ -3782,7 +3895,8 @@ static void OnDiffTextMove(DiffState* self, Ctx* cx, const MouseMoveEvent* ev,
     OnDiffSelectionMove(self, cx, ev);
     if (!run->diff->onTextHover) return;
     DiffTextPosition hit;
-    bool has = DiffTextAt(self, &cx->win->paint, run, ev->x, ev->el, &hit);
+    bool has =
+        DiffTextAt(self, &cx->win->paint, run, {ev->x, ev->y}, ev->el, &hit);
     const DiffTextPosition* now = has ? &hit : nullptr;
     if (SameTextHover(self, now, ev->modifiers)) return;
     HearTextHover(self, cx, run->diff, now, ev->modifiers);
@@ -3842,7 +3956,7 @@ static void OnDiffModifiersChanged(DiffState* self, Ctx* cx,
     float y = cx->win->mouseY;
     const DiffTextRun* run = DiffTextRunAt(cx->win, diff->state, x, y, &box);
     DiffTextPosition hit;
-    bool has = run && DiffTextAt(self, &cx->win->paint, run, x, box, &hit);
+    bool has = run && DiffTextAt(self, &cx->win->paint, run, {x, y}, box, &hit);
     HearTextHover(self, cx, diff, has ? &hit : nullptr, now);
 }
 
@@ -3865,7 +3979,8 @@ static void OnDiffTextClick(DiffState* self, Ctx* cx, const ClickEvent* ev,
             return;
         DiffTextPosition hit;
         if (diff->onTextClick && cx->win &&
-            DiffTextAt(self, &cx->win->paint, run, ev->x, ev->el, &hit) &&
+            DiffTextAt(self, &cx->win->paint, run, {ev->x, ev->y}, ev->el,
+                       &hit) &&
             diff->onTextClick(cx, &hit, ev, diff->textClickUser))
             return;
     }
@@ -4096,7 +4211,12 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
     auto cell = [&](DiffSide side, int line, bool changed, bool present,
                     const DiffDecoration* rowDeco,
                     const DiffGutterMarker* rowMarker, bool useRowMarks) {
-        El* box = Div(cx->a)->FlexRow()->H(24)->Grow()->ItemsCenter();
+        El* block = nullptr;
+        El* box = Div(cx->a)->FlexRow()->MinH(24)->Grow();
+        if (diff->softWrap)
+            box->ItemsStart();
+        else
+            box->H(24)->ItemsCenter();
         if (!present) {
             // An empty split cell is one source row, the same height as
             // the line beside it. It has no marker lane.
@@ -4229,20 +4349,26 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
             hoverBox->OnHover(ListenTo(diff->state, &OnDiffTextLeave,
                                        (int64_t)(intptr_t)run));
         }
-        // Annotation content shares the uniform row. Rust remeasures the row
-        // when the comment's height changes; see port-status.md.
         if (present && diff->annotationContent && diff->annotations) {
             for (int i = 0; i < diff->annotationCount; i++) {
                 const DiffAnnotation& ann = diff->annotations[i];
                 if (!ann.hasPosition || !StrEq(ann.path, file->path)) continue;
-                if (ann.position.side != side || ann.position.line != number)
+                if (split ? ann.position.side != side || ann.position
+                                                                 .line != number
+                          : SourceRow(state, ann.position) != ix)
                     continue;
                 El* note =
                     diff->annotationContent(cx, &ann, diff->annotationUser);
-                if (note) box->Child(note);
+                if (note) {
+                    if (!block) {
+                        block = Div(cx->a)->FlexCol()->Grow()->MinW(0)->Child(
+                            box->FlexNone());
+                    }
+                    block->Child(note);
+                }
             }
         }
-        return box;
+        return block ? block : box;
     };
     if (split) {
         El* both = Div(cx->a)->FlexRow()->W(kFill);
@@ -4293,8 +4419,7 @@ static int ActiveDiffSide(const DiffState* self, DiffSide* side) {
         return text.file;
     }
     if (!len(self->rows)) return -1;
-    int top = IMin(IMax((int)(self->listScroll.offset / 24.f), 0),
-                   len(self->rows) - 1);
+    int top = IMin(IMax(ScrollTop(self), 0), len(self->rows) - 1);
     int file = self->rows[top].file;
     *side = self->files[file]->LinesCount(DiffSide::Modified)
                 ? DiffSide::Modified
@@ -4592,11 +4717,73 @@ static void MeasureDiffCode(Ctx* cx, DiffState* state, float font) {
 static void RecordDiffScrollRange(PaintCtx* paint, El* box, void* data) {
     auto* state = (DiffState*)data;
     state->selectionViewport = box->Bounds();
+    if (len(state->rowHeights) && state->rowMeasureWidth != box->w) {
+        AppInvalidate(paint->window);
+    }
     float max = std::max(0.f, box->contentW - box->w);
     if (state->horizontalScrollX > max) {
         state->horizontalScrollX = max;
         AppInvalidate(paint->window);
     }
+}
+
+static bool PrepareDiffRowMeasurements(Ctx* cx, const Diff* diff,
+                                       DiffState* state) {
+    if (!diff->softWrap && diff->headerVisible &&
+        (!diff->annotationContent || !diff->annotationCount)) {
+        VecClear(state->rowHeights);
+        VecClear(state->measuredAnnotations);
+        return false;
+    }
+    int count = len(state->rows);
+    float width = state->selectionViewport.w;
+    float font = ThemeFontSize(cx->app);
+    uint64_t style =
+        (diff->softWrap ? 1 : 0) | (diff->headerVisible ? 2 : 0) |
+        (diff->lineNumber ? 4 : 0) | (diff->syntaxHighlight ? 8 : 0) |
+        (diff->gutterMarkerContent && diff->gutterMarkerCount ? 16 : 0) |
+        ((uint64_t)diff->hunkSeparator << 5) |
+        ((uint64_t)diff->changeIndicator << 8);
+    if (count != len(state->rowHeights) || width != state->rowMeasureWidth ||
+        font != state->rowMeasureFont || style != state->rowMeasureStyle ||
+        diff->splitRatio != state->rowMeasureSplit) {
+        if (!VecResize(state->rowHeights, count) ||
+            !VecResize(state->rowNeedsMeasure, count))
+            return false;
+        for (int i = 0; i < count; i++) {
+            bool hidden = !diff->headerVisible &&
+                          state->rows[i].kind == DiffRowKind::File;
+            state->rowHeights[i] = hidden ? 0.f : 24.f;
+            state->rowNeedsMeasure[i] = hidden ? 0 : 1;
+        }
+        state->rowMeasureWidth = width;
+        state->rowMeasureFont = font;
+        state->rowMeasureStyle = style;
+        state->rowMeasureSplit = diff->splitRatio;
+    }
+    // Re-evaluate annotations because their body may change height even
+    // when the annotation and its line position remain the same.
+    for (int row : state->measuredAnnotations) {
+        if (row < count &&
+            (diff->headerVisible || state->rows[row].kind != DiffRowKind::File))
+            state->rowNeedsMeasure[row] = 1;
+    }
+    VecClear(state->measuredAnnotations);
+    if (diff->annotationContent && diff->annotations) {
+        for (int i = 0; i < diff->annotationCount; i++) {
+            const DiffAnnotation& ann = diff->annotations[i];
+            int file = FileIx(state, ann.path);
+            if (file < 0) continue;
+            int row = ann.hasPosition       ? SourceRow(state, ann.position)
+                      : diff->headerVisible ? state->headerRows[file]
+                                            : -1;
+            if (row >= 0 && row < count) {
+                state->rowNeedsMeasure[row] = 1;
+                VecAppend(state->measuredAnnotations, row);
+            }
+        }
+    }
+    return true;
 }
 
 static void OnDiffHorizontalScroll(DiffState* state, Ctx* cx,
@@ -4640,11 +4827,14 @@ El* Diff::IntoEl() {
         root->OnModifiersChanged(
             ListenTo(state, &OnDiffModifiersChanged, (int64_t)(intptr_t)this));
     }
-    El* rows = VirtualList::New(cx, len(st->rows))
-                   ->RowH(24)
-                   ->Handle(&st->listScroll)
-                   ->Row(&RenderRow, this)
-                   ->IntoEl();
+    VirtualList* list = VirtualList::New(cx, len(st->rows))
+                            ->RowH(24)
+                            ->Handle(&st->listScroll)
+                            ->Row(&RenderRow, this);
+    if (PrepareDiffRowMeasurements(cx, this, st)) {
+        list->Sizes(st->rowHeights.els)->MeasureRows(st->rowNeedsMeasure.els);
+    }
+    El* rows = list->IntoEl();
     El* body = ScrollBounce::New(cx, StrL("diff-bounce"),
                                  VirtualListScrollbar(&st->listScroll), rows)
                    ->IntoEl()

@@ -1563,6 +1563,13 @@ struct PointerHost {
     int textClickCount = 0;
     int lineClicks[8] = {};
     int lineClickCount = 0;
+    bool softWrap = false;
+    DiffAnnotation annotation = {};
+    float annotationHeight = 0;
+
+    static El* RenderAnnotation(Ctx* cx, const DiffAnnotation*, void* user) {
+        return Div(cx->a)->H(static_cast<PointerHost*>(user)->annotationHeight);
+    }
 
     static void OnTextHover(Ctx*, const DiffTextPosition* hit,
                             Modifiers modifiers, void* user) {
@@ -1596,6 +1603,9 @@ struct PointerHost {
     static El* Render(PointerHost* self, Ctx* cx) {
         return Div(cx->a)->W(600)->H(400)->Child(
             Diff::New(cx, self->state)
+                ->SoftWrap(self->softWrap)
+                ->Annotations(&self->annotation, self->annotation.hasPosition)
+                ->RenderAnnotation(&PointerHost::RenderAnnotation, self)
                 ->SpanHighlights(&self->span, 1)
                 ->OnTextHover(&PointerHost::OnTextHover, self)
                 ->OnTextClick(&PointerHost::OnTextClick, self)
@@ -1740,6 +1750,33 @@ static void DiffKeyboardSelectsAndExtendsSourceLines() {
     TestAppFree(stage.app);
 }
 
+static void DiffMeasuresWrappedLinesAndChangingAnnotations() {
+    StrBuilder patch;
+    patch.Append(StrL("--- a/file.txt\n+++ b/file.txt\n@@ -1 +1,2 @@\n+"));
+    for (int i = 0; i < 44; i++) patch.Append(StrL("word "));
+    patch.Append(StrL("\n tail\n"));
+    PointerStage stage = StagePointer(false, Str(patch.els, len(patch)));
+    Bounds initial, wrapped, annotated;
+    utassert(DiffRunBounds(stage.win, DiffSide::Modified, 1, &initial));
+    stage.host->softWrap = true;
+    TestDraw(stage.win);
+    TestRunUntilParked(stage.app);
+    utassert(DiffRunBounds(stage.win, DiffSide::Modified, 1, &wrapped));
+    utassert(wrapped.y > initial.y + 24.f);
+    stage.host->annotation = DiffAnnotation::Line(
+        StrL("note"),
+        DiffLinePosition::New(StrL("file.txt"), DiffSide::Modified, 1));
+    stage.host->annotationHeight = 48.f;
+    TestDraw(stage.win);
+    utassert(DiffRunBounds(stage.win, DiffSide::Modified, 1, &annotated));
+    utassertnear(annotated.y, wrapped.y + 48.f);
+    stage.host->annotationHeight = 24.f;
+    TestDraw(stage.win);
+    utassert(DiffRunBounds(stage.win, DiffSide::Modified, 1, &annotated));
+    utassertnear(annotated.y, wrapped.y + 24.f);
+    TestAppFree(stage.app);
+}
+
 static bool HeardHit(const PointerHost::Heard& heard, int line, int offset,
                      const char* text, bool platform) {
     return heard.has && heard.line == line && heard.offset == offset &&
@@ -1870,6 +1907,7 @@ void TestDiff() {
     CodeSelectionCopiesCharactersAndWords();
     SplitCodeSelectionKeepsTheSourceSideAndTabs();
     DiffKeyboardSelectsAndExtendsSourceLines();
+    DiffMeasuresWrappedLinesAndChangingAnnotations();
     AnUnclaimedTextClickFallsThroughToTheLine();
     HasLineCountsFoldedLinesButNotAbsentOnes();
 }

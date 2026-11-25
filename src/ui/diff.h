@@ -524,6 +524,13 @@ struct DiffState {
     Vec<int> rowFileBase;
     int scrollItem = 0;
     VirtualListScrollHandle listScroll = {};
+    Vec<float> rowHeights;
+    Vec<uint8_t> rowNeedsMeasure;
+    Vec<int> measuredAnnotations;
+    float rowMeasureWidth = -1.f;
+    float rowMeasureFont = 0.f;
+    float rowMeasureSplit = 0.f;
+    uint64_t rowMeasureStyle = 0;
     float horizontalScrollX = 0;
     float horizontalCodeWidth = 0;
     float horizontalCodeFont = 0;
