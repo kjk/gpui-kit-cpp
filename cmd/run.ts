@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "1c7e7f7c6c8d6585da909804496614da01bb8663",
+  sha: "71cabe2f741058972db58dc17de72e5dde3ca2ab",
   date: "2026-11-23",
-  subject: "input: Report the document length so the iOS keyboard shows (#4082)",
+  subject: "text: Keep closing marks and spaces after a word as wide as the line on its line (#4087)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",

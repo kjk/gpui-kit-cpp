@@ -16,14 +16,18 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `1c7e7f7c6c8d6585da909804496614da01bb8663` (2026-11-23,
-input: Report the document length so the iOS keyboard shows (#4082)).
-InputTextLengthUtf16 reports the document length in UTF-16 units, the answer an
-iOS host's text-input adapter needs before the keyboard shows.
+Processed through `71cabe2f741058972db58dc17de72e5dde3ca2ab` (2026-11-23,
+text: Keep closing marks and spaces after a word as wide as the line on its line (#4087)).
+Styled inline flow keeps closing punctuation and following spaces together across run boundaries.
 The current update target is
-`1c7e7f7c6c8d6585da909804496614da01bb8663`.
+`832cfdc0baef92855191dfdbbbcacd75f59d3df0`.
 
 ## Known gaps vs Rust
+
+- **Mixed inline layout uses element widths.** Closing marks and spaces
+  across style boundaries share a flex item with the preceding word.
+  Trailing spaces still contribute to that item's width when it fits, and
+  line breaks inside one element use the platform text shaper (`src/base/text.cpp`).
 
 - **Pinch comes from macOS and Windows touch screens.** macOS reports
   `magnifyWithEvent:`; Windows reports a touch-screen zoom (`WM_GESTURE`

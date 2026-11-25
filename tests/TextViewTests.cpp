@@ -3153,6 +3153,56 @@ static void OversizedInlineCodeWrapsWithOneInsetPerSide() {
     TestAppFree(app);
 }
 
+struct HangingInlineCodeView {
+    Str source;
+    float width;
+
+    static El* Render(HangingInlineCodeView* self, Ctx* cx) {
+        Style code = {};
+        code.fontSize = 14;
+        return TextView::New(cx, self->source)
+            ->InlineCodeStyle(code, StyleFieldPad | StyleFieldFontSize)
+            ->Selectable()
+            ->IntoEl()
+            ->W(self->width);
+    }
+};
+
+// inline_flow.rs
+// a_period_or_space_after_inline_code_as_wide_as_the_line_stays_on_it.
+static void ClosingMarkAndSpaceStayWithInlineCode() {
+    App* app = TestAppNew();
+    auto view = EntityNew<HangingInlineCodeView>(app);
+    Window* win = TestWindowOpen(app, view, 480, 220, 1);
+    auto check = [&](Str source, Str span, Str suffix, Str next) {
+        auto* state = view.Get(app);
+        state->source = source;
+        state->width =
+            ceilf(MeasureText(&win->paint, span, 14, 0, false, kFontMono).w);
+        TestDraw(win);
+        const TextHit* code = nullptr;
+        const TextHit* closing = nullptr;
+        const TextHit* following = nullptr;
+        for (const auto& hit : win->paint.texts) {
+            if (StrEq(hit.text, span)) code = &hit;
+            if (StrEq(hit.text, suffix)) closing = &hit;
+            if (StrEq(hit.text, next)) following = &hit;
+        }
+        utassert(code && closing && following);
+        if (code && closing && following) {
+            utassertnear(code->bounds.y, closing->bounds.y);
+            utassert(following->bounds.y > closing->bounds.y);
+        }
+    };
+    check(StrL("It's `transform_columns`. Next."), StrL("transform_columns"),
+          StrL(". "), StrL("Next."));
+    check(StrL("It's `transform_columns.` Next."), StrL("transform_columns."),
+          StrL(" "), StrL("Next."));
+    check(StrL("Use `transform_columns:a` now"), StrL("transform_columns:a"),
+          StrL(" "), StrL("now"));
+    TestAppFree(app);
+}
+
 #if !GPUI_MARKDOWN_MINI
 // text/format/markdown.rs raw_html_off_keeps_html_as_text.
 static void RawHtmlOffKeepsHtmlAsText(Arena* a) {
@@ -10817,6 +10867,7 @@ void TestTextView() {
     AnUnchangedFlowIsNotLaidOutAgain();
     InlineCodeLineIsAsTallAsAPlainLine();
     OversizedInlineCodeWrapsWithOneInsetPerSide();
+    ClosingMarkAndSpaceStayWithInlineCode();
     FittedListsKeepTheirBodyWidth();
     TestStatelessMarkdownSettles();
     if (TestMarkdownIsFull()) TestStreamFadeTracksRenderedAppends();

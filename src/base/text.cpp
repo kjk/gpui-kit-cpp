@@ -4622,6 +4622,31 @@ RenderContext RenderContextWithForegroundRanges(Arena* a, RenderContext rcx,
     return rcx;
 }
 
+// inline_flow.rs hanging_len: a closing mark inside a word cannot hang.
+static int HangingPrefix(Str text) {
+    int at = 0;
+    for (int i = 0; i < 2 && at < len(text); i++) {
+        uint32_t c = 0;
+        int step = Utf8At(text, at, &c);
+        if (step <= 0 || !(c == '.' || c == ',' || c == ';' || c == ':' ||
+                           c == '!' || c == '?' || c == ')' || c == ']' ||
+                           c == '}' || c == 0x201D || c == 0x2019)) {
+            break;
+        }
+        at += step;
+    }
+    if (at < len(text)) {
+        uint32_t c = 0;
+        if (Utf8At(text, at, &c) <= 0 || !IsUnicodeWhitespace(c)) {
+            return 0;
+        }
+    }
+    while (at < len(text) && text.s[at] == ' ') {
+        at++;
+    }
+    return at;
+}
+
 El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
                      uint8_t align) {
     // An editor leaf is laid out even when empty, so the editor gets a
@@ -4728,7 +4753,12 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
     bool hasReveal = RevealIn(n, &revealOffset);
     El* lastWord = nullptr;
     int lastWordLo = 0;
-    auto flush = [&]() {
+    El* pending = nullptr;
+    auto appendPending = [&]() {
+        row->Child(pending);
+        pending = nullptr;
+    };
+    auto flush = [&](bool hanging = false) {
         if (wordLen <= 0) {
             return;
         }
@@ -4755,7 +4785,15 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
         }
         ApplyTextForeground(a, w, w->text, wordLeaf, ranges, nRanges);
         reportPiece(w, wordLeaf, wordLeaf + wordLen, false);
-        row->Child(w);
+        if (hanging) {
+            // Each style has its own element here. Wrap the pair together
+            // and let a suffix overflow if the preceding word fills the row.
+            pending = Div(a)->FlexRow()->MaxWFrac(1.f)->Child(pending)->Child(
+                w->FlexNone());
+        } else {
+            appendPending();
+            pending = w;
+        }
         wordLen = 0;
     };
     for (MdRun* r = n->runFirst; r; r = r->next) {
@@ -4776,6 +4814,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
         runOffset = nextRunOffset;
         nextRunOffset += len(r->text);
         if (r->hasCustom) {
+            appendPending();
             const MarkdownInlineRenderer* renderer =
                 markdownExtensions.InlineRenderer(r->custom.name);
             InlineRenderContext context;
@@ -4869,6 +4908,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             continue;
         }
         if (len(r->imgSrc) > 0) {
+            appendPending();
             El* image =
                 SrcImage(InlineImageElement(this, r, font, color, inFlow), r);
             BindLinkedImage(image, href);
@@ -4878,10 +4918,16 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             continue;
         }
         wordRun = r;
+        int hanging = 0;
+        if (pending && len(pending->text) > 0 &&
+            pending->text.s[len(pending->text) - 1] != ' ') {
+            hanging = HangingPrefix(r->text);
+        }
         for (int i = 0; i < len(r->text); i++) {
             char c = r->text.s[i];
             if (c == '\n') {
                 flush();
+                appendPending();
                 SrcBreak();
                 col->Child(row);
                 row = AlignRow(Div(a)->FlexRow()->FlexWrap()->W(kFill), align);
@@ -4892,13 +4938,16 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
                 wordLeaf = leafAt + i;
             }
             word[wordLen++] = c;
-            if (c == ' ' && !(marks & MdCode)) {
+            if (i + 1 == hanging) {
+                flush(true);
+            } else if (i >= hanging && c == ' ' && !(marks & MdCode)) {
                 flush();
             }
         }
         leafAt += len(r->text);
     }
     flush();
+    appendPending();
     // A reveal past the last word: that word's line.
     if (hasReveal && revealOut && lastWord) {
         RevealMark(lastWord, lastWordLo, revealOffset);
