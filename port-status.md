@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `0c6eb6a50d7f6b7efa9c9e84e7fafac096de66c4` (2026-11-24,
-story: Let the multi-month `Calendar` demo scroll in a narrow docs embed (#4102)).
-The three-month calendar demonstration scrolls horizontally in narrow story embeds.
+Processed through `62c53b987da6be765013ce39524ac460d35769c7` (2026-11-24,
+editor: Keep fold candidates when typing beside a foldable node (#4103)).
+The scanner recomputes fold candidates from the complete buffer. The editor tests compare that result after typing, insertions and deletion against a fresh load.
 The current update target is
 `832cfdc0baef92855191dfdbbbcacd75f59d3df0`.
 

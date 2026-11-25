@@ -334,6 +334,79 @@ static void FoldCandidatesCoverTheirLastLineWhenItCanBeHidden() {
     TestAppFree(app);
 }
 
+// input/input.rs: compare incremental editing with a fresh installation of
+// the same document. The scanner recomputes the whole candidate list.
+static void FoldCandidatesSurviveEditsBesideANode() {
+    App* app = TestAppNew();
+    component::Init(app);
+    auto entity = EntityNew<FoldLineView>(app);
+    auto* view = entity.Get(app);
+    InputState* input = &view->input;
+    input->kind = InputKind::Editor;
+    view->language = StrL("sql");
+    Window* win = TestWindowOpen(app, entity, 420, 300);
+    auto checkAgainstReload = [&](int expected = -1) {
+        Vec<FoldRange> edited;
+        for (const auto& candidate : input->folds.candidates) {
+            VecAppend(edited, candidate);
+        }
+        Str copy = StrDup(InputValue(input));
+        InputSetValue(input, Str{});
+        InputSetValue(input, copy);
+        StrFree(copy);
+        TestDraw(win);
+        const auto& fresh = input->folds.candidates;
+        utassert(len(fresh) > 0 && len(fresh) == len(edited));
+        if (expected >= 0) utassert(len(fresh) == expected);
+        for (int i = 0; i < len(fresh) && i < len(edited); i++) {
+            utassert(fresh[i].startLine == edited[i].startLine &&
+                     fresh[i].endLine == edited[i].endLine);
+        }
+        VecReset(edited);
+    };
+
+    Str typed =
+        StrL("SELECT id, name\nFROM (\n  SELECT 1\n) t\nWHERE id > 0;\n");
+    for (int i = 0; i < len(typed); i++) {
+        InputInsert(input, app, win, Str(typed.s + i, 1));
+        TestDraw(win);
+    }
+    checkAgainstReload();
+
+    Str sql = StrL("SELECT id\nFROM t\nWHERE id = 1;\nSELECT 2;\n");
+    InputSetValue(input, sql);
+    TestDraw(win);
+    int nextRow = StrFind(sql, StrL("SELECT 2"));
+    InputSetSelectedRange(input, app, win, nextRow, nextRow);
+    InputInsert(input, app, win, StrL(" "));
+    TestDraw(win);
+    checkAgainstReload();
+
+    view->language = StrL("rust");
+    Str rust = StrL("fn a() {\n    1;\n}\n\n\nfn b() {\n    2;\n}\n");
+    int fnB = StrFind(rust, StrL("fn b"));
+    int afterA = StrFind(rust, StrL("}")) + 1;
+    int afterB = len(rust) - 1;
+    auto edit = [&](const Selection* ranges, const Str* insertions, int n) {
+        InputSetValue(input, rust);
+        TestDraw(win);
+        utassert(
+            InputReplaceTextInRanges(input, app, win, ranges, insertions, n));
+        TestDraw(win);
+        checkAgainstReload(2);
+    };
+    const Selection beforeB = {fnB, fnB};
+    const Str comment = StrL("// b\n");
+    edit(&beforeB, &comment, 1);
+    const Selection blankLines = {afterA, fnB - 1};
+    const Str deletion = {};
+    edit(&blankLines, &deletion, 1);
+    const Selection afterBraces[] = {{afterA, afterA}, {afterB, afterB}};
+    const Str spaces[] = {StrL(" "), StrL(" ")};
+    edit(afterBraces, spaces, 2);
+    TestAppFree(app);
+}
+
 void TestSyntax() {
     TestSuite("Syntax");
     TestSyntaxLangFor();
@@ -349,4 +422,5 @@ void TestSyntax() {
     TestSyntaxColors();
     TheLexDebounceIsOneTimer();
     FoldCandidatesCoverTheirLastLineWhenItCanBeHidden();
+    FoldCandidatesSurviveEditsBesideANode();
 }

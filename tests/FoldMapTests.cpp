@@ -353,9 +353,25 @@ static void FoldingWholeLevelsPreservesTheCandidates() {
     utassert(map.IsBufferLineHidden(2) && map.IsBufferLineHidden(6));
 }
 
+// fold_map.rs merged_candidate_replaces_the_old_one_on_its_start_line.
+// Replacing the scanner's complete snapshot keeps both surrounding folds.
+static void FreshFoldCandidatesReplaceThePreviousEnd() {
+    FoldMap map;
+    FoldRange initial[] = {{0, 9}, {1, 3}, {6, 8}};
+    FoldMapSetCandidates(&map, initial, 3);
+    FoldRange updated[] = {{0, 9}, {1, 4}, {6, 8}};
+    FoldMapSetCandidates(&map, updated, 3);
+    utassert(len(map.candidates) == 3);
+    for (int i = 0; i < len(map.candidates) && i < 3; i++) {
+        utassert(map.candidates[i].startLine == updated[i].startLine &&
+                 map.candidates[i].endLine == updated[i].endLine);
+    }
+}
+
 void TestFoldMap() {
     FoldingWholeLevelsPreservesTheCandidates();
     CandidatesAreSortedAndOnePerStartLine();
+    FreshFoldCandidatesReplaceThePreviousEnd();
     OnlyACandidateFolds();
     NoFoldsIsTheIdentity();
     AClosedFoldHidesTheMiddle();

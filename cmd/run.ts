@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "0c6eb6a50d7f6b7efa9c9e84e7fafac096de66c4",
+  sha: "62c53b987da6be765013ce39524ac460d35769c7",
   date: "2026-11-24",
-  subject: "story: Let the multi-month `Calendar` demo scroll in a narrow docs embed (#4102)",
+  subject: "editor: Keep fold candidates when typing beside a foldable node (#4103)",
   crates: {
     "gpui-kit": "0.11.0",
     "gpui-base": "0.11.0",
