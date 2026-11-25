@@ -573,6 +573,8 @@ struct DiffState {
     static El* Render(DiffState* self, Ctx* cx);
     void Bind(App* app, Entity<DiffState> self);
     void SetFiles(DiffFile** files, int count, Ctx* cx);
+    // Clear the view and transfer its file ownership to the caller.
+    Vec<DiffFile*> TakeFiles();
     DiffState* WithMode(DiffMode mode);
     DiffState* WithContextLines(bool has, int lines);
     DiffState* WithExpansionLines(int lines);

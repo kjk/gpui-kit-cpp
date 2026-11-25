@@ -58,6 +58,11 @@ bun cmd/mac-build.ts -ios -rel            # from a Windows/Linux checkout
 
 `bun cmd/build.ts` with no example name lists targets (`system_monitor`, `showcase`, `story`, …).
 
+Browse a Git repository's commits and file diffs with `tig` on desktop.
+Install Git on `PATH`, then run `bun cmd/run.ts -rel tig -- <repository>`.
+Add `--check` before the repository path to read history and parse the
+latest commit without opening a window.
+
 ## Rust/C++ parity suite
 
 On Windows, the parity suite builds the pinned Rust story application and this

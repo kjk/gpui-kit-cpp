@@ -1997,6 +1997,28 @@ static void ExpandingContextKeepsTheTopSourceLine() {
     }
 }
 
+static void ReplacingTheVisibleDiffFileKeepsTheReleasedFileAlive() {
+    PointerStage stage = StagePointer(false);
+    DiffState* state = stage.host->state.Get(stage.app);
+    DiffFile* original = state->FileAt(0);
+    Vec<DiffFile*> released = state->TakeFiles();
+    int count = -1;
+    state->Files(&count);
+    utassert(count == 0);
+    utassert(len(released) == 1 && released[0] == original);
+    if (len(released)) {
+        DiffFile* replacement = DiffFile::Unchanged(StrL("reference.rs"),
+                                                    StrL("let reference = 1;"));
+        state->SetFiles(&replacement, 1, nullptr);
+        TestDraw(stage.win);
+        utassert(StrEq(state->FileAt(0)->Path(), "reference.rs"));
+        state->SetFiles(released.els, len(released), nullptr);
+        TestDraw(stage.win);
+        utassert(StrEq(state->FileAt(0)->Path(), "file.rs"));
+    }
+    TestAppFree(stage.app);
+}
+
 void TestDiff() {
     TestParser();
     TestTruncatedHunks();
@@ -2004,6 +2026,7 @@ void TestDiff() {
     ExcerptsKeepEachPartsLineNumbers();
     TestInlineAndRows();
     ExpandingContextKeepsTheTopSourceLine();
+    ReplacingTheVisibleDiffFileKeepsTheReleasedFileAlive();
     AllFilesCollapseAndExpandTogether();
     AnApplicationHighlighterStylesEachHunkSide();
     NextChangeWrapsOnceTheListIsScrolledToItsEnd();

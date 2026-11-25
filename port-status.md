@@ -586,9 +586,11 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   (the pull request is the review, added, deleted, and mode files
   together), previous/next, and the options menu (example, mode,
   context, inline, separator, indicator, tint, hover, and wrap). The
-  Alex review comment is on the pull request. `examples/tig`, the git history
-  browser, is not ported. The
-  per-hunk tree-sitter test stays under the scanner gap above.
+  Alex review comment is on the pull request. The per-hunk tree-sitter test
+  stays under the scanner gap above.
+- **`tig` uses the bounded native process runner.** The Git history browser
+  builds on desktop and needs Git on `PATH`. Git output is subject to the
+  runner's per-stream limit (`examples/tig.cpp`, `src/shell/process.h`).
 - **The Base showcase's editor is plain text with a gutter.** Upstream's
   page installs its own syntect highlighter (`syntect_highlighter.rs`,
   a third-party crate) for Rust, colours its captures through

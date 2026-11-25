@@ -2538,6 +2538,14 @@ void DiffState::SetFiles(DiffFile** next, int count, Ctx* cx) {
     if (cx) Notify(cx);
 }
 
+Vec<DiffFile*> DiffState::TakeFiles() {
+    Vec<DiffFile*> prior;
+    if (!VecAppendVec(prior, files)) return prior;
+    VecClear(files);
+    SetFiles(nullptr, 0, nullptr);
+    return prior;
+}
+
 DiffState* DiffState::WithMode(DiffMode next) {
     mode = next;
     Rebuild(this, true);
