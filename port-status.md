@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `4b74a30b96fa269b8ecc023433a84b32076d9af2` (2026-11-25,
-text: Keep a word on its line when it fits once kerned in an inline flow (#4114)).
-Plain hard-line segments in a mixed inline flow shape together, so a separate object on the next line does not change their wrapping.
+Processed through `20b43829b104b46ffed62519da22a1b85739f5a7` (2026-11-25,
+table: Round the header's top corners in a bordered DataTable (#4115)).
+Round the outer top corners on bordered DataTable headers.
 The current update target is
 `832cfdc0baef92855191dfdbbbcacd75f59d3df0`.
 

@@ -1189,6 +1189,8 @@ El* DataTable::BuildEl() {
     // table picks whole rows with. It never scrolls sideways, so it belongs
     // to the fixed pane — which is then there whether or not any column is.
     bool rowHeaderOn = s && s->cellSelectable && s->rowHeader;
+    float headRadius = bordered ? std::max(0.f, th.radius - 1.f) : 0.f;
+    bool fixedLeft = nFixed > 0 || rowHeaderOn;
     if (nFixed > 0 || rowHeaderOn) {
         main->Child(fixedPane);
     }
@@ -1228,6 +1230,15 @@ El* DataTable::BuildEl() {
         gsWrap->Child(gs);
         El* gr =
             Div(a)->FlexRow()->Shrink0()->H(headerH)->BorderB(1, th.border);
+        gf->Bg(th.tokens.tableHead);
+        gsWrap->Bg(th.tokens.tableHead);
+        gr->Bg(th.tokens.tableHead);
+        if (g == 0 && headRadius > 0) {
+            gf->Corners(headRadius, 0, 0, 0);
+            gsWrap->Corners(fixedLeft ? 0 : headRadius,
+                            nRight > 0 ? 0 : headRadius, 0, 0);
+            gr->Corners(0, headRadius, 0, 0);
+        }
         int col = 0;
         const TableGroupCell* cells = groupHeaders[g].cells;
         for (int i = 0; i < groupHeaders[g].n; i++) {
@@ -1292,6 +1303,12 @@ El* DataTable::BuildEl() {
                               ->Bg(th.tokens.tableHead)
                               ->Fg(th.tableHeadFg)
                               ->BorderB(1, th.border));
+    if (len(groupHeaders) == 0 && headRadius > 0) {
+        headFixed->Corners(headRadius, 0, 0, 0);
+        headRight->Corners(0, headRadius, 0, 0);
+        headWrap->Corners(fixedLeft ? 0 : headRadius,
+                          nRight > 0 ? 0 : headRadius, 0, 0);
+    }
     El* headScroll = hasDelegate && delegate.renderHeader
                          ? delegate.renderHeader(cx, data)
                          : nullptr;
@@ -1310,7 +1327,11 @@ El* DataTable::BuildEl() {
         TableEnsureCols(s, nColumns);
     }
     if (rowHeaderOn) {
-        headFixed->Child(RowHeaderCell(cx, state, 0, true));
+        El* rowHead = RowHeaderCell(cx, state, 0, true);
+        if (len(groupHeaders) == 0 && headRadius > 0) {
+            rowHead->Corners(headRadius, 0, 0, 0);
+        }
+        headFixed->Child(rowHead);
     }
     for (int d = 0; d < nColumns; d++) {
         // The columns are drawn in the order the table keeps, which is what a
