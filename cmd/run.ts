@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "03bcbf050db63e89ac2319ef6b2b8db77b2bfea9",
+  sha: "353c6bc29db0a9b40e6994dbff0c9a5b10af728f",
   date: "2026-11-24",
-  subject: "sidebar: Expose `SidebarMenu` and its submenus as an accessibility tree (#4101)",
+  subject: "menu: Leave focus where it was when a context menu is empty (#4105)",
   crates: {
     "gpui-kit": "0.11.0",
     "gpui-base": "0.11.0",

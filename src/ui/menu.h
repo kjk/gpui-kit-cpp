@@ -177,6 +177,8 @@ struct DropdownMenuPopover : DropdownMenu {
 
 struct ContextMenuState {
     Entity<PopupMenuState> menu = {};
+    // Set by a builder that can determine the current menu's item count.
+    bool empty = false;
     // Mirrors of the PopupMenuState's open flag and pointer position, kept
     // in step by ContextMenuOpenAt and ContextMenu::IntoEl. The menu state
     // keeps the focus to give back (PopupMenuState::previousFocus).

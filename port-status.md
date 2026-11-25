@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `03bcbf050db63e89ac2319ef6b2b8db77b2bfea9` (2026-11-24,
-sidebar: Expose `SidebarMenu` and its submenus as an accessibility tree (#4101)).
-Sidebar menus expose tree and group roles. An expandable item and its caret report the open state.
+Processed through `353c6bc29db0a9b40e6994dbff0c9a5b10af728f` (2026-11-24,
+menu: Leave focus where it was when a context menu is empty (#4105)).
+A right-click on an empty context menu leaves the menu closed and preserves focus in the content.
 The current update target is
 `832cfdc0baef92855191dfdbbbcacd75f59d3df0`.
 

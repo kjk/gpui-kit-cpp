@@ -1630,11 +1630,51 @@ static void AShortScrollableMenuHasNoScrollRange() {
     TestAppFree(app);
 }
 
+struct EmptyContextMenuView {
+    FocusHandle content;
+    Entity<PopupMenuState> menu;
+
+    static El* Render(EmptyContextMenuView* self, Ctx* cx) {
+        if (!self->content.IsValid()) {
+            self->content = FocusHandleNew(cx);
+        }
+        auto* menu = component::PopupMenu::New(cx, StrL("empty"));
+        self->menu = menu->state;
+        El* target = component::ContextMenu::New(cx, StrL("trigger"))
+                         ->Child(Div(cx->a)->W(kFill)->H(60))
+                         ->Menu(menu)
+                         ->IntoEl();
+        return Div(cx->a)
+            ->FlexCol()
+            ->SizeFull()
+            ->Child(Div(cx->a)->H(40)->TrackFocus(self->content))
+            ->Child(target);
+    }
+};
+
+// menu/context_menu.rs an_empty_menu_leaves_focus_where_it_was.
+static void AnEmptyContextMenuLeavesFocusWhereItWas() {
+    App* app = TestAppNew();
+    component::Init(app);
+    auto entity = EntityNew<EmptyContextMenuView>(app);
+    auto* view = entity.Get(app);
+    Window* win = TestWindowOpen(app, entity, 240, 180);
+    TestDraw(win);
+    FocusHandleFocus(win, view->content);
+    TestSimulateMouseDown(win, {50, 70}, MouseButton::Right);
+    TestSimulateMouseUp(win, {50, 70}, MouseButton::Right);
+    TestRunUntilParked(app);
+    utassert(WindowFocused(win).id == view->content.id);
+    utassert(view->menu.Get(app) && !view->menu.Get(app)->open);
+    TestAppFree(app);
+}
+
 void TestPopupMenu() {
     TheBindingsAreTheOnesRustBinds();
     AScrollableMenuOpensOnItsCheckedItem();
     AShortScrollableMenuHasNoScrollRange();
     ACheckedMenuItemReportsItsCheck();
+    AnEmptyContextMenuLeavesFocusWhereItWas();
     ASubmenuWithRoomOpensOnTheRight();
     ASubmenuByTheWindowEdgeOpensOnTheLeft();
     SubmenusWithDifferentWidthsChooseTheSideThatFits();

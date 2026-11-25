@@ -905,7 +905,11 @@ ContextMenu* ContextMenu::Menu(PopupMenu* m) {
 static void ContextMenuOpenAt(ContextMenuState* self, Ctx* cx, float x, float y,
                               Bounds el) {
     PopupMenuState* menu = self->menu.Get(cx);
-    if (!menu) {
+    if (!menu || self->empty) {
+        self->open = false;
+        if (menu && menu->open) {
+            PopupMenuDismiss(menu, cx);
+        }
         return;
     }
     self->position = {x - el.x, y - el.y};
@@ -989,6 +993,7 @@ El* ContextMenu::IntoEl() {
         return box;
     }
     context->menu = menu->state;
+    context->empty = len(menu->items) == 0;
     context->open = st->open;
     context->position = {st->x, st->y};
     if (!context->triggerFocus.IsValid()) {
