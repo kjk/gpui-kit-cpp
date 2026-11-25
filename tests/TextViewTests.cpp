@@ -6794,6 +6794,22 @@ static void InlineObjectsShareRowsWithShapedProse() {
     TswClose(&v);
 }
 
+static void InlineObjectsKeepBidiRunsTogether() {
+    TswView v = TswOpen("**abc אבג דהו xyz** ![icon](assets/icons/heart.svg)",
+                        TswContainer::Window);
+    TestDraw(v.win);
+    const TextHit* hit = HitContaining(v.win, "abc אבג דהו xyz");
+    utassert(hit != nullptr);
+    if (hit) {
+        char output[64];
+        int count = CopyTextHitsIn(
+            &v.win->paint, hit->docOff, hit->docOff + len(hit->text),
+            hit->scope, output, (int)sizeof(output), SelectionFormat::Plain);
+        utassert(StrEq(Str(output, count), "abc אבג דהו xyz"));
+    }
+    TswClose(&v);
+}
+
 struct TswMention {
     const char* label = nullptr;
 };
@@ -8876,6 +8892,7 @@ static void TestTextStateWindow() {
     ShapedTextCopiesAcrossMarkdownStyleBoundaries();
     WrappedLinksUseSharedTextGeometry();
     InlineObjectsShareRowsWithShapedProse();
+    InlineObjectsKeepBidiRunsTogether();
     ParserPluginsKeepTheirConfigurationAcrossAsyncUpdates();
     SelectAllFollowsAnAppendedParse();
     ParserRevisionReparsesSameNameInlineConfiguration();

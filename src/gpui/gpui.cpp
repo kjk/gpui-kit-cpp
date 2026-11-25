@@ -4757,28 +4757,44 @@ static void PrepareInlineTextFragment(PaintCtx* ctx, El* element) {
         TextGlyphBoxes(layout, advances.text, &glyphs);
         float width = TextLayoutSize(layout).w;
         TextLayoutRelease(layout);
-        // Leave bidirectional runs to their existing shaping path. A
-        // logical source boundary can have distinct visual positions there.
+        // A logical boundary can have distinct visual positions in a bidi
+        // run. Use isolated word widths for wrapping in that case. Prepaint
+        // still shapes each contiguous slice in its visual order.
         float previous = 0.f;
+        bool monotone = true;
         for (const TextGlyphBox& glyph : glyphs) {
-            if (glyph.left < previous) return;
+            if (glyph.left < previous) {
+                monotone = false;
+                break;
+            }
             previous = glyph.left;
         }
-        auto* positions = (float*)Alloc(
-            element->arena, (len(advances.text) + 1) * (int)sizeof(float));
-        if (!positions) return;
-        for (int i = 0; i <= len(advances.text); i++) positions[i] = -1.f;
-        positions[0] = 0.f;
-        for (const TextGlyphBox& glyph : glyphs)
-            positions[glyph.lo] = glyph.left;
-        positions[len(advances.text)] = width;
-        advances.positions = positions;
+        if (monotone) {
+            auto* positions = (float*)Alloc(
+                element->arena, (len(advances.text) + 1) * (int)sizeof(float));
+            if (positions) {
+                for (int i = 0; i <= len(advances.text); i++)
+                    positions[i] = -1.f;
+                positions[0] = 0.f;
+                for (const TextGlyphBox& glyph : glyphs)
+                    positions[glyph.lo] = glyph.left;
+                positions[len(advances.text)] = width;
+                advances.positions = positions;
+            }
+        }
     }
     if (advances.positions) {
         float start = advances.positions[fragment.start];
         float end = advances.positions[fragment.end];
-        if (start >= 0 && end > start) element->style.width = end - start;
+        if (start >= 0 && end > start) {
+            element->style.width = end - start;
+            return;
+        }
     }
+    float width = MeasureText(ctx, element->text, element->laidFont, 0, false,
+                              ElTextWeight(element), element->style.lineHeight)
+                      .w;
+    if (width > 0) element->style.width = width;
 }
 
 static void PrepareEl(PaintCtx* ctx, El* e, float inheritFont, Rgba inheritFg,

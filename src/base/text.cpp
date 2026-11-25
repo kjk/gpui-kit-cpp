@@ -4725,8 +4725,7 @@ static void ShapeInlineObjectRows(PaintCtx*, El* row, void*) {
     }
     for (El* first = row->first; first; first = first->next) {
         const InlineTextFragment* start = InlineFragment(first);
-        if (!start || !start->advances->positions ||
-            first->style.width == kAuto) {
+        if (!start || first->style.width == kAuto) {
             continue;
         }
         El* last = first;
@@ -4758,6 +4757,7 @@ static void ShapeInlineObjectRows(PaintCtx*, El* row, void*) {
             };
             append(spans, part->spans, part->nSpans);
             append(washes, part->washes, part->nWashes);
+            first->glyphWashes |= part->glyphWashes;
             append(underlines, part->underlines, part->nUnderlines);
             int fadeCount = 0;
             const TextFade* partFades = part->FadesGet(&fadeCount);
