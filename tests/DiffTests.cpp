@@ -539,6 +539,30 @@ static void TestInlineAndRows() {
                     &oldRuns, &newRuns);
     utassert(len(oldRuns) == 1 && oldRuns[0].start == 2);
     utassert(len(newRuns) == 1 && newRuns[0].start == 2);
+
+    // similar::TextDiff::from_unicode_words keeps punctuation inside a word.
+    DiffChangedRuns(StrL("they can't go"), StrL("they won't go"),
+                    DiffInlineUnit::Word, &oldRuns, &newRuns);
+    const int contraction[] = {5, 10};
+    utassert(RunsEq(oldRuns, 1, contraction));
+    utassert(RunsEq(newRuns, 1, contraction));
+    DiffChangedRuns(StrL("value 1.5 kg"), StrL("value 1.7 kg"),
+                    DiffInlineUnit::Word, &oldRuns, &newRuns);
+    const int decimal[] = {6, 9};
+    utassert(RunsEq(oldRuns, 1, decimal));
+    utassert(RunsEq(newRuns, 1, decimal));
+
+    DiffChangedRuns(StrL("你好世界"), StrL("您好世界"), DiffInlineUnit::Word,
+                    &oldRuns, &newRuns);
+    const int firstIdeograph[] = {0, 3};
+    utassert(RunsEq(oldRuns, 1, firstIdeograph));
+    utassert(RunsEq(newRuns, 1, firstIdeograph));
+    DiffChangedRuns(StrL("結果👩‍💻"), StrL("結果👩‍🔬"),
+                    DiffInlineUnit::Word, &oldRuns, &newRuns);
+    const int emojiSequence[] = {6, 17};
+    utassert(RunsEq(oldRuns, 1, emojiSequence));
+    utassert(RunsEq(newRuns, 1, emojiSequence));
+
     DiffChangedRuns(StrL("xe\xcc\x81y"), StrL("xe\xcc\x80y"),
                     DiffInlineUnit::Character, &oldRuns, &newRuns);
     const int wholeGrapheme[] = {1, 4};

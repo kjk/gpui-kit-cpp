@@ -568,9 +568,8 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   The window's touch handles extend the diff's retained source-byte selection.
   Inline emphasis and built-in syntax scanning are prepared one file at a
   time on the background executor.
-  Character comparisons use grapheme boundaries. Word tokenization uses a
-  simpler split than Rust's Unicode word segmentation, and the unmatched
-  region has a bounded LCS matrix.
+  Character and word comparisons use Unicode 17 grapheme and word boundaries
+  as in Rust. The unmatched region has a bounded LCS matrix.
   Character hover and click
   (`OnTextHover`, `OnTextClick`) use the same painted run geometry as diff
   selection. Unwrapped text remains targetable across the row height.

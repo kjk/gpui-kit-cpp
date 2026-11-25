@@ -29,6 +29,10 @@ int Utf8ClipLeft(Str s, int off);
 int TextPreviousGraphemeBoundary(Str text, int offset);
 int TextNextGraphemeBoundary(Str text, int offset);
 
+// Unicode 17 word segments, including punctuation and whitespace.
+// Pass a segment start as a UTF-8 byte offset, starting at zero.
+int TextNextUnicodeWordBoundary(Str text, int offset);
+
 // word_range_at: the byte range of the word around `off`
 // — a run of word characters, or the run of spaces when the offset is in
 // one, or the single character otherwise. False when there is nothing there.

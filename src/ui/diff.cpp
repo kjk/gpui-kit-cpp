@@ -1684,10 +1684,6 @@ Str DiffFile::Language() const {
     return DetectedLanguage(path);
 }
 
-static bool IsSpace(char c) {
-    return c == ' ' || c == '\t' || c == '\n' || c == '\r';
-}
-
 struct Tok {
     int start = 0;
     int end = 0;
@@ -1703,35 +1699,9 @@ static bool TokSame(Str oldText, Str newText, Tok x, Tok y) {
 static void WordTokens(Str text, Vec<Tok>* out) {
     int i = 0;
     while (i < len(text)) {
-        unsigned char c = (unsigned char)text.s[i];
-        int step = ColumnStep(c);
-        if (i + step > len(text)) step = 1;
-        bool space = step == 1 && IsSpace(text.s[i]);
-        bool word = !space && (step > 1 || (c >= '0' && c <= '9') ||
-                               (c >= 'A' && c <= 'Z') ||
-                               (c >= 'a' && c <= 'z') || c == '_');
-        int b = i;
-        if (space) {
-            while (i < len(text) && IsSpace(text.s[i])) i++;
-        } else if (word) {
-            while (i < len(text)) {
-                unsigned char d = (unsigned char)text.s[i];
-                int s = ColumnStep(d);
-                if (i + s > len(text)) s = 1;
-                bool sp = s == 1 && IsSpace(text.s[i]);
-                bool w = !sp && (s > 1 || (d >= '0' && d <= '9') ||
-                                 (d >= 'A' && d <= 'Z') ||
-                                 (d >= 'a' && d <= 'z') || d == '_');
-                if (!w) break;
-                i += s;
-            }
-        } else {
-            i += step;
-        }
-        Tok t;
-        t.start = b;
-        t.end = i;
-        VecAppend(*out, t);
+        int next = TextNextUnicodeWordBoundary(text, i);
+        VecAppend(*out, Tok{i, next});
+        i = next;
     }
 }
 

@@ -1,11 +1,11 @@
 #include "base/text_boundary.h"
 #include "base/grapheme_data.h"
+#include "base/word_break_data.h"
 
 namespace gpui {
 
-template <typename Kind, size_t N>
-static Kind GraphemeRangeKind(const GraphemeRange<Kind> (&ranges)[N],
-                              uint32_t code) {
+template <typename Range, size_t N>
+static const Range* BoundaryRangeAt(const Range (&ranges)[N], uint32_t code) {
     int first = 0;
     int last = (int)N;
     while (first < last) {
@@ -16,10 +16,17 @@ static Kind GraphemeRangeKind(const GraphemeRange<Kind> (&ranges)[N],
         } else if (code > range.last) {
             first = mid + 1;
         } else {
-            return range.kind;
+            return &range;
         }
     }
-    return Kind::Other;
+    return nullptr;
+}
+
+template <typename Kind, size_t N>
+static Kind GraphemeRangeKind(const GraphemeRange<Kind> (&ranges)[N],
+                              uint32_t code) {
+    const auto* range = BoundaryRangeAt(ranges, code);
+    return range ? range->kind : Kind::Other;
 }
 
 static GraphemeCategory GraphemeCategoryOf(uint32_t code) {
@@ -140,6 +147,156 @@ int TextNextGraphemeBoundary(Str text, int offset) {
         if (GraphemeBreakAt(text, offset)) break;
     }
     return offset;
+}
+
+enum class WordState : uint8_t {
+    Stop,
+    Other,
+    Letter,
+    Hebrew,
+    Numeric,
+    Katakana,
+    ExtendNumLet,
+    HalfFlag,
+    Space,
+    RequireLetter,
+    RequireHebrew,
+    RequireNumeric,
+    AfterHebrewQuote,
+};
+
+static WordCategory WordCategoryOf(uint32_t code) {
+    const auto* range = BoundaryRangeAt(kWordBreakRanges, code);
+    return range ? range->kind : WordCategory::Other;
+}
+
+static bool WordCategoryIgnored(WordCategory word) {
+    using Cat = WordCategory;
+    return word == Cat::Extend || word == Cat::Format || word == Cat::Zwj;
+}
+
+static WordState WordStart(WordCategory word) {
+    using Cat = WordCategory;
+    using State = WordState;
+    switch (word) {
+        case Cat::Letter:
+            return State::Letter;
+        case Cat::Hebrew:
+            return State::Hebrew;
+        case Cat::Numeric:
+            return State::Numeric;
+        case Cat::Katakana:
+            return State::Katakana;
+        case Cat::ExtendNumLet:
+            return State::ExtendNumLet;
+        case Cat::Regional:
+            return State::HalfFlag;
+        case Cat::Space:
+            return State::Space;
+        default:
+            return State::Other;
+    }
+}
+
+static WordState WordContinue(WordState state, WordCategory previous,
+                              WordCategory word) {
+    using Cat = WordCategory;
+    using State = WordState;
+    switch (state) {
+        case State::Letter:
+        case State::Hebrew:
+            if (state == State::Hebrew) {
+                if (word == Cat::SingleQuote) return State::AfterHebrewQuote;
+                if (word == Cat::DoubleQuote) return State::RequireHebrew;
+            }
+            if (word == Cat::MidLetter || word == Cat::MidNumLet ||
+                word == Cat::SingleQuote)
+                return State::RequireLetter;
+            [[fallthrough]];
+        case State::Numeric:
+            if (state == State::Numeric &&
+                (word == Cat::MidNum || word == Cat::MidNumLet ||
+                 word == Cat::SingleQuote))
+                return State::RequireNumeric;
+            if (word == Cat::Letter || word == Cat::Hebrew ||
+                word == Cat::Numeric || word == Cat::ExtendNumLet)
+                return WordStart(word);
+            break;
+        case State::Katakana:
+            if (word == Cat::Katakana || word == Cat::ExtendNumLet)
+                return WordStart(word);
+            break;
+        case State::ExtendNumLet:
+            if (word == Cat::Letter || word == Cat::Hebrew ||
+                word == Cat::Numeric || word == Cat::Katakana ||
+                word == Cat::ExtendNumLet)
+                return WordStart(word);
+            break;
+        case State::HalfFlag:
+            if (word == Cat::Regional) return State::Other;
+            break;
+        case State::Space:
+            if (word == Cat::Space && previous == Cat::Space) return state;
+            break;
+        case State::RequireLetter:
+        case State::AfterHebrewQuote:
+            if (word == Cat::Letter || word == Cat::Hebrew)
+                return WordStart(word);
+            break;
+        case State::RequireHebrew:
+            if (word == Cat::Hebrew) return State::Hebrew;
+            break;
+        case State::RequireNumeric:
+            if (word == Cat::Numeric) return State::Numeric;
+            break;
+        case State::Other:
+        case State::Stop:
+            break;
+    }
+    return State::Stop;
+}
+
+// Forward split_word_bounds from unicode-segmentation 1.13.3 (UAX #29).
+// Tentative punctuation joins only if a matching letter or number follows.
+int TextNextUnicodeWordBoundary(Str text, int offset) {
+    using Cat = WordCategory;
+    using State = WordState;
+    offset = std::min(std::max(offset, 0), len(text));
+    if (offset == len(text)) return offset;
+
+    uint32_t code = 0;
+    offset += Utf8At(text, offset, &code);
+    Cat previous = WordCategoryOf(code);
+    if (previous == Cat::Cr) {
+        return offset < len(text) && text.s[offset] == '\n' ? offset + 1
+                                                            : offset;
+    }
+    if (previous == Cat::Lf || previous == Cat::Newline) return offset;
+
+    State state = WordStart(previous);
+    int pending = -1;
+    while (offset < len(text)) {
+        int bytes = Utf8At(text, offset, &code);
+        Cat word = WordCategoryOf(code);
+        if (!WordCategoryIgnored(word)) {
+            // WB3c checks the immediate predecessor before applying WB4.
+            if (previous == Cat::Zwj &&
+                BoundaryRangeAt(kWordPictographRanges, code)) {
+                state = State::Other;
+            } else {
+                state = WordContinue(state, previous, word);
+                if (state == State::Stop) break;
+            }
+            pending = state == State::RequireLetter ||
+                              state == State::RequireHebrew ||
+                              state == State::RequireNumeric
+                          ? offset
+                          : -1;
+        }
+        previous = word;
+        offset += bytes;
+    }
+    return pending < 0 ? offset : pending;
 }
 
 // crates/base/src/text_boundary.rs. Two characters join into one word only
