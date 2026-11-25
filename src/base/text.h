@@ -1731,7 +1731,8 @@ struct TextView {
     // node.rs render_block. `depth` is the list nesting level, `inList` and
     // `isLast` decide whether the block carries a paragraph gap below it.
     El* Block(MdNode* n, int depth, bool inList, bool isLast);
-    El* Blocks(El* into, MdNode* n, int depth, bool inList);
+    El* Blocks(El* into, MdNode* n, int depth, bool inList,
+               El* continuation = nullptr);
     El* Item(MdNode* n, Str marker, int depth);
     El* Table(MdNode* n);
     // The `table_actions` row, built from the table it goes under. Null when

@@ -9897,6 +9897,30 @@ static El* FindTextEl(El* e, const char* text) {
     return nullptr;
 }
 
+// node.rs gives continuation paragraphs a fixed indent even when an ordered
+// marker needs a wider column for the first paragraph.
+static void WideListMarkerLeavesTheContinuationIndentUnchanged() {
+    InlineImageHost host;
+    if (!InlineImageOpen(&host)) {
+        InlineImageClose(&host);
+        utassert(false);
+        return;
+    }
+    El* root = TextView::New(&host.cx, StrL("12345. Lead paragraph\n\n"
+                                            "       Continuation paragraph"))
+                   ->Font(16)
+                   ->IntoEl();
+    LayoutEl(&host.win->paint, root, 0, 0, 420, 200, 16, Rgba{});
+    const El* lead = FindTextEl(root, "Lead paragraph");
+    const El* continued = FindTextEl(root, "Continuation paragraph");
+    utassert(lead && continued);
+    if (lead && continued) {
+        utassert(lead->x > continued->x && lead->y < continued->y);
+        utassertnear(continued->x, 16.f * 1.4f);
+    }
+    InlineImageClose(&host);
+}
+
 static void InlineStyleBoundariesKeepTheWordTogether() {
     InlineImageHost host;
     if (!InlineImageOpen(&host)) {
@@ -11034,6 +11058,7 @@ void TestTextView() {
     InlineFlowSharesCachedMarksAndLinks();
     HardLineKeepsNativeWrappingBesideAnInlineObject();
     InlineStyleBoundariesKeepTheWordTogether();
+    WideListMarkerLeavesTheContinuationIndentUnchanged();
     InlineCodeRefinesItsFontAndDecorations();
     InlineCodeLineIsAsTallAsAPlainLine();
     OversizedInlineCodeWrapsWithOneInsetPerSide();

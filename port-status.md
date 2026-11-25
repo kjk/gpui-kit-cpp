@@ -197,11 +197,6 @@ The current update target is
   Calls without an app set a process default. Applications can set their own
   preference and resume the shared platform reading
   (`src/base/motion.h`).
-- **List continuations share the first paragraph's text column in C++.**
-  The fixed marker column belongs to the entire item. Rust reserves a
-  minimum marker width for the first paragraph and applies a separate
-  continuation indent, so the two origins can differ
-  (`src/base/text.cpp`).
 - **Empty editor placeholders use the unindented layout.** The C++ text
   origin reader reports zero there. A populated code editor reports its
   laid-out gutter, including the 6 DIP gap with line numbers hidden

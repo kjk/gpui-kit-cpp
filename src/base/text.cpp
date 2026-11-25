@@ -6085,6 +6085,8 @@ El* TextView::Item(MdNode* n, Str marker, int depth) {
     // it shrink and wrap in a constrained row. flex_1()'s zero basis can
     // drop a short list out of a fitted bubble.
     El* content = Div(a)->FlexCol()->FlexAuto()->MinW(0)->ClipX();
+    float indent = baseFont * 1.4f;
+    El* continuation = Div(a)->FlexCol()->MinW(0)->PadL(indent)->ClipX();
     // list_selected_source: the item's first line carries the Markdown
     // marker, and every line under it is indented by the marker's width so
     // continuations and nested lists line up with the item's text. A task
@@ -6110,7 +6112,7 @@ El* TextView::Item(MdNode* n, Str marker, int depth) {
     inTodo = n->hasCheck;
     uint8_t savedPrev = flowPrev;
     flowPrev = 0;
-    Blocks(content, n, depth, true);
+    Blocks(content, n, depth, true, continuation);
     flowPrev = savedPrev;
     inTodo = savedTodo;
     // An item with nothing selectable in it never spent its marker.
@@ -6147,7 +6149,6 @@ El* TextView::Item(MdNode* n, Str marker, int depth) {
     } else if (len(marker) > 0) {
         // The marker hangs in a 1.4em column, right-aligned, muted, with
         // the trailing space trimmed off the drawn text.
-        float indent = baseFont * 1.4f;
         Str shown = marker;
         if (len(shown) > 0 && shown.s[len(shown) - 1] == ' ') {
             shown.len--;
@@ -6166,18 +6167,22 @@ El* TextView::Item(MdNode* n, Str marker, int depth) {
         // style can replace the alignment. The label inherits it.
         El* column =
             Div(a)
-                ->W(indent)
+                ->FlexCol()
+                ->MinW(indent)
                 ->Shrink0()
                 ->PadR(indent * 0.3f)
                 ->TextRight()
-                ->Child(
-                    TextEl(a, shown)->Font(markerFont)->W(kFill)->Fg(markerFg));
+                ->Child(TextEl(a, shown)->Font(markerFont)->Fg(markerFg));
         if (markerFields) {
             column->Refine(markerStyle, markerFields);
         }
         row->Child(column);
     }
-    return row->Child(content);
+    row->Child(content);
+    if (!continuation->first) return row;
+    El* item = Div(a)->FlexCol()->MinW(0);
+    if (content->first) item->Child(row);
+    return item->Child(continuation);
 }
 
 // stream_fade.rs is_cjk.
@@ -7846,7 +7851,8 @@ static bool MdDrawsNothing(const MdNode* n) {
     }
 }
 
-El* TextView::Blocks(El* into, MdNode* n, int depth, bool inList) {
+El* TextView::Blocks(El* into, MdNode* n, int depth, bool inList,
+                     El* continuation) {
     bool outer = blockDepth++ == 0;
     if (outer) {
         flowPrev = 0;
@@ -7876,7 +7882,9 @@ El* TextView::Blocks(El* into, MdNode* n, int depth, bool inList) {
             revealOut = nullptr;
         }
         if (e) {
-            into->Child(e);
+            bool indented = continuation && (blockIx > 0 || n->runFirst ||
+                                             c->kind == MdKind::List);
+            (indented ? continuation : into)->Child(e);
         }
     }
     blockDepth--;
