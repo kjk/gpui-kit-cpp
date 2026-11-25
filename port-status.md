@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `d7c4cdbbcda18157cfe3095a6931f9f525a5198d` (2026-11-23,
-scrollbar: Let the vertical scrollbar sit on the left side (#4078)).
-Scrollbars can occupy any corner of the viewport. Editor renderers read the placement, and the story demonstrates all four corners.
+Processed through `184dd8717d4bce81e3e513f56364b956e4596374` (2026-11-23,
+chore(deps): update Cargo.lock for 8 RustSec advisories (#4080)).
+Reviewed the Rust-only Cargo.lock updates. The watched crate and runtime pins are unchanged.
 The current update target is
 `832cfdc0baef92855191dfdbbbcacd75f59d3df0`.
 
