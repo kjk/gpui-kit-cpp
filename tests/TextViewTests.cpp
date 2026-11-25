@@ -9888,6 +9888,76 @@ static El* FindTextEl(El* e, const char* text) {
     return nullptr;
 }
 
+static void InlineStyleBoundariesKeepTheWordTogether() {
+    InlineImageHost host;
+    if (!InlineImageOpen(&host)) {
+        InlineImageClose(&host);
+        utassert(false);
+        return;
+    }
+    MdRun lead, first, last;
+    lead.text = StrL("Some words ");
+    lead.next = &first;
+    first.text = StrL("pre");
+    first.marks = MdBold;
+    first.next = &last;
+    last.text = StrL("fix");
+    MdNode paragraph, doc;
+    paragraph.kind = MdKind::Paragraph;
+    paragraph.runFirst = &lead;
+    doc.kind = MdKind::Doc;
+    doc.first = &paragraph;
+    auto build = [&](float width) {
+        El* root = TextView::New(&host.cx, Str{})->RenderDocument(&doc);
+        LayoutEl(&host.win->paint, root, 0, 0, width, 200, 14, Rgba{});
+        return root;
+    };
+    El* wide = build(400);
+    El* prefix = FindTextEl(wide, "pre");
+    El* suffix = FindTextEl(wide, "fix");
+    utassert(prefix && suffix);
+    if (prefix && suffix) {
+        El* narrow = build(prefix->x + prefix->w + suffix->w * 0.5f);
+        prefix = FindTextEl(narrow, "pre");
+        suffix = FindTextEl(narrow, "fix");
+        El* before = FindTextEl(narrow, "words ");
+        utassert(prefix && suffix && before);
+        if (prefix && suffix && before) {
+            utassertnear(prefix->y, suffix->y);
+            utassert(prefix->y > before->y);
+        }
+    }
+    InlineImageClose(&host);
+}
+
+static void InlineCodeRefinesItsFontAndDecorations() {
+    InlineImageHost host;
+    if (!InlineImageOpen(&host)) {
+        InlineImageClose(&host);
+        utassert(false);
+        return;
+    }
+    Style style;
+    style.fontFamily = FontFamilyIntern(StrL("Georgia"));
+    style.italic = true;
+    style.underline = true;
+    style.strike = true;
+    style.fontFeatures = 1 + (uint8_t)FontFeatures::TabularFigures;
+    El* root = TextView::New(&host.cx, StrL("Text `123`."))
+                   ->InlineCodeStyle(
+                       style, StyleFieldFontFamily | StyleFieldFontFeatures |
+                                  StyleFieldItalic | StyleFieldUnderline |
+                                  StyleFieldStrike)
+                   ->IntoEl();
+    LayoutEl(&host.win->paint, root, 0, 0, 320, 200, 14, Rgba{});
+    const El* code = FindTextEl(root, "123");
+    utassert(code && code->style.fontFamily == style.fontFamily &&
+             code->style.italic && code->style.underline &&
+             code->style.strike &&
+             code->style.fontFeatures == style.fontFeatures);
+    InlineImageClose(&host);
+}
+
 // inline_flow.rs a_word_that_fits_once_kerned_stays_on_the_line and
 // a_paragraph_with_an_object_wraps_like_plain_text_when_kerned.
 static void HardLineKeepsNativeWrappingBesideAnInlineObject() {
@@ -10944,6 +11014,8 @@ void TestTextView() {
     AnUnchangedFlowIsNotLaidOutAgain();
     InlineFlowSharesCachedMarksAndLinks();
     HardLineKeepsNativeWrappingBesideAnInlineObject();
+    InlineStyleBoundariesKeepTheWordTogether();
+    InlineCodeRefinesItsFontAndDecorations();
     InlineCodeLineIsAsTallAsAPlainLine();
     OversizedInlineCodeWrapsWithOneInsetPerSide();
     ClosingMarkAndSpaceStayWithInlineCode();

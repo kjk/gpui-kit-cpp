@@ -1656,6 +1656,21 @@ void StyleApplyFields(Style* into, const Style& over, uint32_t fields) {
     if (fields & StyleFieldFontFamily) {
         into->fontFamily = over.fontFamily;
     }
+    if (fields & StyleFieldFontFeatures) {
+        into->fontFeatures = over.fontFeatures;
+    }
+    if (fields & StyleFieldItalic) {
+        into->italic = over.italic;
+    }
+    if (fields & StyleFieldUnderline) {
+        into->underline = over.underline;
+        into->underlineSet = over.underlineSet;
+        into->underlineThickness = over.underlineThickness;
+        into->underlineWavy = over.underlineWavy;
+    }
+    if (fields & StyleFieldStrike) {
+        into->strike = over.strike;
+    }
     if (fields & StyleFieldWidth) {
         into->width = over.width;
     }

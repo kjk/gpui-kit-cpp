@@ -29,8 +29,8 @@ The current update target is
   announcement delivery is implemented by the Windows, macOS, Linux and web
   hosts.
 
-- **Mixed inline layout uses element widths.** Closing marks and spaces
-  across style boundaries share a flex item with the preceding word.
+- **Mixed inline layout uses element widths.** Unicode no-break boundaries
+  keep adjacent style fragments together, and closing marks can hang.
   Trailing spaces still contribute to that item's width when it fits, and
   whole plain hard lines use the platform text shaper. Runs that share a
   line with differently styled text or an object still measure in separate
@@ -307,13 +307,10 @@ The current update target is
   calls `cell_label` only while assistive technology is connected
   (`window.is_a11y_active`). This tree has no such query, so the hook
   runs every frame (`table.cpp`).
-- **Inline code style overrides skip some text properties.** Font size,
-  color, background, border, radius and padding are applied
-  (`text.cpp`). Font family, features, fallbacks, weight, italic,
-  underline and strikethrough on that refinement are not: the run stays
-  on the monospace face, and weight still comes from the surrounding
-  marks. Lengths are DIPs resolved when the style is built (`Rems`),
-  which is how every other style in this tree names a size.
+- **Inline code uses platform font fallbacks.** The refinement supports
+  family, weight, italics, decorations and the runtime's font-feature
+  flag. The platform supplies fallbacks for that family. Rust's
+  refinement can also specify its own fallback list (`src/base/text.cpp`).
 - **A dialog outside the window stack eases in on its own clock.**
   `Dialog::IntoEl` still runs the entrance when no window layer supplied
   a presence sample (`dialog.cpp`). Rust takes that clock only from the

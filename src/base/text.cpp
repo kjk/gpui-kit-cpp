@@ -12,6 +12,7 @@
 #include "gpui/keymap.h"
 #include "gpui/paint.h"
 #include "markdown/markdown.h"
+#include "unicode-linebreak/unicode_linebreak.h"
 
 namespace gpui {
 
@@ -671,6 +672,15 @@ static bool StyleFieldsEqual(const gpui::Style& a, const gpui::Style& b,
     if ((fields & StyleFieldFontMono) && a.fontMono != b.fontMono) return false;
     if ((fields & StyleFieldFontFamily) && a.fontFamily != b.fontFamily)
         return false;
+    if ((fields & StyleFieldFontFeatures) && a.fontFeatures != b.fontFeatures)
+        return false;
+    if ((fields & StyleFieldItalic) && a.italic != b.italic) return false;
+    if ((fields & StyleFieldUnderline) &&
+        (a.underline != b.underline || a.underlineSet != b.underlineSet ||
+         a.underlineThickness != b.underlineThickness ||
+         a.underlineWavy != b.underlineWavy))
+        return false;
+    if ((fields & StyleFieldStrike) && a.strike != b.strike) return false;
     if ((fields & StyleFieldWidth) && a.width != b.width) return false;
     if ((fields & StyleFieldHeight) && a.height != b.height) return false;
     if ((fields & StyleFieldMinWidth) && a.minW != b.minW) return false;
@@ -3908,6 +3918,29 @@ static El* InlineImageElement(TextView* view, const MdRun* r, float font,
     return e;
 }
 
+static void ApplyInlineCodeStyle(Ctx* cx, El* text, const TextViewStyle& style,
+                                 float font) {
+    gpui::Style code;
+    code.pad = Edges::New(4.f, 4.f, 0.f, 0.f);
+    code.fontMono = true;
+    code.radius = base_theme::Theme::Global(cx->app).tokens.radius.sm;
+    uint32_t fields = style.inlineCodeFields | style.inlineCodeStyleFields;
+    StyleApplyFields(&code, style.inlineCode, style.inlineCodeFields);
+    StyleApplyFields(&code, style.inlineCodeStyle, style.inlineCodeStyleFields);
+    text->Mono()
+        ->PadL(code.pad.left)
+        ->PadR(code.pad.right)
+        ->PadT(code.pad.top)
+        ->PadB(code.pad.bottom)
+        ->Radius(code.radius)
+        ->Bg(style.InlineCodeBackground());
+    StyleApplyFields(&text->style, code, fields & ~StyleFieldFontSize);
+    // A named size is already in DIPs. Layout scales the font by the rem.
+    float rem = cx->win ? WindowRemSize(cx->win) : 16.f;
+    bool named = (fields & StyleFieldFontSize) && code.fontSize > 0;
+    text->Font(named ? code.fontSize * 16.f / rem : font * 0.875f);
+}
+
 // One styled word. Everything a TextMark can say about a run, applied to the
 // element that carries it — node.rs builds the same HighlightStyle.
 El* TextView::Word(Str w, float font, Rgba color, uint8_t marks, int weight,
@@ -3926,7 +3959,11 @@ El* TextView::Word(Str w, float font, Rgba color, uint8_t marks, int weight,
     }
     // A link is always underlined. The rule does not remove the marks the
     // word already carries — bold stays bold.
-    if ((marks & MdUnderline) || (marks & MdLink)) {
+    bool explicitCodeUnderline = (marks & MdCode) && !(marks & MdHighlight) &&
+                                 ((textViewStyle.inlineCodeFields |
+                                   textViewStyle.inlineCodeStyleFields) &
+                                  StyleFieldUnderline);
+    if (!explicitCodeUnderline && ((marks & MdUnderline) || (marks & MdLink))) {
         // Rust hands the run an `UnderlineStyle { thickness: px(1.) }`, which
         // GPUI draws as a quad under the whole run — the spaces inside it as
         // well. A shaper's own underline stops at the last glyph, so a word
@@ -3954,65 +3991,7 @@ El* TextView::Word(Str w, float font, Rgba color, uint8_t marks, int weight,
     if (marks & MdHighlight) {
         t->Bg(markBg);
     } else if (marks & MdCode) {
-        // inline.rs shapes inline code in the theme's monospace face at
-        // 0.875 of the surrounding font size, unless the box refinement
-        // names a size. Its background has four DIP of horizontal breathing
-        // room and the theme's small radius, unless that refinement names
-        // padding, a radius or a border. A named padding replaces the four
-        // DIP; a border is added to it.
-        float sized = font * 0.875f;
-        bool namedSize = false;
-        float padL = 4.f;
-        float padR = 4.f;
-        float padT = 0.f;
-        float padB = 0.f;
-        auto take = [&](const gpui::Style& s, uint32_t fields) {
-            if ((fields & StyleFieldFontSize) && s.fontSize > 0.f) {
-                sized = s.fontSize;
-                namedSize = true;
-            }
-            if (fields & StyleFieldPad) {
-                padL = s.pad.left;
-                padR = s.pad.right;
-                padT = s.pad.top;
-                padB = s.pad.bottom;
-            }
-        };
-        take(textViewStyle.inlineCode, textViewStyle.inlineCodeFields);
-        take(textViewStyle.inlineCodeStyle, textViewStyle
-                                                .inlineCodeStyleFields);
-        float radius = base_theme::Theme::Global(cx->app).tokens.radius.sm;
-        t->Mono()
-            ->PadL(padL)
-            ->PadR(padR)
-            ->PadT(padT)
-            ->PadB(padB)
-            ->Radius(radius)
-            ->Bg(textViewStyle.InlineCodeBackground());
-        // Refine carries the box. Font size is applied after it: a named
-        // size is a DIP resolved when the style was built, while
-        // Style.fontSize is DIPs at a 16 px rem and layout scales it by
-        // the window's rem. Leaving the DIP in the refinement would scale
-        // it a second time.
-        uint32_t codeFields =
-            textViewStyle.inlineCodeFields & ~StyleFieldFontSize;
-        uint32_t boxFields =
-            textViewStyle.inlineCodeStyleFields & ~StyleFieldFontSize;
-        if (codeFields) {
-            t->Refine(textViewStyle.inlineCode, codeFields);
-        }
-        if (boxFields) {
-            t->Refine(textViewStyle.inlineCodeStyle, boxFields);
-        }
-        if (namedSize) {
-            float windowRem = cx && cx->win ? WindowRemSize(cx->win) : 16.f;
-            if (!(windowRem > 0.f)) {
-                windowRem = 16.f;
-            }
-            t->Font(sized * 16.f / windowRem);
-        } else {
-            t->Font(sized);
-        }
+        ApplyInlineCodeStyle(cx, t, textViewStyle, font);
     }
     if (selectable) {
         t->Selectable()->GlyphSelection();
@@ -4721,7 +4700,11 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
         }
     };
     int wordCap = 1;
+    StrBuilder flowText(a);
     for (MdRun* r = n->runFirst; r; r = r->next) {
+        flowText
+            .Append((r->hasCustom || len(r->imgSrc) > 0) ? StrL("\xEF\xBF\xBC")
+                                                         : r->text);
         if (len(r->text) > 0) {
             wordCap += len(r->text);
         }
@@ -4754,9 +4737,14 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
     El* lastWord = nullptr;
     int lastWordLo = 0;
     El* pending = nullptr;
+    El* pendingGroup = nullptr;
+    auto breaks = unicode_linebreak::LineBreaks(flowText.TakeStr());
+    unicode_linebreak::LineBreak nextBreak;
+    bool hasBreak = breaks.Next(&nextBreak);
     auto appendPending = [&]() {
         row->Child(pending);
         pending = nullptr;
+        pendingGroup = nullptr;
     };
     auto flush = [&](bool hanging = false, bool shapeLine = false) {
         if (wordLen <= 0) {
@@ -4785,11 +4773,18 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
         }
         ApplyTextForeground(a, w, w->text, wordLeaf, ranges, nRanges);
         reportPiece(w, wordLeaf, wordLeaf + wordLen, false);
-        if (hanging) {
-            // Each style has its own element here. Wrap the pair together
-            // and let a suffix overflow if the preceding word fills the row.
-            pending = Div(a)->FlexRow()->MaxWFrac(1.f)->Child(pending)->Child(
-                w->FlexNone());
+        while (hasBreak && nextBreak.offset < wordLeaf) {
+            hasBreak = breaks.Next(&nextBreak);
+        }
+        bool joinsWord = pending && (!hasBreak || nextBreak.offset != wordLeaf);
+        if (hanging || joinsWord) {
+            // A style boundary does not introduce a Unicode line break.
+            // Keep the fragments separate for paint and source selection.
+            if (!pendingGroup) {
+                pendingGroup = Div(a)->FlexRow()->MaxWFrac(1.f)->Child(pending);
+                pending = pendingGroup;
+            }
+            pendingGroup->Child(hanging ? w->FlexNone() : w);
         } else {
             appendPending();
             pending = w;
@@ -5586,49 +5581,27 @@ static float CellContentWidth(TextView* tv, MdNode* cell, bool head) {
             }
             if (i > start) {
                 Str seg(text.s + start, i - start);
-                float segSize = size;
-                int segWeight = weight;
-                float extra = 0;
-                if (run->marks & MdCode) {
-                    float codeFont = size * 0.875f;
-                    float padL = 4.f;
-                    float padR = 4.f;
-                    float borderL = 0;
-                    float borderR = 0;
-                    auto take = [&](const gpui::Style& s, uint32_t fields) {
-                        if ((fields & StyleFieldFontSize) && s.fontSize > 0.f) {
-                            codeFont = s.fontSize;
-                        }
-                        if (fields & StyleFieldPad) {
-                            padL = s.pad.left;
-                            padR = s.pad.right;
-                        }
-                        if (fields & StyleFieldBorder) {
-                            borderL = s.border;
-                            borderR = s.border;
-                        }
-                        if (fields & StyleFieldBorderL) {
-                            borderL = s.borderL;
-                        }
-                        if (fields & StyleFieldBorderR) {
-                            borderR = s.borderR;
-                        }
-                    };
-                    take(tv->textViewStyle.inlineCode, tv->textViewStyle
-                                                           .inlineCodeFields);
-                    take(tv->textViewStyle.inlineCodeStyle,
-                         tv->textViewStyle.inlineCodeStyleFields);
-                    segSize = codeFont;
-                    segWeight = weight | (int)kFontMono;
-                    extra = padL + padR + borderL + borderR;
-                }
-                float w = 0;
-                if (paint) {
-                    w = MeasureText(paint, seg, segSize, 0, false, segWeight).w;
+                if ((run->marks & MdCode) && !(run->marks & MdHighlight)) {
+                    El* sample = ApplyWeight(
+                        TextEl(tv->a, seg),
+                        (run->marks & MdBold) ? std::max(2, weight) : weight);
+                    if (run->marks & MdItalic) sample->Italic();
+                    ApplyInlineCodeStyle(tv->cx, sample, tv->textViewStyle,
+                                         size);
+                    if (paint) {
+                        line += MeasureEl(paint, sample, size).w;
+                    } else {
+                        line +=
+                            (float)len(seg) * sample->style.fontSize * 0.5f +
+                            sample->style.pad.HorizontalAxisSum() +
+                            sample->style.borderL + sample->style.borderR;
+                    }
                 } else {
-                    w = (float)(i - start) * segSize * 0.5f;
+                    line +=
+                        paint
+                            ? MeasureText(paint, seg, size, 0, false, weight).w
+                            : (float)len(seg) * size * 0.5f;
                 }
-                line += w + extra;
             }
             if (i >= n) {
                 break;

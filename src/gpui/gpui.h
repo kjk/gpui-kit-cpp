@@ -4149,7 +4149,11 @@ enum StyleField : uint32_t {
     // measures with the face and weight it inherited.
     StyleFieldFontWeight = 1u << 24,
     StyleFieldFontMono = 1u << 25,
-    StyleFieldFontFamily = 1u << 26
+    StyleFieldFontFamily = 1u << 26,
+    StyleFieldFontFeatures = 1u << 27,
+    StyleFieldItalic = 1u << 28,
+    StyleFieldUnderline = 1u << 29,
+    StyleFieldStrike = 1u << 30
 };
 
 // StyleRefinement::refine, over the fields `fields` names and no others. The
