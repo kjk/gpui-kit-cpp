@@ -1733,6 +1733,84 @@ int InputWrapRows(const InputState* s, int line, const int** starts,
     return item.nRows;
 }
 
+uint64_t InputDisplayMapVersion(InputDisplayMapRef map) {
+    const InputState* s = map.state;
+    if (!s) return 0;
+    WrapMapOf(s, nullptr);
+    uint64_t changes = s->docVersion + s->folds.version + s->wrap.wrappedLines;
+    return (changes << 2) | (s->softWrap ? 1u : 0u) |
+           (LayoutModeIsFolding(s->mode) ? 2u : 0u);
+}
+
+static int InputPreparedBufferLines(const InputState* s) {
+    return InputWrapRowCount(InputDisplayMap(s)) > 0 ? InputLinesLen(s) : 0;
+}
+
+static int InputTextRowsAbove(const InputState* s, int line) {
+    const InputWrapMap* wrap = WrapMapOf(s, nullptr);
+    auto above = [wrap](int row) {
+        return !wrap ? row
+                     : (row >= wrap->tree.LineCount()
+                            ? wrap->totalRows
+                            : wrap->tree.RowsAbove(row));
+    };
+    int visible = above(line);
+    if (!LayoutModeIsFolding(s->mode)) return visible;
+    // Folds retain both endpoints. The closed ranges can overlap, so
+    // subtract each hidden wrap row once, even before the next layout.
+    int past = 0;
+    for (const FoldRange& fold : s->folds.folded) {
+        if (fold.startLine >= line - 1) break;
+        int first = std::max(past, fold.startLine + 1);
+        int end = std::min(line, fold.endLine);
+        if (first < end) {
+            visible -= above(end) - above(first);
+            past = end;
+        }
+    }
+    return visible;
+}
+
+int InputDisplayRowCount(InputDisplayMapRef map) {
+    const InputState* s = map.state;
+    int lines = InputPreparedBufferLines(s);
+    return lines > 0 ? InputTextRowsAbove(s, lines) : 0;
+}
+
+bool InputBufferLineDisplayRows(InputDisplayMapRef map, int line,
+                                Selection* rows) {
+    const InputState* s = map.state;
+    if (line < 0 || line >= InputPreparedBufferLines(s)) return false;
+    Selection span = {InputTextRowsAbove(s, line),
+                      InputTextRowsAbove(s, line + 1)};
+    if (span.IsEmpty()) return false;
+    if (rows) *rows = span;
+    return true;
+}
+
+int InputBufferLineDisplayRow(InputDisplayMapRef map, int line) {
+    const InputState* s = map.state;
+    if (line < 0 || line >= InputPreparedBufferLines(s)) return 0;
+    Selection span = {};
+    if (InputBufferLineDisplayRows(map, line, &span)) return span.start;
+    return std::max(0, InputTextRowsAbove(s, line) - 1);
+}
+
+int InputDisplayRowBufferLine(InputDisplayMapRef map, int row) {
+    if (row < 0 || row >= InputDisplayRowCount(map)) return 0;
+    int lo = 0;
+    int hi = InputPreparedBufferLines(map.state);
+    while (lo < hi) {
+        int mid = lo + (hi - lo) / 2;
+        if (InputTextRowsAbove(map.state, mid + 1) <= row) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    return lo;
+}
+
 void InputSetWrappingIndent(InputState* s, App* app, Window* win,
                             WrappingIndent indent) {
     if (!s) {
@@ -5124,12 +5202,14 @@ void FoldMapSetCandidates(FoldMap* m, const FoldRange* ranges, int n) {
     FoldSort(&m->candidates);
     FoldDedup(&m->candidates);
     // A fold whose candidate is gone has nothing left to describe it.
+    int wasFolded = len(m->folded);
     for (int i = len(m->folded) - 1; i >= 0; i--) {
         if (FoldFindAt(m->candidates, m->folded[i].startLine) < 0) {
             FoldRemoveAt(&m->folded, i);
             m->needsRebuild = true;
         }
     }
+    if (len(m->folded) != wasFolded) m->version++;
 }
 
 void FoldMapSetFolded(FoldMap* m, int startLine, bool folded) {
@@ -5143,12 +5223,14 @@ void FoldMapSetFolded(FoldMap* m, int startLine, bool folded) {
         }
         VecAppend(m->folded, m->candidates[ix]);
         FoldSort(&m->folded);
+        m->version++;
         m->needsRebuild = true;
         return;
     }
     int ix = FoldFindAt(m->folded, startLine);
     if (ix >= 0) {
         FoldRemoveAt(&m->folded, ix);
+        m->version++;
         m->needsRebuild = true;
     }
 }
@@ -5172,14 +5254,20 @@ void FoldMapSetFoldedLines(FoldMap* m, const int* starts, int count) {
         starts = sorted.els;
         break;
     }
-    VecClear(m->folded);
+    Vec<FoldRange> folded;
     int at = 0;
     for (const FoldRange& candidate : m->candidates) {
         while (at < count && starts[at] < candidate.startLine) at++;
         if (at == count) break;
-        if (starts[at] == candidate.startLine) VecAppend(m->folded, candidate);
+        if (starts[at] == candidate.startLine) VecAppend(folded, candidate);
     }
-    m->needsRebuild = true;
+    if (len(folded) != len(m->folded) ||
+        (len(folded) > 0 && memcmp(folded.els, m->folded.els,
+                                   sizeof(FoldRange) * (size_t)len(folded)))) {
+        m->folded = std::move(folded);
+        m->needsRebuild = true;
+        m->version++;
+    }
 }
 
 void FoldMapToggle(FoldMap* m, int startLine) {
@@ -5197,6 +5285,7 @@ bool FoldMapIsCandidate(const FoldMap* m, int startLine) {
 void FoldMapClearFolds(FoldMap* m) {
     if (m && len(m->folded) > 0) {
         VecClear(m->folded);
+        m->version++;
         m->needsRebuild = true;
     }
 }
@@ -5234,6 +5323,7 @@ void FoldMapAdjustForEdit(FoldMap* m, int editStartLine, int editEndLine,
     if (!m || (len(m->folded) == 0 && len(m->candidates) == 0)) {
         return;
     }
+    if (len(m->folded)) m->version++;
     FoldShiftForEdit(&m->folded, editStartLine, editEndLine, lineDelta);
     FoldShiftForEdit(&m->candidates, editStartLine, editEndLine, lineDelta);
     m->needsRebuild = true;

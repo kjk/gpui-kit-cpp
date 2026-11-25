@@ -306,6 +306,15 @@ InputDisplayMapRef InputDisplayMap(const InputState* s);
 // laid-out editor whose soft wrap never built the map still has one row
 // per logical line.
 int InputWrapRowCount(InputDisplayMapRef map);
+// Compare versions for equality on the same map. Edits, rewrapping and
+// folding invalidate cached row mappings. Scrolling and ghost lines do not.
+uint64_t InputDisplayMapVersion(InputDisplayMapRef map);
+int InputDisplayRowCount(InputDisplayMapRef map);
+// Half-open range of text rows. Returns false for hidden or missing lines.
+bool InputBufferLineDisplayRows(InputDisplayMapRef map, int line,
+                                Selection* rows);
+int InputBufferLineDisplayRow(InputDisplayMapRef map, int line);
+int InputDisplayRowBufferLine(InputDisplayMapRef map, int row);
 // InputState::prewrap, on every text mode. `width` is the text area: the
 // field's width less its padding, and less the line-number gutter when an
 // editor shows line numbers. Before the first layout this wraps a little

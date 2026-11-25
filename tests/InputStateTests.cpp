@@ -11878,6 +11878,40 @@ static void EditorRightGutterKeepsTheTextAndHitGeometryOnItsOwnSide() {
     TestAppFree(d.app);
 }
 
+// element.rs tests of the prepared display map and its version.
+static void EditorDisplayMapVersionFollowsWrappingFoldingAndEdits() {
+    InputState s;
+    MakeCodeEditor(&s);
+    s.softWrap = true;
+    InputSetValue(&s,
+                  StrL("long words wrap across many rows\ninside\n}\nlast"));
+    InputDisplayMapRef map = InputDisplayMap(&s);
+    utassert(InputDisplayRowCount(map) == 0);
+    InputPrewrap(&s, nullptr, 14, 0, 72);
+    Selection first = {};
+    utassert(InputBufferLineDisplayRows(map, 0, &first));
+    utassert(first.start == 0 && first.end > 1);
+    uint64_t narrow = InputDisplayMapVersion(map);
+    InputUpdateWrapMap(&s, nullptr, 500, 14, 0);
+    utassert(InputDisplayMapVersion(map) != narrow);
+    utassert(InputDisplayRowCount(map) == 4);
+
+    FoldRange fold = {0, 2};
+    InputSetFoldCandidates(&s, &fold, 1);
+    uint64_t open = InputDisplayMapVersion(map);
+    InputSetFolded(&s, nullptr, nullptr, 0, true);
+    uint64_t closed = InputDisplayMapVersion(map);
+    utassert(closed != open && InputDisplayRowCount(map) == 3);
+    utassert(!InputBufferLineDisplayRows(map, 1, nullptr));
+    utassert(InputBufferLineDisplayRow(map, 1) == 0);
+    utassert(InputDisplayRowBufferLine(map, 1) == 2);
+    s.scrollY = 75;
+    utassert(InputDisplayMapVersion(map) == closed);
+    InputSetValue(&s, StrL("edited\nlast"));
+    utassert(InputDisplayMapVersion(map) != closed);
+    utassert(InputDisplayRowCount(map) == 2);
+}
+
 // element.rs text_origin_offset_tracks_rendered_gutter_and_scrolling.
 static void EditorTextOriginOffsetFollowsTheLaidOutGutter() {
     struct Host {
@@ -12841,6 +12875,7 @@ static void RunElementWindowTests() {
     EditorLineBackgroundsCoverTheVisibleRows();
     EditorTextIsClippedToItsSideOfTheGutter();
     EditorRightGutterKeepsTheTextAndHitGeometryOnItsOwnSide();
+    EditorDisplayMapVersionFollowsWrappingFoldingAndEdits();
     GutterDecorationsStartingInAFoldMarkItsRowAndTheRest();
     GutterDecorationsOnlyLayOutTheVisibleRows();
     OverviewRulerMarksFollowTheContentHeightAndMerge();

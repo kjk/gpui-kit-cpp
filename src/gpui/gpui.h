@@ -5075,6 +5075,7 @@ struct FoldHiddenRows {
 // lazily because a keystroke changes the text far more often than it changes
 // which lines are hidden.
 struct FoldMap {
+    uint64_t version = 0;
     // Sorted by startLine, at most one range per startLine.
     Vec<FoldRange> candidates;
     // A subset of `candidates`, sorted the same way.
