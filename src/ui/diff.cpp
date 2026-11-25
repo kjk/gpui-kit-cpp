@@ -68,10 +68,10 @@ static void ClearDiffCodeRuns(DiffState* state) {
     VecClear(state->codeRuns);
 }
 
-static void CancelDiffInlineJob(DiffState* state);
+static void CancelDiffPresentationJob(DiffState* state);
 
 DiffState::~DiffState() {
-    CancelDiffInlineJob(this);
+    CancelDiffPresentationJob(this);
     ClearDiffCodeRuns(this);
     for (int i = 0; i < len(files); i++) delete files[i];
     for (int i = 0; i < len(collapsed); i++) StrFree(collapsed[i]);
@@ -2400,9 +2400,11 @@ static void CollectSyntaxSide(const DiffFile* file, int fileIx, DiffSide side,
     const DiffFileSide* src =
         side == DiffSide::Original ? &file->original : &file->modified;
     int nLines = len(src->lines);
-    if (nLines == 0 || !fn) return;
+    if (nLines == 0) return;
     Str language = SyntaxLanguage(file, src);
     if (!language.s || len(language) == 0 || StrEq(language, "text")) return;
+    SyntaxLang scanner = fn ? SyntaxLangNone : SyntaxLangFor(language);
+    if (!fn && scanner == SyntaxLangNone) return;
     int nHunks = len(file->hunks);
     int ranges = nHunks == 0 ? 1 : nHunks;
     for (int h = 0; h < ranges; h++) {
@@ -2420,16 +2422,13 @@ static void CollectSyntaxSide(const DiffFile* file, int fileIx, DiffSide side,
         int base = src->lines[begin].sourceStart;
         int last = src->lines[end - 1].sourceEnd;
         Str text = Slice(src->source, base, last);
-        Vec<DiffSyntaxStyle> hits;
-        fn(data, language, text, &hits);
-        for (int k = 0; k < len(hits); k++) {
-            int hs = hits[k].start;
-            int he = hits[k].end;
-            if (hs < 0 || he < hs || he > len(text)) continue;
-            if (!Utf8IsCharBoundary(text, hs) || !Utf8IsCharBoundary(text, he))
-                continue;
-            int absStart = hs + base;
-            int absEnd = he + base;
+        auto add = [&](const DiffSyntaxStyle& hit, SyntaxTok token) {
+            if (hit.start < 0 || hit.end <= hit.start || hit.end > len(text) ||
+                !Utf8IsCharBoundary(text, hit.start) ||
+                !Utf8IsCharBoundary(text, hit.end))
+                return;
+            int absStart = hit.start + base;
+            int absEnd = hit.end + base;
             int count = end - begin;
             int lo = 0;
             int hi = count;
@@ -2449,13 +2448,31 @@ static void CollectSyntaxSide(const DiffFile* file, int fileIx, DiffSide side,
                 int stop = absEnd < line.contentEnd ? absEnd : line.contentEnd;
                 if (start >= stop) continue;
                 DiffSyntaxSpan span;
-                static_cast<DiffSyntaxStyle&>(span) = hits[k];
+                static_cast<DiffSyntaxStyle&>(span) = hit;
                 span.file = fileIx;
                 span.side = (uint8_t)side;
                 span.line = begin + offset;
+                span.token = token;
                 span.start = DisplayOff(src, line, start - line.sourceStart);
                 span.end = DisplayOff(src, line, stop - line.sourceStart);
                 VecAppend(*out, span);
+            }
+        };
+        if (fn) {
+            Vec<DiffSyntaxStyle> hits;
+            fn(data, language, text, &hits);
+            for (const auto& hit : hits) add(hit, SyntaxTok::Text);
+        } else {
+            // Restart for every hunk. Unterminated syntax in omitted
+            // context cannot affect a subsequent hunk.
+            SyntaxLexer lexer;
+            SyntaxLexStart(&lexer, scanner, text);
+            while (SyntaxLexNext(&lexer)) {
+                if (lexer.tok == SyntaxTok::Text) continue;
+                DiffSyntaxStyle hit;
+                hit.start = (int)(lexer.text.s - text.s);
+                hit.end = hit.start + len(lexer.text);
+                add(hit, lexer.tok);
             }
         }
     }
@@ -2466,8 +2483,8 @@ void DiffState::EnsureSyntax() {
     VecClear(syntaxSpans);
     syntaxPrepared = true;
     if (!syntaxFn) return;
-    // Rust prepares this on the background executor. The inline runs above
-    // are already computed on this thread, and so is the highlighter.
+    // The legacy application callback borrows caller-owned data and may
+    // access the UI. Keep that callback on the calling thread.
     for (int i = 0; i < len(files); i++) {
         CollectSyntaxSide(files[i], i, DiffSide::Original, syntaxMaxLineLength,
                           syntaxFn, syntaxData, &syntaxSpans);
@@ -2501,12 +2518,16 @@ DiffSyntaxStyle DiffState::SyntaxStyleAt(int file, DiffSide side, int line,
     return {};
 }
 
-struct DiffInlineJob {
+struct DiffPresentationJob {
     DiffState* owner = nullptr; // Main thread only.
     TaskId task = 0;
     DiffInlineUnit unit = DiffInlineUnit::Word;
     Arena* snapshot = ArenaNew();
     DiffInlineInput input;
+    int fileIndex = 0;
+    int syntaxLimit = 0;
+    DiffFile syntaxInput;
+    Vec<DiffSyntaxSpan> syntax;
     Vec<DiffRun> runs[2];
     Vec<int> starts[2];
     Mutex lifetime;
@@ -2514,28 +2535,29 @@ struct DiffInlineJob {
     int refs = 2;
     bool discarded = false;
 
-    ~DiffInlineJob() { ArenaDelete(snapshot); }
+    ~DiffPresentationJob() { ArenaDelete(snapshot); }
 };
 
-static void ReleaseDiffInlineJob(DiffInlineJob* job) {
+static void ReleaseDiffPresentationJob(DiffPresentationJob* job) {
     job->lifetime.Lock();
     bool last = --job->refs == 0;
     job->lifetime.Unlock();
     if (last) delete job;
 }
 
-static void CancelDiffInlineJob(DiffState* state) {
-    auto* job = state->inlineJob;
+static void CancelDiffPresentationJob(DiffState* state) {
+    auto* job = state->presentationJob;
     if (!job) return;
-    state->inlineJob = nullptr;
+    state->presentationJob = nullptr;
     job->owner = nullptr;
     ExecCancel(job->task);
-    ReleaseDiffInlineJob(job);
+    ReleaseDiffPresentationJob(job);
 }
 
-static void InvalidateDiffInline(DiffState* state) {
-    CancelDiffInlineJob(state);
-    state->inlinePreparedFiles = 0;
+static void InvalidateDiffPresentation(DiffState* state) {
+    CancelDiffPresentationJob(state);
+    state->presentationPreparedFiles = 0;
+    if (!state->syntaxFn) VecClear(state->syntaxSpans);
     for (auto* file : state->files) {
         for (int side = 0; side < 2; side++) {
             VecClear(file->inlineRuns[side]);
@@ -2544,74 +2566,135 @@ static void InvalidateDiffInline(DiffState* state) {
     }
 }
 
-static void DiffInlineWork(DiffInlineJob* job) {
-    PrepareDiffInline(job->input, job->unit, job->runs, job->starts);
+static bool SnapshotDiffSyntaxSide(Arena* arena, const DiffFile& file,
+                                   const DiffFileSide& source,
+                                   DiffFileSide* out) {
+    Str language = SyntaxLanguage(&file, &source);
+    if (!len(source.lines) || SyntaxLangFor(language) == SyntaxLangNone)
+        return true;
+    // The job owns the source and pathname used for language detection.
+    out->hasPath = source.hasPath;
+    out->path = StrDup(arena, source.path);
+    out->source = StrDup(arena, source.source);
+    if (len(out->source) != len(source.source) ||
+        len(out->path) != len(source.path) ||
+        !VecAppendVec(out->lines, source.lines) ||
+        !VecAppendVec(out->tabs, source.tabs))
+        return false;
+    for (auto& line : out->lines) {
+        line.text = Slice(out->source, line.sourceStart, line.contentEnd);
+        line.display = {};
+    }
+    return true;
 }
 
-static void DiffInlineDiscard(DiffInlineJob* job) {
+static bool SnapshotDiffSyntax(DiffPresentationJob* job, const DiffFile& file) {
+    auto& copy = job->syntaxInput;
+    copy.path = StrDup(job->snapshot, file.path);
+    copy.language = StrDup(job->snapshot, file.language);
+    copy.hasLanguage = file.hasLanguage;
+    if (len(copy.path) != len(file.path) ||
+        len(copy.language) != len(file.language) ||
+        !SnapshotDiffSyntaxSide(job->snapshot, file, file.original,
+                                &copy.original) ||
+        !SnapshotDiffSyntaxSide(job->snapshot, file, file.modified,
+                                &copy.modified))
+        return false;
+    if (!len(copy.original.lines) && !len(copy.modified.lines)) return true;
+    if (!VecAppendVec(copy.hunks, file.hunks)) return false;
+    for (auto& hunk : copy.hunks) hunk.label = {};
+    return true;
+}
+
+static void CollectScannedFile(const DiffFile* file, int fileIx, int limit,
+                               Vec<DiffSyntaxSpan>* out) {
+    CollectSyntaxSide(file, fileIx, DiffSide::Original, limit, nullptr, nullptr,
+                      out);
+    CollectSyntaxSide(file, fileIx, DiffSide::Modified, limit, nullptr, nullptr,
+                      out);
+}
+
+static void DiffPresentationWork(DiffPresentationJob* job) {
+    PrepareDiffInline(job->input, job->unit, job->runs, job->starts);
+    CollectScannedFile(&job->syntaxInput, job->fileIndex, job->syntaxLimit,
+                       &job->syntax);
+}
+
+static void DiffPresentationDiscard(DiffPresentationJob* job) {
     job->lifetime.Lock();
     job->discarded = true;
     job->lifetime.Unlock();
-    ReleaseDiffInlineJob(job);
+    ReleaseDiffPresentationJob(job);
 }
 
-static void DiffInlineLanded(DiffInlineJob* job) {
+static void DiffPresentationLanded(DiffPresentationJob* job) {
     if (auto* state = job->owner) {
-        auto* file = state->files[state->inlinePreparedFiles++];
+        auto* file = state->files[state->presentationPreparedFiles++];
         for (int side = 0; side < 2; side++) {
             std::swap(*VecNT(file->inlineRuns[side]), *VecNT(job->runs[side]));
             std::swap(*VecNT(file->inlineStarts[side]),
                       *VecNT(job->starts[side]));
         }
-        state->inlineJob = nullptr;
-        ReleaseDiffInlineJob(job);
+        VecAppendVec(state->syntaxSpans, job->syntax);
+        state->presentationJob = nullptr;
+        ReleaseDiffPresentationJob(job);
         NotifyEntity(state->app, state->self.id, nullptr);
     }
-    ReleaseDiffInlineJob(job);
+    ReleaseDiffPresentationJob(job);
 }
 
-void DiffState::EnsureInlinePresentation(bool background) {
-    if (!inlineOn) return;
-    if (inlineJob && background) {
-        inlineJob->lifetime.Lock();
-        bool discarded = inlineJob->discarded;
-        inlineJob->lifetime.Unlock();
+void DiffState::EnsureFilePresentation(bool background) {
+    bool scan = !syntaxFn && syntaxMaxLineLength > 0;
+    if (!inlineOn && !scan) return;
+    if (presentationJob && background) {
+        presentationJob->lifetime.Lock();
+        bool discarded = presentationJob->discarded;
+        presentationJob->lifetime.Unlock();
         if (!discarded) return;
     }
-    CancelDiffInlineJob(this);
+    CancelDiffPresentationJob(this);
     // Start one file at a time on render. Each completion repaints the
     // landed file and lets that frame start the next one.
-    while (inlinePreparedFiles < len(files)) {
-        auto* file = files[inlinePreparedFiles];
+    while (presentationPreparedFiles < len(files)) {
+        auto* file = files[presentationPreparedFiles];
         if (background && self.IsValid() && ExecOnMainThread()) {
-            auto* job = new DiffInlineJob;
+            auto* job = new DiffPresentationJob;
             job->owner = this;
             job->unit = inlineUnit;
-            if (ReadDiffInlineInput(*file, inlineMaxLineLength, job->snapshot,
-                                    &job->input)) {
-                if (!len(job->input.pairs)) {
+            job->fileIndex = presentationPreparedFiles;
+            job->syntaxLimit = syntaxMaxLineLength;
+            if ((!inlineOn ||
+                 ReadDiffInlineInput(*file, inlineMaxLineLength, job->snapshot,
+                                     &job->input)) &&
+                (!scan || SnapshotDiffSyntax(job, *file))) {
+                if (!len(job->input.pairs) &&
+                    !len(job->syntaxInput.original.lines) &&
+                    !len(job->syntaxInput.modified.lines)) {
                     delete job;
-                    inlinePreparedFiles++;
+                    presentationPreparedFiles++;
                     continue;
                 }
-                job->task = ExecSpawn(MkFunc0(&DiffInlineWork, job),
-                                      MkFunc0(&DiffInlineLanded, job),
-                                      MkFunc0(&DiffInlineDiscard, job));
+                job->task = ExecSpawn(MkFunc0(&DiffPresentationWork, job),
+                                      MkFunc0(&DiffPresentationLanded, job),
+                                      MkFunc0(&DiffPresentationDiscard, job));
                 if (job->task) {
-                    inlineJob = job;
+                    presentationJob = job;
                     return;
                 }
             }
             delete job;
         }
-        file->PrepareInline(inlineUnit, inlineMaxLineLength);
-        inlinePreparedFiles++;
+        if (inlineOn) file->PrepareInline(inlineUnit, inlineMaxLineLength);
+        if (scan)
+            CollectScannedFile(file, presentationPreparedFiles,
+                               syntaxMaxLineLength, &syntaxSpans);
+        presentationPreparedFiles++;
     }
 }
 
 void DiffState::EnsurePresentation() {
     EnsureSyntax();
-    EnsureInlinePresentation(false);
+    EnsureFilePresentation(false);
 }
 
 void DiffState::Bind(App* appIn, Entity<DiffState> handle) {
@@ -2635,7 +2718,7 @@ static int FileIx(const DiffState* state, Str path) {
 }
 
 void DiffState::SetFiles(DiffFile** next, int count, Ctx* cx) {
-    CancelDiffInlineJob(this);
+    CancelDiffPresentationJob(this);
     ClearDiffCodeRuns(this);
     for (int i = 0; i < len(files); i++) delete files[i];
     VecClear(files);
@@ -2661,7 +2744,7 @@ void DiffState::SetFiles(DiffFile** next, int count, Ctx* cx) {
     selecting = false;
     textSelection = {};
     syntaxPrepared = false;
-    InvalidateDiffInline(this);
+    InvalidateDiffPresentation(this);
     Rebuild(this, true);
     if (cx && !cx->win) EnsurePresentation();
     if (cx) Notify(cx);
@@ -2705,8 +2788,7 @@ DiffState* DiffState::WithInlineMaxLineLength(int length) {
 }
 
 DiffState* DiffState::WithSyntaxMaxLineLength(int length) {
-    syntaxMaxLineLength = length < 0 ? 0 : length;
-    syntaxPrepared = false;
+    SetSyntaxMaxLineLength(length, nullptr);
     return this;
 }
 
@@ -2715,24 +2797,19 @@ DiffState* DiffState::WithSyntaxHighlighter(DiffSyntaxHighlighter fn,
     syntaxFn = fn;
     syntaxData = data;
     syntaxPrepared = false;
+    InvalidateDiffPresentation(this);
     return this;
 }
 
 void DiffState::SetSyntaxHighlighter(DiffSyntaxHighlighter fn, void* data,
                                      Ctx* cx) {
-    syntaxFn = fn;
-    syntaxData = data;
-    syntaxPrepared = false;
+    WithSyntaxHighlighter(fn, data);
     EnsureSyntax();
     if (cx) Notify(cx);
 }
 
 void DiffState::ClearSyntaxHighlighter(Ctx* cx) {
-    syntaxFn = nullptr;
-    syntaxData = nullptr;
-    syntaxPrepared = false;
-    EnsureSyntax();
-    if (cx) Notify(cx);
+    SetSyntaxHighlighter(nullptr, nullptr, cx);
 }
 
 DiffFile** DiffState::Files(int* count) const {
@@ -2786,8 +2863,8 @@ void DiffState::SetInlineUnit(bool on, DiffInlineUnit unit, Ctx* cx) {
     if (inlineOn == on && (!on || inlineUnit == unit)) return;
     inlineOn = on;
     if (on) inlineUnit = unit;
-    InvalidateDiffInline(this);
-    if (cx && !cx->win) EnsureInlinePresentation(false);
+    InvalidateDiffPresentation(this);
+    if (cx && !cx->win) EnsureFilePresentation(false);
     if (cx) Notify(cx);
 }
 
@@ -2795,8 +2872,8 @@ void DiffState::SetInlineMaxLineLength(int length, Ctx* cx) {
     if (length < 0) length = 0;
     if (inlineMaxLineLength == length) return;
     inlineMaxLineLength = length;
-    InvalidateDiffInline(this);
-    if (cx && !cx->win) EnsureInlinePresentation(false);
+    InvalidateDiffPresentation(this);
+    if (cx && !cx->win) EnsureFilePresentation(false);
     if (cx) Notify(cx);
 }
 
@@ -2804,9 +2881,8 @@ void DiffState::SetSyntaxMaxLineLength(int length, Ctx* cx) {
     if (length < 0) length = 0;
     if (syntaxMaxLineLength == length) return;
     syntaxMaxLineLength = length;
-    // The scanner reads this limit while painting. An application
-    // highlighter has a prepared cache, so that one is dropped.
     syntaxPrepared = false;
+    InvalidateDiffPresentation(this);
     if (cx) Notify(cx);
 }
 
@@ -3512,48 +3588,71 @@ static TextSpan* DiffHighlightSlice(Ctx* cx, const TextSpan* spans, int count,
     return slice;
 }
 
-static void StyleDiffRun(El* bit, const DiffSyntaxSpan* span) {
-    if (span) {
-        if (span->weight) bit->Weight((FontWeight)span->weight);
-        if (span->italic) bit->Italic();
-        if (span->hasColor) bit->Fg(span->color);
-        if (span->hasBackground) bit->Bg(span->background);
-        if (span->underline) bit->Underline();
+static bool MatchesDiffSyntaxLine(const DiffSyntaxSpan& span, int file,
+                                  DiffSide side, int line) {
+    return span.file == file && span.side == (uint8_t)side && span.line == line;
+}
+
+static Selection DiffSyntaxLineRange(const DiffState* state, int file,
+                                     DiffSide side, int line, bool syntax) {
+    if (!syntax) return {};
+    const auto& spans = state->syntaxSpans;
+    if (state->syntaxFn) return {0, len(spans)};
+    // Scanner spans arrive in file, side, line order. Custom callback
+    // ranges can overlap or arrive out of order.
+    int lo = 0;
+    int hi = len(spans);
+    while (lo < hi) {
+        int mid = lo + (hi - lo) / 2;
+        const auto& span = spans[mid];
+        bool before = span.file < file ||
+                      (span.file == file &&
+                       (span.side < (uint8_t)side ||
+                        (span.side == (uint8_t)side && span.line < line)));
+        if (before)
+            lo = mid + 1;
+        else
+            hi = mid;
     }
+    int end = lo;
+    while (end < len(spans) &&
+           MatchesDiffSyntaxLine(spans[end], file, side, line))
+        end++;
+    return {lo, end};
+}
+
+static void StyleDiffRun(El* bit, const DiffSyntaxSpan& span,
+                         const Theme& theme) {
+    if (span.weight) bit->Weight((FontWeight)span.weight);
+    if (span.italic) bit->Italic();
+    if (span.token != SyntaxTok::Text)
+        bit->Fg(SyntaxTokColor(span.token, theme.mode, theme.foreground));
+    else if (span.hasColor)
+        bit->Fg(span.color);
+    if (span.hasBackground) bit->Bg(span.background);
+    if (span.underline) bit->Underline();
 }
 
 static void StyleWrappedDiffLine(Ctx* cx, El* text, const DiffState* state,
                                  int file, DiffSide side, int line, bool syntax,
                                  const DiffHighlightRuns& runs) {
     ArenaVec<TextHighlight> styled;
-    if (syntax && state->syntaxFn) {
-        for (const DiffSyntaxSpan& span : state->syntaxSpans) {
-            if (span.file != file || span.side != (uint8_t)side ||
-                span.line != line)
-                continue;
-            HighlightStyle style;
-            style.weight = (FontWeight)span.weight;
-            if (span.italic) style.fontStyle = HighlightFontStyle::Italic;
-            style.hasColor = span.hasColor;
-            style.color = span.color;
-            if (span.hasBackground) style.background = span.background;
-            if (span.underline) style.underline.thickness = 1;
-            styled.Append(cx->a, {span.start, span.end, style});
-        }
-    } else if (syntax) {
-        SyntaxLexer lexer;
-        SyntaxLexStart(&lexer, SyntaxLangFor(state->files[file]->Language()),
-                       text->text);
-        const Theme& theme = ActiveTheme(cx->app);
-        while (SyntaxLexNext(&lexer)) {
-            if (lexer.tok == SyntaxTok::Text) continue;
-            HighlightStyle style;
-            style.hasColor = true;
-            style.color =
-                SyntaxTokColor(lexer.tok, theme.mode, theme.foreground);
-            int at = (int)(lexer.text.s - text->text.s);
-            styled.Append(cx->a, {at, at + len(lexer.text), style});
-        }
+    const Theme& theme = ActiveTheme(cx->app);
+    Selection range = DiffSyntaxLineRange(state, file, side, line, syntax);
+    for (int i = range.start; i < range.end; i++) {
+        const auto& span = state->syntaxSpans[i];
+        if (!MatchesDiffSyntaxLine(span, file, side, line)) continue;
+        HighlightStyle style;
+        style.weight = (FontWeight)span.weight;
+        if (span.italic) style.fontStyle = HighlightFontStyle::Italic;
+        style.hasColor = span.hasColor || span.token != SyntaxTok::Text;
+        style.color =
+            span.token == SyntaxTok::Text
+                ? span.color
+                : SyntaxTokColor(span.token, theme.mode, theme.foreground);
+        if (span.hasBackground) style.background = span.background;
+        if (span.underline) style.underline.thickness = 1;
+        styled.Append(cx->a, {span.start, span.end, style});
     }
     if (!len(styled)) return;
     // Explicit diff span colours take precedence over the syntax colour. Cut
@@ -3745,43 +3844,21 @@ static El* CodeTextRuns(Ctx* cx, const DiffState* state, int fileIx,
         StyleWrappedDiffLine(cx, text, state, fileIx, side, ix, syntax, runs);
         return row->Flex1()->MinW(0);
     }
-    if (syntax && state && state->syntaxFn) {
-        int at = 0;
-        for (int i = 0; i < len(state->syntaxSpans); i++) {
-            const DiffSyntaxSpan& span = state->syntaxSpans[i];
-            if (span.file != fileIx || span.side != (uint8_t)side ||
-                span.line != ix)
-                continue;
-            int lo = span.start;
-            int hi = span.end;
-            if (lo < at) lo = at;
-            if (hi > len(line.display)) hi = len(line.display);
-            if (lo > at) textRun(Slice(line.display, at, lo), at);
-            if (lo < hi)
-                StyleDiffRun(textRun(Slice(line.display, lo, hi), lo), &span);
-            if (hi > at) at = hi;
-        }
-        if (at < len(line.display))
-            textRun(Slice(line.display, at, len(line.display)), at);
-        return row;
+    const Theme& theme = ActiveTheme(cx->app);
+    Selection range = DiffSyntaxLineRange(state, fileIx, side, ix, syntax);
+    int at = 0;
+    for (int i = range.start; i < range.end; i++) {
+        const auto& span = state->syntaxSpans[i];
+        if (!MatchesDiffSyntaxLine(span, fileIx, side, ix)) continue;
+        int lo = IMax(at, span.start);
+        int hi = IMin(len(line.display), span.end);
+        if (lo > at) textRun(Slice(line.display, at, lo), at);
+        if (lo < hi)
+            StyleDiffRun(textRun(Slice(line.display, lo, hi), lo), span, theme);
+        if (hi > at) at = hi;
     }
-    if (!syntax) {
-        textRun(line.display, 0);
-        return row;
-    }
-    SyntaxLang lang = SyntaxLangFor(file->Language());
-    if (lang == SyntaxLangNone) {
-        textRun(line.display, 0);
-        return row;
-    }
-    SyntaxLexer lx;
-    SyntaxLexStart(&lx, lang, line.display);
-    Rgba fg = ActiveTheme(cx->app).foreground;
-    while (SyntaxLexNext(&lx)) {
-        El* bit = textRun(lx.text, (int)(lx.text.s - line.display.s));
-        if (lx.tok != SyntaxTok::Text)
-            bit->Fg(SyntaxTokColor(lx.tok, ActiveTheme(cx->app).mode, fg));
-    }
+    if (at < len(line.display))
+        textRun(Slice(line.display, at, len(line.display)), at);
     return row;
 }
 
@@ -5272,7 +5349,7 @@ El* Diff::IntoEl() {
     if (!st) return Div(a);
     ClearDiffCodeRuns(st);
     st->EnsureSyntax();
-    st->EnsureInlinePresentation(true);
+    st->EnsureFilePresentation(true);
     st->listScroll.itemsCount = len(st->rows);
     // A column so the caller's height (the story's 32rem) reaches the list.
     // The list is height 100%, which collapses when its parent is only as

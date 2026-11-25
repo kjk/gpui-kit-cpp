@@ -473,12 +473,15 @@ struct DiffSyntaxStyle {
 using DiffSyntaxHighlighter = void (*)(void* data, Str language, Str text,
                                        Vec<DiffSyntaxStyle>* out);
 
+enum class SyntaxTok : uint8_t;
+
 // One prepared style, already mapped onto a line's display text: `start`
 // and `end` are offsets into that line's display text.
 struct DiffSyntaxSpan : DiffSyntaxStyle {
     int file = 0;
     uint8_t side = 0;
     int line = 0;
+    SyntaxTok token = {};
 };
 
 struct DiffCodeRunGeometry {
@@ -505,7 +508,7 @@ struct DiffTextSelection {
     bool hitText = false;
 };
 
-struct DiffInlineJob;
+struct DiffPresentationJob;
 
 struct DiffState {
     App* app = nullptr;
@@ -553,8 +556,8 @@ struct DiffState {
     bool inlineOn = true;
     DiffInlineUnit inlineUnit = DiffInlineUnit::Word;
     int inlineMaxLineLength = 1000;
-    int inlinePreparedFiles = 0;
-    DiffInlineJob* inlineJob = nullptr;
+    int presentationPreparedFiles = 0;
+    DiffPresentationJob* presentationJob = nullptr;
     int syntaxMaxLineLength = 1000;
     Vec<DiffEvent> emitted;
     Entity<DiffState> self = {};
@@ -649,10 +652,11 @@ struct DiffState {
     void DragLineSelection(DiffLinePosition position, Ctx* cx);
     void EndLineSelection(Ctx* cx);
     // Synchronously prepare the files for callers that inspect spans without
-    // rendering a view. Normal rendering prepares inline runs asynchronously.
+    // rendering a view. Normal rendering prepares inline runs and built-in
+    // syntax asynchronously.
     void EnsurePresentation();
     void EnsureSyntax();
-    void EnsureInlinePresentation(bool background);
+    void EnsureFilePresentation(bool background);
     int RowCount() const { return len(rows); }
     const DiffRow* Rows() const { return rows.els; }
     int ScrollItem() const { return scrollItem; }

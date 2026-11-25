@@ -1370,10 +1370,11 @@ struct DiffHighlightView {
     Entity<DiffState> state;
     DiffSpanHighlight spans[4];
     bool wrap = false;
+    bool syntax = false;
 
     static El* Render(DiffHighlightView* self, Ctx* cx) {
         return Diff::New(cx, self->state)
-            ->SyntaxHighlight(false)
+            ->SyntaxHighlight(self->syntax)
             ->SoftWrap(self->wrap)
             ->SpanHighlights(self->spans, 4)
             ->IntoEl();
@@ -1386,6 +1387,54 @@ static El* FindDiffCodeRun(El* root, Str text) {
         if (El* match = FindDiffCodeRun(child, text)) return match;
     }
     return nullptr;
+}
+
+// presentation.rs syntax_spans scans each hunk side independently.
+static void BuiltInDiffSyntaxLandsFromTheExecutorAndResetsAtHunks() {
+    App* app = TestAppNew();
+    Init(app);
+    auto view = EntityNew<DiffHighlightView>(app);
+    auto* self = view.Get(app);
+    self->syntax = true;
+    self->state = EntityNew<DiffState>(app);
+    auto* state = self->state.Get(app);
+    state->Bind(app, self->state);
+    state->WithInlineUnit(false, DiffInlineUnit::Word);
+    Vec<DiffFile*> files;
+    utassert(
+        Parse("--- a/code.rs\n+++ b/code.rs\n@@ -1,2 +1,2 @@\n"
+              " /* opening\n \tlet inside\n@@ -10 +10 @@\n"
+              "-\tlet before = 1;\n+\tlet after = 2;\n",
+              &files));
+    state->SetFiles(files.els, len(files), nullptr);
+    Window* win = TestWindowOpen(app, view, 400, 320);
+    utassert(state->presentationJob && !len(state->syntaxSpans));
+    TestRunUntilParked(app);
+    utassert(!state->presentationJob);
+    const DiffSide sides[] = {DiffSide::Original, DiffSide::Modified};
+    for (DiffSide side : sides) {
+        bool comment = false;
+        bool keyword = false;
+        for (const auto& span : state->syntaxSpans) {
+            if (span.side != (uint8_t)side) continue;
+            if (span.line == 1 && span.token == SyntaxTok::Comment) {
+                comment = span.start == 0 && span.end == 14;
+            }
+            if (span.line == 2 && span.token == SyntaxTok::Keyword) {
+                keyword = span.start == 4 && span.end == 7;
+            }
+        }
+        utassert(comment && keyword);
+    }
+    El* root = EntityRender(app, win, win->frameArena, view.id);
+    LayoutEl(&win->paint, root, 0, 0, 400, 320, 14, {});
+    utassert(FindDiffCodeRun(root, StrL("let")));
+
+    state->SetSyntaxMaxLineLength(5, nullptr);
+    TestDraw(win);
+    TestRunUntilParked(app);
+    utassert(!len(state->syntaxSpans));
+    TestAppFree(app);
 }
 
 // state.rs ensure_presentation drops a preparation from a replaced patch.
@@ -1404,7 +1453,8 @@ static void InlinePresentationLandsProgressivelyAndDropsReplacedPatches() {
               &files));
     state->SetFiles(files.els, len(files), nullptr);
     Window* win = TestWindowOpen(app, view, 400, 200, 1);
-    utassert(win && state->inlineJob && state->inlinePreparedFiles == 0);
+    utassert(win && state->presentationJob &&
+             state->presentationPreparedFiles == 0);
     utassert(state->FileAt(0)->InlineCount(DiffSide::Modified, 0) == 0);
 
     VecClear(files);
@@ -1418,9 +1468,9 @@ static void InlinePresentationLandsProgressivelyAndDropsReplacedPatches() {
               &files));
     state->SetFiles(files.els, len(files), nullptr);
     TestDraw(win);
-    utassert(state->inlineJob && state->inlinePreparedFiles == 0);
+    utassert(state->presentationJob && state->presentationPreparedFiles == 0);
     TestRunUntilParked(app);
-    utassert(!state->inlineJob && state->inlinePreparedFiles == 2);
+    utassert(!state->presentationJob && state->presentationPreparedFiles == 2);
     for (int file = 0; file < 2; file++) {
         const auto* source = state->FileAt(file);
         int count = 0;
@@ -2199,6 +2249,7 @@ void TestDiff() {
     SpanHighlightsKeepLineAndOrderThroughTabExpansion();
     InlineChangesPaintBothSidesAndRespectExplicitSpanPriority();
     InlinePresentationLandsProgressivelyAndDropsReplacedPatches();
+    BuiltInDiffSyntaxLandsFromTheExecutorAndResetsAtHunks();
     GutterMarkersActivateWithoutSelectingLines();
     TextHoverReportsTheCharacterAndOnlyChanges();
     AModifierAloneReportsTheCharacterAgain();
