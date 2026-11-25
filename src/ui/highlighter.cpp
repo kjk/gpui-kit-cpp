@@ -842,12 +842,53 @@ struct SynHlJob {
 
 /* Fold candidates — upstream's extract_fold_ranges walks the tree-sitter
    tree and offers every named node spanning two rows or more; with no tree,
-   this counts brace pairs outside strings and comments, the way the
+   this counts bracket pairs outside strings and comments, the way the
    showcase's own highlighter does (`brace_fold_ranges` in
    examples/showcase/syntect_highlighter.rs), sharing the one lex that also
-   produces the token runs. A language with no braces has no candidates,
-   which is where this stops short of the tree: Rust would fold a Python
-   suite and this cannot see one. */
+   produces the token runs. SQL SELECT statements also have a lexical fold
+   for the statement and its FROM clause. This cannot see an arbitrary
+   named node such as a Python suite. */
+static int SkipFoldWhitespace(Str text, int at, bool separators = false) {
+    while (at < len(text) && text.s[at] != '\n') {
+        uint32_t c = 0;
+        int step = Utf8At(text, at, &c);
+        if (step <= 0 || (!IsUnicodeWhitespace(c) &&
+                          !(separators && (c == ';' || c == ',')))) {
+            break;
+        }
+        at += step;
+    }
+    return at;
+}
+
+static bool FoldLineEnd(Str text, int at) {
+    return at == len(text) || text.s[at] == '\n';
+}
+
+static bool HasCodeAfterFold(Str text, int at) {
+    at = SkipFoldWhitespace(text, at, true);
+    if (FoldLineEnd(text, at)) {
+        return false;
+    }
+    Str rest(text.s + at, len(text) - at);
+    return !StrStartsWith(rest, StrL("--")) &&
+           !StrStartsWith(rest, StrL("//")) && !StrStartsWith(rest, StrL("#"));
+}
+
+static void AppendSqlSelectFolds(Vec<FoldRange>* folds, int start, int from,
+                                 int lastLine, bool trailingCode) {
+    if (start < 0 || lastLine <= start) {
+        return;
+    }
+    int end = trailingCode ? lastLine : lastLine + 1;
+    if (end > start + 1) {
+        VecAppend(*folds, FoldRange{start, end});
+    }
+    if (from > start && end > from + 1) {
+        VecAppend(*folds, FoldRange{from, end});
+    }
+}
+
 static void SynHlLexInto(SyntaxLang lang, Str text, Vec<HlRun>* runs,
                          Vec<FoldRange>* folds) {
     VecClear(*runs);
@@ -855,12 +896,22 @@ static void SynHlLexInto(SyntaxLang lang, Str text, Vec<HlRun>* runs,
     if (lang == SyntaxLangNone || len(text) == 0) {
         return;
     }
-    // Brace nesting deeper than this folds no further; startLine per open
-    // brace, and the line each byte is on walked alongside the scan.
-    int starts[64];
+    // Bracket nesting beyond this capacity does not add fold candidates.
+    struct Bracket {
+        int offset;
+        int line;
+        char closer;
+    };
+    Bracket starts[64];
+    const int capacity = (int)(sizeof(starts) / sizeof(starts[0]));
     int nOpen = 0;
     int line = 0;
+    int lineStart = 0;
     int at = 0;
+    bool sql = StrEq(SyntaxLangName(lang), StrL("sql"));
+    int sqlStart = -1;
+    int sqlFrom = -1;
+    int lastSqlLine = -1;
     SyntaxLexer lx;
     SyntaxLexStart(&lx, lang, text);
     while (SyntaxLexNext(&lx)) {
@@ -868,37 +919,70 @@ static void SynHlLexInto(SyntaxLang lang, Str text, Vec<HlRun>* runs,
         for (; at < tokStart && at < len(text); at++) {
             if (text.s[at] == '\n') {
                 line++;
+                lineStart = at + 1;
             }
         }
         bool literal =
             lx.tok == SyntaxTok::String || lx.tok == SyntaxTok::Comment;
+        if (sql && nOpen == 0 && lx.tok == SyntaxTok::Keyword) {
+            if (sqlStart < 0 && StrEqI(lx.text, StrL("select"))) {
+                sqlStart = line;
+            } else if (sqlStart >= 0 && sqlFrom < 0 &&
+                       StrEqI(lx.text, StrL("from"))) {
+                sqlFrom = line;
+            }
+        }
         for (int i = 0; i < len(lx.text); i++) {
             char c = lx.text.s[i];
+            int offset = tokStart + i;
+            if (sqlStart >= 0 && lx.tok != SyntaxTok::Comment &&
+                (uint8_t)c > ' ') {
+                lastSqlLine = line;
+                if (!literal && c == ';' && nOpen == 0) {
+                    AppendSqlSelectFolds(folds, sqlStart, sqlFrom, line,
+                                         HasCodeAfterFold(text, offset + 1));
+                    sqlStart = sqlFrom = -1;
+                }
+            }
             if (c == '\n') {
                 line++;
+                lineStart = tokStart + i + 1;
                 continue;
             }
             if (literal) {
                 continue;
             }
-            if (c == '{') {
-                if (nOpen < (int)(sizeof(starts) / sizeof(starts[0]))) {
-                    starts[nOpen] = line;
+            char closer = c == '{' ? '}' : c == '(' ? ')' : c == '[' ? ']' : 0;
+            if (closer) {
+                if (nOpen < capacity) {
+                    starts[nOpen] = {offset, line, closer};
                 }
                 nOpen++;
-            } else if (c == '}' && nOpen > 0) {
+            } else if ((c == '}' || c == ')' || c == ']') && nOpen > 0) {
+                if (nOpen <= capacity) {
+                    int match = nOpen - 1;
+                    while (match >= 0 && starts[match].closer != c) match--;
+                    if (match < 0) continue;
+                    nOpen = match + 1;
+                }
                 nOpen--;
-                if (nOpen >= (int)(sizeof(starts) / sizeof(starts[0]))) {
+                if (nOpen >= capacity) {
                     continue;
                 }
-                int startLine = starts[nOpen];
-                // A block that opens and closes on one line has nothing to
-                // hide, and Rust drops it the same way.
-                if (startLine < line) {
-                    FoldRange fr;
-                    fr.startLine = startLine;
-                    fr.endLine = line;
-                    VecAppend(*folds, fr);
+                const Bracket& open = starts[nOpen];
+                if (open.line == line) {
+                    continue;
+                }
+                bool standaloneCloser =
+                    FoldLineEnd(text,
+                                SkipFoldWhitespace(text, open.offset + 1)) &&
+                    SkipFoldWhitespace(text, lineStart) == offset;
+                int end =
+                    (standaloneCloser || HasCodeAfterFold(text, offset + 1))
+                        ? line
+                        : line + 1;
+                if (end > open.line + 1) {
+                    VecAppend(*folds, FoldRange{open.line, end});
                 }
             }
         }
@@ -920,6 +1004,7 @@ static void SynHlLexInto(SyntaxLang lang, Str text, Vec<HlRun>* runs,
         run.tok = lx.tok;
         VecAppend(*runs, run);
     }
+    AppendSqlSelectFolds(folds, sqlStart, sqlFrom, lastSqlLine, false);
 }
 
 static Str SynHlLanguage(void* data) {

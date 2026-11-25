@@ -280,6 +280,60 @@ static void TheLexDebounceIsOneTimer() {
     TestAppFree(app);
 }
 
+struct FoldLineView {
+    InputState input;
+    Str language;
+
+    static El* Render(FoldLineView* self, Ctx* cx) {
+        return component::Editor::New(cx, StrL("fold-line"), &self->input)
+            ->Language(self->language)
+            ->Folding(true)
+            ->IntoEl();
+    }
+};
+
+// highlighter/input_adapter.rs: statements ending with a closer, a suffix
+// of code, a trailing comment, the last byte, or an ordinary line break.
+static void FoldCandidatesCoverTheirLastLineWhenItCanBeHidden() {
+    struct Case {
+        const char* language;
+        const char* code;
+        FoldRange folds[2];
+        int count;
+    };
+    const Case cases[] = {
+        {"sql", "SELECT id\nFROM users\nWHERE id = 1;\n", {{0, 3}, {1, 3}}, 2},
+        {"sql", "SELECT 1\nFROM t\nWHERE a = 1", {{0, 3}, {1, 3}}, 2},
+        {"sql", "SELECT 1\nFROM t\nWHERE a = 1; SELECT 3\n", {{0, 2}}, 1},
+        {"sql",
+         "SELECT id\nFROM users\nWHERE id = 1; -- done\n",
+         {{0, 3}, {1, 3}},
+         2},
+        {"sql", "SELECT id\nFROM users;\n", {{0, 2}}, 1},
+        {"sql", "SELECT 1;\n", {}, 0},
+        {"json", "{\n  \"a\": 1,\n  \"b\": 2\n}", {{0, 3}}, 1},
+        {"rust", "fn main() {\n    let x = 1;\n}\n", {{0, 2}}, 1},
+    };
+    App* app = TestAppNew();
+    component::Init(app);
+    auto entity = EntityNew<FoldLineView>(app);
+    auto* view = entity.Get(app);
+    view->input.kind = InputKind::Editor;
+    Window* win = TestWindowOpen(app, entity, 420, 300);
+    for (const auto& test : cases) {
+        view->language = Str(test.language);
+        InputSetValue(&view->input, Str(test.code));
+        TestDraw(win);
+        const auto& actual = view->input.folds.candidates;
+        utassert(len(actual) == test.count);
+        for (int i = 0; i < len(actual) && i < test.count; i++) {
+            utassert(actual[i].startLine == test.folds[i].startLine &&
+                     actual[i].endLine == test.folds[i].endLine);
+        }
+    }
+    TestAppFree(app);
+}
+
 void TestSyntax() {
     TestSuite("Syntax");
     TestSyntaxLangFor();
@@ -294,4 +348,5 @@ void TestSyntax() {
     TestSyntaxUnknownLang();
     TestSyntaxColors();
     TheLexDebounceIsOneTimer();
+    FoldCandidatesCoverTheirLastLineWhenItCanBeHidden();
 }

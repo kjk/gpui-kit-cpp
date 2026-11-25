@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `20d42c2b6de177f74609d18f9225e940aa45d8b4` (2026-11-24,
-base: Build test-support's image without default formats (#4095)).
-Reviewed the Rust test-support image feature cleanup. Headless C++ tests use the runtime image seam.
+Processed through `9d90e5a9b612c53c158d682c5ea44af27c9e118b` (2026-11-24,
+highlighter: Hide a fold's last line unless it closes a bracket (#4097)).
+Scanner fold ranges hide the final line unless it closes a bracket opened at the end of the first line or contains following code.
 The current update target is
 `832cfdc0baef92855191dfdbbbcacd75f59d3df0`.
 
@@ -588,11 +588,12 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   semantic tokens, go-to-definition — but there is no JSON-RPC, no child
   process and no `lsp_types` (hard rule 3). A provider is a function pointer
   an application fills.
-- **Syntax colouring is a scanner, not a parser.** `src/ui/syntax.cpp` in
+- **Syntax colouring uses a scanner.** `src/ui/syntax.cpp` in
   tree-sitter's place: comments, strings, numbers, keywords, type names, and
   what position alone settles. Nothing that needs a tree (rename, semantic
-  scope) can be asked of it. Folding is brace-pair scanning, which is what
-  upstream's own showcase highlighter does. The optional `syntect` feature
+  scope) can be asked of it. Folding scans bracket pairs and SQL SELECT
+  clauses (`src/ui/highlighter.cpp`). Grammar-specific nodes such as Python
+  suites still require the Rust parser. The optional `syntect` feature
   (syntect and two-face) is the same exclusion and is not vendored.
 - **Diff line numbers are `int`.** A hunk header whose start, count, or
   `start + max(count, 1)` span does not fit in `int` is an invalid
