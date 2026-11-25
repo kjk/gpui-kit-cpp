@@ -51,6 +51,9 @@
 #include <gdk/gdkx.h>
 #include <webkit2/webkit2.h>
 #include <X11/Xlib.h>
+#if defined(GPUI_HAVE_X11_SHAPE)
+#include <X11/extensions/shape.h>
+#endif
 #include <math.h>
 
 // The GTK 3 / WebKitGTK 4.1 API this port targets is the one Rust's
@@ -1642,8 +1645,11 @@ bool WebViewSetClippedBounds(WebView* wv, Rect bounds, Rect visible) {
     return true;
 }
 
-bool WebViewSetVisibleRegion(WebView* wv, const Rect* pieces, int count) {
+static bool LinuxWebViewSetRegion(WebView* wv, const Rect* pieces, int count,
+                                  bool clipDrawing) {
     if (!wv || !wv->hasX11 || !wv->isChild) return false;
+    bool inputShapes = gdk_display_supports_input_shapes(wv->display);
+    if (!clipDrawing && !inputShapes) return false;
     if (!wv->clipWindow && pieces) {
         if (!gdk_display_supports_shapes(wv->display)) return false;
         wv->clipWindow =
@@ -1662,14 +1668,50 @@ bool WebViewSetVisibleRegion(WebView* wv, const Rect* pieces, int count) {
         const cairo_rectangle_int_t rect = {x, y, w, h};
         cairo_region_union_rectangle(region, &rect);
     }
-    gdk_window_shape_combine_region(wv->clipWindow, region, 0, 0);
-    if (gdk_display_supports_input_shapes(wv->display)) {
+#if defined(GPUI_HAVE_X11_SHAPE)
+    // GDK's drawing shape is ineffective for this foreign window. Apply
+    // ShapeBounding to the X11 container so it clips the embedded GtkPlug.
+    XTrap trap(wv->display);
+    if (clipDrawing && region) {
+        Vec<XRectangle> rectangles;
+        int s = (int)scale;
+        int n = cairo_region_num_rectangles(region);
+        for (int i = 0; i < n; i++) {
+            cairo_rectangle_int_t rect = {};
+            cairo_region_get_rectangle(region, i, &rect);
+            VecAppend(rectangles,
+                      XRectangle{(short)(rect.x * s), (short)(rect.y * s),
+                                 (unsigned short)(rect.width * s),
+                                 (unsigned short)(rect.height * s)});
+        }
+        XShapeCombineRectangles(wv->xdisplay, wv->x11Window, ShapeBounding, 0,
+                                0, rectangles.els, len(rectangles), ShapeSet,
+                                Unsorted);
+    } else {
+        XShapeCombineMask(wv->xdisplay, wv->x11Window, ShapeBounding, 0, 0,
+                          None, ShapeSet);
+    }
+#else
+    gdk_window_shape_combine_region(wv->clipWindow,
+                                    clipDrawing ? region : nullptr, 0, 0);
+#endif
+    if (inputShapes) {
         gdk_window_input_shape_combine_region(wv->clipWindow, region, 0, 0);
     }
     if (region) cairo_region_destroy(region);
     XFlush(wv->xdisplay);
     return true;
 }
+
+bool WebViewSetVisibleRegion(WebView* wv, const Rect* pieces, int count) {
+    return LinuxWebViewSetRegion(wv, pieces, count, true);
+}
+
+#if GPUI_WRY_INPUT_REGION
+bool WebViewSetInputRegion(WebView* wv, const Rect* pieces, int count) {
+    return LinuxWebViewSetRegion(wv, pieces, count, false);
+}
+#endif
 
 struct WebKitSnapshot {
     void* user;

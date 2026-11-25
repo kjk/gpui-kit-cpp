@@ -627,10 +627,11 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
 - **Native webviews are child surfaces.** Desktop hosts clip the child
   to the content mask and keep the page's full size and scroll position.
   macOS composites deferred GPUI layers above the live WKWebView and
-  restricts the browser's input where overlays intercept it. Windows and
-  Linux use matching drawing and input cutouts, with an asynchronous
-  viewport snapshot under translucent overlay pixels. macOS uses that
-  path when scene recording is disabled (`src/webview/webview.cpp`).
+  Linux blends them in an ARGB X11 window when a compositor is available.
+  Both restrict browser input where overlays intercept it. Windows and
+  uncomposited X11 use drawing and input cutouts with asynchronous viewport
+  snapshots. The live paths fall back to cutouts when scene recording is
+  disabled (`src/webview/webview.cpp`).
 - **Linux webview bounds stay logical.** Upstream `device_bounds` passes
   physical pixels because Wry then scales by GDK. `WebViewSetBounds`
   in `wry_linux.cpp` already multiplies a logical rect by that factor
@@ -645,9 +646,9 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   port first converts it into the child view, then normalizes the top-left
   origin (`src/wry/wry_mac.cpp` emitDrag).
 - **No webview on wasm.** `src/wry/wry_unsupported.cpp` answers. The Linux one,
-  `wry_linux.cpp` over WebKitGTK 4.1 (a soft dependency), is compiled and
-  linked but not yet seen running in a window; without
-  `libwebkit2gtk-4.1-dev` the same file answers. `src/wry/readme.md` has both.
+  `wry_linux.cpp` over WebKitGTK 4.1 (a soft dependency), requires
+  `libwebkit2gtk-4.1-dev` at build time. Without it the same file supplies
+  stubs. `src/wry/readme.md` has both.
 
 - **A grid repetition with the wrong number of line-name sets does not
   abort.** Rust panics unless `line_names` is empty or exactly one set

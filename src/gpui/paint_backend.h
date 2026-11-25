@@ -36,10 +36,17 @@ uint64_t PaintResourceGenerationNew();
 // left unpainted would flash).
 bool PaintSceneFinish(PaintCtx* ctx, bool replayUnchanged);
 
-#if GPUI_OS_MAC
+#if GPUI_OS_MAC || (GPUI_OS_LINUX && defined(GPUI_HAVE_X11_NATIVE_OVERLAY))
 // Route the next replay's deferred layers above the window's native children.
-bool MacPaintEnableNativeOverlay(PaintCtx* ctx);
+bool PaintEnableNativeOverlay(PaintCtx* ctx);
+#endif
+#if GPUI_OS_MAC
 void MacWindowPresentNativeOverlay(Window* win, void* image);
+#endif
+#if GPUI_OS_LINUX && defined(GPUI_HAVE_X11_NATIVE_OVERLAY)
+_cairo_surface* LinuxWindowNativeOverlay(Window* win);
+void LinuxWindowNativeOverlayReady(Window* win);
+bool LinuxWindowHadNativeOverlay(Window* win);
 #endif
 
 // Copy h rows of w BGRA pixels between buffers whose rows are dstStride and

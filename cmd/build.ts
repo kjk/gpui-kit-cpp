@@ -1047,6 +1047,17 @@ function linuxDeps(fail: (msg: string) => never): LinuxDeps {
   if ((webkit.exitCode ?? 1) === 0) {
     cflags.push(...pkgConfig(["webkit2gtk-4.1"], "--cflags", fail), "-DGPUI_HAVE_WEBKITGTK=1");
     libs.push(...pkgConfig(["webkit2gtk-4.1"], "--libs", fail));
+    const shape = ["xext"];
+    const haveShape = Bun.spawnSync(["pkg-config", "--exists", ...shape]).exitCode === 0;
+    if (haveShape) {
+      cflags.push(...pkgConfig(shape, "--cflags", fail), "-DGPUI_HAVE_X11_SHAPE=1");
+      libs.push(...pkgConfig(shape, "--libs", fail));
+    }
+    const overlay = ["xrender", "xfixes"];
+    if (haveShape && Bun.spawnSync(["pkg-config", "--exists", ...overlay]).exitCode === 0) {
+      cflags.push(...pkgConfig(overlay, "--cflags", fail), "-DGPUI_HAVE_X11_NATIVE_OVERLAY=1");
+      libs.push(...pkgConfig(overlay, "--libs", fail));
+    }
   } else {
     console.log(`webkit2gtk-4.1 not found: webviews will be empty. Install it with: ${installDeps}`);
   }

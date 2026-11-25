@@ -26,6 +26,9 @@ struct PaintApp {
 
 struct PaintTarget {
     cairo_t* cr = nullptr;
+#if defined(GPUI_HAVE_X11_NATIVE_OVERLAY)
+    cairo_t* overlay = nullptr;
+#endif
 };
 
 // ─── lifecycle ────────────────────────────────────────────────────────────
@@ -90,6 +93,9 @@ Str PaintSystemUIFontMappedFamily() {
 }
 
 void PaintTargetDestroy(PaintTarget* rt) {
+#if defined(GPUI_HAVE_X11_NATIVE_OVERLAY)
+    if (rt->overlay) cairo_destroy(rt->overlay);
+#endif
     if (rt->cr) {
         cairo_destroy(rt->cr);
     }
@@ -172,11 +178,46 @@ bool PaintTargetEndOffscreen(PaintCtx* ctx, uint8_t* outBgra) {
     return true;
 }
 
+#if defined(GPUI_HAVE_X11_NATIVE_OVERLAY)
+bool PaintEnableNativeOverlay(PaintCtx* ctx) {
+    if (!ctx || !ctx->rt || !scene::Recording()) return false;
+    PaintTarget* target = ctx->rt;
+    if (target->overlay) return true;
+    cairo_surface_t* surface = LinuxWindowNativeOverlay(ctx->window);
+    if (!surface) return false;
+    cairo_t* overlay = cairo_create(surface);
+    if (cairo_status(overlay) != CAIRO_STATUS_SUCCESS) {
+        cairo_destroy(overlay);
+        return false;
+    }
+    target->overlay = overlay;
+    return true;
+}
+#endif
+
 bool PaintTargetEnd(PaintCtx* ctx) {
-    PaintSceneFinish(ctx, false);
     if (!ctx || !ctx->rt || !ctx->rt->cr) {
         return false;
     }
+#if defined(GPUI_HAVE_X11_NATIVE_OVERLAY)
+    if (cairo_t* overlay = ctx->rt->overlay) {
+        scene::FrameEnd(ctx, nullptr);
+        scene::Replay(ctx, nullptr, scene::ReplayLayers::Tree);
+        cairo_set_operator(overlay, CAIRO_OPERATOR_CLEAR);
+        cairo_paint(overlay);
+        cairo_set_operator(overlay, CAIRO_OPERATOR_OVER);
+        cairo_t* tree = ctx->rt->cr;
+        ctx->rt->cr = overlay;
+        scene::Replay(ctx, nullptr, scene::ReplayLayers::Deferred);
+        ctx->rt->cr = tree;
+        cairo_surface_flush(cairo_get_target(overlay));
+        LinuxWindowNativeOverlayReady(ctx->window);
+    } else {
+        PaintSceneFinish(ctx, LinuxWindowHadNativeOverlay(ctx->window));
+    }
+#else
+    PaintSceneFinish(ctx, false);
+#endif
     cairo_surface_t* surf = cairo_get_target(ctx->rt->cr);
     if (surf) {
         cairo_surface_flush(surf);

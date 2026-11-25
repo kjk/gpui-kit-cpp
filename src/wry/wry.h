@@ -520,7 +520,8 @@ bool WebViewSetVisibleRegion(WebView* webview, const Rect* pieces, int count);
 #else
 #define GPUI_WRY_CLIPPED_CHILD 0
 #endif
-#if GPUI_OS_MAC
+#if GPUI_OS_MAC || \
+    (GPUI_WRY_CLIPPED_CHILD && defined(GPUI_HAVE_X11_NATIVE_OVERLAY))
 #define GPUI_WRY_INPUT_REGION 1
 // Restrict hits to the pieces while the native page continues to draw
 // throughout the clip rectangle.

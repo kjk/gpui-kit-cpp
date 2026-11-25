@@ -7,6 +7,7 @@
 
 #include "gpui/platform.h"
 #include "gpui/paint.h"
+#include "gpui/paint_backend.h"
 #include "gpui/accessibility_linux.h"
 #include "gpui/window_loop.h"
 #include "sys/clock.h"
@@ -35,6 +36,12 @@
 #if defined(GPUI_HAVE_XI) && GPUI_HAVE_XI
 #include <X11/extensions/XInput2.h>
 #endif
+#if defined(GPUI_HAVE_X11_NATIVE_OVERLAY)
+#include <X11/extensions/Xfixes.h>
+#include <X11/extensions/Xrender.h>
+#include <X11/extensions/shape.h>
+#include <cairo/cairo-xlib-xrender.h>
+#endif
 
 namespace gpui {
 
@@ -44,10 +51,36 @@ namespace gpui {
 using XWindow = ::Window;
 using XDisplay = ::Display;
 
+#if defined(GPUI_HAVE_X11_NATIVE_OVERLAY)
+struct LinuxNativeOverlay {
+    XWindow window = 0;
+    XWindow sibling = 0;
+    Colormap colors = 0;
+    cairo_surface_t* screen = nullptr;
+    cairo_surface_t* back = nullptr;
+    int x = 0, y = 0, w = 0, h = 0;
+    bool mapped = false;
+    bool restack = true;
+    bool ready = false;
+    bool lastFrame = false;
+};
+
+static bool gNativeOverlayProbed = false;
+static bool gNativeOverlayComposited = false;
+static bool gNativeOverlayXWayland = false;
+static Visual* gNativeOverlayVisual = nullptr;
+static XRenderPictFormat* gNativeOverlayFormat = nullptr;
+static Atom gNativeOverlaySelection = None;
+static int gNativeOverlaySelectionEvent = 0;
+#endif
+
 struct PlatWindow {
     XWindow xwin = 0;
     cairo_surface_t* surf = nullptr; // the window itself
     cairo_surface_t* back = nullptr; // what a frame is drawn into
+#if defined(GPUI_HAVE_X11_NATIVE_OVERLAY)
+    LinuxNativeOverlay nativeOverlay;
+#endif
     XIC xic = nullptr;
     // The preedit string as the input method has built it up so far. XIM
     // hands over edits to it rather than the whole thing, so the client is
@@ -151,6 +184,254 @@ static Window* FindWindow(App* app, XWindow xwin) {
 
 // ─── drawing ──────────────────────────────────────────────────────────────
 
+static void PresentX11Surface(cairo_surface_t* screen, cairo_surface_t* back) {
+    cairo_t* cr = cairo_create(screen);
+    cairo_set_source_surface(cr, back, 0, 0);
+    cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+    cairo_paint(cr);
+    cairo_destroy(cr);
+    cairo_surface_flush(screen);
+}
+
+#if defined(GPUI_HAVE_X11_NATIVE_OVERLAY)
+static void ProbeNativeOverlay() {
+    if (gNativeOverlayProbed) return;
+    gNativeOverlayProbed = true;
+    int event = 0, error = 0, major = 0, minor = 0, opcode = 0;
+    if (!XShapeQueryVersion(gDpy, &major, &minor) ||
+        (major == 1 && minor < 1) ||
+        !XRenderQueryExtension(gDpy, &event, &error) ||
+        !XFixesQueryExtension(gDpy, &event, &error) ||
+        !XFixesQueryVersion(gDpy, &major, &minor))
+        return;
+
+    XVisualInfo match = {};
+    match.screen = gScreen;
+    match.depth = 32;
+    match.c_class = TrueColor;
+    int count = 0;
+    XVisualInfo* visuals = XGetVisualInfo(
+        gDpy, VisualScreenMask | VisualDepthMask | VisualClassMask, &match,
+        &count);
+    for (int i = 0; i < count; i++) {
+        XRenderPictFormat* format =
+            XRenderFindVisualFormat(gDpy, visuals[i].visual);
+        if (format && format->type == PictTypeDirect &&
+            format->direct.alphaMask) {
+            gNativeOverlayVisual = visuals[i].visual;
+            gNativeOverlayFormat = format;
+            break;
+        }
+    }
+    if (visuals) XFree(visuals);
+    if (!gNativeOverlayFormat) return;
+
+    gNativeOverlaySelectionEvent = event + XFixesSelectionNotify;
+    gNativeOverlaySelection =
+        XInternAtom(gDpy, fmt("_NET_WM_CM_S%d", gScreen).s, False);
+    XFixesSelectSelectionInput(gDpy, gRoot, gNativeOverlaySelection,
+                               XFixesSetSelectionOwnerNotifyMask |
+                                   XFixesSelectionWindowDestroyNotifyMask |
+                                   XFixesSelectionClientCloseNotifyMask);
+    gNativeOverlayComposited =
+        XGetSelectionOwner(gDpy, gNativeOverlaySelection) != None;
+    gNativeOverlayXWayland =
+        XQueryExtension(gDpy, "XWAYLAND", &opcode, &event, &error);
+    XWindowAttributes attrs = {};
+    if (XGetWindowAttributes(gDpy, gRoot, &attrs))
+        XSelectInput(gDpy, gRoot,
+                     attrs.your_event_mask | SubstructureNotifyMask);
+}
+
+static void HideNativeOverlay(LinuxNativeOverlay& overlay) {
+    if (!overlay.mapped) return;
+    XUnmapWindow(gDpy, overlay.window);
+    overlay.mapped = false;
+}
+
+static void DestroyNativeOverlay(LinuxNativeOverlay& overlay) {
+    if (overlay.back) cairo_surface_destroy(overlay.back);
+    if (overlay.screen) cairo_surface_destroy(overlay.screen);
+    if (overlay.window) XDestroyWindow(gDpy, overlay.window);
+    if (overlay.colors) XFreeColormap(gDpy, overlay.colors);
+    overlay = {};
+}
+
+static bool CreateNativeOverlay(PlatWindow* pw) {
+    LinuxNativeOverlay& overlay = pw->nativeOverlay;
+    overlay
+        .colors = XCreateColormap(gDpy, gRoot, gNativeOverlayVisual, AllocNone);
+    XSetWindowAttributes attrs = {};
+    attrs.colormap = overlay.colors;
+    attrs.override_redirect = True;
+    attrs.event_mask = ExposureMask;
+    overlay.window =
+        XCreateWindow(gDpy, gRoot, 0, 0, (unsigned)pw->pxW, (unsigned)pw->pxH,
+                      0, 32, InputOutput, gNativeOverlayVisual,
+                      CWBackPixel | CWBorderPixel | CWColormap |
+                          CWOverrideRedirect | CWEventMask,
+                      &attrs);
+    if (overlay.window) {
+        // This window only draws. The browser's input shape gives overlay
+        // clicks back to the main GPUI window beneath it.
+        XShapeCombineRectangles(gDpy, overlay.window, ShapeInput, 0, 0, nullptr,
+                                0, ShapeSet, Unsorted);
+        XSetTransientForHint(gDpy, overlay.window, pw->xwin);
+        XWMHints hints = {};
+        hints.flags = InputHint;
+        hints.input = False;
+        XSetWMHints(gDpy, overlay.window, &hints);
+        Atom type =
+            XInternAtom(gDpy, "_NET_WM_WINDOW_TYPE_DROPDOWN_MENU", False);
+        XChangeProperty(gDpy, overlay.window,
+                        XInternAtom(gDpy, "_NET_WM_WINDOW_TYPE", False),
+                        XA_ATOM, 32, PropModeReplace, (unsigned char*)&type, 1);
+        overlay.screen = cairo_xlib_surface_create_with_xrender_format(
+            gDpy, overlay.window, ScreenOfDisplay(gDpy, gScreen),
+            gNativeOverlayFormat, pw->pxW, pw->pxH);
+        if (cairo_surface_status(overlay.screen) == CAIRO_STATUS_SUCCESS)
+            return true;
+    }
+    DestroyNativeOverlay(overlay);
+    return false;
+}
+
+static XWindow RootSibling(XWindow window) {
+    while (window && window != gRoot) {
+        XWindow root = 0, parent = 0;
+        XWindow* children = nullptr;
+        unsigned count = 0;
+        bool ok = XQueryTree(gDpy, window, &root, &parent, &children, &count);
+        if (children) XFree(children);
+        if (!ok || root != gRoot) break;
+        if (parent == gRoot) return window;
+        window = parent;
+    }
+    return 0;
+}
+
+cairo_surface_t* LinuxWindowNativeOverlay(Window* win) {
+    if (!win || !win->plat) return nullptr;
+    PlatWindow* pw = win->plat;
+    ProbeNativeOverlay();
+    if (!gNativeOverlayFormat ||
+        (!gNativeOverlayComposited && !gNativeOverlayXWayland) ||
+        pw->pxW <= 0 || pw->pxH <= 0)
+        return nullptr;
+    LinuxNativeOverlay& overlay = pw->nativeOverlay;
+    if (!overlay.sibling) overlay.sibling = RootSibling(pw->xwin);
+    if (!overlay.sibling || (!overlay.window && !CreateNativeOverlay(pw)))
+        return nullptr;
+    if (overlay.back &&
+        (cairo_image_surface_get_width(overlay.back) != pw->pxW ||
+         cairo_image_surface_get_height(overlay.back) != pw->pxH)) {
+        cairo_surface_destroy(overlay.back);
+        overlay.back = nullptr;
+    }
+    if (!overlay.back) {
+        cairo_surface_t* back =
+            cairo_image_surface_create(CAIRO_FORMAT_ARGB32, pw->pxW, pw->pxH);
+        if (cairo_surface_status(back) != CAIRO_STATUS_SUCCESS) {
+            cairo_surface_destroy(back);
+            return nullptr;
+        }
+        overlay.back = back;
+    }
+    return overlay.back;
+}
+
+void LinuxWindowNativeOverlayReady(Window* win) {
+    win->plat->nativeOverlay.ready = true;
+}
+
+bool LinuxWindowHadNativeOverlay(Window* win) {
+    return win && win->plat && win->plat->nativeOverlay.lastFrame;
+}
+
+static void PresentNativeOverlay(PlatWindow* pw) {
+    LinuxNativeOverlay& overlay = pw->nativeOverlay;
+    overlay.lastFrame = overlay.ready;
+    if (!overlay.ready) {
+        HideNativeOverlay(overlay);
+        return;
+    }
+    XWindow child = 0;
+    int x = 0, y = 0;
+    if (!XTranslateCoordinates(gDpy, pw->xwin, gRoot, 0, 0, &x, &y, &child))
+        return;
+    if (!overlay.mapped) {
+        XWindowAttributes host = {};
+        if (!XGetWindowAttributes(gDpy, pw->xwin, &host) ||
+            host.map_state != IsViewable)
+            return;
+    }
+    if (!overlay.mapped || overlay.restack || x != overlay.x ||
+        y != overlay.y || pw->pxW != overlay.w || pw->pxH != overlay.h) {
+        XWindowChanges change = {};
+        change.x = x;
+        change.y = y;
+        change.width = pw->pxW;
+        change.height = pw->pxH;
+        change.sibling = overlay.sibling;
+        change.stack_mode = Above;
+        XConfigureWindow(
+            gDpy, overlay.window,
+            CWX | CWY | CWWidth | CWHeight | CWSibling | CWStackMode, &change);
+        cairo_xlib_surface_set_size(overlay.screen, pw->pxW, pw->pxH);
+        overlay.x = x;
+        overlay.y = y;
+        overlay.w = pw->pxW;
+        overlay.h = pw->pxH;
+        overlay.restack = false;
+    }
+    if (!overlay.mapped) {
+        XMapWindow(gDpy, overlay.window);
+        overlay.mapped = true;
+    }
+    PresentX11Surface(overlay.screen, overlay.back);
+}
+
+static bool HandleNativeOverlayEvent(App* app, XEvent* ev) {
+    if (!gNativeOverlayFormat) return false;
+    if (ev->type == gNativeOverlaySelectionEvent) {
+        auto* selection = reinterpret_cast<XFixesSelectionNotifyEvent*>(ev);
+        if (selection->selection != gNativeOverlaySelection) return false;
+        gNativeOverlayComposited = selection->owner != None;
+        for (Window* win : app->windows) {
+            if (win->plat) win->dirty = true;
+        }
+        return true;
+    }
+    if (ev->type != Expose && ev->type != ConfigureNotify &&
+        ev->type != ReparentNotify && ev->type != UnmapNotify &&
+        ev->type != MapNotify && ev->type != FocusIn)
+        return false;
+    for (Window* win : app->windows) {
+        if (!win->plat) continue;
+        PlatWindow* pw = win->plat;
+        LinuxNativeOverlay& overlay = pw->nativeOverlay;
+        if (!overlay.window) continue;
+        if (ev->type == Expose && ev->xexpose.window == overlay.window) {
+            if (!ev->xexpose.count) win->dirty = true;
+            return true;
+        }
+        XWindow changed = ev->xany.window;
+        if (ev->type == ConfigureNotify) changed = ev->xconfigure.window;
+        if (ev->type == UnmapNotify) changed = ev->xunmap.window;
+        if (ev->type == MapNotify) changed = ev->xmap.window;
+        if (ev->type == ReparentNotify) changed = ev->xreparent.window;
+        if (changed != pw->xwin && changed != overlay.sibling) continue;
+        if (ev->type == ReparentNotify) overlay.sibling = 0;
+        if (ev->type == UnmapNotify) HideNativeOverlay(overlay);
+        if (ev->type != Expose) {
+            overlay.restack = true;
+            win->dirty = true;
+        }
+    }
+    return false;
+}
+#endif
+
 static void EnsureSurfaces(Window* win) {
     PlatWindow* pw = win->plat;
     if (!pw || pw->pxW <= 0 || pw->pxH <= 0) {
@@ -186,16 +467,17 @@ static void Redraw(Window* win) {
         return;
     }
     win->paint.dpi = 96;
+#if defined(GPUI_HAVE_X11_NATIVE_OVERLAY)
+    pw->nativeOverlay.ready = false;
+#endif
     WindowDrawFrame(win, pw->back, pw->pxW, pw->pxH, (float)pw->pxW,
                     (float)pw->pxH);
     // Blit the finished frame in one operation, so a slow frame never shows
     // half-drawn.
-    cairo_t* cr = cairo_create(pw->surf);
-    cairo_set_source_surface(cr, pw->back, 0, 0);
-    cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
-    cairo_paint(cr);
-    cairo_destroy(cr);
-    cairo_surface_flush(pw->surf);
+    PresentX11Surface(pw->surf, pw->back);
+#if defined(GPUI_HAVE_X11_NATIVE_OVERLAY)
+    PresentNativeOverlay(pw);
+#endif
     XFlush(gDpy);
 }
 
@@ -1865,6 +2147,9 @@ static void DestroyPlatWindow(Window* win) {
     }
     // While the PlatWindow is still there to give the grab back.
     WindowModalRelease(win);
+#if defined(GPUI_HAVE_X11_NATIVE_OVERLAY)
+    DestroyNativeOverlay(pw->nativeOverlay);
+#endif
     if (pw->back) {
         cairo_surface_destroy(pw->back);
         pw->back = nullptr;
@@ -2520,6 +2805,9 @@ static void HandleXi(App*, XEvent*) {}
 #endif
 
 static void HandleEvent(App* app, XEvent* ev) {
+#if defined(GPUI_HAVE_X11_NATIVE_OVERLAY)
+    if (HandleNativeOverlayEvent(app, ev)) return;
+#endif
     if (ev->type == GenericEvent) {
         HandleXi(app, ev);
         return;
@@ -2853,9 +3141,17 @@ TempStr WindowCapturePngTemp(Window* win, Str path, bool allWindows) {
     cairo_surface_t* out = cairo_image_surface_create(CAIRO_FORMAT_RGB24, w, h);
     cairo_t* cr = cairo_create(out);
     for (int i = 0; i < len(shots); i++) {
-        cairo_set_source_surface(cr, shots[i]->plat->back, origins[i].x - x0,
+        PlatWindow* pw = shots[i]->plat;
+        cairo_set_source_surface(cr, pw->back, origins[i].x - x0,
                                  origins[i].y - y0);
         cairo_paint(cr);
+#if defined(GPUI_HAVE_X11_NATIVE_OVERLAY)
+        if (pw->nativeOverlay.lastFrame && pw->nativeOverlay.back) {
+            cairo_set_source_surface(cr, pw->nativeOverlay.back,
+                                     origins[i].x - x0, origins[i].y - y0);
+            cairo_paint(cr);
+        }
+#endif
     }
     cairo_destroy(cr);
     cairo_surface_flush(out);
@@ -3025,6 +3321,9 @@ void PlatWindowShow(Window* win, bool visible, bool activate) {
         return;
     }
     if (!visible) {
+#if defined(GPUI_HAVE_X11_NATIVE_OVERLAY)
+        HideNativeOverlay(win->plat->nativeOverlay);
+#endif
         XUnmapWindow(gDpy, xwin);
         XFlush(gDpy);
         return;

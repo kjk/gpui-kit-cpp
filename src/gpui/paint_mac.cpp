@@ -180,7 +180,7 @@ bool PaintTargetEndOffscreen(PaintCtx* ctx, uint8_t* outBgra) {
     return true;
 }
 
-bool MacPaintEnableNativeOverlay(PaintCtx* ctx) {
+bool PaintEnableNativeOverlay(PaintCtx* ctx) {
     if (!ctx || !ctx->window || !ctx->rt || !scene::Recording() ||
         ctx->viewW <= 0.f || ctx->viewH <= 0.f)
         return false;

@@ -533,8 +533,8 @@ static void FinishNativeWebView(void* user, const Bounds* overlays, int count) {
 #if GPUI_WRY_INPUT_REGION
     PaintCtx* paint = self->window ? &self->window->paint : nullptr;
     // Shadows and borders can reach the page without an input cutout.
-    bool liveOverlay = paint && len(paint->deferredPaint) &&
-                       MacPaintEnableNativeOverlay(paint);
+    bool liveOverlay =
+        paint && len(paint->deferredPaint) && PaintEnableNativeOverlay(paint);
     changed = changed || self->liveOverlay != liveOverlay;
 #endif
     for (int i = 0; shaped && !changed && i < len(region); i++) {
