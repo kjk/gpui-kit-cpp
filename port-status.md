@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `62c53b987da6be765013ce39524ac460d35769c7` (2026-11-24,
-editor: Keep fold candidates when typing beside a foldable node (#4103)).
-The scanner recomputes fold candidates from the complete buffer. The editor tests compare that result after typing, insertions and deletion against a fresh load.
+Processed through `03bcbf050db63e89ac2319ef6b2b8db77b2bfea9` (2026-11-24,
+sidebar: Expose `SidebarMenu` and its submenus as an accessibility tree (#4101)).
+Sidebar menus expose tree and group roles. An expandable item and its caret report the open state.
 The current update target is
 `832cfdc0baef92855191dfdbbbcacd75f59d3df0`.
 

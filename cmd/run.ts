@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "62c53b987da6be765013ce39524ac460d35769c7",
+  sha: "03bcbf050db63e89ac2319ef6b2b8db77b2bfea9",
   date: "2026-11-24",
-  subject: "editor: Keep fold candidates when typing beside a foldable node (#4103)",
+  subject: "sidebar: Expose `SidebarMenu` and its submenus as an accessibility tree (#4101)",
   crates: {
     "gpui-kit": "0.11.0",
     "gpui-base": "0.11.0",

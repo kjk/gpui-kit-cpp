@@ -384,6 +384,70 @@ static void SubmenuCaretIsNamedAfterTheItem() {
     ArenaDelete(a);
 }
 
+// sidebar/menu.rs menu_has_tree_role and
+// open_submenu_is_a_group_and_its_item_is_expanded.
+static void MenuExposesTheOpenSubmenuToAccessibility() {
+    App app = {};
+    component::Init(&app);
+    Arena* a = ArenaNew();
+    Window win;
+    win.app = &app;
+    Ctx cx = {&app, &win, a, {}};
+    for (bool collapsed : {false, true}) {
+        auto* menu = SidebarMenu::New(&cx);
+        menu->collapsed = collapsed;
+        menu->Child(SidebarMenuItem::New(&cx, StrL("Projects"))
+                        ->DefaultOpen(true)
+                        ->Child(SidebarMenuItem::New(&cx, StrL("Overview"))));
+        menu->Child(SidebarMenuItem::New(&cx, StrL("Archive"))
+                        ->Child(SidebarMenuItem::New(&cx, StrL("2025"))));
+        menu->Child(SidebarMenuItem::New(&cx, StrL("Inbox")));
+        AccessibilityCollect(menu->IntoEl(StrL("menu")), &win.accessibility);
+        int trees = 0;
+        int groups = 0;
+        int items = 0;
+        int carets = 0;
+        for (const auto& node : win.accessibility) {
+            switch (node.info.role) {
+                case AccessibilityRole::Tree:
+                    trees++;
+                    break;
+                case AccessibilityRole::Group:
+                    groups++;
+                    break;
+                case AccessibilityRole::TreeItem: {
+                    items++;
+                    bool projects = StrEq(node.info.label, StrL("Projects"));
+                    bool archive = StrEq(node.info.label, StrL("Archive"));
+                    utassert(bool(node.info.hasExpanded) ==
+                             (!collapsed && (projects || archive)));
+                    if (node.info.hasExpanded)
+                        utassert(bool(node.info.expanded) == projects);
+                    break;
+                }
+                case AccessibilityRole::Button:
+                    if (StrStartsWith(node.info.label, StrL("Toggle "))) {
+                        carets++;
+                        utassert(node.info.hasExpanded &&
+                                 bool(node.info.expanded) ==
+                                     StrEq(node.info.label,
+                                           StrL("Toggle Projects submenu")));
+                    }
+                    break;
+                default:
+                    break;
+            }
+        }
+        utassert(trees == 1 && groups == (collapsed ? 0 : 1));
+        utassert(items == (collapsed ? 3 : 4) && carets == (collapsed ? 0 : 2));
+    }
+    VecReset(win.accessibility);
+    WindowKeyedFree(&win);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    ArenaDelete(a);
+}
+
 void TestSidebar() {
     TestSuite("sidebar");
     BoolCollapsibleRemainsBackwardCompatible();
@@ -398,4 +462,5 @@ void TestSidebar() {
     CollapsedTooltipRequiresAnIconAndContentScrolls();
     ItemsCarryTheirAccessibleNames();
     SubmenuCaretIsNamedAfterTheItem();
+    MenuExposesTheOpenSubmenuToAccessibility();
 }

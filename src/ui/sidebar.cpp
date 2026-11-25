@@ -194,8 +194,12 @@ El* SidebarMenuItem::IntoEl(Str id) {
                   ->Font(14)
                   ->PathId(StrL("item"))
                   ->Role(AccessibilityRole::TreeItem)
+                  ->AccessibilityId(StrL("sidebar-item"))
                   ->AriaLabel(accessibilityLabel.s ? accessibilityLabel : label)
                   ->AriaSelected(active);
+    if (isSubmenu && !collapsed) {
+        row->AriaExpanded(isOpen);
+    }
     // refine_style(&self.style): after the row's own styling, before its
     // hover and active states, which is where Rust applies it.
     StyleApplyFields(&row->style, style, styleSet);
@@ -252,6 +256,7 @@ El* SidebarMenuItem::IntoEl(Str id) {
                     // The caret is icon-only, so assistive tech needs the
                     // item it toggles: "Toggle {label} submenu".
                     ->AccessibilityLabel(fmt("Toggle %s submenu", label))
+                    ->AriaExpanded(isOpen)
                     ->OnClick(ListenTo(st, &SidebarMenuState::OnCaretClick))
                     ->IntoEl()
                     // "without being a click on the item" is what
@@ -279,6 +284,8 @@ El* SidebarMenuItem::IntoEl(Str id) {
     if (isOpen) {
         // gap_1 / py_0p5 / pl_2p5
         El* sub = Div(a)
+                      ->Id(StrL("sidebar-submenu"))
+                      ->Role(AccessibilityRole::Group)
                       ->FlexCol()
                       ->Gap(Rems(cx, 0.25f))
                       ->PadY(Rems(cx, 0.125f))
@@ -309,7 +316,12 @@ SidebarMenu* SidebarMenu::Child(SidebarMenuItem* item) {
 }
 El* SidebarMenu::IntoEl(Str id) {
     IdScope scope(cx, id);
-    El* col = Div(a)->FlexCol()->W(kFill)->Gap(Rems(cx, 0.5f)); // gap_2
+    El* col = Div(a)
+                  ->Id(id)
+                  ->Role(AccessibilityRole::Tree)
+                  ->FlexCol()
+                  ->W(kFill)
+                  ->Gap(Rems(cx, 0.5f)); // gap_2
     StyleApplyFields(&col->style, style, styleSet);
     refiner.Apply(col);
     for (int i = 0; i < len(items); i++) {
