@@ -39,6 +39,8 @@ uint32_t OutdentInline();
 uint32_t Paste();
 uint32_t Redo();
 uint32_t Replace();
+uint32_t ReplaceAll();
+uint32_t ReplaceNext();
 uint32_t Search();
 uint32_t SelectAll();
 uint32_t SelectDown();

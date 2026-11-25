@@ -296,7 +296,7 @@ struct SearchPanel {
     InputState* target = nullptr;
 
     static SearchPanel* New(Ctx* cx, Str id, InputState* target);
-    El* IntoEl();
+    El* IntoEl(El* actionRoot = nullptr);
 };
 
 // editor.rs Editor. Highlighter remains the compatibility spelling for the

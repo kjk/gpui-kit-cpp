@@ -6213,6 +6213,63 @@ static void SearchShortcutOpensThePanelWhenSearchable() {
     });
 }
 
+struct ReplaceActionsHost {
+    InputState editor;
+    int propagated = 0;
+    El* root = nullptr;
+
+    static void OnReplace(ReplaceActionsHost* self, Ctx*, const ActionEvent*) {
+        self->propagated++;
+    }
+
+    static El* Render(ReplaceActionsHost* self, Ctx* cx) {
+        self->root =
+            Div(cx->a)
+                ->SizeFull()
+                ->OnAction(input::ReplaceNext(), Listen(cx, &OnReplace))
+                ->Child(
+                    component::Editor::New(cx, StrL("editor"), &self->editor)
+                        ->Searchable(true)
+                        ->IntoEl());
+        return self->root;
+    }
+};
+
+// overlay.rs replace_actions_use_the_replace_field.
+static void ReplaceActionsUseTheReplaceField() {
+    App* app = TestAppNew();
+    auto host = EntityNew<ReplaceActionsHost>(app);
+    auto* view = host.Get(app);
+    InputState* editor = &view->editor;
+    MakeCodeEditor(editor);
+    editor->searchable = true;
+    Window* win = TestWindowOpen(app, host);
+    auto run = [&](int mode, uint32_t action, Str expected) {
+        InputCloseSearch(editor, app, win);
+        InputSetValue(editor, StrL("foo bar foo"));
+        InputSetSelectedRange(editor, app, win, 0, 3);
+        InputFocus(editor, app, win);
+        if (mode >= 0) InputOpenSearch(editor, app, win, mode == 1);
+        TestDraw(win);
+        if (mode == 1) {
+            El* field = FindNamedEl(view->root, "r");
+            utassert(field && field->input);
+            if (field && field->input) InputSetValue(field->input, StrL("baz"));
+            SearchMatcherSetIndex(&editor->search.matcher, 0);
+        }
+        InputFocus(editor, app, win);
+        TestDraw(win);
+        TestDispatchAction(win, action);
+        utassert(StrEq(InputValue(editor), expected));
+    };
+    run(0, input::ReplaceNext(), StrL("foo bar foo"));
+    run(-1, input::ReplaceNext(), StrL("foo bar foo"));
+    run(1, input::ReplaceNext(), StrL("baz bar foo"));
+    run(1, input::ReplaceAll(), StrL("baz bar baz"));
+    utassert(view->propagated == 2);
+    TestAppFree(app);
+}
+
 // ─── state.rs window tests, part A ──────────────────────────────────────
 //
 // From test_inline_token_wrap_and_size_refresh
@@ -11790,6 +11847,7 @@ static void RunWindowTests() {
     ReadonlyRejectsUserEditsOnlyInAWindow();
     SearchShortcutReachesTheHostWhenNotSearchable();
     SearchShortcutOpensThePanelWhenSearchable();
+    ReplaceActionsUseTheReplaceField();
     RunWindowTestsA();
     RunWindowTestsB();
     RunWindowTestsC();

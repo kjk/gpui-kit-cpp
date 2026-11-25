@@ -9,6 +9,7 @@
 #include "ui/native_menu.h"
 #include "ui/touch_selection.h"
 #include "base/input.h"
+#include "base/input_keys.h"
 #include "base/motion.h"
 
 namespace gpui {
@@ -2068,6 +2069,8 @@ struct SearchPanelState {
                              const ClickEvent*);
     static void OnReplaceAll(SearchPanelState* self, Ctx* cx,
                              const ClickEvent*);
+    static void OnReplaceAction(SearchPanelState* self, Ctx* cx,
+                                const ActionEvent* ev);
     static void OnKey(SearchPanelState* self, Ctx* cx, const KeyEvent* ev);
 };
 
@@ -2172,6 +2175,19 @@ void SearchPanelState::OnReplaceAll(SearchPanelState* self, Ctx* cx,
     }
 }
 
+void SearchPanelState::OnReplaceAction(SearchPanelState* self, Ctx* cx,
+                                       const ActionEvent* ev) {
+    if (!self->target || !self->target->search.open ||
+        !self->target->search.replaceMode) {
+        const_cast<ActionEvent*>(ev)->propagate = true;
+        return;
+    }
+    if (ev->action == input::ReplaceNext())
+        OnReplaceOne(self, cx, nullptr);
+    else
+        OnReplaceAll(self, cx, nullptr);
+}
+
 void SearchPanelState::OnKey(SearchPanelState* self, Ctx* cx,
                              const KeyEvent* ev) {
     if (!ev->down || !self->target) {
@@ -2204,7 +2220,7 @@ SearchPanel* SearchPanel::New(Ctx* cx, Str id, InputState* target) {
     return p;
 }
 
-El* SearchPanel::IntoEl() {
+El* SearchPanel::IntoEl(El* actionRoot) {
     const Theme& th = ThemeNow(cx->app);
     // The state is the window's, keyed by the bar's id, so two editors on one
     // page each get their own.
@@ -2351,6 +2367,11 @@ El* SearchPanel::IntoEl() {
                 ->IntoEl());
         panel->Child(row2);
     }
+    (actionRoot ? actionRoot : panel)
+        ->OnAction(input::ReplaceNext(),
+                   ListenTo(ent, &SearchPanelState::OnReplaceAction))
+        ->OnAction(input::ReplaceAll(),
+                   ListenTo(ent, &SearchPanelState::OnReplaceAction));
     return panel;
 }
 

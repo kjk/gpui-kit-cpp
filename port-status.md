@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `5573590624ba9d63e061c9e1a6d30235c10f4f43` (2026-11-25,
-diff: Expose a source line's text as its accessibility value (#4121)).
-The diff viewer exposes each source line as a label with the original text as its accessibility value.
+Processed through `2fa019b5d42f7a554fccc729ea642478e5b93889` (2026-11-25,
+input: Add ReplaceNext and ReplaceAll actions to the search panel (#4122)).
+Replace actions use the search panel replacement field from the editor and panel.
 The current update target is
-`5573590624ba9d63e061c9e1a6d30235c10f4f43`.
+`9d70dc57d7152442855e0d4064e518d9dc238554`.
 
 ## Known gaps vs Rust
 

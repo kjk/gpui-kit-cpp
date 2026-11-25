@@ -1684,11 +1684,10 @@ El* Highlighter::IntoEl() {
         // panel is a view of its own and rendering an entity pushes its
         // identity on the stack. The port has no entity to push, so the
         // editor's name is what stands in for it.
-        return Div(a)
-            ->FlexCol()
-            ->W(kFill)
+        El* frame = Div(a)->FlexCol()->W(kFill);
+        return frame
             ->Child(SearchPanel::New(cx, StrDup(a, fmt("%s-search", id)), state)
-                        ->IntoEl())
+                        ->IntoEl(frame))
             ->Child(box);
     }
     if (!searchable) {
@@ -1700,13 +1699,10 @@ El* Highlighter::IntoEl() {
     }
     // The bar sits over the rows and takes its height off them, the way
     // Rust's overlay docks it at the top of the input.
-    El* box =
-        Div(a)
-            ->FlexCol()
-            ->W(kFill)
-            ->Child(SearchPanel::New(cx, StrDup(a, fmt("%s-search", id)), state)
-                        ->IntoEl())
-            ->Child(scroller);
+    El* box = Div(a)->FlexCol()->W(kFill);
+    box->Child(SearchPanel::New(cx, StrDup(a, fmt("%s-search", id)), state)
+                   ->IntoEl(box))
+        ->Child(scroller);
     if (diagPopover) {
         box->Child(diagPopover);
     }

@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "5573590624ba9d63e061c9e1a6d30235c10f4f43",
+  sha: "2fa019b5d42f7a554fccc729ea642478e5b93889",
   date: "2026-11-25",
-  subject: "diff: Expose a source line's text as its accessibility value (#4121)",
+  subject: "input: Add ReplaceNext and ReplaceAll actions to the search panel (#4122)",
   crates: {
     "gpui-kit": "0.11.0",
     "gpui-base": "0.11.0",
