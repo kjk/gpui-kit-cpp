@@ -11711,6 +11711,31 @@ static Str RepeatedText(Arena* a, const char* unit, int times) {
     return sb.TakeStr();
 }
 
+// element.rs the_text_is_clipped_to_its_side_of_the_gutter.
+static void EditorTextIsClippedToItsSideOfTheGutter() {
+    Arena* a = ArenaNew();
+    Str line = RepeatedText(a, "word ", 40);
+    TempStr text = fmt("%s\n%s\n%s\n", line, line, line);
+    DecorationEditor d = DecorationEditorOpen(text.s, false);
+    ArenaDelete(a);
+    d.editor->mode.folding = false;
+    for (bool numbers : {true, false}) {
+        InputSetLineNumber(d.editor, numbers, d.app, d.win);
+        d.editor->scrollX = 100;
+        TestDraw(d.win);
+        TestDraw(d.win);
+        Bounds textMask = {};
+        Bounds firstWord = {};
+        utassert(InputLastTextMask(d.editor, d.win, &textMask));
+        utassert(InputRangeToBounds(d.editor, d.win, {0, 4}, &firstWord));
+        utassert(firstWord.x < textMask.x);
+        utassertnear(textMask.x, d.editor->contentBox.x + d.editor->scrollX +
+                                     d.editor->gutterLaneW);
+        utassert(textMask.w > 0);
+    }
+    TestAppFree(d.app);
+}
+
 // element.rs text_origin_offset_tracks_rendered_gutter_and_scrolling.
 static void EditorTextOriginOffsetFollowsTheLaidOutGutter() {
     struct Host {
@@ -12670,6 +12695,7 @@ static void RunElementWindowTests() {
     DefaultDecorationCollectionsAddressNoEditor();
     GutterDecorationsReserveAStripAndMarkLinesAndBoundaries();
     EditorTextOriginOffsetFollowsTheLaidOutGutter();
+    EditorTextIsClippedToItsSideOfTheGutter();
     GutterDecorationsStartingInAFoldMarkItsRowAndTheRest();
     GutterDecorationsOnlyLayOutTheVisibleRows();
     OverviewRulerMarksFollowTheContentHeightAndMerge();

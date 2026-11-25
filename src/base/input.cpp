@@ -2852,6 +2852,7 @@ struct EditorUnderlay {
     InputEditorStyle projected = {};
     bool lineNumbers = false;
     float textOriginOffset = 0;
+    Bounds textMask = {};
     // layout_folded_lines: one quad per folded line, painted under the text
     // and under the active-line wash. The bands are the lines themselves.
     El* foldBands[64] = {};
@@ -2895,17 +2896,20 @@ static void RewrapEditorColumn(PaintCtx* ctx, El* e, void* user) {
 
 static void PaintEditorUnderlay(PaintCtx* ctx, El* e, void* user) {
     EditorUnderlay* u = (EditorUnderlay*)user;
-    if (!u) {
+    if (!u || !u->state) {
         return;
     }
     // RewrapEditorColumn has wrapped the rows to this column already, unless
     // the column was laid out inside a measure, which it leaves alone; the
     // frame after wraps to it then.
     InputState* s = u->state;
-    if (s) {
-        s->textOriginOffset = u->textOriginOffset;
-    }
-    if (s && s->softWrap && e->w > 0 && e->w != s->wrap.measuredWidth &&
+    s->textOriginOffset = u->textOriginOffset;
+    Bounds viewport = ctx->hasHitMask ? ctx->hitMask : e->Bounds();
+    float left = e->x + s->scrollX + s->gutterLaneW;
+    left = ClampF(left, viewport.x, viewport.x + viewport.w);
+    u->textMask = {left, viewport.y, viewport.x + viewport.w - left,
+                   viewport.h};
+    if (s->softWrap && e->w > 0 && e->w != s->wrap.measuredWidth &&
         ctx->window) {
         AppInvalidate(ctx->window);
     }
@@ -2934,8 +2938,7 @@ static void PaintEditorUnderlay(PaintCtx* ctx, El* e, void* user) {
         return;
     }
     if (!p->built) {
-        Bounds mask = ctx->hasHitMask ? ctx->hitMask : e->Bounds();
-        BuildRangeDecorationPaths(ctx, p, mask);
+        BuildRangeDecorationPaths(ctx, p, u->textMask);
     }
     for (int i = 0; i < p->nPaths; i++) {
         const RangeDecorationPath& path = p->paths[i];
@@ -2956,6 +2959,28 @@ static void PaintEditorUnderlay(PaintCtx* ctx, El* e, void* user) {
         }
         PathFree(shape);
     }
+}
+
+static void MaskEditorText(El* el, const EditorUnderlay* underlay) {
+    if (underlay) {
+        if (!el->lifecycle) {
+            el->lifecycle = ArenaNew<ElLifecycle>(el->arena);
+        }
+        if (el->lifecycle) {
+            el->lifecycle->paintMask = &underlay->textMask;
+        }
+    }
+}
+
+bool InputLastTextMask(const InputState* s, const Window* win, Bounds* out) {
+    const InputPaintedRows* rows = LastPaintedRows(s, win);
+    if (!rows || !rows->underlay) {
+        return false;
+    }
+    if (out) {
+        *out = rows->underlay->textMask;
+    }
+    return true;
 }
 
 bool InputLastActiveLine(const InputState* s, const Window* win, Bounds* out) {
@@ -4111,6 +4136,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                 }
             }
         }
+        MaskEditorText(el, underlay);
         if (!lineNumbers && !folding) {
             if (textOriginOffset > 0) {
                 // Offset the run itself so range geometry and hit testing
@@ -4257,6 +4283,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                 El* run = TextEl(a, one)->Font(font)->LineHeight(lineMult)->Fg(
                     ghostFg);
                 InputFace(run, style);
+                MaskEditorText(ghost, underlay);
                 col->Child(ghost->Child(run));
             }
             if (nl < 0) {

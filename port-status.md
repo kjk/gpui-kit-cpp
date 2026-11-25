@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `bfe76d5a1b59f1f4a146e6fd81049e368c44dc30` (2026-11-23,
-highlighter: Let injection layers follow the caller's parse timeout (#4074)).
-Reviewed the injection-layer timeout and its regression test. Both apply to the Rust tree-sitter parser.
+Processed through `be360b64281328e041bf64c3347082b701f52841` (2026-11-23,
+editor: Clip the text to its own side of the gutter (#4077)).
+Text rows, range decorations and inline completions paint within the editor text viewport.
 The current update target is
 `832cfdc0baef92855191dfdbbbcacd75f59d3df0`.
 

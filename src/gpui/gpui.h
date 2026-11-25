@@ -2835,6 +2835,7 @@ struct ElLifecycle {
     AccessibilityDocumentText (*accessibilityDocument)(void*) = nullptr;
     void* accessibilityDocumentData = nullptr;
     const AccessibilityDocumentSource* documentSource = nullptr;
+    const Bounds* paintMask = nullptr;
     bool auxiliaryClick = false;
     bool auxiliaryRightClick = false;
 };

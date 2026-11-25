@@ -265,6 +265,7 @@ int InputLastVisualRows(const InputState* s, Window* win,
 // The active-line quad the last frame painted under the caret's line, gutter
 // and the editor's left padding included. False when it painted none.
 bool InputLastActiveLine(const InputState* s, const Window* win, Bounds* out);
+bool InputLastTextMask(const InputState* s, const Window* win, Bounds* out);
 
 // ─── soft wrap (display_map/text_wrapper.rs) ─────────────────────────────
 

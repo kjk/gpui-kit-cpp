@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "bfe76d5a1b59f1f4a146e6fd81049e368c44dc30",
+  sha: "be360b64281328e041bf64c3347082b701f52841",
   date: "2026-11-23",
-  subject: "highlighter: Let injection layers follow the caller's parse timeout (#4074)",
+  subject: "editor: Clip the text to its own side of the gutter (#4077)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",

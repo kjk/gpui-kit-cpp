@@ -8503,6 +8503,15 @@ static void PaintElNode(PaintCtx* ctx, El* e, bool skipOverlay) {
         ctx->idChain = &idLink;
     }
 #endif
+    const Bounds* paintMask = e->lifecycle ? e->lifecycle->paintMask : nullptr;
+    Bounds previousMask = ctx->hitMask;
+    bool hadMask = ctx->hasHitMask;
+    if (paintMask) {
+        ctx->hitMask = HitMaskedBounds(ctx, *paintMask);
+        ctx->hasHitMask = true;
+        CanvasPushClip(ctx, paintMask->x, paintMask->y, paintMask->w,
+                       paintMask->h);
+    }
     if (e->style.opacity >= 1.f) {
         PaintElNodeInner(ctx, e, skipOverlay);
     } else {
@@ -8510,6 +8519,11 @@ static void PaintElNode(PaintCtx* ctx, El* e, bool skipOverlay) {
         ctx->opacity = prev * e->style.opacity;
         PaintElNodeInner(ctx, e, skipOverlay);
         ctx->opacity = prev;
+    }
+    if (paintMask) {
+        CanvasPopClip(ctx);
+        ctx->hitMask = previousMask;
+        ctx->hasHitMask = hadMask;
     }
 #ifndef NDEBUG
     if (e->debugBelow) {
