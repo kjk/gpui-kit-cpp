@@ -36,7 +36,7 @@ The current update target is
   of each run share their paint and editor hit geometry, including range
   decorations and streaming fades. Bidi runs shape in visual order after
   wrapping with isolated word widths. Style boundaries are still shaped
-  separately, and active reveals use fragment boxes (`src/base/text.cpp`).
+  separately (`src/base/text.cpp`).
 
 - **Windows additionally handles touch-screen pinch.** DirectManipulation
   supplies precision-touchpad pinch and two-finger scroll with inertia as in

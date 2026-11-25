@@ -6841,6 +6841,30 @@ static void InlineObjectsKeepBidiRunsTogether() {
     TswClose(&v);
 }
 
+static void RevealingProseBesideAnInlineObjectKeepsTheShapedRun() {
+    const char* markdown =
+        "**Several words before** ![icon](assets/icons/heart.svg) after";
+    TswView v = TswOpen(markdown, TswContainer::Window);
+    const TextHit* baseline = HitContaining(v.win, "Several words before");
+    utassert(baseline);
+    Bounds before = baseline ? baseline->bounds : Bounds{};
+    int start = StrFind(Str(markdown), StrL("words"));
+    utassert(v.State()->RevealRange({start, start + 5}, v.app, v.win).IsOk());
+    utassert(v.State()->reveal.pending);
+    TestDraw(v.win);
+    const TextHit* hit = HitContaining(v.win, "Several words before");
+    utassert(hit);
+    if (hit) {
+        utassertnear(hit->bounds.w, before.w);
+        utassertnear(hit->bounds.y, before.y);
+        const Bounds line = v.State()->reveal.line;
+        utassert(line.w > 0 && line.x > hit->bounds.x &&
+                 line.Right() <= hit->bounds.Right());
+    }
+    utassert(!v.State()->reveal.pending);
+    TswClose(&v);
+}
+
 struct TswMention {
     const char* label = nullptr;
 };
@@ -8924,6 +8948,7 @@ static void TestTextStateWindow() {
     WrappedLinksUseSharedTextGeometry();
     InlineObjectsShareRowsWithShapedProse();
     InlineObjectsKeepBidiRunsTogether();
+    RevealingProseBesideAnInlineObjectKeepsTheShapedRun();
     ParserPluginsKeepTheirConfigurationAcrossAsyncUpdates();
     SelectAllFollowsAnAppendedParse();
     ParserRevisionReparsesSameNameInlineConfiguration();

@@ -4791,6 +4791,12 @@ static void ShapeInlineObjectRows(PaintCtx*, El* row, void*) {
             int fadeCount = 0;
             const TextFade* partFades = part->FadesGet(&fadeCount);
             append(fades, partFades, fadeCount);
+            if (part != first && part->rangeOut) {
+                first->RangeOut(part->rangeOutLo + offset,
+                                part->rangeOutHi + offset, part->rangeOut);
+                first->lifecycle->afterPaint = part->lifecycle->afterPaint;
+                first->lifecycle->user = part->lifecycle->user;
+            }
             // The editor may have retained the original fragment pointer.
             if (part != first) part->text = {};
             if (part == last) break;
@@ -5007,7 +5013,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
     int nextRunOffset = 0;
     int revealOffset = 0;
     bool hasReveal = RevealIn(n, &revealOffset);
-    bool shapeAroundObjects = hasObject && !hasReveal;
+    bool shapeAroundObjects = hasObject;
     InlineTextAdvances* advances = nullptr;
     if (shapeAroundObjects) row->prePaint = &ShapeInlineObjectRows;
     El* lastWord = nullptr;
@@ -8019,7 +8025,7 @@ void TextView::RevealMark(El* t, int lo, int offset) {
         hi++;
     }
     t->RangeOut(at, hi, revealOut);
-    t->lifecycle = ArenaNew<ElLifecycle>(a);
+    if (!t->lifecycle) t->lifecycle = ArenaNew<ElLifecycle>(a);
     t->lifecycle->afterPaint = &RevealLineMask;
     t->lifecycle->user = (void*)revealTarget;
     // One element reports the line: the first to reach the offset.
