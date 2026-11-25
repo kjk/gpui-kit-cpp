@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `c77088781e9197e23392f66c0f1a9674868ec5b6` (2026-11-25,
-input: Limit accessibility text to the caret's surroundings in large documents (#4110)).
-Multiline inputs over 1 MiB expose a UTF-8 excerpt around the caret and reject whole-document accessibility replacement.
+Processed through `c11ce78b0c8a70eecca27bc226f0fc3bfa3b52ff` (2026-11-25,
+editor: Name a fold test's byte offset `next_statement` and word `extract_fold_ranges_in_rows` docs in rows (#4109)).
+Renamed the SQL fold test position to identify the next statement. The scanner continues to compute a complete candidate snapshot.
 The current update target is
 `832cfdc0baef92855191dfdbbbcacd75f59d3df0`.
 

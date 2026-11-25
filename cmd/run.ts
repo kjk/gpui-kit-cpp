@@ -532,9 +532,10 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "c77088781e9197e23392f66c0f1a9674868ec5b6",
+  sha: "c11ce78b0c8a70eecca27bc226f0fc3bfa3b52ff",
   date: "2026-11-25",
-  subject: "input: Limit accessibility text to the caret's surroundings in large documents (#4110)",
+  subject:
+    "editor: Name a fold test's byte offset `next_statement` and word `extract_fold_ranges_in_rows` docs in rows (#4109)",
   crates: {
     "gpui-kit": "0.11.0",
     "gpui-base": "0.11.0",

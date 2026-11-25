@@ -376,8 +376,8 @@ static void FoldCandidatesSurviveEditsBesideANode() {
     Str sql = StrL("SELECT id\nFROM t\nWHERE id = 1;\nSELECT 2;\n");
     InputSetValue(input, sql);
     TestDraw(win);
-    int nextRow = StrFind(sql, StrL("SELECT 2"));
-    InputSetSelectedRange(input, app, win, nextRow, nextRow);
+    int nextStatement = StrFind(sql, StrL("SELECT 2"));
+    InputSetSelectedRange(input, app, win, nextStatement, nextStatement);
     InputInsert(input, app, win, StrL(" "));
     TestDraw(win);
     checkAgainstReload();
