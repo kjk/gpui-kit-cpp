@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "35bbb8cf80e3fa05be05e7a78c90acba645e33ef",
+  sha: "a528ab120bcdf13c75c5649993d48d5cdbb9732a",
   date: "2026-11-23",
-  subject: "chore: Remove unused anyhow dependencies (#4081)",
+  subject: "docs: Fix guide links in standalone skills (#4088)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",

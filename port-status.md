@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `35bbb8cf80e3fa05be05e7a78c90acba645e33ef` (2026-11-23,
-chore: Remove unused anyhow dependencies (#4081)).
-Reviewed the example package cleanup. The C++ examples do not use anyhow.
+Processed through `a528ab120bcdf13c75c5649993d48d5cdbb9732a` (2026-11-23,
+docs: Fix guide links in standalone skills (#4088)).
+Reviewed the links in the standalone Rust skill documentation.
 The current update target is
 `832cfdc0baef92855191dfdbbbcacd75f59d3df0`.
 
