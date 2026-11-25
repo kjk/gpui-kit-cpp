@@ -908,6 +908,27 @@ static Entity<WideSplitView> LongLineDiff(App* app, DiffMode mode) {
     return view;
 }
 
+static void PaintedDiffLineGrowsTheHorizontalRange() {
+    for (DiffMode mode : {DiffMode::Unified, DiffMode::Split}) {
+        App* app = TestAppNew();
+        Init(app);
+        auto view = LongLineDiff(app, mode);
+        auto* state = view.Get(app)->state.Get(app);
+        Window* win = TestWindowOpen(app, view, 400, 200, 1);
+        TestDraw(win);
+        float width = state->horizontalCodeWidth;
+        utassert(width > 400);
+        // Model a wide line that was outside the initial eight candidates.
+        state->horizontalCodeWidth = 1;
+        TestDraw(win);
+        utassertnear(state->horizontalCodeWidth, width);
+        TestDraw(win);
+        TestSimulateScrollWheel(win, {100, 48}, {-200, 0});
+        utassert(state->horizontalScrollX > 0);
+        TestAppFree(app);
+    }
+}
+
 // diff/scroll_tests.rs split_columns_keep_half_the_viewport_beside_a_long_line.
 static void SplitColumnsKeepTheirGuttersWhileCodeScrolls() {
     App* app = TestAppNew();
@@ -2038,6 +2059,7 @@ void TestDiff() {
     SplitRatioSizesTheRenderedColumns();
     TheWheelScrollsPastTheRowsRenderedSoFar();
     SplitColumnsKeepTheirGuttersWhileCodeScrolls();
+    PaintedDiffLineGrowsTheHorizontalRange();
     TheFileHeaderStaysInsideTheScrollingViewport();
     UnifiedAnnotationsStayInTheViewportWhileCodeScrolls();
     DecorationsCoverTheirRangeAndTheLastSuppliedWins();

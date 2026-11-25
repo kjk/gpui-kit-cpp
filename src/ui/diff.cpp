@@ -3501,6 +3501,20 @@ static El* CodeTextRuns(Ctx* cx, const DiffState* state, int fileIx,
                         const DiffFile* file, DiffSide side, int ix,
                         bool syntax, bool wrap, const DiffHighlightRuns& runs);
 
+// The initial estimate uses only a few candidates. Once a line is painted,
+// grow the scroll range to its actual width, including fallback glyphs and
+// differences introduced by the syntax runs. The clip only limits paint.
+static void RecordDiffCodeWidth(PaintCtx* paint, El* row, void*) {
+    DiffState* state =
+        static_cast<DiffState*>(EntityGet(paint->app, row->selectionOwner));
+    if (!state || !row->first || !row->last) return;
+    float width = row->last->Bounds().Right() - row->first->x;
+    if (width > state->horizontalCodeWidth + 0.01f) {
+        state->horizontalCodeWidth = width;
+        AppInvalidate(paint->window);
+    }
+}
+
 static El* CodeText(Ctx* cx, const Diff* diff, const DiffState* state,
                     int fileIx, const DiffFile* file, DiffSide side, int ix,
                     bool syntax) {
@@ -3511,6 +3525,11 @@ static El* CodeText(Ctx* cx, const Diff* diff, const DiffState* state,
     El* row = CodeTextRuns(cx, state, fileIx, file, side, ix, syntax,
                            diff->softWrap, runs);
     UnderlineDiffRuns(cx, row, line.display, runs);
+    if (!diff->softWrap && len(line.display) > 0) {
+        row->SelectionOwner(state->self.id);
+        row->lifecycle = ArenaNew<ElLifecycle>(cx->a);
+        row->lifecycle->afterPaint = &RecordDiffCodeWidth;
+    }
     return row;
 }
 
