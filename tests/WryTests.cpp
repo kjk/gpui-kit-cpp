@@ -94,8 +94,20 @@ static void WebViewRegionExcludesOverlappingOverlayBoxes() {
         utassert(!b.Contains({80, 40}));
     }
     utassertnear(area, 6000.f);
+    // The backdrop draws only in the cutout, so a translucent page pixel
+    // outside it is never drawn twice under the still-live child.
+    Vec<Bounds> cutouts;
+    WebViewVisibleRegion({0, 0, viewport.w, viewport.h}, region.els,
+                         len(region), &cutouts);
+    area = 0;
+    for (Bounds b : cutouts) area += b.w * b.h;
+    utassertnear(area, 4000.f);
     WebViewVisibleRegion(viewport, &viewport, 1, &region);
     utassert(len(region) == 0);
+    WebViewVisibleRegion({0, 0, viewport.w, viewport.h}, region.els,
+                         len(region), &cutouts);
+    utassert(len(cutouts) == 1 && cutouts[0].w == viewport.w &&
+             cutouts[0].h == viewport.h);
     WebViewVisibleRegion(viewport, nullptr, 0, &region);
     utassert(len(region) == 1 && region[0].Contains({80, 40}));
 }

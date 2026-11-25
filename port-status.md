@@ -628,9 +628,10 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
 - **Native webviews are child surfaces.** Desktop hosts clip the child
   to the content mask and keep the page's full size and scroll position.
   Deferred overlays open matching drawing and input cutouts in the child
-  views. Translucent overlay pixels blend with the GPUI background in the
-  cutout. Rust composites those pixels over the page
-  (`src/webview/webview.cpp`).
+  views. A browser viewport snapshot is drawn in the cutouts so translucent
+  overlay pixels blend with the page. Browser changes there follow the
+  asynchronous snapshot refresh. Outside the cutouts, the native child
+  draws and receives input directly (`src/webview/webview.cpp`).
 - **Linux webview bounds stay logical.** Upstream `device_bounds` passes
   physical pixels because Wry then scales by GDK. `WebViewSetBounds`
   in `wry_linux.cpp` already multiplies a logical rect by that factor

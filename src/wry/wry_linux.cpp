@@ -1671,6 +1671,52 @@ bool WebViewSetVisibleRegion(WebView* wv, const Rect* pieces, int count) {
     return true;
 }
 
+struct WebKitSnapshot {
+    void* user;
+    WebViewSnapshotFn complete;
+};
+
+void WebViewSnapshot(WebView* wv, void* user, WebViewSnapshotFn complete) {
+    if (!wv || !wv->webview) {
+        complete(user, nullptr, 0);
+        return;
+    }
+    GdkRGBA bg = {};
+    webkit_web_view_get_background_color(wv->webview, &bg);
+    auto options = bg.alpha < 1.
+                       ? WEBKIT_SNAPSHOT_OPTIONS_TRANSPARENT_BACKGROUND
+                       : WEBKIT_SNAPSHOT_OPTIONS_NONE;
+    auto* snapshot = new WebKitSnapshot{user, complete};
+    webkit_web_view_get_snapshot(
+        wv->webview, WEBKIT_SNAPSHOT_REGION_VISIBLE, options, wv->cancellable,
+        [](GObject* source, GAsyncResult* result, gpointer data) {
+            auto* request = static_cast<WebKitSnapshot*>(data);
+            cairo_surface_t* surface = webkit_web_view_get_snapshot_finish(
+                WEBKIT_WEB_VIEW(source), result, nullptr);
+            base::StrBuilder png;
+            bool ok =
+                surface &&
+                cairo_surface_write_to_png_stream(
+                    surface,
+                    [](void* target, const unsigned char* bytes,
+                       unsigned int count) -> cairo_status_t {
+                        auto* out = static_cast<base::StrBuilder*>(target);
+                        return count <= INT_MAX &&
+                                       out->Append(
+                                           Str((const char*)bytes, (int)count))
+                                   ? CAIRO_STATUS_SUCCESS
+                                   : CAIRO_STATUS_WRITE_ERROR;
+                    },
+                    &png) == CAIRO_STATUS_SUCCESS;
+            if (surface) cairo_surface_destroy(surface);
+            request->complete(request->user,
+                              ok ? (const uint8_t*)png.els : nullptr,
+                              ok ? len(png) : 0);
+            delete request;
+        },
+        snapshot);
+}
+
 bool WebViewSetVisible(WebView* wv, bool visible) {
     if (!wv) {
         return false;

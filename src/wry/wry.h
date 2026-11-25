@@ -520,6 +520,16 @@ bool WebViewSetVisibleRegion(WebView* webview, const Rect* pieces, int count);
 #else
 #define GPUI_WRY_CLIPPED_CHILD 0
 #endif
+#if GPUI_OS_WINDOWS || GPUI_WRY_CLIPPED_CHILD
+#define GPUI_WRY_SNAPSHOT 1
+// Capture the visible document viewport at the browser's native scale. The
+// UI-thread callback receives borrowed PNG bytes, or nullptr on failure.
+// Completion is delivered once, including when starting the request fails.
+using WebViewSnapshotFn = void (*)(void*, const uint8_t*, int);
+void WebViewSnapshot(WebView* webview, void* user, WebViewSnapshotFn complete);
+#else
+#define GPUI_WRY_SNAPSHOT 0
+#endif
 /** `WebView::set_visible`. */
 bool WebViewSetVisible(WebView* webview, bool visible);
 /** `WebView::focus`. */

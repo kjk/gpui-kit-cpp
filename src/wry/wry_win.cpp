@@ -119,7 +119,8 @@ struct ICoreWebView2AcceleratorKeyPressedEventHandler;
 struct ICoreWebView2BasicAuthenticationRequestedEventHandler;
 struct ICoreWebView2BrowserProcessExitedEventHandler;
 struct ICoreWebView2CallDevToolsProtocolMethodCompletedHandler;
-struct ICoreWebView2CapturePreviewCompletedHandler;
+struct __declspec(uuid("697e05e9-3d8f-45fa-96f4-8ffe1ededaf5"))
+ICoreWebView2CapturePreviewCompletedHandler;
 struct ICoreWebView2ClearServerCertificateErrorActionsCompletedHandler;
 struct ICoreWebView2ClientCertificateRequestedEventHandler;
 struct ICoreWebView2ContainsFullScreenElementChangedEventHandler;
@@ -1359,6 +1360,10 @@ struct ICoreWebView2ExecuteScriptCompletedHandler : IUnknown {
 };
 
 struct ICoreWebView2ClearBrowsingDataCompletedHandler : IUnknown {
+    virtual HRESULT STDMETHODCALLTYPE Invoke(HRESULT errorCode) = 0;
+};
+
+struct ICoreWebView2CapturePreviewCompletedHandler : IUnknown {
     virtual HRESULT STDMETHODCALLTYPE Invoke(HRESULT errorCode) = 0;
 };
 
@@ -5028,6 +5033,55 @@ bool WebViewSetBounds(WebView* wv, Rect bounds) {
     int x = ToPhysical(bounds.position.x, bounds.position.logical, scale);
     int y = ToPhysical(bounds.position.y, bounds.position.logical, scale);
     return SetBoundsInner(wv, w, h, x, y);
+}
+
+struct WebViewPreview : ComObject<ICoreWebView2CapturePreviewCompletedHandler> {
+    IStream* stream = nullptr;
+    void* user = nullptr;
+    WebViewSnapshotFn complete = nullptr;
+
+    ~WebViewPreview() override {
+        if (complete) complete(user, nullptr, 0);
+        if (stream) stream->Release();
+    }
+
+    HRESULT STDMETHODCALLTYPE Invoke(HRESULT status) override {
+        WebViewSnapshotFn callback = complete;
+        complete = nullptr;
+        if (!callback) return S_OK;
+        HGLOBAL storage = nullptr;
+        STATSTG stat = {};
+        if (SUCCEEDED(status) &&
+            SUCCEEDED(stream->Stat(&stat, STATFLAG_NONAME)) &&
+            stat.cbSize.QuadPart > 0 && stat.cbSize.QuadPart <= INT_MAX &&
+            SUCCEEDED(GetHGlobalFromStream(stream, &storage))) {
+            if (auto* data = (const uint8_t*)GlobalLock(storage)) {
+                callback(user, data, (int)stat.cbSize.QuadPart);
+                GlobalUnlock(storage);
+                return S_OK;
+            }
+        }
+        callback(user, nullptr, 0);
+        return S_OK;
+    }
+};
+
+void WebViewSnapshot(WebView* wv, void* user, WebViewSnapshotFn complete) {
+    if (!wv || !wv->webview) {
+        complete(user, nullptr, 0);
+        return;
+    }
+    auto* preview = new WebViewPreview();
+    preview->user = user;
+    preview->complete = complete;
+    if (SUCCEEDED(CreateStreamOnHGlobal(nullptr, TRUE, &preview->stream))) {
+        constexpr int kPng = 0;
+        if (FAILED(wv->webview
+                       ->CapturePreview(kPng, preview->stream, preview))) {
+            preview->Invoke(E_FAIL);
+        }
+    }
+    preview->Release();
 }
 
 bool WebViewSetVisible(WebView* wv, bool visible) {

@@ -50,6 +50,7 @@
 #import <WebKit/WKScriptMessage.h>
 #import <WebKit/WKScriptMessageHandler.h>
 #import <WebKit/WKSecurityOrigin.h>
+#import <WebKit/WKSnapshotConfiguration.h>
 #import <WebKit/WKUIDelegate.h>
 #import <WebKit/WKURLSchemeHandler.h>
 #import <WebKit/WKURLSchemeTask.h>
@@ -1499,6 +1500,36 @@ bool WebViewSetVisibleRegion(WebView* wv, const Rect* pieces, int count) {
     }
     [CATransaction commit];
     return true;
+}
+
+void WebViewSnapshot(WebView* wv, void* user, WebViewSnapshotFn complete) {
+    if (!wv || !wv->webview) {
+        complete(user, nullptr, 0);
+        return;
+    }
+    WKSnapshotConfiguration* config = [WKSnapshotConfiguration new];
+    config.afterScreenUpdates = NO;
+    [wv->webview
+        takeSnapshotWithConfiguration:config
+                    completionHandler:^(NSImage* image, NSError*) {
+                      CGImageRef cg = [image CGImageForProposedRect:nullptr
+                                                            context:nil
+                                                              hints:nil];
+                      NSData* png = nil;
+                      if (cg) {
+                          NSBitmapImageRep* bitmap =
+                              [[NSBitmapImageRep alloc] initWithCGImage:cg];
+                          png = [bitmap
+                              representationUsingType:NSBitmapImageFileTypePNG
+                                           properties:@{}];
+                      }
+                      if (png.length > 0 && png.length <= INT_MAX) {
+                          complete(user, (const uint8_t*)png.bytes,
+                                   (int)png.length);
+                      } else {
+                          complete(user, nullptr, 0);
+                      }
+                    }];
 }
 
 bool WebViewSetVisible(WebView* wv, bool visible) {

@@ -2,12 +2,46 @@
 
 #include "webview/webview.h"
 
+#include "gpui/paint.h"
 #include "gpui/platform.h"
 #include "sys/executor.h"
 
 namespace gpui {
 
 static bool AppHasWindow(App* app, Window* win);
+
+#if GPUI_WRY_SNAPSHOT
+struct WebViewSnapshotRequest;
+
+struct WebViewBackdrop {
+    Vec<Bounds> cutouts;
+    RenderImage* image = nullptr;
+    Str png;
+    Size size = {};
+    float scale = 0;
+    int refresh = 0;
+    WebViewSnapshotRequest* pending = nullptr;
+};
+
+struct WebViewSnapshotRequest {
+    WebView* view;
+    Size size;
+    float scale;
+};
+
+static void DropWebViewBackdrop(WebView* view) {
+    WebViewBackdrop* backdrop = view->backdrop;
+    if (!backdrop) return;
+    view->backdrop = nullptr;
+    if (backdrop->pending) backdrop->pending->view = nullptr;
+    if (AppHasWindow(view->app, view->window)) {
+        WindowCancelTimer(view->window, backdrop->refresh);
+    }
+    RenderImageRelease(backdrop->image);
+    StrFree(backdrop->png);
+    delete backdrop;
+}
+#endif
 
 struct WebViewHandleState {
     int refs = 1;
@@ -53,6 +87,9 @@ wry::WebView* WebViewHandle::Raw() const {
 }
 
 WebView::~WebView() {
+#if GPUI_WRY_SNAPSHOT
+    DropWebViewBackdrop(this);
+#endif
     // `impl Drop for WebView` hides it. Releasing `owned` after this body is
     // the Rc drop: an outstanding WebViewHandle postpones native destruction.
     if (wry::WebView* raw = owned.Raw()) {
@@ -170,6 +207,9 @@ void WebViewHide(WebView* self) {
     wry::WebViewSetVisible(raw, false);
     self->visible = false;
     self->nativeShown = false;
+#if GPUI_WRY_SNAPSHOT
+    DropWebViewBackdrop(self);
+#endif
     if (changed && AppHasWindow(self->app, self->window)) {
         AppInvalidate(self->window);
     }
@@ -404,6 +444,78 @@ static void ShowNative(WebView* self, wry::WebView* raw) {
 }
 
 #if GPUI_WRY_CLIPPED_CHILD || GPUI_WEBVIEW_NATIVE_CLIP
+static void WebViewSnapshotComplete(void* user, const uint8_t* bytes,
+                                    int count) {
+    auto* request = static_cast<WebViewSnapshotRequest*>(user);
+    WebView* view = request->view;
+    Size size = request->size;
+    float scale = request->scale;
+    delete request;
+    if (!view) return;
+    WebViewBackdrop& backdrop = *view->backdrop;
+    backdrop.pending = nullptr;
+    // A slow capture can outlive its timer. Let the next paint restart it.
+    if (!backdrop.refresh && AppHasWindow(view->app, view->window)) {
+        AppInvalidate(view->window);
+    }
+    if (!bytes || size.w != view->applied.w || size.h != view->applied.h ||
+        scale != view->appliedScale || !AppHasWindow(view->app, view->window)) {
+        return;
+    }
+    Str png((const char*)bytes, count);
+    if (backdrop.image && backdrop.size.w == size.w &&
+        backdrop.size.h == size.h && backdrop.scale == scale &&
+        StrEq(backdrop.png, png)) {
+        return;
+    }
+    RenderImage* image = RenderImageDecode(view->app->paint, bytes, count);
+    if (!image) return;
+    RenderImageRelease(backdrop.image);
+    StrFree(backdrop.png);
+    backdrop.image = image;
+    backdrop.png = StrDup(png);
+    backdrop.size = size;
+    backdrop.scale = scale;
+    AppInvalidate(view->window);
+}
+
+static void RefreshWebViewBackdrop(WebView* view, Ctx* cx, const void*) {
+    if (view->backdrop) {
+        view->backdrop->refresh = 0;
+        AppInvalidate(cx->win);
+    }
+}
+
+static void UpdateWebViewBackdrop(WebView* view, wry::WebView* raw, bool shaped,
+                                  bool changed) {
+    if (!shaped) {
+        bool redraw = view->backdrop && view->backdrop->image;
+        DropWebViewBackdrop(view);
+        if (redraw) AppInvalidate(view->window);
+        return;
+    }
+    if (!view->backdrop) view->backdrop = new WebViewBackdrop();
+    WebViewBackdrop& backdrop = *view->backdrop;
+    if (changed || !len(backdrop.cutouts)) {
+        Bounds local = {0, 0, view->appliedVisible.w, view->appliedVisible.h};
+        WebViewVisibleRegion(local, view->visibleRegion.els,
+                             len(view->visibleRegion), &backdrop.cutouts);
+        if (backdrop.image) AppInvalidate(view->window);
+    }
+    // Refresh while an overlay covers the live browser. Repaint immediately
+    // when the first shot arrives, then at most once per changed snapshot.
+    if (!backdrop.refresh && !backdrop.pending && view->nativeShown &&
+        AppHasWindow(view->app, view->window)) {
+        constexpr int kRefreshMs = 66;
+        backdrop.refresh = WindowSetTimeout(
+            view->window, kRefreshMs,
+            ListenTo(Entity<WebView>{view->selfId}, &RefreshWebViewBackdrop));
+        backdrop.pending = new WebViewSnapshotRequest{
+            view, {view->applied.w, view->applied.h}, view->appliedScale};
+        wry::WebViewSnapshot(raw, backdrop.pending, &WebViewSnapshotComplete);
+    }
+}
+
 static void FinishNativeWebView(void* user, const Bounds* overlays, int count) {
     auto* self = static_cast<WebView*>(user);
     wry::WebView* raw = self->owned.Raw();
@@ -411,10 +523,6 @@ static void FinishNativeWebView(void* user, const Bounds* overlays, int count) {
     Bounds viewport = self->appliedVisible;
     Vec<Bounds> region;
     if (count) WebViewVisibleRegion(viewport, overlays, count, &region);
-    if (count && !len(region)) {
-        HideNative(self, raw);
-        return;
-    }
     bool shaped =
         count && !(len(region) == 1 &&
                    BoundsSame(region[0], {0, 0, viewport.w, viewport.h}));
@@ -426,8 +534,12 @@ static void FinishNativeWebView(void* user, const Bounds* overlays, int count) {
     }
     if (changed) {
 #if GPUI_WEBVIEW_NATIVE_CLIP
-        bool applied = WebViewNativeVisibleRegionSet(
-            self, raw, shaped ? region.els : nullptr, shaped ? len(region) : 0);
+        Bounds empty = {};
+        bool applied = WebViewNativeVisibleRegionSet(self, raw,
+                                                     !shaped       ? nullptr
+                                                     : len(region) ? region.els
+                                                                   : &empty,
+                                                     len(region));
 #else
         Vec<wry::Rect> pieces;
         if (shaped) {
@@ -437,11 +549,16 @@ static void FinishNativeWebView(void* user, const Bounds* overlays, int count) {
                                     wry::LogicalSize(piece.w, piece.h)});
             }
         }
-        bool applied =
-            wry::WebViewSetVisibleRegion(raw, pieces.els, len(pieces));
+        wry::Rect empty = {};
+        bool applied = wry::WebViewSetVisibleRegion(raw,
+                                                    !shaped       ? nullptr
+                                                    : len(pieces) ? pieces.els
+                                                                  : &empty,
+                                                    len(pieces));
 #endif
         if (!applied) {
             HideNative(self, raw);
+            DropWebViewBackdrop(self);
             return;
         }
         self->visibleRegion = region;
@@ -449,6 +566,7 @@ static void FinishNativeWebView(void* user, const Bounds* overlays, int count) {
         self->visibleRegionNeedsUpdate = false;
     }
     ShowNative(self, raw);
+    UpdateWebViewBackdrop(self, raw, shaped, changed);
 }
 #endif
 
@@ -524,6 +642,9 @@ static void PaintWebView(PaintCtx* ctx, El* e, void* user) {
     bool empty = visible.w <= 0.f || visible.h <= 0.f;
     if (empty) {
         HideNative(self, raw);
+#if GPUI_WRY_SNAPSHOT
+        DropWebViewBackdrop(self);
+#endif
         return;
     }
     bool same = self->hasApplied && BoundsSame(self->applied, document) &&
@@ -536,6 +657,9 @@ static void PaintWebView(PaintCtx* ctx, El* e, void* user) {
                 logf("WebView geometry update failed\n");
             }
             HideNative(self, raw);
+#if GPUI_WRY_SNAPSHOT
+            DropWebViewBackdrop(self);
+#endif
             return;
         }
         self->applied = document;
@@ -546,6 +670,19 @@ static void PaintWebView(PaintCtx* ctx, El* e, void* user) {
         self->geometryFailed = false;
     }
 #if GPUI_WRY_CLIPPED_CHILD || GPUI_WEBVIEW_NATIVE_CLIP
+    const WebViewBackdrop* backdrop = self->backdrop;
+    if (same && backdrop && backdrop->image && backdrop->size.w == document.w &&
+        backdrop->size.h == document.h && backdrop->scale == gpuiScale) {
+        Bounds frame = document;
+#if GPUI_WEBVIEW_WHOLE_POINT_FRAME
+        frame = WebViewDocumentFrame(frame);
+#endif
+        for (Bounds cutout : backdrop->cutouts) {
+            cutout.x += visible.x;
+            cutout.y += visible.y;
+            RenderImageDraw(ctx, backdrop->image, cutout, frame, 0, 0.f, false);
+        }
+    }
     VecAppend(ctx->nativeSurfacePaints,
               PaintCtx::NativeSurfacePaint{&FinishNativeWebView, self,
                                            len(ctx->nativeOverlayBounds)});

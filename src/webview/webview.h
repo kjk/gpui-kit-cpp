@@ -44,6 +44,7 @@ namespace gpui {
 
 struct WebView;
 struct WebViewHandleState;
+struct WebViewBackdrop;
 
 /** An owned, UI-thread-local handle to the raw wry webview. Copies prolong
     the native control's lifetime, like Rust's
@@ -89,6 +90,7 @@ struct WebView {
     Vec<Bounds> visibleRegion;
     bool hasVisibleRegion = false;
     bool visibleRegionNeedsUpdate = false;
+    WebViewBackdrop* backdrop = nullptr;
     // `windows::NativeClip`: the region last set on wry's host window, as
     // left, top, right, bottom in its device pixels. Windows only.
     int32_t clip[4] = {};
