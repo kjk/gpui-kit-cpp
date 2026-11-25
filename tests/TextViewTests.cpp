@@ -3174,6 +3174,7 @@ static void OversizedInlineCodeWrapsWithOneInsetPerSide() {
             found = true;
             utassert(text.wrap && text.bounds.w <= 102);
             utassert(text.bounds.h > 2 * text.font);
+            utassertnear(text.bounds.x, customInsets ? 12.f : 4.f);
             // Compare the first caret on the next line to the available
             // width with a single pair of insets.
             float x = 0, y = 0, h = 0;

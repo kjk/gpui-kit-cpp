@@ -4147,8 +4147,9 @@ static Point LeafPositionInPiece(const LeafGeometry& leaf,
     float x = 0;
     float y = 0;
     float h = 0;
-    TextPointAt(leaf.paint, LeafPieceText(leaf, piece), piece.font, 0, false,
-                index - piece.start, &x, &y, &h, piece.weight, piece.lineH);
+    TextPointAt(leaf.paint, LeafPieceText(leaf, piece), piece.font, piece.maxW,
+                piece.wrap, index - piece.start, &x, &y, &h, piece.weight,
+                piece.lineH);
     return {bounds.x + x, bounds.y + y};
 }
 
@@ -4175,9 +4176,9 @@ static int LeafIndexInPiece(const LeafGeometry& leaf, const LeafPiece& piece,
     if (piece.atom) {
         return at.x < piece.bounds.CenterX() ? piece.start : piece.end;
     }
-    int off = TextIndexAt(leaf.paint, LeafPieceText(leaf, piece), piece.font, 0,
-                          false, at.x - piece.bounds.x, piece.bounds.h * 0.5f,
-                          piece.weight, piece.lineH);
+    int off = TextIndexAt(leaf.paint, LeafPieceText(leaf, piece), piece.font,
+                          piece.maxW, piece.wrap, at.x - piece.bounds.x,
+                          at.y - piece.bounds.y, piece.weight, piece.lineH);
     return ClampI(piece.start + off, piece.start, piece.end);
 }
 
@@ -4426,13 +4427,15 @@ static void EditorHostFlowPrepaint(PaintCtx* ctx, El* e, void* user) {
         El* piece = entry.element;
         int end = entry.atom ? entry.end : entry.start + len(piece->text);
         if (entry.start < end && end <= leaf.textLen) {
-            leaf.pieces[leaf.pieceCount++] = {piece->Bounds(),
+            leaf.pieces[leaf.pieceCount++] = {ElTextContentBounds(piece),
                                               entry.start,
                                               end,
                                               piece->laidFont,
                                               piece->style.lineHeight,
                                               ElTextWeight(piece),
-                                              entry.atom};
+                                              entry.atom,
+                                              piece->style.wrap != 0,
+                                              piece->laidMaxW};
         }
     }
     EditorHostStore(leaf);
@@ -4999,6 +5002,10 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
         if (shapeLine || (marks & MdCode)) {
             // The text shaper wraps the span inside a single inset budget.
             w->Wrap()->MaxWFrac(1.f)->MinW(0);
+        }
+        if ((marks & MdCode) && !(marks & MdHighlight)) {
+            if (!w->lifecycle) w->lifecycle = ArenaNew<ElLifecycle>(a);
+            w->lifecycle->inlineCodeBox = true;
         }
         if (wordRun) {
             SrcMark(w, wordRun->marks, wordRun->href);

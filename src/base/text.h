@@ -1352,6 +1352,8 @@ struct LeafPiece {
     float lineH;
     uint16_t weight;
     bool atom;
+    bool wrap = false;
+    float maxW = 0;
 };
 
 } // namespace editor_host

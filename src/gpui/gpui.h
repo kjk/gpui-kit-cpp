@@ -2882,6 +2882,7 @@ struct ElLifecycle {
     const LinkTooltipTarget* linkTooltip = nullptr;
     const InlineTextFragment* inlineTextFragment = nullptr;
     bool inlineTextGroup = false;
+    bool inlineCodeBox = false;
     // on_pinch: rare, so here rather than in El
     Listener onPinch;
     // El::OnGesture, the same way
@@ -7315,6 +7316,7 @@ void PaintEl(PaintCtx* ctx, El* e);
 // wrapped row, for a caller that paints over a run from outside it (an
 // editor's range decorations, which span rows). Returns how many were
 // written.
+Bounds ElTextContentBounds(const El* e);
 int ElTextRangeRects(PaintCtx* ctx, const El* e, int lo, int hi, Bounds* out,
                      int cap);
 // A link inside a shaped text run uses its painted glyph ranges for input.

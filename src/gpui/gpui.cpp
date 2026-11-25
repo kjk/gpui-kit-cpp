@@ -8141,6 +8141,22 @@ static void PaintHighlightedText(PaintCtx* ctx, const El* e, TextLayout* layout,
     }
 }
 
+Bounds ElTextContentBounds(const El* e) {
+    Bounds box = e->Bounds();
+    if (e->lifecycle && e->lifecycle->inlineCodeBox) {
+        const Style& s = e->style;
+        float left = s.pad.left + std::max(s.border, s.borderL);
+        float right = s.pad.right + std::max(s.border, s.borderR);
+        float top = s.pad.top + std::max(s.border, s.borderT);
+        float bottom = s.pad.bottom + std::max(s.border, s.borderB);
+        box.x += left;
+        box.y += top;
+        box.w = std::max(0.f, box.w - left - right);
+        box.h = std::max(0.f, box.h - top - bottom);
+    }
+    return box;
+}
+
 int ElTextRangeRects(PaintCtx* ctx, const El* e, int lo, int hi, Bounds* out,
                      int cap) {
     if (!out || cap <= 0 || hi <= lo) {
@@ -8151,9 +8167,10 @@ int ElTextRangeRects(PaintCtx* ctx, const El* e, int lo, int hi, Bounds* out,
         return 0;
     }
     int n = TextLayoutRangeRects(tl, e->text, lo, hi, out, cap);
+    Bounds content = ElTextContentBounds(e);
     for (int i = 0; i < n; i++) {
-        out[i].x += e->x;
-        out[i].y += e->y;
+        out[i].x += content.x;
+        out[i].y += content.y;
     }
     TextLayoutRelease(tl);
     return n;
@@ -8381,7 +8398,7 @@ void PaintEl(PaintCtx* ctx, El* e) {
 // corners. The plain lines below stay for a box with square corners, where
 // they can land on whole device pixels. False when there is nothing round
 // to follow.
-static bool PaintRoundEdgeBorder(PaintCtx* ctx, El* e) {
+static bool PaintRoundEdgeBorder(PaintCtx* ctx, El* e, Bounds box) {
     const Style& s = e->style;
     if (s.borderT <= 0 && s.borderB <= 0 && s.borderL <= 0 && s.borderR <= 0) {
         return false;
@@ -8391,7 +8408,7 @@ static bool PaintRoundEdgeBorder(PaintCtx* ctx, El* e) {
     if (c.tl <= 0 && c.tr <= 0 && c.br <= 0 && c.bl <= 0) {
         return false;
     }
-    Bounds q = SnapQuad(ctx, e->Bounds());
+    Bounds q = SnapQuad(ctx, box);
     float x = q.x, y = q.y, w = q.w, h = q.h;
     if (w <= 0 || h <= 0) {
         return true;
@@ -8421,7 +8438,7 @@ static bool PaintRoundEdgeBorder(PaintCtx* ctx, El* e) {
 // the children, under the element's content mask — so it lands over them: a
 // child whose background runs to the box's edge does not hide its parent's
 // border or the border's rounded corners.
-static void PaintElBorder(PaintCtx* ctx, El* e) {
+static void PaintElBorder(PaintCtx* ctx, El* e, Bounds box) {
     Rgba savedBorder = e->style.borderColor;
     if (e->style.groupHoverBorder && ctx->groupHovered) {
         e->style.borderColor = e->style.groupHoverBg.color;
@@ -8435,14 +8452,14 @@ static void PaintElBorder(PaintCtx* ctx, El* e) {
             if (e->style.radius <= 0) {
                 // Square corners: stroke each side on its own, so both the
                 // line and the dashes along it can land on whole pixels.
-                float l = EdgeLine(ctx, e->x + half);
-                float r = EdgeLine(ctx, e->x + e->w - half);
-                float t = EdgeLine(ctx, e->y + half);
-                float b = EdgeLine(ctx, e->y + e->h - half);
-                float x0 = EdgeEnd(ctx, e->x);
-                float x1 = EdgeEnd(ctx, e->x + e->w);
-                float y0 = EdgeEnd(ctx, e->y);
-                float y1 = EdgeEnd(ctx, e->y + e->h);
+                float l = EdgeLine(ctx, box.x + half);
+                float r = EdgeLine(ctx, box.x + box.w - half);
+                float t = EdgeLine(ctx, box.y + half);
+                float b = EdgeLine(ctx, box.y + box.h - half);
+                float x0 = EdgeEnd(ctx, box.x);
+                float x1 = EdgeEnd(ctx, box.x + box.w);
+                float y0 = EdgeEnd(ctx, box.y);
+                float y1 = EdgeEnd(ctx, box.y + box.h);
                 Rgba bc = e->style.borderColor;
                 float bw = e->style.border;
                 CanvasLine(ctx, x0, t, x1, t, bw, bc, dash);
@@ -8450,13 +8467,13 @@ static void PaintElBorder(PaintCtx* ctx, El* e) {
                 CanvasLine(ctx, l, y0, l, y1, bw, bc, dash);
                 CanvasLine(ctx, r, y0, r, y1, bw, bc, dash);
             } else {
-                Bounds q = SnapQuad(ctx, e->Bounds());
+                Bounds q = SnapQuad(ctx, box);
                 CanvasStrokeRound(ctx, q.x, q.y, q.w, q.h,
                                   ClampRadius(e->style.radius, q.w, q.h),
                                   e->style.border, e->style.borderColor, dash);
             }
         } else {
-            Bounds q = SnapQuad(ctx, e->Bounds());
+            Bounds q = SnapQuad(ctx, box);
             if (e->style.hasCorners) {
                 StrokeCorners(ctx, q.x, q.y, q.w, q.h, e->style.corners,
                               e->style.border, e->style.borderColor);
@@ -8466,33 +8483,67 @@ static void PaintElBorder(PaintCtx* ctx, El* e) {
             }
         }
     }
-    if (e->style.border <= 0 && PaintRoundEdgeBorder(ctx, e)) {
+    if (e->style.border <= 0 && PaintRoundEdgeBorder(ctx, e, box)) {
         e->style.borderColor = savedBorder;
         return;
     }
     // An edge border sits inside the box and covers whole pixels: the line
     // goes half a stroke in from the edge, and lands on a device pixel.
     if (e->style.borderT > 0) {
-        float y = EdgeLine(ctx, e->y + e->style.borderT * 0.5f);
-        DrawLine(ctx, e->x, y, e->x + e->w, y, e->style.borderT,
+        float y = EdgeLine(ctx, box.y + e->style.borderT * 0.5f);
+        DrawLine(ctx, box.x, y, box.x + box.w, y, e->style.borderT,
                  e->style.borderColor);
     }
     if (e->style.borderB > 0) {
-        float y = EdgeLine(ctx, e->y + e->h - e->style.borderB * 0.5f);
-        DrawLine(ctx, e->x, y, e->x + e->w, y, e->style.borderB,
+        float y = EdgeLine(ctx, box.y + box.h - e->style.borderB * 0.5f);
+        DrawLine(ctx, box.x, y, box.x + box.w, y, e->style.borderB,
                  e->style.borderColor);
     }
     if (e->style.borderL > 0) {
-        float x = EdgeLine(ctx, e->x + e->style.borderL * 0.5f);
-        DrawLine(ctx, x, e->y, x, e->y + e->h, e->style.borderL,
+        float x = EdgeLine(ctx, box.x + e->style.borderL * 0.5f);
+        DrawLine(ctx, x, box.y, x, box.y + box.h, e->style.borderL,
                  e->style.borderColor);
     }
     if (e->style.borderR > 0) {
-        float x = EdgeLine(ctx, e->x + e->w - e->style.borderR * 0.5f);
-        DrawLine(ctx, x, e->y, x, e->y + e->h, e->style.borderR,
+        float x = EdgeLine(ctx, box.x + box.w - e->style.borderR * 0.5f);
+        DrawLine(ctx, x, box.y, x, box.y + box.h, e->style.borderR,
                  e->style.borderColor);
     }
     e->style.borderColor = savedBorder;
+}
+
+static int InlineCodeQuads(PaintCtx* ctx, const El* e, Vec<Bounds>& quads) {
+    if (!e->lifecycle || !e->lifecycle->inlineCodeBox || !e->style.wrap ||
+        len(e->text) < 2) {
+        return 0;
+    }
+    int capacity = std::min(8, len(e->text));
+    int count = 0;
+    for (;;) {
+        Bounds* buf = VecReserve(quads, capacity);
+        if (!buf) return 0;
+        count = ElTextRangeRects(ctx, e, 0, len(e->text), buf, capacity);
+        if (count < capacity || capacity == len(e->text)) break;
+        capacity += std::min(capacity, len(e->text) - capacity);
+    }
+    if (count <= 1) return 0;
+
+    Bounds box = e->Bounds();
+    Bounds content = ElTextContentBounds(e);
+    float left = content.x - box.x;
+    float right = box.Right() - content.Right();
+    for (int i = 0; i < count; i++) {
+        Bounds& line = quads.els[i];
+        float x = std::max(box.x, line.x - left);
+        float end = std::min(box.Right(), line.Right() + right);
+        line.x = x;
+        line.w = std::max(0.f, end - x);
+    }
+    quads.els[0].h += quads.els[0].y - box.y;
+    quads.els[0].y = box.y;
+    Bounds& last = quads.els[count - 1];
+    last.h = std::max(last.h, box.Bottom() - last.y);
+    return count;
 }
 
 static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay);
@@ -8519,7 +8570,7 @@ static int ElSelectionScope(PaintCtx* ctx, const El* e) {
 // it is.
 static TextHit ElTextHit(PaintCtx* ctx, const El* e, int docOff) {
     TextHit th;
-    th.bounds = e->Bounds();
+    th.bounds = ElTextContentBounds(e);
     th.contentMask =
         ctx->hasHitMask ? ctx->hitMask : Bounds{0, 0, ctx->viewW, ctx->viewH};
     if (ElTextFontRanges(e).count) th.highlightedElement = e;
@@ -8925,6 +8976,10 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     // nothing to say, which is the order the two refinements are applied in.
     bool groupFill =
         fill == BoxFill::Base && e->style.hasGroupHoverBg && ctx->groupHovered;
+    Bounds inlineQuads[8];
+    Vec<Bounds> codeQuads;
+    VecUseExternalBuffer(codeQuads, inlineQuads);
+    int codeQuadCount = InlineCodeQuads(ctx, e, codeQuads);
     for (int i = 0; i < e->style.shadowCount; i++) {
         PaintBoxShadow(ctx, e, e->style.shadows[i]);
     }
@@ -8933,9 +8988,13 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
                               : fill == BoxFill::Hover ? e->style.hoverBg
                               : groupFill              ? e->style.groupHoverBg
                                                        : e->style.bg;
-        Bounds q = SnapQuad(ctx, e->Bounds());
-        FillBackground(ctx, q.x, q.y, q.w, q.h, e->style.radius,
-                       e->style.hasCorners ? &e->style.corners : nullptr, b);
+        for (int i = 0; i < std::max(1, codeQuadCount); i++) {
+            Bounds box = codeQuadCount ? codeQuads.els[i] : e->Bounds();
+            Bounds q = SnapQuad(ctx, box);
+            FillBackground(ctx, q.x, q.y, q.w, q.h, e->style.radius,
+                           e->style.hasCorners ? &e->style.corners : nullptr,
+                           b);
+        }
     }
     // Style::overflow_mask: what the children paint under is the box less its
     // border widths, when the border has a colour — the border is painted
@@ -9137,6 +9196,12 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
                 }
             }
         }
+        Bounds outerTextBox = e->Bounds();
+        Bounds ink = ElTextContentBounds(e);
+        e->x = ink.x;
+        e->y = ink.y;
+        e->w = ink.w;
+        e->h = ink.h;
         // truncate: a run that does not wrap is the same size whatever width
         // it was measured against, so the shaped run is cached without one and
         // the box it was drawn for cannot do the cutting. This can.
@@ -9312,6 +9377,10 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
             CanvasPopClip(ctx);
         }
         PaintCaret(ctx, e, font);
+        e->x = outerTextBox.x;
+        e->y = outerTextBox.y;
+        e->w = outerTextBox.w;
+        e->h = outerTextBox.h;
     } else if (e->kind == ElKind::Image && !e->imageReplacement) {
         // image.h resolves the src: the asset an application shipped, the
         // data: URI, or the body a worker thread fetched. PrepareEl has
@@ -9496,7 +9565,9 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     // content mask the continuation painted under. A built-in scrollbar is
     // gpui-kit's Scrollable overlay, a later sibling of the bordered
     // element, so it goes over the border below.
-    PaintElBorder(ctx, e);
+    for (int i = 0; i < std::max(1, codeQuadCount); i++) {
+        PaintElBorder(ctx, e, codeQuadCount ? codeQuads.els[i] : e->Bounds());
+    }
 
     if (paintDx != 0 || paintDy != 0) {
         ShiftElTree(e, -paintDx, -paintDy);

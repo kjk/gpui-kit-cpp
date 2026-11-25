@@ -176,9 +176,10 @@ The current update target is
   and wasm do not report it. Windows no longer shows a copy cursor for a
   drag that has neither files nor text.
 
-- **Oversized inline code uses one wrapped box.** Each line shapes inside
-  one pair of insets. The span shares its background and border across the
-  lines, and the flex row can move the entire box below preceding prose.
+- **Oversized inline code draws a box on each line.** Glyphs, selection and
+  editor hit geometry follow the horizontal insets. Vertical padding and
+  flex placement still apply to the whole span, so a long span can start
+  below preceding prose and reserve its full width on the final line.
 
 - **Textarea decoration styling uses `TextSpan`.** The layer follows edits
   and supports text color, background and underline. Rust's highlight
