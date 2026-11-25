@@ -233,6 +233,20 @@ enum class ScrollbarAxis : uint8_t {
 
 using ScrollAxis = ScrollbarAxis;
 
+constexpr bool ScrollbarIsLeft(ScrollbarPlacement placement) {
+    return placement == ScrollbarPlacement::BottomLeft ||
+           placement == ScrollbarPlacement::TopLeft;
+}
+
+constexpr bool ScrollbarIsTop(ScrollbarPlacement placement) {
+    return placement == ScrollbarPlacement::TopLeft ||
+           placement == ScrollbarPlacement::TopRight;
+}
+
+Bounds ScrollbarTrackBounds(Bounds viewport, Axis axis,
+                            ScrollbarPlacement placement, float trackWidth,
+                            float leadingInset = 0, float otherTrackWidth = 0);
+
 // What the source Element passes from prepaint into paint. The integrated
 // renderer produces the same geometry directly; these values expose that
 // boundary for custom painters and deterministic tests.
@@ -268,10 +282,10 @@ struct PrepaintState {
 
 // `viewportSize` <= 0 means the container: the painted track is the scroll
 // range. A padded editor passes the unpadded content box instead.
-AxisPrepaintState ScrollbarPrepaintAxis(Axis axis, Bounds track, float offset,
-                                        float containerSize, float contentSize,
-                                        const ScrollbarThumbStyle& style,
-                                        float viewportSize = 0);
+AxisPrepaintState ScrollbarPrepaintAxis(
+    Axis axis, Bounds track, float offset, float containerSize,
+    float contentSize, const ScrollbarThumbStyle& style, float viewportSize = 0,
+    ScrollbarPlacement placement = ScrollbarPlacement::BottomRight);
 
 struct Scrollbar {
     // The bare box, for a caller that wires the scroll itself.
@@ -304,6 +318,7 @@ struct Scrollbar {
     // Source `Scrollbar::styles`, represented as a direct immutable style
     // value instead of a Rust build closure.
     static El* ApplyStyles(Ctx* cx, El* element, const ScrollbarStyles& styles);
+    static El* Placement(El* element, ScrollbarPlacement placement);
 
     // The vertical case, which is most of them.
     static El* Vertical(Ctx* cx, Str id, float scrollY, Listener onScroll);

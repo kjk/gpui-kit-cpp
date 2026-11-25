@@ -2069,6 +2069,22 @@ static bool ScrollsX(const ScrollRect& s) {
     return s.contentW > ScrollViewportW(s) + 1.f;
 }
 
+static Bounds ScrollbarTrackFor(const ScrollRect& s, bool horizontal) {
+    float other = horizontal && s.barY && ScrollsY(s) ? s.trackWidth : 0;
+    return ScrollbarTrackBounds(
+        s.bounds, horizontal ? Axis::Horizontal : Axis::Vertical, s.placement,
+        s.trackWidth, s.horizontalBarInset, other);
+}
+
+static float ScrollbarOuterDistance(const ScrollRect& s, bool horizontal,
+                                    float x, float y) {
+    if (horizontal) {
+        return ScrollbarIsTop(s.placement) ? y - s.bounds.y
+                                           : s.bounds.Bottom() - y;
+    }
+    return ScrollbarIsLeft(s.placement) ? x - s.bounds.x : s.bounds.Right() - x;
+}
+
 // An offset that stays inside the content, which is Rust's clamp on the
 // scroll handle rather than anything the wheel does.
 static float ClampScroll(float off, float content, float viewport) {
@@ -2106,15 +2122,13 @@ static ScrollRect* ScrollbarAt(PaintCtx* ctx, float x, float y,
         if (!s.barVisible) {
             continue;
         }
-        if (s.barY && ScrollsY(s) && y >= s.bounds.y &&
-            y <= s.bounds.Bottom() && x >= s.bounds.Right() - s.trackWidth &&
-            x <= s.bounds.Right()) {
+        if (s.barY && ScrollsY(s) &&
+            ScrollbarTrackFor(s, false).Contains({x, y})) {
             *horizontal = false;
             return &ctx->scrolls[i];
         }
-        if (s.barX && ScrollsX(s) && x >= s.bounds.x + s.horizontalBarInset &&
-            x <= s.bounds.Right() && y >= s.bounds.Bottom() - s.trackWidth &&
-            y <= s.bounds.Bottom()) {
+        if (s.barX && ScrollsX(s) &&
+            ScrollbarTrackFor(s, true).Contains({x, y})) {
             *horizontal = true;
             return &ctx->scrolls[i];
         }
@@ -2144,15 +2158,11 @@ static void NoteScrollbarOcclusion(Window* win) {
         if (s.id == 0) {
             continue;
         }
-        bool onY = s.barY && ScrollsY(s) && win->mouseY >= s.bounds.y &&
-                   win->mouseY <= s.bounds.Bottom() &&
-                   win->mouseX >= s.bounds.Right() - s.trackWidth &&
-                   win->mouseX <= s.bounds.Right();
-        bool onX = s.barX && ScrollsX(s) &&
-                   win->mouseX >= s.bounds.x + s.horizontalBarInset &&
-                   win->mouseX <= s.bounds.Right() &&
-                   win->mouseY >= s.bounds.Bottom() - s.trackWidth &&
-                   win->mouseY <= s.bounds.Bottom();
+        Point mouse = {win->mouseX, win->mouseY};
+        bool onY = s.barY && ScrollsY(s) &&
+                   ScrollbarTrackFor(s, false).Contains(mouse);
+        bool onX =
+            s.barX && ScrollsX(s) && ScrollbarTrackFor(s, true).Contains(mouse);
         if ((onY || onX) &&
             ScrollbarCovered(win->paint, s, win->mouseX, win->mouseY)) {
             VecAppend(win->scrollbarOccluded, s.id);
@@ -2251,37 +2261,33 @@ static bool PageScrollBy(Window* win, int dir) {
 }
 
 // One scroll rect's track along one axis: where it starts, how long it is,
-// the viewport and content it scrolls, the end margin a horizontal bar leaves
-// for a vertical one, and the current offset. Press and drag both lay the
-// thumb out from it.
+// the viewport and content it scrolls, and the current offset. Press and drag
+// both lay the thumb out from it.
 struct ScrollbarTrackAxis {
     float origin = 0;
     float track = 0;
     float viewport = 0;
     float content = 0;
-    float marginEnd = 0;
     float current = 0;
 
     ScrollbarThumbGeometry Geometry(float inset, float minLength) const {
-        return ScrollbarGeometry(origin, track, viewport, content, marginEnd,
-                                 inset, minLength);
+        return ScrollbarGeometry(origin, track, viewport, content, 0, inset,
+                                 minLength);
     }
 };
 
 static ScrollbarTrackAxis ScrollbarTrackAxisOf(const ScrollRect* s,
                                                bool horizontal) {
     ScrollbarTrackAxis a;
-    a.track = horizontal ? s->bounds.w : s->bounds.h;
+    Bounds track = ScrollbarTrackFor(*s, horizontal);
+    a.track = horizontal ? track.w : track.h;
     a.viewport = horizontal ? ScrollViewportW(*s) : ScrollViewportH(*s);
     a.content = horizontal ? s->contentW : s->contentH;
-    a.origin = horizontal ? s->bounds.x : s->bounds.y;
+    a.origin = horizontal ? track.x : track.y;
     if (horizontal) {
-        a.origin += s->horizontalBarInset;
-        a.track -= s->horizontalBarInset;
         a.viewport -= s->horizontalBarInset;
         a.content -= s->horizontalBarInset;
     }
-    a.marginEnd = horizontal && s->barY && ScrollsY(*s) ? s->trackWidth : 0;
     a.current = horizontal ? s->scrollX : s->scrollY;
     return a;
 }
@@ -2302,8 +2308,8 @@ static bool ScrollbarPress(Window* win, ScrollRect* s, float x, float y,
         axis.Geometry(s->thumbInset, s->thumbMinLength);
     float thumbStart = geometry.Start(current);
     float thumbLength = geometry.length;
-    bool crossInside = horizontal ? y <= s->bounds.Bottom() - s->thumbInset
-                                  : x <= s->bounds.Right() - s->thumbInset;
+    float distance = ScrollbarOuterDistance(*s, horizontal, x, y);
+    bool crossInside = distance >= s->thumbInset;
     bool onThumb =
         crossInside && at >= thumbStart && at <= thumbStart + thumbLength;
     if (!onThumb) {
@@ -2313,9 +2319,7 @@ static bool ScrollbarPress(Window* win, ScrollRect* s, float x, float y,
             axis.Geometry(s->thumbHoverInset, s->thumbHoverMinLength);
         float hoverStart = hover.Start(current);
         float hoverLength = hover.length;
-        bool hoverCross = horizontal
-                              ? y <= s->bounds.Bottom() - s->thumbHoverInset
-                              : x <= s->bounds.Right() - s->thumbHoverInset;
+        bool hoverCross = distance >= s->thumbHoverInset;
         if (hoverCross && at >= hoverStart && at <= hoverStart + hoverLength) {
             onThumb = true;
             thumbStart = hoverStart;
@@ -2329,8 +2333,7 @@ static bool ScrollbarPress(Window* win, ScrollRect* s, float x, float y,
         geometry = axis.Geometry(s->thumbHoverInset, s->thumbHoverMinLength);
         thumbStart = geometry.Start(current);
         thumbLength = geometry.length;
-        crossInside = horizontal ? y <= s->bounds.Bottom() - s->thumbHoverInset
-                                 : x <= s->bounds.Right() - s->thumbHoverInset;
+        crossInside = distance >= s->thumbHoverInset;
         onThumb =
             crossInside && at >= thumbStart && at <= thumbStart + thumbLength;
     }

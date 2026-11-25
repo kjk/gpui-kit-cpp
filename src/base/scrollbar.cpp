@@ -214,10 +214,26 @@ float ScrollbarThumbPos(float track, float thumb, float offset, float container,
     return ScrollbarThumbPos(track, thumb, offset, container, content, 0);
 }
 
+Bounds ScrollbarTrackBounds(Bounds viewport, Axis axis,
+                            ScrollbarPlacement placement, float trackWidth,
+                            float leadingInset, float otherTrackWidth) {
+    bool left = ScrollbarIsLeft(placement);
+    if (axis == Axis::Vertical) {
+        float x = left ? viewport.x : viewport.Right() - trackWidth;
+        return {x, viewport.y, trackWidth, viewport.h};
+    }
+    float x = viewport.x + leadingInset + (left ? otherTrackWidth : 0);
+    float y =
+        ScrollbarIsTop(placement) ? viewport.y : viewport.Bottom() - trackWidth;
+    return {x, y, std::max(0.f, viewport.w - leadingInset - otherTrackWidth),
+            trackWidth};
+}
+
 AxisPrepaintState ScrollbarPrepaintAxis(Axis axis, Bounds track, float offset,
                                         float containerSize, float contentSize,
                                         const ScrollbarThumbStyle& style,
-                                        float viewportSize) {
+                                        float viewportSize,
+                                        ScrollbarPlacement placement) {
     AxisPrepaintState out;
     out.axis = axis;
     out.barHitbox = track;
@@ -243,16 +259,18 @@ AxisPrepaintState ScrollbarPrepaintAxis(Axis axis, Bounds track, float offset,
     float thumbWidth = style.hasWidth ? style.width : 6.f;
 
     if (axis == Axis::Vertical) {
-        out.thumbBounds = {track.x + track.w - inset - out.trackWidth,
-                           thumbStart, out.trackWidth, thumbLength};
-        out.thumbFillBounds = {track.x + track.w - inset - thumbWidth,
-                               thumbStart, thumbWidth, thumbLength};
+        bool left = ScrollbarIsLeft(placement);
+        float edge = left ? track.x + inset : track.Right() - inset;
+        out.thumbBounds = {left ? edge : edge - out.trackWidth, thumbStart,
+                           out.trackWidth, thumbLength};
+        out.thumbFillBounds = {left ? edge : edge - thumbWidth, thumbStart,
+                               thumbWidth, thumbLength};
     } else {
-        out.thumbBounds = {thumbStart,
-                           track.y + track.h - inset - out.trackWidth,
+        bool top = ScrollbarIsTop(placement);
+        float edge = top ? track.y + inset : track.Bottom() - inset;
+        out.thumbBounds = {thumbStart, top ? edge : edge - out.trackWidth,
                            thumbLength, out.trackWidth};
-        out.thumbFillBounds = {thumbStart,
-                               track.y + track.h - inset - thumbWidth,
+        out.thumbFillBounds = {thumbStart, top ? edge : edge - thumbWidth,
                                thumbLength, thumbWidth};
     }
 
@@ -365,6 +383,10 @@ El* Scrollbar::ApplyStyles(Ctx* cx, El* element,
                            theme.tokens.colors.foreground);
     box->scrollMotion = theme.scrollbar.motion;
     return box;
+}
+
+El* Scrollbar::Placement(El* element, ScrollbarPlacement placement) {
+    return element->ScrollPlacement(placement);
 }
 
 El* Scrollbar::Vertical(Ctx* cx, Str id, float scrollY, Listener onScroll) {

@@ -22,6 +22,7 @@ Scrollable* Scrollable::New(Ctx* cx, El* element, ScrollAxis axis) {
     Scrollable* s = New(cx);
     s->element = element ? element : Div(cx->a);
     s->axis = axis;
+    s->placement = s->element->scrollbarPlacement;
     return s;
 }
 Scrollable* Scrollable::Id(Str v) {
@@ -53,6 +54,10 @@ Scrollable* Scrollable::Axis(ScrollAxis v) {
 Scrollable* Scrollable::Mode(ScrollbarMode v) {
     mode = v;
     modeSet = true;
+    return this;
+}
+Scrollable* Scrollable::Placement(ScrollbarPlacement v) {
+    placement = v;
     return this;
 }
 Scrollable* Scrollable::H(float v) {
@@ -124,6 +129,7 @@ El* Scrollable::IntoEl() {
     El* box =
         Scrollbar::Apply(cx, element, scrollId, scrollY, scrollX, onScroll,
                          axis, modeSet ? mode : ScrollbarModeNow(cx->app));
+    box->ScrollPlacement(placement);
     if (hSet) {
         box->H(h);
     }

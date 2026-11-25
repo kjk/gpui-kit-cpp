@@ -1083,6 +1083,69 @@ static void OnlyThePrimaryButtonDragsOrJumps() {
     TestAppFree(app);
 }
 
+struct PlacedScrollbarView {
+    ScrollbarPlacement placement = ScrollbarPlacement::BottomRight;
+    Point offset = {};
+
+    static void Scroll(PlacedScrollbarView* self, Ctx* cx,
+                       const ScrollEvent* ev) {
+        self->offset = {ev->offsetX, ev->offsetY};
+        Notify(cx);
+    }
+
+    static El* Render(PlacedScrollbarView* self, Ctx* cx) {
+        return Scrollbar::New(cx, StrL("placed"), self->offset.y,
+                              self->offset.x, Listen(cx, &Scroll),
+                              ScrollAxis::Both, ScrollbarMode::Always)
+            ->ScrollPlacement(self->placement)
+            ->W(100)
+            ->H(100)
+            ->Child(Div(cx->a)->W(500)->H(500)->Shrink0());
+    }
+};
+
+// scrollbar.rs
+// left_placement_puts_the_vertical_track_and_thumb_on_the_left_edge,
+// top_placement_puts_the_horizontal_track_and_thumb_on_the_top_edge, and
+// the three tests that reserve the vertical track's corner.
+static void PlacedTracksAndThumbsFollowTheirEdges() {
+    const ScrollbarPlacement placements[] = {
+        ScrollbarPlacement::BottomLeft,
+        ScrollbarPlacement::TopLeft,
+        ScrollbarPlacement::TopRight,
+    };
+    for (auto placement : placements) {
+        App* app = TestAppNew();
+        auto view = EntityNew<PlacedScrollbarView>(app);
+        auto* state = view.Get(app);
+        state->placement = placement;
+        Window* win = TestWindowOpen(app, view, 200, 200, 1);
+        bool left = ScrollbarIsLeft(placement);
+        bool top = ScrollbarIsTop(placement);
+        float vertical = left ? 14.f : 86.f;
+        float horizontal = top ? 14.f : 86.f;
+        TestSimulateClick(win, {100.f - vertical, 80});
+        utassert(state->offset.y == 0);
+        TestSimulateMouseDown(win, {vertical, 20});
+        utassert(win->scrollDragId != 0 && !win->scrollDragHorizontal);
+        TestSimulateMouseMove(win, {vertical, 46}, true);
+        TestSimulateMouseUp(win, {vertical, 46});
+        utassertnear(state->offset.y, 200.f);
+
+        TestSimulateClick(win, {70, 100.f - horizontal});
+        utassert(state->offset.x == 0);
+        float thumbX = left ? 34.f : 18.f;
+        TestSimulateMouseDown(win, {thumbX, horizontal});
+        utassert(win->scrollDragId != 0 && win->scrollDragHorizontal);
+        TestSimulateMouseMove(win, {thumbX + 18.f, horizontal}, true);
+        TestSimulateMouseUp(win, {thumbX + 18.f, horizontal});
+        utassertnear(state->offset.x, 200.f);
+        TestSimulateClick(win, {left ? 99.f : 0.f, horizontal});
+        utassert(state->offset.x != 200.f);
+        TestAppFree(app);
+    }
+}
+
 void TestScrollbar() {
     OnlyThePrimaryButtonDragsOrJumps();
     TestSuite("scrollbar");
@@ -1113,6 +1176,7 @@ void TestScrollbar() {
     ThumbDragReachesContentEndWhenTrackIncludesPadding();
     APressOnAnElementOverTheTrackIsLeftToIt();
     HoveringAnElementOverAHoverScrollbarDoesNotRevealIt();
+    PlacedTracksAndThumbsFollowTheirEdges();
 }
 
 // The window the fade state lives in; a bare one, nothing renders into it.

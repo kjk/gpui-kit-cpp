@@ -6164,6 +6164,14 @@ void InputSetEditorPaddings(InputState* s, Edges paddings) {
     s->editorPaddingsSet = true;
 }
 
+void InputSetScrollbarPlacement(InputState* s, ScrollbarPlacement placement,
+                                App* app, Window* win) {
+    if (s && s->scrollbarPlacement != placement) {
+        s->scrollbarPlacement = placement;
+        Notify(app, win);
+    }
+}
+
 void SetScrollbarRenderer(InputState* s, EditorScrollbarRenderer renderer,
                           void* user, void (*drop)(void*)) {
     if (!s) return;
@@ -6195,12 +6203,14 @@ void EditorScrollbarPrePaint(PaintCtx* ctx, El* e, void*) {
     if (inputBounds.h < 0) inputBounds.h = 0;
     EditorScrollbarContext presented;
     presented.state = s;
-    float lane = std::min(s->gutterLaneW, inputBounds.w);
-    presented.viewport = {inputBounds.x + lane, inputBounds.y - pad.top,
-                          inputBounds.w + pad.right - lane,
-                          inputBounds.h + pad.top + pad.bottom};
+    presented.placement = s->scrollbarPlacement;
+    float left = ScrollbarIsLeft(presented.placement)
+                     ? -pad.left
+                     : std::min(s->gutterLaneW, inputBounds.w);
+    presented.viewport = {inputBounds.x + left, inputBounds.y - pad.top,
+                          inputBounds.w + pad.right - left, outer.h};
     presented.scrollViewport = {presented.viewport.w, inputBounds.h};
-    presented.content = {std::max(0.f, s->contentW - lane), (float)s->contentH};
+    presented.content = {std::max(0.f, s->contentW - left), (float)s->contentH};
     presented
         .axis = s->softWrap ? ScrollbarAxis::Vertical : ScrollbarAxis::Both;
     if (!ctx || !ctx->window || !ctx->window->frameArena) return;

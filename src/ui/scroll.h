@@ -14,6 +14,7 @@ namespace component {
 // has always used it by.
 using ScrollbarAxis = gpui::ScrollAxis;
 using ScrollAxis = ScrollbarAxis; // compatibility with the original C++ API
+using ScrollbarPlacement = gpui::ScrollbarPlacement;
 
 struct Scrollable {
     Arena* a = nullptr;
@@ -30,6 +31,7 @@ struct Scrollable {
     float h = 0;
     bool hSet = false;
     ScrollAxis axis = ScrollAxis::Vertical;
+    ScrollbarPlacement placement = ScrollbarPlacement::BottomRight;
     // No explicit mode reads the projected Base theme (Scrolling by default).
     ScrollbarMode mode = ScrollbarMode::Scrolling;
     bool modeSet = false;
@@ -50,6 +52,7 @@ struct Scrollable {
     Scrollable* ScrollY(float v);
     Scrollable* ScrollX(float v);
     Scrollable* Axis(ScrollAxis v);
+    Scrollable* Placement(ScrollbarPlacement v);
     Scrollable* Mode(ScrollbarMode v);
     Scrollable* H(float v);
     Scrollable* OnScroll(Listener fn);

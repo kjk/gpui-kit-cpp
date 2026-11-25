@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `be360b64281328e041bf64c3347082b701f52841` (2026-11-23,
-editor: Clip the text to its own side of the gutter (#4077)).
-Text rows, range decorations and inline completions paint within the editor text viewport.
+Processed through `d7c4cdbbcda18157cfe3095a6931f9f525a5198d` (2026-11-23,
+scrollbar: Let the vertical scrollbar sit on the left side (#4078)).
+Scrollbars can occupy any corner of the viewport. Editor renderers read the placement, and the story demonstrates all four corners.
 The current update target is
 `832cfdc0baef92855191dfdbbbcacd75f59d3df0`.
 

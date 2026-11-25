@@ -13878,6 +13878,15 @@ static void ScrollbarRendererReceivesTheEditorsScrollRange() {
     TestSimulateMouseUp(win, end);
     utassert(fabs(v->editor.scrollY + wheelEnd.y) < 0.01f);
     utassert(fabsf(v->editor.scrollX + wheelEnd.x) < 0.01f);
+    // element.rs overview_ruler_marks_follow_a_left_scrollbar and
+    // test_editor_scrollbar_layout_on_the_left_covers_the_gutter.
+    InputSetScrollbarPlacement(&v->editor, ScrollbarPlacement::BottomLeft, app,
+                               win);
+    TestDraw(win);
+    utassert(v->presented.Placement() == ScrollbarPlacement::BottomLeft);
+    Bounds leftTrack = v->presented.ViewportBounds();
+    utassert(leftTrack.x < track.x);
+    utassertnear(leftTrack.Right(), track.Right());
     TestAppFree(app);
 }
 

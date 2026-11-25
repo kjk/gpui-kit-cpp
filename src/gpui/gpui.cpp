@@ -1214,21 +1214,21 @@ static float ScrollbarThumbMinLength(const El* e, ScrollbarPaintState state) {
 // Which of the four styles one axis's bar paints in: Active while that axis is
 // being dragged, HoverThumb with the pointer on the resting thumb, HoverBar
 // with it elsewhere on the bar. origin/length/viewport/content/marginEnd/
-// scroll lay the thumb out along the axis; crossPointer and crossEnd are the
-// pointer and the box's far edge across it, alongPointer the pointer along it.
+// scroll lay the thumb out along the axis; crossDistance is the pointer's
+// distance from the outer edge, alongPointer the pointer along the track.
 static ScrollbarPaintState ScrollbarAxisPaintState(
     const El* e, float origin, float length, float viewport, float content,
-    float marginEnd, float scroll, bool onBar, float crossPointer,
-    float crossEnd, float alongPointer, bool axisDragging) {
+    float scroll, bool onBar, float crossDistance, float alongPointer,
+    bool axisDragging) {
     if (axisDragging) {
         return ScrollbarPaintState::Active;
     }
     float normalInset = ScrollbarThumbInset(e, ScrollbarPaintState::Normal);
     ScrollbarThumbGeometry normal = ScrollbarGeometry(
-        origin, length, viewport, content, marginEnd, normalInset,
+        origin, length, viewport, content, 0, normalInset,
         ScrollbarThumbMinLength(e, ScrollbarPaintState::Normal));
     float normalStart = normal.Start(scroll);
-    bool pointerOnThumb = onBar && crossPointer <= crossEnd - normalInset &&
+    bool pointerOnThumb = onBar && crossDistance >= normalInset &&
                           alongPointer >= normalStart &&
                           alongPointer < normalStart + normal.length;
     if (pointerOnThumb) {
@@ -1766,6 +1766,10 @@ El* El::WithPlotAppearScope(uint32_t key) {
 El* El::ScrollMode(ScrollbarMode m) {
     scrollModeSet = true;
     scrollMode = m;
+    return this;
+}
+El* El::ScrollPlacement(ScrollbarPlacement placement) {
+    scrollbarPlacement = placement;
     return this;
 }
 El* El::ScrollId(int v) {
@@ -8727,7 +8731,10 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         sr.scrollY = e->scrollY;
         sr.contentW = e->contentW;
         sr.scrollX = e->scrollX;
-        if (e->input && e->input->gutterLaneW > 0) {
+        sr.placement =
+            e->input ? e->input->scrollbarPlacement : e->scrollbarPlacement;
+        if (e->input && !ScrollbarIsLeft(sr.placement) &&
+            e->input->gutterLaneW > 0) {
             sr.horizontalBarInset =
                 std::min(e->w, e->style.pad.left + e->input->gutterLaneW);
         }
@@ -9404,19 +9411,28 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     bool canVertical = !e->noScrollbarY &&
                        e->style.overflowY == Overflow::Scroll &&
                        scrollContentH > scrollViewportH + 1.f && e->h > 0;
+    ScrollbarPlacement placement =
+        e->input ? e->input->scrollbarPlacement : e->scrollbarPlacement;
+    bool left = ScrollbarIsLeft(placement);
+    bool top = ScrollbarIsTop(placement);
     float horizontalInset =
-        e->input && e->input->gutterLaneW > 0
+        e->input && !left && e->input->gutterLaneW > 0
             ? std::min(e->w, e->style.pad.left + e->input->gutterLaneW)
             : 0.f;
     bool canHorizontal = !e->noScrollbarX &&
                          e->style.overflowX == Overflow::Scroll &&
                          e->contentW > e->w + 1.f && e->w > horizontalInset;
+    Bounds vertical =
+        ScrollbarTrackBounds(e->Bounds(), Axis::Vertical, placement, trackW);
+    Bounds horizontal =
+        ScrollbarTrackBounds(e->Bounds(), Axis::Horizontal, placement, trackW,
+                             horizontalInset, canVertical ? trackW : 0);
+    Point mouse = {ctx->mouseX, ctx->mouseY};
+    bool onVerticalBand = canVertical && vertical.Contains(mouse);
+    bool onHorizontalBand = canHorizontal && horizontal.Contains(mouse);
     // An occluder above the bar is not a hover on the bar. The drag still
     // holds it up: that press started on the bar itself.
-    bool onBand = overBox && !covered &&
-                  ((canVertical && ctx->mouseX >= e->x + e->w - trackW) ||
-                   (canHorizontal && ctx->mouseX >= e->x + horizontalInset &&
-                    ctx->mouseY >= e->y + e->h - trackW));
+    bool onBand = overBox && !covered && (onVerticalBand || onHorizontalBand);
     bool barVisible = !e->noScrollbar;
     float barAlpha = 1.f;
     float barSlide = 0.f;
@@ -9487,10 +9503,11 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     bool hasVertical = barVisible && canVertical;
     bool hasHorizontal = barVisible && canHorizontal;
     if (hasVertical) {
-        bool onBar = overBox && !covered && ctx->mouseX >= e->x + e->w - trackW;
+        bool onBar = overBox && !covered && onVerticalBand;
+        float distance = left ? mouse.x - e->x : e->Bounds().Right() - mouse.x;
         ScrollbarPaintState state = ScrollbarAxisPaintState(
-            e, e->y, e->h, scrollViewportH, scrollContentH, 0, logicalScrollY,
-            onBar, ctx->mouseX, e->x + e->w, ctx->mouseY,
+            e, e->y, e->h, scrollViewportH, scrollContentH, logicalScrollY,
+            onBar, distance, ctx->mouseY,
             dragging && !ctx->scrollDragHorizontal);
         float inset = ScrollbarThumbInset(e, state);
         ScrollbarThumbGeometry geometry =
@@ -9504,7 +9521,8 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
                 WidthTarget(&barState->widthY, &barState->widthYSet, wantW,
                             barMotion.expand, TimeNow(), &ctx->wantsAnimFrame);
         }
-        float thumbX = e->x + e->w - thumbW - inset;
+        float thumbX =
+            left ? vertical.x + inset : vertical.Right() - thumbW - inset;
         float thumbY = geometry.Start(logicalScrollY);
         // Overview ruler marks sit under the scrollbar, so they stay visible
         // while the thumb fades. The track is the theme's scrollbar width.
@@ -9516,16 +9534,13 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
             double contentHeight = e->input->contentH + e->h - viewport;
             float lineH =
                 e->input->lastLineH > 0.f ? e->input->lastLineH : 20.f;
-            InputPaintOverviewRuler(e->input, ctx, e->x + e->w - trackW, e->y,
-                                    trackW, e->h, contentHeight, padTop, lineH);
+            InputPaintOverviewRuler(e->input, ctx, vertical.x, e->y, trackW,
+                                    e->h, contentHeight, padTop, lineH);
         }
-        // The track, which every default theme leaves transparent — the band
-        // is Rust's WIDTH and reaches the whole length of the box. A vertical
-        // bar slides in from the right, so the slide is along x.
-        FillBackground(ctx, e->x + e->w - trackW + barSlide, e->y, trackW, e->h,
-                       0, nullptr,
+        float slide = left ? -barSlide : barSlide;
+        FillBackground(ctx, vertical.x + slide, e->y, trackW, e->h, 0, nullptr,
                        ScrollbarBarBg(e, barTheme, state, barAlpha));
-        FillBackground(ctx, thumbX + barSlide, thumbY, thumbW, thumbH,
+        FillBackground(ctx, thumbX + slide, thumbY, thumbW, thumbH,
                        ThumbRadius(e, barTheme, state, thumbW, thumbH), nullptr,
                        ScrollbarThumbBg(e, barTheme, state, barAlpha));
     }
@@ -9533,20 +9548,18 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         // The horizontal bar is the same arithmetic along the other axis,
         // which is how Rust writes it: one path, `is_vertical` picking the
         // pair of numbers it reads.
-        float barX = e->x + horizontalInset;
-        float barW = e->w - horizontalInset;
+        float viewportW = e->w - horizontalInset;
         float contentW = e->contentW - horizontalInset;
-        bool onBar = overBox && !covered && ctx->mouseX >= barX &&
-                     ctx->mouseY >= e->y + e->h - trackW;
-        float marginEnd = hasVertical ? trackW : 0;
+        bool onBar = overBox && !covered && onHorizontalBand;
+        float distance = top ? mouse.y - e->y : e->Bounds().Bottom() - mouse.y;
         ScrollbarPaintState state = ScrollbarAxisPaintState(
-            e, barX, barW, barW, contentW, marginEnd, e->scrollX, onBar,
-            ctx->mouseY, e->y + e->h, ctx->mouseX,
+            e, horizontal.x, horizontal.w, viewportW, contentW, e->scrollX,
+            onBar, distance, ctx->mouseX,
             dragging && ctx->scrollDragHorizontal);
         float inset = ScrollbarThumbInset(e, state);
         ScrollbarThumbGeometry geometry =
-            ScrollbarGeometry(barX, barW, barW, contentW, marginEnd, inset,
-                              ScrollbarThumbMinLength(e, state));
+            ScrollbarGeometry(horizontal.x, horizontal.w, viewportW, contentW,
+                              0, inset, ScrollbarThumbMinLength(e, state));
         float thumbW = geometry.length;
         float wantH = ScrollbarThumbWidth(e, state);
         float thumbH = wantH;
@@ -9555,13 +9568,14 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
                 WidthTarget(&barState->widthX, &barState->widthXSet, wantH,
                             barMotion.expand, TimeNow(), &ctx->wantsAnimFrame);
         }
-        float thumbY = e->y + e->h - thumbH - inset;
+        float thumbY =
+            top ? horizontal.y + inset : horizontal.Bottom() - thumbH - inset;
         float thumbX = geometry.Start(e->scrollX);
-        // A horizontal bar slides up from the bottom, so its slide is along y.
-        FillBackground(ctx, barX, e->y + e->h - trackW + barSlide, barW, trackW,
-                       0, nullptr,
+        float slide = top ? -barSlide : barSlide;
+        FillBackground(ctx, horizontal.x, horizontal.y + slide, horizontal.w,
+                       trackW, 0, nullptr,
                        ScrollbarBarBg(e, barTheme, state, barAlpha));
-        FillBackground(ctx, thumbX, thumbY + barSlide, thumbW, thumbH,
+        FillBackground(ctx, thumbX, thumbY + slide, thumbW, thumbH,
                        ThumbRadius(e, barTheme, state, thumbH, thumbW), nullptr,
                        ScrollbarThumbBg(e, barTheme, state, barAlpha));
     }

@@ -1209,6 +1209,13 @@ enum class ScrollbarMode : uint8_t {
     Scrolling
 };
 
+enum class ScrollbarPlacement : uint8_t {
+    BottomRight,
+    BottomLeft,
+    TopRight,
+    TopLeft,
+};
+
 // The deliberately small style seam consumed by the GPUI runtime. The
 // component theme projects its active palette into this value; the renderer
 // never depends on the much larger component-specific Theme/ThemeTokens
@@ -3240,7 +3247,8 @@ struct El {
     ObjectFit objectFit = ObjectFit::Contain;
     ImageLoadState imageLoadState = ImageLoadState::Loading;
     // The bar this box shows. Unnamed, it is the theme's mode.
-    ScrollbarMode scrollMode = ScrollbarMode::Always;
+    ScrollbarMode scrollMode : 2 = ScrollbarMode::Always;
+    ScrollbarPlacement scrollbarPlacement : 2 = ScrollbarPlacement::BottomRight;
     // ScrollableMask axes: horizontal is bit 0, vertical bit 1. Bit 2 is
     // ScrollableMask::vertical_wheel (a plain vertical line wheel moves this
     // horizontal scroller and chains at the edge).
@@ -3398,6 +3406,7 @@ struct El {
     El* PaintOffset(float dx, float dy);
     El* ClipX();
     El* ScrollMode(ScrollbarMode m);
+    El* ScrollPlacement(ScrollbarPlacement placement);
     El* ScrollId(int v);
     El* Click(int v);
     El* Role(AccessibilityRole role);
@@ -3930,6 +3939,7 @@ struct ScrollRect {
     float viewportH = 0;
     float horizontalBarInset = 0;
     ScrollbarMode mode = ScrollbarMode::Always;
+    ScrollbarPlacement placement = ScrollbarPlacement::BottomRight;
     // Which of the two bars this box shows, from El::HideScrollbar and its
     // per-axis pair: a bar that is not painted is not there to grab either.
     bool barX = true;
@@ -5843,6 +5853,7 @@ struct InputState {
     // set_scrollbar_renderer. Null keeps the integrated bar. Not notified,
     // so a render pass can install it.
     EditorScrollbarRenderer scrollbarRenderer = nullptr;
+    ScrollbarPlacement scrollbarPlacement = ScrollbarPlacement::BottomRight;
     void* scrollbarRendererUser = nullptr;
     void (*scrollbarRendererDrop)(void* data) = nullptr;
     // pending_context_menu: a right press waiting for its release, where it

@@ -25,8 +25,10 @@ struct EditorScrollbarContext {
     Size scrollViewport = {};
     Size content = {};
     ScrollbarAxis axis = ScrollbarAxis::Both;
+    ScrollbarPlacement placement = ScrollbarPlacement::BottomRight;
 
     ScrollbarAxis Axis() const { return axis; }
+    ScrollbarPlacement Placement() const { return placement; }
     Size ScrollViewportSize() const { return scrollViewport; }
     Bounds ViewportBounds() const { return viewport; }
     // ScrollHandle's offset is negative-down. The state stores positive-down.
@@ -39,6 +41,8 @@ struct EditorScrollbarContext {
 };
 
 void InputSetEditorPaddings(InputState* s, Edges paddings);
+void InputSetScrollbarPlacement(InputState* s, ScrollbarPlacement placement,
+                                App* app, Window* win);
 void SetScrollbarRenderer(InputState* s, EditorScrollbarRenderer renderer,
                           void* user = nullptr, void (*drop)(void*) = nullptr);
 void EditorScrollbarPrePaint(PaintCtx* ctx, El* e, void* user);
