@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `353c6bc29db0a9b40e6994dbff0c9a5b10af728f` (2026-11-24,
-menu: Leave focus where it was when a context menu is empty (#4105)).
-A right-click on an empty context menu leaves the menu closed and preserves focus in the content.
+Processed through `c9174d9d8c98642c6d19025f60d29552d859aa28` (2026-11-25,
+component: Bump Windows resvg to 0.46 to match gpui-pre (#4107)).
+Reviewed the Windows resvg dependency consolidation. C++ uses its built-in SVG renderer.
 The current update target is
 `832cfdc0baef92855191dfdbbbcacd75f59d3df0`.
 
