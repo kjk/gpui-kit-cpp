@@ -272,10 +272,21 @@ struct LineDecoration {
     int row = 0;
     Rgba background = {};
     bool hasBackground = false;
+    Str gutterIcon = {};
+    Rgba gutterIconColor = {};
 
     static LineDecoration New(int row) { return {row}; }
     LineDecoration WithBackground(Rgba color) const {
-        return {row, color, true};
+        LineDecoration out = *this;
+        out.background = color;
+        out.hasBackground = true;
+        return out;
+    }
+    LineDecoration WithGutterIcon(Str path, Rgba color) const {
+        LineDecoration out = *this;
+        out.gutterIcon = path;
+        out.gutterIconColor = color;
+        return out;
     }
 };
 
@@ -313,6 +324,7 @@ struct LineDecorationProvider {
                   Arena* a, ArenaVec<LineDecoration>* out,
                   void* data) = nullptr;
     void* data = nullptr;
+    bool hasGutterIcons = false;
 };
 
 struct LineDecorationCollection {
@@ -333,6 +345,7 @@ struct LineDecorationCollection {
 LineDecorationCollection InputCreateLineDecorationsCollection(
     InputState* s, LineDecorationProvider provider, Ctx* cx = nullptr);
 bool InputHasLineDecorationProviders(const InputState* s);
+bool InputHasLineDecorationIcons(const InputState* s);
 void InputLineDecorationsForRows(const InputState* s, Selection rows, Ctx* cx,
                                  ArenaVec<LineDecoration>* out);
 // EditorState::create_decorations_collection: an independently owned

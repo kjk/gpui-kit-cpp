@@ -1548,6 +1548,17 @@ bool InputHasLineDecorationProviders(const InputState* s) {
     return false;
 }
 
+bool InputHasLineDecorationIcons(const InputState* s) {
+    if (s && s->rangeDecorations) {
+        for (const auto& entry : s->rangeDecorations->lineProviders) {
+            if (entry.provider.query && entry.provider.hasGutterIcons) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 void InputLineDecorationsForRows(const InputState* s, Selection rows, Ctx* cx,
                                  ArenaVec<LineDecoration>* out) {
     if (!s || !s->rangeDecorations || rows.start >= rows.end) {
@@ -1562,8 +1573,9 @@ void InputLineDecorationsForRows(const InputState* s, Selection rows, Ctx* cx,
         provider.query(s, rows, cx->app, cx->a, out, provider.data);
         int write = first;
         for (int i = first; i < len(*out); i++) {
-            const auto& decoration = (*out)[i];
+            auto decoration = (*out)[i];
             if (decoration.row >= rows.start && decoration.row < rows.end) {
+                if (!provider.hasGutterIcons) decoration.gutterIcon = {};
                 (*out)[write++] = decoration;
             }
         }

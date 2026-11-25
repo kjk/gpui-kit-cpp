@@ -90,8 +90,9 @@ static const char* kDecorationText =
     "\n"
     "Frame: outlines a tracked range.\n"
     "\n"
-    "Added: a line background.\n"
-    "Removed: asked again on every frame.";
+    "Added: a line background and a gutter icon.\n"
+    "Removed: asked again on every frame.\n"
+    "Bookmark: a gutter icon alone.";
 
 static void StoryLineBackgrounds(const InputState* editor, Selection rows,
                                  const App* app, Arena* a,
@@ -100,11 +101,18 @@ static void StoryLineBackgrounds(const InputState* editor, Selection rows,
     for (int row = rows.start; row < rows.end; row++) {
         Str line = InputSliceLine(editor, row);
         if (StrStartsWith(line, StrL("Added:"))) {
-            out->Append(a, LineDecoration::New(row).WithBackground(
-                               RgbaOpacity(theme.success, 0.12f)));
+            out->Append(
+                a, LineDecoration::New(row)
+                       .WithBackground(RgbaOpacity(theme.success, 0.12f))
+                       .WithGutterIcon(StrL("icons/plus.svg"), theme.success));
         } else if (StrStartsWith(line, StrL("Removed:"))) {
-            out->Append(a, LineDecoration::New(row).WithBackground(
-                               RgbaOpacity(theme.danger, 0.12f)));
+            out->Append(
+                a, LineDecoration::New(row)
+                       .WithBackground(RgbaOpacity(theme.danger, 0.12f))
+                       .WithGutterIcon(StrL("icons/minus.svg"), theme.danger));
+        } else if (StrStartsWith(line, StrL("Bookmark:"))) {
+            out->Append(a, LineDecoration::New(row).WithGutterIcon(
+                               StrL("icons/star-fill.svg"), theme.info));
         }
     }
 }
@@ -278,7 +286,7 @@ El* EditorStory::Render(EditorStory* self, Ctx* cx) {
         InputSetValue(&self->code, Str(kEditorCode));
         InputSetValue(&self->decorations, Str(kDecorationText));
         self->lineDecorations = InputCreateLineDecorationsCollection(
-            &self->decorations, {&StoryLineBackgrounds});
+            &self->decorations, {&StoryLineBackgrounds, nullptr, true});
         self->completions.kind = InputKind::Editor;
         self->completions.completionProvider = &StoryCompletions;
         self->completions.completionData = &self->completionHighlight;
@@ -482,10 +490,23 @@ struct EditorDiffStory {
     StoryToolbarState toolbar;
     bool ready = false;
     bool mirrored = true;
+    bool iconsBeforeNumbers = false;
     double lastY = 0;
 
     static void ChooseLayout(EditorDiffStory* self, Ctx* cx, const ClickEvent*,
                              int64_t value) {
+        if (value == 2) {
+            self->iconsBeforeNumbers = !self->iconsBeforeNumbers;
+            const GutterColumn columns[] = {GutterColumn::FoldIcons,
+                                            GutterColumn::Icons};
+            for (InputState& pane : self->panes) {
+                InputSetGutterOrder(&pane, columns,
+                                    self->iconsBeforeNumbers ? 2 : 0, cx->app,
+                                    cx->win);
+            }
+            Notify(cx);
+            return;
+        }
         self->mirrored = value != 0;
         UpdatePlacement(self, cx);
         Notify(cx);
@@ -507,12 +528,15 @@ struct EditorDiffStory {
                              ArenaVec<LineDecoration>* out, void* data) {
         auto* self = (EditorDiffStory*)data;
         const Theme& theme = ThemeNow(app);
-        Rgba color = pane == &self->panes[0] ? theme.danger : theme.success;
+        bool removed = pane == &self->panes[0];
+        Rgba color = removed ? theme.danger : theme.success;
+        Str icon = removed ? StrL("icons/minus.svg") : StrL("icons/plus.svg");
         for (int row = rows.start; row < rows.end; row++) {
             if (!StrEq(InputSliceLine(&self->panes[0], row),
                        InputSliceLine(&self->panes[1], row))) {
                 out->Append(a, LineDecoration::New(row)
-                                   .WithBackground(RgbaOpacity(color, 0.12f)));
+                                   .WithBackground(RgbaOpacity(color, 0.12f))
+                                   .WithGutterIcon(icon, color));
             }
         }
     }
@@ -539,7 +563,7 @@ struct EditorDiffStory {
                 pane->mode.lineNumber = true;
                 InputSetScrollBounce(pane, false);
                 self->decorations[i] = InputCreateLineDecorationsCollection(
-                    pane, {&ChangedLines, self});
+                    pane, {&ChangedLines, self, true});
             }
             UpdatePlacement(self, cx);
         }
@@ -553,6 +577,7 @@ struct EditorDiffStory {
             {"Gutter layout", false, 0, false, false, true},
             {"Both on left", !self->mirrored, 0},
             {"Facing center", self->mirrored, 1},
+            {"Icons before line numbers", self->iconsBeforeNumbers, 2},
         };
         auto pane = [&](int i, Str label) {
             return Div(a)
@@ -579,7 +604,7 @@ struct EditorDiffStory {
             ->SizeFull()
             ->FlexCol()
             ->Gap(12)
-            ->Child(StoryToolbarOptions(cx, self, opts, 3,
+            ->Child(StoryToolbarOptions(cx, self, opts, 4,
                                         Listen(cx, &ChooseLayout), false))
             ->Child(Div(a)
                         ->FlexRow()

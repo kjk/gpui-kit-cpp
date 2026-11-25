@@ -16,6 +16,7 @@
 #include "base/theme.h"
 #include "gpui/bidi.h"
 #include "gpui/paint.h"
+#include "gpui/svg.h"
 
 #include <math.h>
 
@@ -3173,6 +3174,12 @@ static void BuildRangeDecorationPaths(PaintCtx* ctx, RangeDecorationPaint* p,
 // then every range decoration, each path once for the whole editor. It also
 // keeps what the column was built from, for RewrapEditorColumn to build it
 // again.
+struct EditorLineIcon {
+    Str path = {};
+    float y = 0.f;
+    Rgba color = {};
+};
+
 struct EditorUnderlay {
     InputState* state = nullptr;
     RangeDecorationPaint* decorations = nullptr;
@@ -3187,12 +3194,16 @@ struct EditorUnderlay {
     ArenaVec<El*> gutterMarks;
     float gutterStrip = 0;
     float decorationsX = 0;
+    float iconX = 0;
+    float iconSize = 0;
+    float iconTop = 0;
     bool mirrorMarks = false;
     float leftGutterInset = 0;
     Bounds textMask = {};
     El** lineBands = nullptr;
     Selection bandRows = {};
     ArenaVec<LineDecorationBackground> lineBackgrounds;
+    ArenaVec<EditorLineIcon> lineIcons;
     // layout_folded_lines: one quad per folded line, painted under the text
     // and under the active-line wash. The bands are the lines themselves.
     El* foldBands[64] = {};
@@ -3221,6 +3232,7 @@ static void PaintEditorLineBackgrounds(PaintCtx* ctx, EditorUnderlay* u,
         return;
     }
     u->lineBackgrounds.Truncate(0);
+    u->lineIcons.Truncate(0);
     Selection visible = u->bandRows;
     while (visible.start < visible.end &&
            !EditorLineBandVisible(
@@ -3236,10 +3248,16 @@ static void PaintEditorLineBackgrounds(PaintCtx* ctx, EditorUnderlay* u,
     InputLineDecorationsForRows(u->state, visible, &u->cx, &decorations);
     for (const auto& decoration : decorations) {
         const El* band = u->lineBands[decoration.row - u->bandRows.start];
-        if (!decoration.hasBackground ||
-            !EditorLineBandVisible(band, viewport)) {
+        if (!EditorLineBandVisible(band, viewport)) {
             continue;
         }
+        if (u->iconSize > 0 && len(decoration.gutterIcon)) {
+            Rgba color = decoration.gutterIconColor;
+            if (u->state->disabled) color = RgbaOpacity(color, 0.5f);
+            u->lineIcons.Append(
+                u->cx.a, {decoration.gutterIcon, band->y + u->iconTop, color});
+        }
+        if (!decoration.hasBackground) continue;
         Bounds bounds = {viewport.x, band->y, viewport.w, band->h};
         Rgba color = decoration.background;
         if (u->state->disabled) {
@@ -3348,6 +3366,10 @@ static void PaintEditorUnderlay(PaintCtx* ctx, El* e, void* user) {
         FillRound(ctx, band->x - u->activeBleedL, band->y,
                   band->w + u->activeBleedL, band->h, 0,
                   PaintFade(ctx, u->activeColor));
+    }
+    for (const EditorLineIcon& icon : u->lineIcons) {
+        SvgDraw(ctx, icon.path, gutterX + u->iconX, icon.y, u->iconSize,
+                PaintFade(ctx, icon.color));
     }
     RangeDecorationPaint* p = u->decorations;
     if (!p) {
@@ -3737,16 +3759,21 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             : 0.f;
     // An empty decoration collection still reserves its lane.
     float gutterStrip = InputGutterStripWidth(state);
-    const float laneWidths[] = {foldW, numW, gutterStrip};
-    state->gutterLaneW = gutterStrip + numW + foldW;
+    float iconSize =
+        lineNumbers && InputHasLineDecorationIcons(state) ? lineH * 0.6f : 0.f;
+    float iconGap = iconSize > 0 ? lineH * 0.2f : 0.f;
+    float iconsW = iconSize + iconGap;
+    const float laneWidths[] = {foldW, numW, iconsW, gutterStrip};
+    state->gutterLaneW = gutterStrip + numW + foldW + iconsW;
     state->gutterGap = numberGap;
     bool rightGutter = state->gutterSide == Side::Right;
-    GutterColumn order[3];
-    float laneX[3];
-    int laneIndex[3];
+    GutterColumn order[kGutterColumnCount];
+    float laneX[kGutterColumnCount];
+    int laneIndex[kGutterColumnCount];
     float laneOffset = 0;
-    for (int i = 0; i < 3; i++) {
-        GutterColumn lane = state->gutterOrder[rightGutter ? i : 2 - i];
+    for (int i = 0; i < kGutterColumnCount; i++) {
+        GutterColumn lane =
+            state->gutterOrder[rightGutter ? i : kGutterColumnCount - 1 - i];
         order[i] = lane;
         laneIndex[(int)lane] = i;
         laneX[(int)lane] = laneOffset;
@@ -4263,6 +4290,13 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         underlay->textOriginOffset = textOriginOffset;
         underlay->gutterStrip = gutterStrip;
         underlay->decorationsX = laneX[(int)GutterColumn::Decorations];
+        underlay->iconSize = iconSize;
+        underlay->iconTop = (lineH - iconSize) * 0.5f;
+        underlay->iconX = laneX[(int)GutterColumn::Icons];
+        if (laneIndex[(int)GutterColumn::Icons] >
+            laneIndex[(int)GutterColumn::LineNumbers]) {
+            underlay->iconX += iconGap;
+        }
         underlay->mirrorMarks = laneIndex[(int)GutterColumn::Decorations] >
                                 laneIndex[(int)GutterColumn::LineNumbers];
         underlay->leftGutterInset =
@@ -4750,7 +4784,9 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         El* decorations = gutterStrip > 0.f
                               ? Div(a)->W(gutterStrip)->H(lineH)->Shrink0()
                               : nullptr;
-        El* lanes[] = {fold, numCell, decorations};
+        El* icons =
+            iconsW > 0 ? Div(a)->W(iconsW)->H(lineH)->Shrink0() : nullptr;
+        El* lanes[] = {fold, numCell, icons, decorations};
         for (GutterColumn lane : order) {
             gutter->Child(lanes[(int)lane]);
         }
@@ -6742,17 +6778,18 @@ void InputSetGutterSide(InputState* s, Side side, App* app, Window* win) {
 void InputSetGutterOrder(InputState* s, const GutterColumn* columns, int count,
                          App* app, Window* win) {
     if (!s) return;
-    GutterColumn order[3];
+    GutterColumn order[kGutterColumnCount];
     unsigned seen = 0;
     int n = 0;
     auto add = [&](GutterColumn column) {
         unsigned index = (unsigned)column;
-        if (index < 3 && !(seen & (1u << index))) {
+        if (index < kGutterColumnCount && !(seen & (1u << index))) {
             order[n++] = column;
             seen |= 1u << index;
         }
     };
-    for (int i = 0; columns && i < count && n < 3; i++) add(columns[i]);
+    for (int i = 0; columns && i < count && n < kGutterColumnCount; i++)
+        add(columns[i]);
     for (GutterColumn column : kDefaultGutterOrder) add(column);
     if (memcmp(s->gutterOrder, order, sizeof(order)) != 0) {
         memcpy(s->gutterOrder, order, sizeof(order));

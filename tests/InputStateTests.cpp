@@ -12031,7 +12031,7 @@ static void GutterColumnOrderNormalizesAndMirrorsTheLanes() {
     }
     InputSetGutterOrder(s, nullptr, 0, d.app, d.win);
     utassert(s->gutterOrder[0] == GutterColumn::FoldIcons);
-    utassert(s->gutterOrder[2] == GutterColumn::Decorations);
+    utassert(s->gutterOrder[3] == GutterColumn::Decorations);
     decorations.Clear();
     TestAppFree(d.app);
 }
@@ -12504,6 +12504,32 @@ static void EditorDecorationChangesInvalidateTheRenderedOwner() {
     TestAppFree(d.app);
     ranges.Set(&mark, 1);
     utassert(!ranges.IsValid());
+}
+
+// gutter_icons_follow_editor_font_changes_without_changing_rem.
+static void EditorGutterIconLaneFollowsTheLineHeight() {
+    DecorationEditor d = DecorationEditorOpen("first\nsecond", true);
+    InputSetLineNumber(d.editor, true, d.app, d.win);
+    TestRunUntilParked(d.app);
+    float plain = d.editor->lastBounds.x;
+    auto icons = [](const InputState*, Selection rows, const App*, Arena* a,
+                    ArenaVec<LineDecoration>* out, void*) {
+        for (int row = rows.start; row < rows.end; row++) {
+            out->Append(a, LineDecoration::New(row).WithGutterIcon(
+                               StrL("icons/plus.svg"), Rgba8(0, 160, 0, 255)));
+        }
+    };
+    auto collection =
+        InputCreateLineDecorationsCollection(d.editor, {icons, nullptr, false});
+    TestRunUntilParked(d.app);
+    utassertnear(d.editor->lastBounds.x, plain);
+    collection.SetProvider({icons, nullptr, true});
+    TestRunUntilParked(d.app);
+    utassertnear(d.editor->lastBounds.x - plain, 0.8f * d.editor->lastLineH);
+    collection.Clear();
+    TestRunUntilParked(d.app);
+    utassertnear(d.editor->lastBounds.x, plain);
+    TestAppFree(d.app);
 }
 
 // element.rs geometric_decorations_track_edits_history_replacement_and_owner_
@@ -13158,6 +13184,7 @@ static void RunElementWindowTests() {
     GeometricDecorationsIncludeCrlfBoundaries();
     GeometricDecorationsProjectFoldsWithoutChangingTrackedRanges();
     EditorDecorationChangesInvalidateTheRenderedOwner();
+    EditorGutterIconLaneFollowsTheLineHeight();
 }
 
 // ─── touch.rs window tests ────────────────────────────────────────────────

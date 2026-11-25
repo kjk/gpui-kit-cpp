@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "832cfdc0baef92855191dfdbbbcacd75f59d3df0",
+  sha: "1c7e9717c4a6db6b9c264ae5e121b11883e6938c",
   date: "2026-11-25",
-  subject: "editor: Add spacer rows to the display map (#4118)",
+  subject: "editor: Add gutter icons to line decorations (#4120)",
   crates: {
     "gpui-kit": "0.11.0",
     "gpui-base": "0.11.0",

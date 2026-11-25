@@ -39,12 +39,15 @@ enum class Side : uint8_t {
 enum class GutterColumn : uint8_t {
     FoldIcons,
     LineNumbers,
+    Icons,
     Decorations,
 };
 
 inline constexpr GutterColumn kDefaultGutterOrder[] = {
-    GutterColumn::FoldIcons, GutterColumn::LineNumbers,
+    GutterColumn::FoldIcons, GutterColumn::LineNumbers, GutterColumn::Icons,
     GutterColumn::Decorations};
+inline constexpr int kGutterColumnCount =
+    sizeof(kDefaultGutterOrder) / sizeof(kDefaultGutterOrder[0]);
 
 // gpui::ClipboardItem, flattened for the port's POD boundary. Every field is
 // borrowed from the Arena passed to ClipboardGetItem: text is UTF-8, image is
@@ -5979,8 +5982,9 @@ struct InputState {
     float gutterGap = 0;
     float scrollbarClearance = 0;
     Side gutterSide = Side::Left;
-    GutterColumn gutterOrder[3] = {
-        kDefaultGutterOrder[0], kDefaultGutterOrder[1], kDefaultGutterOrder[2]};
+    GutterColumn gutterOrder[kGutterColumnCount] = {
+        kDefaultGutterOrder[0], kDefaultGutterOrder[1], kDefaultGutterOrder[2],
+        kDefaultGutterOrder[3]};
     bool softWrap = true;
     // show_whitespaces: paint a mid-dot on every space and an arrow on
     // every tab. Off until the editor's status bar turns it on.

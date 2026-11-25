@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `832cfdc0baef92855191dfdbbbcacd75f59d3df0` (2026-11-25,
-editor: Add spacer rows to the display map (#4118)).
-Project provider-supplied spacer rows through editor layout, display queries, hit testing, and scrolling.
+Processed through `1c7e9717c4a6db6b9c264ae5e121b11883e6938c` (2026-11-25,
+editor: Add gutter icons to line decorations (#4120)).
+Line decorations can reserve an icon column and paint themed SVG markers beside line numbers.
 The current update target is
-`832cfdc0baef92855191dfdbbbcacd75f59d3df0`.
+`5573590624ba9d63e061c9e1a6d30235c10f4f43`.
 
 ## Known gaps vs Rust
 
