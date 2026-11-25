@@ -3723,6 +3723,127 @@ static void ClearDiffReviewSelection(DiffState* self, Ctx* cx) {
     }
 }
 
+static bool DiffTouchCaret(const DiffState* state, int sourceOffset,
+                           SelectionEdge edge, Bounds* out) {
+    const DiffTextSelection& selection = state->textSelection;
+    const auto* source = SideOf(state->files[selection.file], selection.side);
+    for (const DiffCodeRunGeometry& run : state->codeRuns) {
+        if (run.file != selection.file || run.side != selection.side ||
+            !run.layout || !len(run.text))
+            continue;
+        const DiffSourceLine& line = source->lines[run.line];
+        if (sourceOffset < line.sourceStart || sourceOffset > line.contentEnd) {
+            continue;
+        }
+        int offset = DisplayOff(source, line, sourceOffset - line.sourceStart) -
+                     run.displayStart;
+        if (offset < 0 || offset > len(run.text)) continue;
+        bool trailing = edge == SelectionEdge::End || offset == len(run.text);
+        if (offset == 0) trailing = false;
+        if (edge == SelectionEdge::Start && offset == len(run.text) &&
+            run.displayStart + offset < len(line.display))
+            continue;
+        if (edge == SelectionEdge::End && offset == 0 && run.displayStart > 0) {
+            continue;
+        }
+        int start = trailing ? Utf8Prev(run.text, offset) : offset;
+        uint32_t cp = 0;
+        int end = trailing ? offset : offset + Utf8At(run.text, offset, &cp);
+        Bounds glyph;
+        if (!TextLayoutRangeRects(run.layout, run.text, start, end, &glyph,
+                                  1)) {
+            continue;
+        }
+        float x = run.bounds.x + (trailing ? glyph.Right() : glyph.x);
+        float y = run.bounds.y + glyph.y;
+        if (x < run.visible.x || x > run.visible.Right() ||
+            y >= run.visible.Bottom() || y + glyph.h <= run.visible.y) {
+            continue;
+        }
+        *out = {x, y, 1.f, glyph.h};
+        return true;
+    }
+    return false;
+}
+
+static bool DiffTouchSnapshot(void* user, const Window*,
+                              TouchSelectionSnapshot* out) {
+    auto* state = static_cast<DiffState*>(user);
+    const DiffTextSelection& sel = state->textSelection;
+    if (!sel.hitText || sel.anchor == sel.cursor || sel.file < 0 ||
+        sel.file >= len(state->files))
+        return false;
+    if (out) {
+        Bounds start;
+        Bounds end;
+        bool startVisible = DiffTouchCaret(state, IMin(sel.anchor, sel.cursor),
+                                           SelectionEdge::Start, &start);
+        bool endVisible = DiffTouchCaret(state, IMax(sel.anchor, sel.cursor),
+                                         SelectionEdge::End, &end);
+        *out = TouchSelectionSnapshot::New(start, end)
+                   .WithEdgeVisible(SelectionEdge::Start, startVisible)
+                   .WithEdgeVisible(SelectionEdge::End, endVisible);
+    }
+    return true;
+}
+
+static SelectionEdge ExtendDiffTouch(void* user, Window* win,
+                                     SelectionEdge edge, Point point) {
+    auto* state = static_cast<DiffState*>(user);
+    DiffTextSelection& sel = state->textSelection;
+    const auto* run = DiffSelectionRun(state, point, sel.file, sel.side);
+    if (!run) return edge;
+    int fixed = edge == SelectionEdge::Start ? IMax(sel.anchor, sel.cursor)
+                                             : IMin(sel.anchor, sel.cursor);
+    int moving = DiffSelectionAt(state, &win->paint, *run, point, 1).start;
+    if (moving == fixed) return edge;
+    sel.anchor = IMin(fixed, moving);
+    sel.cursor = IMax(fixed, moving);
+    Ctx cx = {win->app, win, win->frameArena, state->self.id};
+    Notify(&cx);
+    return moving < fixed ? SelectionEdge::Start : SelectionEdge::End;
+}
+
+static int CopyDiffTouch(void* user, Window* win, char* out, int capacity) {
+    auto* state = static_cast<DiffState*>(user);
+    Str selected = DiffTouchSnapshot(state, win, nullptr)
+                       ? state->SelectedText(GetTempArena())
+                       : Str{};
+    return StrCopyCapped(out, capacity, selected);
+}
+
+static void ClearDiffTouch(void* user, Window* win) {
+    auto* state = static_cast<DiffState*>(user);
+    state->textSelection = {};
+    AppInvalidate(win);
+}
+
+static void OnDiffCodeLongPress(DiffState* state, Ctx* cx,
+                                const LongPressEvent* event, int64_t arg) {
+    const auto* cell = reinterpret_cast<const DiffTextRun*>((intptr_t)arg);
+    Point at = event->startPosition;
+    const auto* run = DiffSelectionRun(state, at, cell->file, cell->side);
+    if (!run || !run->visible.Contains(at)) return;
+    Selection word = DiffSelectionAt(state, &cx->win->paint, *run, at, 2);
+    if (word.start == word.end) return;
+    TextSelection::Clear(cx->win, cx->app);
+    FocusHandleFocus(cx->win, state->focus);
+    ClearDiffReviewSelection(state, cx);
+    state->hasAnchor = state->hasCursor = false;
+    DiffTextSelection& selection = state->textSelection;
+    selection = {};
+    selection.file = run->file;
+    selection.side = run->side;
+    selection.anchor = word.start;
+    selection.cursor = word.end;
+    selection.hitText = true;
+    WindowSelectionAttachTouchSource(
+        cx->win, {state->self.id, &DiffTouchSnapshot, &ExtendDiffTouch,
+                  &ClearDiffTouch, &CopyDiffTouch});
+    WindowPreventDefault(cx);
+    Notify(cx);
+}
+
 static void OnDiffCodeDown(DiffState* self, Ctx* cx, const MouseDownEvent* ev,
                            int64_t arg) {
     if (!ev->IsFocusing()) return;
@@ -4483,7 +4604,9 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
                                                    : StrL("modified-code"))
             ->SuppressTextSelection()
             ->OnMouseDown(
-                ListenTo(diff->state, &OnDiffCodeDown, (int64_t)(intptr_t)run));
+                ListenTo(diff->state, &OnDiffCodeDown, (int64_t)(intptr_t)run))
+            ->OnLongPress(ListenTo(diff->state, &OnDiffCodeLongPress,
+                                   (int64_t)(intptr_t)run));
         if (hover) {
             hoverBox->OnHover(ListenTo(diff->state, &OnDiffTextLeave,
                                        (int64_t)(intptr_t)run));
@@ -4859,6 +4982,7 @@ static void MeasureDiffCode(Ctx* cx, DiffState* state, float font) {
 static void RecordDiffScrollRange(PaintCtx* paint, El* box, void* data) {
     auto* state = (DiffState*)data;
     state->selectionViewport = box->Bounds();
+    WindowSelectionTouchSourcePainted(paint->window, state->self.id);
     if (len(state->rowHeights) && state->rowMeasureWidth != box->w) {
         AppInvalidate(paint->window);
     }

@@ -319,6 +319,15 @@ auto WithTextSelectionScope(Window* win, TextSelectionScopeId scope, F&& fn)
 // them knowing about the other. Here the registrations are the `TextHit`s
 // the frame already collects, and the endpoints are offsets into that same
 // document order, so this is the state and the handlers around it.
+struct TouchSelectionSource {
+    EntityId entity;
+    // A null output only tests whether this source still has a selection.
+    bool (*snapshot)(void*, const Window*, TouchSelectionSnapshot*);
+    SelectionEdge (*extend)(void*, Window*, SelectionEdge, Point);
+    void (*clear)(void*, Window*);
+    int (*copy)(void*, Window*, char*, int);
+};
+
 //
 // The runtime calls the three gestures and TextSelectionApply; an
 // application only has to say `Selectable()` on the text.
@@ -368,6 +377,9 @@ struct WindowSelection {
     bool touchMenuOpen = false;
     TouchEdgeDrag touchEdgeDrag = {};
     bool hasTouchEdgeDrag = false;
+    TouchSelectionSource touchSource = {};
+    uint64_t touchSourceFrame = 0;
+    SelectionEdge touchSourceEdge = SelectionEdge::End;
     Bounds touchUi = {};
     bool hasTouchUi = false;
     bool touchUiThisFrame = false;
@@ -384,6 +396,8 @@ struct WindowSelection {
 // The live touch selection, for handles and the edit menu. False when there
 // is no touch selection (pointer selection, or nothing selected).
 bool WindowSelectionTouchSnapshot(Window* win, TouchSelectionSnapshot* out);
+void WindowSelectionAttachTouchSource(Window* win, TouchSelectionSource source);
+void WindowSelectionTouchSourcePainted(Window* win, EntityId source);
 void WindowSelectionCloseEditMenu(Window* win);
 void WindowSelectionRegisterTouchUi(Window* win, Bounds bounds);
 bool WindowSelectionTouchUiContains(const Window* win, Point at);

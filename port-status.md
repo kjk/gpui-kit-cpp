@@ -567,8 +567,8 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
 - **Diff owns its selection and painted geometry.** `src/ui/diff.cpp`
   uses source-byte endpoints for text and a separate line range for review.
   The focused diff handles copy and its paint runs provide glyph bounds.
-  Rust registers a participant with the window's `TextSelection`, which also
-  supports the window's touch-selection controls. Inline emphasis is computed
+  The window's touch handles extend the diff's retained source-byte selection.
+  Inline emphasis is computed
   on the frame that asks. Character hover and click
   (`OnTextHover`, `OnTextClick`) find the character from the line's glyph
   boxes and the hit box rather than from TextSelection's painted runs, and

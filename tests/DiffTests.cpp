@@ -1680,6 +1680,44 @@ static bool PointerPoints(Window* win, int lineIx, float inset, Point* onText,
     return true;
 }
 
+static void TouchHandlesExtendAndCopyTheDiffSourceRange() {
+    PointerStage stage = StagePointer(false);
+    Bounds row;
+    utassert(DiffRunBounds(stage.win, DiffSide::Modified, 1, &row));
+    float cell = MeasureText(&stage.win->paint, StrL("f"),
+                             ThemeFontSize(stage.app), 0, false, kFontMono)
+                     .w;
+    Point word = {row.x + 4.5f * cell, row.CenterY()};
+    auto gesture = [&](PlatformInput input) {
+        WindowDispatchInput(stage.win, &input);
+        TestDraw(stage.win);
+    };
+    gesture(InputLongPress(TouchPhase::Started, word, word));
+    gesture(InputLongPress(TouchPhase::Ended, word, word));
+    TouchSelectionSnapshot snapshot;
+    bool selected = WindowSelectionTouchSnapshot(stage.win, &snapshot);
+    utassert(selected && snapshot.startVisible && snapshot.endVisible &&
+             snapshot.menuOpen);
+    if (selected) {
+        char buf[64];
+        int copied = TextSelection::SelectedText(stage.win, stage.app, buf,
+                                                 (int)sizeof(buf));
+        utassert(StrEq(Str(buf, copied), "other"));
+        Bounds knob = TouchHandle::KnobBounds(SelectionEdge::End, snapshot.end);
+        Point start = {knob.CenterX(), knob.CenterY()};
+        Point moved = {start.x + cell * 2, start.y};
+        gesture(InputTouchDrag(TouchPhase::Started, start, start));
+        gesture(InputTouchDrag(TouchPhase::Moved, start, moved));
+        gesture(InputTouchDrag(TouchPhase::Ended, start, moved));
+        copied = TextSelection::SelectedText(stage.win, stage.app, buf,
+                                             (int)sizeof(buf));
+        utassert(StrEq(Str(buf, copied), "other()"));
+    }
+    TextSelection::Clear(stage.win, stage.app);
+    utassert(!WindowSelectionTouchSnapshot(stage.win, &snapshot));
+    TestAppFree(stage.app);
+}
+
 // selection_tests.rs: code copy uses the source bytes, and a double click
 // takes the word under the shaped glyph instead of its entire review line.
 static void CodeSelectionCopiesCharactersAndWords() {
@@ -1990,6 +2028,7 @@ void TestDiff() {
     DiffKeyboardSelectsAndExtendsSourceLines();
     DiffMeasuresWrappedLinesAndChangingAnnotations();
     AnnotationButtonPassesTheSelectedRange();
+    TouchHandlesExtendAndCopyTheDiffSourceRange();
     AnUnclaimedTextClickFallsThroughToTheLine();
     HasLineCountsFoldedLinesButNotAbsentOnes();
 }

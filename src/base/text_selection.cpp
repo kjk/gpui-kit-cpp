@@ -1029,6 +1029,13 @@ void WindowSelectionClear(Window* win) {
         return;
     }
     s->clearing = true;
+    TouchSelectionSource source = s->touchSource;
+    s->touchSource = {};
+    if (source.clear) {
+        if (void* receiver = EntityGet(win->app, source.entity)) {
+            source.clear(receiver, win);
+        }
+    }
     s->autoScroll.Stop();
     s->autoScrollRelayout = false;
     ParticipantAutoScroll(win, s->cursorPoint, true);
@@ -1064,6 +1071,10 @@ void WindowSelectionClear(Window* win) {
 
 bool WindowSelectionHas(const Window* win) {
     const WindowSelection* s = win ? win->sel : nullptr;
+    if (s && s->touchSource.snapshot) {
+        void* receiver = EntityGet(win->app, s->touchSource.entity);
+        return receiver && s->touchSource.snapshot(receiver, win, nullptr);
+    }
     if (!s || s->anchor < 0 || s->cursor < 0 || s->anchor == s->cursor) {
         return false;
     }
@@ -1325,22 +1336,40 @@ bool WindowSelectionLongPressStart(Window* win, float x, float y) {
 }
 
 bool WindowSelectionTouchSnapshot(Window* win, TouchSelectionSnapshot* out) {
-    if (!out || !WindowSelectionHas(win) || !win->sel) {
-        return false;
-    }
+    if (!out || !win || !win->sel) return false;
     WindowSelection* s = win->sel;
-    if (!s->hasWindowPoints) {
-        return false;
+    if (s->touchSource.snapshot) {
+        void* receiver = EntityGet(win->app, s->touchSource.entity);
+        if (!receiver || !s->touchSource.snapshot(receiver, win, out)) {
+            return false;
+        }
+    } else {
+        if (!s->hasWindowPoints || !WindowSelectionHas(win)) return false;
+        const float lineH = 16.f;
+        *out = TouchSelectionSnapshot::New(
+            TouchCaretLineBox(s->anchorPoint, lineH),
+            TouchCaretLineBox(s->cursorPoint, lineH));
     }
-    const float lineH = 16.f;
-    Bounds start = TouchCaretLineBox(s->anchorPoint, lineH);
-    Bounds end = TouchCaretLineBox(s->cursorPoint, lineH);
-    *out = TouchSelectionSnapshot::New(start, end);
     if (s->hasTouchEdgeDrag) {
         *out = out->WithDragging(s->touchEdgeDrag.edge);
     }
     *out = out->WithMenuOpen(s->touchMenuOpen && !s->hasTouchEdgeDrag);
     return true;
+}
+
+void WindowSelectionAttachTouchSource(Window* win,
+                                      TouchSelectionSource source) {
+    if (WindowSelection* s = WindowSelectionOf(win)) {
+        s->touchSource = source;
+        s->touchSourceFrame = win->frameSeq;
+        s->touchSourceEdge = SelectionEdge::End;
+    }
+}
+
+void WindowSelectionTouchSourcePainted(Window* win, EntityId source) {
+    if (win && win->sel && win->sel->touchSource.entity == source) {
+        win->sel->touchSourceFrame = win->frameSeq + 1;
+    }
 }
 
 void WindowSelectionCloseEditMenu(Window* win) {
@@ -1394,6 +1423,19 @@ static void WindowSelectionDragAt(Window* win, float x, float y) {
 }
 
 void WindowSelectionDrag(Window* win, float x, float y) {
+    if (win && win->sel && win->sel->touchSource.extend) {
+        WindowSelection* s = win->sel;
+        if (void* receiver = EntityGet(win->app, s->touchSource.entity)) {
+            SelectionEdge edge = s->hasTouchEdgeDrag ? s->touchEdgeDrag.edge
+                                                     : s->touchSourceEdge;
+            edge = s->touchSource.extend(receiver, win, edge, {x, y});
+            if (s->hasTouchEdgeDrag)
+                s->touchEdgeDrag.edge = edge;
+            else
+                s->touchSourceEdge = edge;
+        }
+        return;
+    }
     if (!win || !win->sel || !win->sel->gesture.selecting) return;
     WindowSelectionDragAt(win, x, y);
     WindowSelectionUpdateAutoScroll(win, {x, y});
@@ -1417,6 +1459,12 @@ void WindowSelectionRelease(Window* win) {
 
 int WindowSelectionTextAs(Window* win, char* out, int cap,
                           SelectionFormat fmt) {
+    if (win && win->sel && win->sel->touchSource.copy && out && cap > 0) {
+        const TouchSelectionSource& source = win->sel->touchSource;
+        if (void* receiver = EntityGet(win->app, source.entity)) {
+            return source.copy(receiver, win, out, cap);
+        }
+    }
     if (!WindowSelectionHas(win)) {
         if (out && cap > 0) {
             out[0] = 0;
@@ -1761,6 +1809,10 @@ static bool SelectionIdListed(const Vec<EntityId>& ids, EntityId id) {
 void WindowSelectionFinishFrame(Window* win) {
     WindowSelection* selection = win ? win->sel : nullptr;
     if (selection) {
+        if (selection->touchSource.entity.IsValid() &&
+            selection->touchSourceFrame <= win->frameSeq) {
+            WindowSelectionClear(win);
+        }
         if (!selection->touchUiThisFrame) {
             selection->hasTouchUi = false;
         }

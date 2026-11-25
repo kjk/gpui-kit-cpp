@@ -4259,6 +4259,9 @@ void WindowDispatchInput(Window* win, const PlatformInput* input) {
                 // A context menu on the trigger. Selectable text keeps the
                 // gesture; the menu sets defaultPrevented when it opens.
                 if (ElementLongPress(win, touch)) {
+                    win->longPressSelection =
+                        win->sel && win->sel->touchSource.entity.IsValid() &&
+                        WindowSelectionHas(win);
                     AppInvalidate(win);
                     break;
                 }
