@@ -29,6 +29,12 @@ struct Window;
 using WindowShouldCloseFn = bool (*)(void* data, Window* win);
 struct KeyChord;
 
+// Which edge of a window or editor something hangs off.
+enum class Side : uint8_t {
+    Left,
+    Right
+};
+
 // gpui::ClipboardItem, flattened for the port's POD boundary. Every field is
 // borrowed from the Arena passed to ClipboardGetItem: text is UTF-8, image is
 // an encoded image stream accepted by ImageSource::FromImage, and external
@@ -3940,6 +3946,7 @@ struct ScrollRect {
     float viewportW = 0;
     float viewportH = 0;
     float horizontalBarInset = 0;
+    float horizontalBarEndInset = 0;
     ScrollbarMode mode = ScrollbarMode::Always;
     ScrollbarPlacement placement = ScrollbarPlacement::BottomRight;
     // Which of the two bars this box shows, from El::HideScrollbar and its
@@ -5932,6 +5939,9 @@ struct InputState {
     // hover test uses the editor's clip for the vertical extent.
     Bounds gutterBox = {};
     float gutterLaneW = 0;
+    float gutterGap = 0;
+    float scrollbarClearance = 0;
+    Side gutterSide = Side::Left;
     bool softWrap = true;
     // show_whitespaces: paint a mid-dot on every space and an arrow on
     // every tab. Off until the editor's status bar turns it on.

@@ -1202,6 +1202,21 @@ static float ScrollbarThumbInset(const El* e, ScrollbarPaintState state) {
                       : e->scrollThumbInset);
 }
 
+static Edges EditorHorizontalScrollbarInsets(const El* e) {
+    InputState* s = e->input;
+    if (!s || s->gutterLaneW <= 0) {
+        return {};
+    }
+    if (s->gutterSide == Side::Right) {
+        return Edges::New(
+            0, std::min(e->w, e->style.pad.right + s->gutterLaneW), 0, 0);
+    }
+    return Edges::New(ScrollbarIsLeft(s->scrollbarPlacement)
+                          ? 0.f
+                          : std::min(e->w, e->style.pad.left + s->gutterLaneW),
+                      0, 0, 0);
+}
+
 static float ScrollbarThumbMinLength(const El* e, ScrollbarPaintState state) {
     if (!e->scrollThemeSet) return 48.f;
     return state == ScrollbarPaintState::Active
@@ -8733,11 +8748,9 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         sr.scrollX = e->scrollX;
         sr.placement =
             e->input ? e->input->scrollbarPlacement : e->scrollbarPlacement;
-        if (e->input && !ScrollbarIsLeft(sr.placement) &&
-            e->input->gutterLaneW > 0) {
-            sr.horizontalBarInset =
-                std::min(e->w, e->style.pad.left + e->input->gutterLaneW);
-        }
+        Edges barInsets = EditorHorizontalScrollbarInsets(e);
+        sr.horizontalBarInset = barInsets.left;
+        sr.horizontalBarEndInset = barInsets.right;
         // EditorScrollbarLayout::scroll_viewport_size. The field's document
         // and its unpadded viewport are the range; the bar is painted on the
         // padded element. Ordinary boxes leave both at the track.
@@ -8883,6 +8896,19 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         if (!seen) {
             recordedInput = true;
             e->input->inputBounds = e->Bounds();
+            float clearance = 0;
+            if (e->style.overflowY == Overflow::Scroll &&
+                ScrollbarIsLeft(e->input->scrollbarPlacement)) {
+                constexpr auto active = ScrollbarPaintState::Active;
+                float width = std::max(ScrollbarTrackWidth(e),
+                                       ScrollbarThumbWidth(e, active) +
+                                           ScrollbarThumbInset(e, active));
+                clearance = std::max(10.f, width - e->style.pad.left);
+            }
+            if (e->input->scrollbarClearance != clearance) {
+                e->input->scrollbarClearance = clearance;
+                AppInvalidate(ctx->window);
+            }
             // The box the field scrolls inside, less what it pads by.
             float viewW = e->w - e->style.pad.HorizontalAxisSum();
             float viewH = e->input->viewH;
@@ -9415,18 +9441,16 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         e->input ? e->input->scrollbarPlacement : e->scrollbarPlacement;
     bool left = ScrollbarIsLeft(placement);
     bool top = ScrollbarIsTop(placement);
-    float horizontalInset =
-        e->input && !left && e->input->gutterLaneW > 0
-            ? std::min(e->w, e->style.pad.left + e->input->gutterLaneW)
-            : 0.f;
+    Edges barInsets = EditorHorizontalScrollbarInsets(e);
+    float horizontalInset = barInsets.HorizontalAxisSum();
     bool canHorizontal = !e->noScrollbarX &&
                          e->style.overflowX == Overflow::Scroll &&
                          e->contentW > e->w + 1.f && e->w > horizontalInset;
     Bounds vertical =
         ScrollbarTrackBounds(e->Bounds(), Axis::Vertical, placement, trackW);
-    Bounds horizontal =
-        ScrollbarTrackBounds(e->Bounds(), Axis::Horizontal, placement, trackW,
-                             horizontalInset, canVertical ? trackW : 0);
+    Bounds horizontal = ScrollbarTrackBounds(
+        e->Bounds(), Axis::Horizontal, placement, trackW, barInsets.left,
+        canVertical ? trackW : 0, barInsets.right);
     Point mouse = {ctx->mouseX, ctx->mouseY};
     bool onVerticalBand = canVertical && vertical.Contains(mouse);
     bool onHorizontalBand = canHorizontal && horizontal.Contains(mouse);

@@ -2102,7 +2102,7 @@ static Bounds ScrollbarTrackFor(const ScrollRect& s, bool horizontal) {
     float other = horizontal && s.barY && ScrollsY(s) ? s.trackWidth : 0;
     return ScrollbarTrackBounds(
         s.bounds, horizontal ? Axis::Horizontal : Axis::Vertical, s.placement,
-        s.trackWidth, s.horizontalBarInset, other);
+        s.trackWidth, s.horizontalBarInset, other, s.horizontalBarEndInset);
 }
 
 static float ScrollbarOuterDistance(const ScrollRect& s, bool horizontal,
@@ -2314,8 +2314,9 @@ static ScrollbarTrackAxis ScrollbarTrackAxisOf(const ScrollRect* s,
     a.content = horizontal ? s->contentW : s->contentH;
     a.origin = horizontal ? track.x : track.y;
     if (horizontal) {
-        a.viewport -= s->horizontalBarInset;
-        a.content -= s->horizontalBarInset;
+        float insets = s->horizontalBarInset + s->horizontalBarEndInset;
+        a.viewport -= insets;
+        a.content -= insets;
     }
     a.current = horizontal ? s->scrollX : s->scrollY;
     return a;

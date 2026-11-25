@@ -11843,6 +11843,41 @@ static void EditorTextIsClippedToItsSideOfTheGutter() {
     TestAppFree(d.app);
 }
 
+// element.rs a_gutter_on_the_right_leaves_the_text_at_the_left_edge and
+// the_text_is_clipped_to_its_side_of_the_gutter.
+static void EditorRightGutterKeepsTheTextAndHitGeometryOnItsOwnSide() {
+    DecorationEditor d = DecorationEditorOpen(
+        "fn long_function_name() { this_line_is_long_enough_to_scroll(); }\n"
+        "    second_line();\n"
+        "}\n",
+        false);
+    InputState* s = d.editor;
+    Bounds first = {};
+    TestDraw(d.win);
+    TestDraw(d.win);
+    utassert(InputRangeToBounds(s, d.win, {0, 2}, &first));
+    float leftGutter = s->gutterBox.x;
+    InputSetGutterSide(s, Side::Right, d.app, d.win);
+    TestDraw(d.win);
+    TestDraw(d.win);
+    Bounds moved = {};
+    Bounds mask = {};
+    utassert(InputRangeToBounds(s, d.win, {0, 2}, &moved));
+    utassert(InputLastTextMask(s, d.win, &mask));
+    utassert(moved.x < first.x && mask.Contains({moved.x, moved.y}));
+    utassert(s->gutterBox.x > leftGutter);
+    utassertnear(s->gutterBox.x, mask.Right());
+    utassert(InputPresentation::Of(nullptr, s).gutterSide == Side::Right);
+    float gutterX = s->gutterBox.x;
+    s->scrollX = 80;
+    TestDraw(d.win);
+    TestDraw(d.win);
+    utassertnear(s->gutterBox.x, gutterX);
+    utassert(InputLastTextMask(s, d.win, &mask));
+    utassertnear(mask.Right(), gutterX);
+    TestAppFree(d.app);
+}
+
 // element.rs text_origin_offset_tracks_rendered_gutter_and_scrolling.
 static void EditorTextOriginOffsetFollowsTheLaidOutGutter() {
     struct Host {
@@ -12805,6 +12840,7 @@ static void RunElementWindowTests() {
     LineDecorationCollectionsRoundTripInCreationOrder();
     EditorLineBackgroundsCoverTheVisibleRows();
     EditorTextIsClippedToItsSideOfTheGutter();
+    EditorRightGutterKeepsTheTextAndHitGeometryOnItsOwnSide();
     GutterDecorationsStartingInAFoldMarkItsRowAndTheRest();
     GutterDecorationsOnlyLayOutTheVisibleRows();
     OverviewRulerMarksFollowTheContentHeightAndMerge();

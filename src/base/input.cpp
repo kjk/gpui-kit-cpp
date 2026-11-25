@@ -2858,6 +2858,8 @@ struct EditorUnderlay {
     InputEditorStyle projected = {};
     bool lineNumbers = false;
     float textOriginOffset = 0;
+    ArenaVec<El*> gutters;
+    ArenaVec<El*> gutterMarks;
     Bounds textMask = {};
     El** lineBands = nullptr;
     Selection bandRows = {};
@@ -2965,10 +2967,32 @@ static void PaintEditorUnderlay(PaintCtx* ctx, El* e, void* user) {
     InputState* s = u->state;
     s->textOriginOffset = u->textOriginOffset;
     Bounds viewport = ctx->hasHitMask ? ctx->hitMask : e->Bounds();
-    float left = e->x + s->scrollX + s->gutterLaneW;
+    bool rightGutter = s->gutterSide == Side::Right;
+    float fixedX = e->x + s->scrollX;
+    float left = fixedX + (rightGutter ? u->textOriginOffset
+                                       : std::max(s->scrollbarClearance,
+                                                  s->gutterLaneW));
+    float right = viewport.Right();
+    if (rightGutter && s->gutterLaneW > 0) {
+        if (s->viewW > 0) {
+            right = std::min(right, fixedX + s->viewW);
+        }
+        right -= s->gutterLaneW;
+        for (int i = 0; i < len(u->gutters); i++) {
+            El* gutter = u->gutters[i];
+            gutter->PaintOffset(right - gutter->x, 0);
+            if (i == 0) {
+                s->gutterBox = {right, gutter->y, gutter->w, gutter->h};
+            }
+        }
+        for (int i = 0; i < len(u->gutterMarks); i++) {
+            El* mark = u->gutterMarks[i];
+            float x = right + s->gutterLaneW - (mark->x - e->x) - mark->w;
+            mark->PaintOffset(x - mark->x, 0);
+        }
+    }
     left = ClampF(left, viewport.x, viewport.x + viewport.w);
-    u->textMask = {left, viewport.y, viewport.x + viewport.w - left,
-                   viewport.h};
+    u->textMask = {left, viewport.y, std::max(0.f, right - left), viewport.h};
     PaintEditorLineBackgrounds(ctx, u, viewport);
     if (s->softWrap && e->w > 0 && e->w != s->wrap.measuredWidth &&
         ctx->window) {
@@ -3299,6 +3323,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         state->scrollY = 0;
         state->layoutOriginY = 0;
         state->gutterLaneW = 0;
+        state->gutterGap = 0;
         state->contentH = lineH;
         state->hasDeferredScrollY = false;
         col->customPaint = [](PaintCtx*, El* element, void*) {
@@ -3356,7 +3381,13 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     // An empty decoration collection still reserves its lane.
     float gutterStrip = InputGutterStripWidth(state);
     state->gutterLaneW = gutterStrip + numW + foldW;
-    float textOriginOffset = state->gutterLaneW + numberGap;
+    state->gutterGap = numberGap;
+    bool rightGutter = state->gutterSide == Side::Right;
+    float gutterWidth = state->gutterLaneW + numberGap;
+    float textOriginOffset =
+        std::max(rightGutter ? 0.f : gutterWidth, state->scrollbarClearance);
+    float textReservation =
+        rightGutter ? textOriginOffset + gutterWidth : textOriginOffset;
     // Build visual rows once, when layout has supplied this frame's width.
     if (state->softWrap && !state->wrap.buildingRows) {
         auto* underlay = ArenaNew<EditorUnderlay>(a);
@@ -3393,7 +3424,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         float colW = state->contentBox.w;
         float textW = 0;
         if (colW > 0) {
-            textW = colW - textOriginOffset - kEditorRightMargin;
+            textW = colW - textReservation - kEditorRightMargin;
             if (textW < 1) {
                 textW = 1;
             }
@@ -4198,7 +4229,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                     .w;
             float indent = nVis > 1 ? wrapIndent : 0;
             indent += TextAlignedRowLeft(
-                rowAlign, state->contentBox.w - textOriginOffset, end);
+                rowAlign, state->contentBox.w - textReservation, end);
             El* mark = state->foldPlaceholder
                            .render(state->foldPlaceholder.data, cx, row);
             if (mark) {
@@ -4230,13 +4261,14 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         }
         MaskEditorText(el, underlay);
         if (!lineNumbers && !folding) {
-            if (textOriginOffset > 0) {
+            if (textReservation > 0) {
                 // Offset the run itself so range geometry and hit testing
                 // use the same origin as the painted text.
                 el = Div(a)
                          ->W(kFill)
                          ->FlexCol()
                          ->PadL(textOriginOffset)
+                         ->PadR(textReservation - textOriginOffset)
                          ->Child(el);
             }
             if (underlay && underlay->lineBands) {
@@ -4260,8 +4292,11 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                        ->Gap(numberGap)
                        ->H((float)nVis * lineH)
                        ->ItemsStart();
-        if (gutterStrip > 0) {
-            band->PadL(gutterStrip);
+        if (rightGutter) {
+            band->PadL(textOriginOffset)->PadR(gutterStrip);
+            band->Child(el);
+        } else {
+            band->PadL(gutterStrip + textOriginOffset - gutterWidth);
         }
         // active_line: the wash under the line the caret is on, gutter and
         // all, and the editor's padding left of the gutter. The column
@@ -4284,9 +4319,12 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                                         row == activeRow, numberLayout, lineH)
                           : InputRenderLineNumber(cx, number, style.foreground,
                                                   numberLayout, lineH);
-            numCell =
-                Div(a)->W(numW)->H(lineH)->Shrink0()->JustifyEnd()->Child(num);
+            numCell = Div(a)->W(numW)->H(lineH)->Shrink0()->Child(num);
+            if (!rightGutter) {
+                numCell->JustifyEnd();
+            }
         }
+        El* gutter = numCell;
         if (folding) {
             // The line-number column and the fold icons are one hit strip,
             // the way Rust's line_number_hitbox covers both. PathClick on
@@ -4295,27 +4333,34 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             // a move over the numbers would not show the chevrons.
             // The fold hitbox starts where the numbers end: Rust widens
             // the column by FOLD_ICON_HITBOX_WIDTH and puts the icon in it.
-            El* gutter = Div(a)->FlexRow()->ItemsCenter()->H(lineH)->PathClick(
-                StrDup(a, fmt("gutter-%d", row)));
-            gutter->Child(numCell);
-            gutter->Child(FoldChevron(a, state, style, row, activeRow, lineH,
-                                      gutterHover));
-            if (row == firstRow) {
-                gutter->BoundsOut(&state->gutterBox);
+            gutter = Div(a)
+                         ->FlexRow()
+                         ->ItemsCenter()
+                         ->H(lineH)
+                         ->Shrink0()
+                         ->PathClick(StrDup(a, fmt("gutter-%d", row)));
+            El* fold = FoldChevron(a, state, style, row, activeRow, lineH,
+                                   gutterHover);
+            if (rightGutter) {
+                gutter->Child(fold)->Child(numCell);
+            } else {
+                gutter->Child(numCell)->Child(fold);
             }
-            band->Child(gutter);
-        } else {
-            if (row == firstRow) {
-                numCell->BoundsOut(&state->gutterBox);
-            }
-            band->Child(numCell);
         }
+        if (rightGutter && underlay) {
+            underlay->gutters.Append(a, gutter);
+        } else if (row == firstRow) {
+            gutter->BoundsOut(&state->gutterBox);
+        }
+        band->Child(gutter);
         if (wrap || rowAlign != TextAlign::Left) {
             // flex_1: the text column is what the gutter leaves, the width
             // the rows were wrapped to.
             el->Flex1();
         }
-        band->Child(el);
+        if (!rightGutter) {
+            band->Child(el);
+        }
         if (underlay && underlay->lineBands) {
             underlay->lineBands[row - firstRow] = band;
         }
@@ -4340,7 +4385,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             // RIGHT_MARGIN rides along once the line overflows, which is
             // the scroll width element.rs publishes. A minimum on the
             // column keeps that width when the wide line is not built.
-            col->MinW(state->longestLineW + textOriginOffset +
+            col->MinW(state->longestLineW + textReservation +
                       kEditorRightMargin);
         }
     }
@@ -4426,6 +4471,9 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                         mark->Radius(markW * 0.5f);
                     }
                     col->Child(mark);
+                    if (rightGutter && underlay) {
+                        underlay->gutterMarks.Append(a, mark);
+                    }
                 }
             }
         }
@@ -6021,10 +6069,12 @@ static void InputScrollToCaretWithPaddingF64(InputState* s, float caretX,
     // Sideways: the caret keeps a margin from either edge of the box. A
     // negative x is "leave it where it is" — see InputScrollToOffset.
     if (s->viewW > 0 && caretX >= 0) {
+        float rightGutter = s->gutterSide == Side::Right ? s->gutterLaneW : 0.f;
         if (caretX - kInputRightMargin < s->scrollX) {
             s->scrollX = caretX - kInputRightMargin;
-        } else if (caretX + kInputRightMargin > s->scrollX + s->viewW) {
-            s->scrollX = caretX + kInputRightMargin - s->viewW;
+        } else if (caretX + kInputRightMargin + rightGutter >
+                   s->scrollX + s->viewW) {
+            s->scrollX = caretX + kInputRightMargin + rightGutter - s->viewW;
         }
         float mostX = s->contentW - s->viewW;
         if (mostX < 0) {
@@ -6262,6 +6312,13 @@ void InputSetEditorPaddings(InputState* s, Edges paddings) {
     s->editorPaddingsSet = true;
 }
 
+void InputSetGutterSide(InputState* s, Side side, App* app, Window* win) {
+    if (s && s->gutterSide != side) {
+        s->gutterSide = side;
+        Notify(app, win);
+    }
+}
+
 void InputSetScrollbarPlacement(InputState* s, ScrollbarPlacement placement,
                                 App* app, Window* win) {
     if (s && s->scrollbarPlacement != placement) {
@@ -6304,7 +6361,9 @@ void EditorScrollbarPrePaint(PaintCtx* ctx, El* e, void*) {
     presented.placement = s->scrollbarPlacement;
     float left = ScrollbarIsLeft(presented.placement)
                      ? -pad.left
-                     : std::min(s->gutterLaneW, inputBounds.w);
+                     : (s->gutterSide == Side::Left
+                            ? std::min(s->gutterLaneW, inputBounds.w)
+                            : 0.f);
     presented.viewport = {inputBounds.x + left, inputBounds.y - pad.top,
                           inputBounds.w + pad.right - left, outer.h};
     presented.scrollViewport = {presented.viewport.w, inputBounds.h};
@@ -9750,6 +9809,9 @@ static void AlignWrapRow(PaintCtx* ctx, const InputState* state, Str line,
     }
     float width = WrapRowX(ctx, state, line, *row, row->hi) - row->x;
     float column = state->contentBox.w - std::max(0.f, state->textOriginOffset);
+    if (state->gutterSide == Side::Right) {
+        column -= state->gutterLaneW + state->gutterGap;
+    }
     row->x += TextAlignedRowLeft(align, column, width);
 }
 

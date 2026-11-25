@@ -108,6 +108,7 @@ struct InputPresentation {
     bool masked = false;
     bool multiLine = false;
     bool codeEditor = false;
+    Side gutterSide = Side::Left;
     int textAlign = 0;
     Str placeholder = {};
     Str maskPlaceholder = {};

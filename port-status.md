@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `20b43829b104b46ffed62519da22a1b85739f5a7` (2026-11-25,
-table: Round the header's top corners in a bordered DataTable (#4115)).
-Round the outer top corners on bordered DataTable headers.
+Processed through `73e6431081a1ff8b810013b63d39a6d9d76259e6` (2026-11-25,
+editor: Let the gutter sit on the right of the text (#4099)).
+Support a mirrored editor gutter, including paint clipping, padding, and horizontal track bounds.
 The current update target is
 `832cfdc0baef92855191dfdbbbcacd75f59d3df0`.
 

@@ -31,6 +31,7 @@ enum {
     StoryDiff,
     StoryDock,
     StoryDropdownButton,
+    StoryEditorDiff,
     StoryEditor,
     StoryEmpty,
     StoryForm,

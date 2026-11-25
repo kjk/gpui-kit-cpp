@@ -102,6 +102,7 @@ InputPresentation InputPresentation::Of(Arena* a, const InputState* state) {
     value.masked = state->masked || state->maskPatternSet;
     value.multiLine = InputIsMultiLine(state);
     value.codeEditor = state->kind == InputKind::Editor;
+    value.gutterSide = state->gutterSide;
     value.textAlign = state->align;
     value.placeholder = state->placeholder;
     if (a && state->maskPatternSet) {

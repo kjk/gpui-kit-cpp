@@ -41,6 +41,7 @@ struct EditorScrollbarContext {
 };
 
 void InputSetEditorPaddings(InputState* s, Edges paddings);
+void InputSetGutterSide(InputState* s, Side side, App* app, Window* win);
 void InputSetScrollbarPlacement(InputState* s, ScrollbarPlacement placement,
                                 App* app, Window* win);
 void SetScrollbarRenderer(InputState* s, EditorScrollbarRenderer renderer,

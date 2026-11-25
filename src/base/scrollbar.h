@@ -245,7 +245,8 @@ constexpr bool ScrollbarIsTop(ScrollbarPlacement placement) {
 
 Bounds ScrollbarTrackBounds(Bounds viewport, Axis axis,
                             ScrollbarPlacement placement, float trackWidth,
-                            float leadingInset = 0, float otherTrackWidth = 0);
+                            float leadingInset = 0, float otherTrackWidth = 0,
+                            float trailingInset = 0);
 
 // What the source Element passes from prepaint into paint. The integrated
 // renderer produces the same geometry directly; these values expose that

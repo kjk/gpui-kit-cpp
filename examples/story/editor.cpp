@@ -474,3 +474,123 @@ El* EditorStory::Render(EditorStory* self, Ctx* cx) {
 }
 
 STORY_PAGE(StoryEditor, EditorStory);
+
+// crates/story/src/stories/editor_diff_story.rs
+struct EditorDiffStory {
+    InputState panes[2];
+    LineDecorationCollection decorations[2];
+    StoryToolbarState toolbar;
+    bool ready = false;
+    bool mirrored = true;
+    double lastY = 0;
+
+    static void ChooseLayout(EditorDiffStory* self, Ctx* cx, const ClickEvent*,
+                             intptr_t value) {
+        self->mirrored = value != 0;
+        UpdatePlacement(self, cx);
+        Notify(cx);
+    }
+
+    static void UpdatePlacement(EditorDiffStory* self, Ctx* cx) {
+        InputSetGutterSide(&self->panes[0],
+                           self->mirrored ? Side::Right : Side::Left, cx->app,
+                           cx->win);
+        InputSetScrollbarPlacement(&self->panes[0],
+                                   self->mirrored
+                                       ? ScrollbarPlacement::BottomLeft
+                                       : ScrollbarPlacement::BottomRight,
+                                   cx->app, cx->win);
+    }
+
+    static void ChangedLines(const InputState* pane, Selection rows,
+                             const App* app, Arena* a,
+                             ArenaVec<LineDecoration>* out, void* data) {
+        auto* self = (EditorDiffStory*)data;
+        const Theme& theme = ThemeNow(app);
+        Rgba color = pane == &self->panes[0] ? theme.danger : theme.success;
+        for (int row = rows.start; row < rows.end; row++) {
+            if (!StrEq(InputSliceLine(&self->panes[0], row),
+                       InputSliceLine(&self->panes[1], row))) {
+                out->Append(a, LineDecoration::New(row)
+                                   .WithBackground(RgbaOpacity(color, 0.12f)));
+            }
+        }
+    }
+
+    static El* Render(EditorDiffStory* self, Ctx* cx) {
+        if (!self->ready) {
+            self->ready = true;
+            Str modified = StrReplaceAll(
+                Str(kEditorCode), StrL("progress: 72."), StrL("progress: 84."));
+            Str revised = StrReplaceAll(
+                modified, StrL("Everything is moving on schedule."),
+                StrL("One milestone needs attention before the release can go "
+                     "ahead, and two reviews are still waiting on it."));
+            StrFree(modified);
+            modified =
+                StrReplaceAll(revised, StrL(".gap_3()"), StrL(".gap_4()"));
+            StrFree(revised);
+            InputSetValue(&self->panes[0], Str(kEditorCode));
+            InputSetValue(&self->panes[1], modified);
+            StrFree(modified);
+            for (int i = 0; i < 2; i++) {
+                InputState* pane = &self->panes[i];
+                pane->softWrap = false;
+                pane->mode.lineNumber = true;
+                InputSetScrollBounce(pane, false);
+                self->decorations[i] = InputCreateLineDecorationsCollection(
+                    pane, {&ChangedLines, self});
+            }
+            UpdatePlacement(self, cx);
+        }
+        double y = self->panes[0].scrollY != self->lastY
+                       ? self->panes[0].scrollY
+                       : self->panes[1].scrollY;
+        self->panes[0].scrollY = self->panes[1].scrollY = self->lastY = y;
+        Arena* a = cx->a;
+        const Theme& theme = ThemeNow(cx->app);
+        StoryToolbarOpt opts[] = {
+            {"Gutter layout", false, 0, false, false, true},
+            {"Both on left", !self->mirrored, 0},
+            {"Facing center", self->mirrored, 1},
+        };
+        auto pane = [&](int i, Str label) {
+            return Div(a)
+                ->FlexCol()
+                ->Flex1()
+                ->MinW(0)
+                ->H(kFill)
+                ->Child(
+                    Div(a)
+                        ->PadX(12)
+                        ->PadY(8)
+                        ->BorderB(1, theme.border)
+                        ->Child(TextEl(a, label)->Font(14)->Fg(theme.mutedFg)))
+                ->Child(Div(a)->Flex1()->MinH(0)->Child(
+                    component::Editor::New(cx, label, &self->panes[i])
+                        ->Language(StrL("rust"))
+                        ->Readonly(true)
+                        ->Bordered(false)
+                        ->Folding(true)
+                        ->H(kFill)
+                        ->IntoEl()));
+        };
+        return Div(a)
+            ->SizeFull()
+            ->FlexCol()
+            ->Gap(12)
+            ->Child(StoryToolbarOptions(cx, self, opts, 3,
+                                        Listen(cx, &ChooseLayout), false))
+            ->Child(Div(a)
+                        ->FlexRow()
+                        ->Flex1()
+                        ->MinH(0)
+                        ->W(kFill)
+                        ->Border(1, theme.border)
+                        ->Child(pane(0, StrL("Original · editor_preview.rs")))
+                        ->Child(Div(a)->W(1)->H(kFill)->Bg(theme.border))
+                        ->Child(pane(1, StrL("Modified · editor_preview.rs"))));
+    }
+};
+
+STORY_PAGE(StoryEditorDiff, EditorDiffStory);

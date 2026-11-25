@@ -22,12 +22,6 @@ enum class Placement : uint8_t {
     Right
 };
 
-// Which edge of the window something hangs off.
-enum class Side : uint8_t {
-    Left,
-    Right
-};
-
 inline bool SideIsLeft(Side s) {
     return s == Side::Left;
 }

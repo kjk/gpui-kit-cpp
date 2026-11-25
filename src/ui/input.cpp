@@ -740,7 +740,7 @@ El* Editor::IntoEl() {
     highlighter->FontFamily(fontFamily);
     highlighter->gutterStyle = &gutterStyle;
     // set_editor_paddings: input_py above and below, input_px on the right,
-    // and on the left input_px held to 6, where the gutter is. The size
+    // and input_px held to 6 at the gutter. The size
     // changes those insets. It does not change the code font or the line
     // height, which the highlighter keeps as the mono face at 1.5.
     if (state->editorPaddingsSet) {
@@ -748,8 +748,10 @@ El* Editor::IntoEl() {
     } else {
         float unusedH = 0, padX = 0, padY = 0, unusedFont = 0;
         InputSizeMetrics(cx, size, &unusedH, &padX, &padY, &unusedFont);
-        float left = padX < 6.f ? padX : 6.f;
-        highlighter->editorPad = Edges::New(left, padX, padY, padY);
+        float narrow = std::min(padX, 6.f);
+        bool left = state->gutterSide == Side::Left;
+        highlighter->editorPad =
+            Edges::New(left ? narrow : padX, left ? padX : narrow, padY, padY);
     }
     InputAccessibility access = InputAccessibility::New(&accessibilityRole)
                                     .WithValueExposed(true);

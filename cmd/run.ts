@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "20b43829b104b46ffed62519da22a1b85739f5a7",
+  sha: "73e6431081a1ff8b810013b63d39a6d9d76259e6",
   date: "2026-11-25",
-  subject: "table: Round the header's top corners in a bordered DataTable (#4115)",
+  subject: "editor: Let the gutter sit on the right of the text (#4099)",
   crates: {
     "gpui-kit": "0.11.0",
     "gpui-base": "0.11.0",

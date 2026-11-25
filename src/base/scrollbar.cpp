@@ -216,7 +216,8 @@ float ScrollbarThumbPos(float track, float thumb, float offset, float container,
 
 Bounds ScrollbarTrackBounds(Bounds viewport, Axis axis,
                             ScrollbarPlacement placement, float trackWidth,
-                            float leadingInset, float otherTrackWidth) {
+                            float leadingInset, float otherTrackWidth,
+                            float trailingInset) {
     bool left = ScrollbarIsLeft(placement);
     if (axis == Axis::Vertical) {
         float x = left ? viewport.x : viewport.Right() - trackWidth;
@@ -225,7 +226,9 @@ Bounds ScrollbarTrackBounds(Bounds viewport, Axis axis,
     float x = viewport.x + leadingInset + (left ? otherTrackWidth : 0);
     float y =
         ScrollbarIsTop(placement) ? viewport.y : viewport.Bottom() - trackWidth;
-    return {x, y, std::max(0.f, viewport.w - leadingInset - otherTrackWidth),
+    return {x, y,
+            std::max(0.f, viewport.w - leadingInset - trailingInset -
+                              otherTrackWidth),
             trackWidth};
 }
 
