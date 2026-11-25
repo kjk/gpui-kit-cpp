@@ -1,6 +1,6 @@
 /* wry/src/webview2/mod.rs + wry/src/webview2/util.rs — the WebView2 backend.
  *
- * Part of the C++ port of lb-wry 0.53.3 (see src/wry/readme.md).
+ * Part of the C++ port of wry 0.57.3 (see src/wry/readme.md).
  *
  * The one thing here that is not in the Rust is the loader. Rust reaches
  * WebView2 through the `webview2-com` crate, which links Microsoft's
@@ -1441,8 +1441,8 @@ enum : uint8_t {
     kDownloadStateInProgress = 0,
     kDownloadStateCompleted = 2,
     kMoveFocusReasonProgrammatic = 0,
-    kPermissionKindClipboardRead = 6,
     kPermissionStateAllow = 1,
+    kPermissionStateDeny = 2,
     kPreferredColorSchemeAuto = 0,
     kPreferredColorSchemeLight = 1,
     kPreferredColorSchemeDark = 2,
@@ -2748,7 +2748,7 @@ struct EnvironmentOptions
           ICoreWebView2EnvironmentOptions7, ICoreWebView2EnvironmentOptions8> {
     WCHAR* additionalBrowserArguments = nullptr;
     WCHAR* language = nullptr;
-    WCHAR* targetCompatibleBrowserVersion = WStrDup(L"137.0.3296.44");
+    WCHAR* targetCompatibleBrowserVersion = WStrDup(L"145.0.3800.47");
     BOOL allowSingleSignOn = FALSE;
     BOOL exclusiveUserDataFolderAccess = FALSE;
     BOOL customCrashReportingEnabled = FALSE;
@@ -3134,6 +3134,15 @@ static bool SetWebViewSettings(ICoreWebView2* webview,
                                                (void**)&s3))) {
             hr = s3->put_AreBrowserAcceleratorKeysEnabled(FALSE);
             Rel(&s3);
+        }
+    }
+    if (SUCCEEDED(hr)) {
+        ICoreWebView2Settings4* s4 = nullptr;
+        if (SUCCEEDED(settings->QueryInterface(__uuidof(ICoreWebView2Settings4),
+                                               (void**)&s4))) {
+            hr = s4->put_IsGeneralAutofillEnabled(
+                attrs->generalAutofillEnabled ? TRUE : FALSE);
+            Rel(&s4);
         }
     }
     if (SUCCEEDED(hr)) {
@@ -4277,8 +4286,10 @@ static HRESULT OnNewWindowRequested(
 }
 
 static HRESULT OnPermissionRequested(
-    void*, ICoreWebView2*, ICoreWebView2PermissionRequestedEventArgs* args) {
-    if (!args) {
+    void* ctx, ICoreWebView2*,
+    ICoreWebView2PermissionRequestedEventArgs* args) {
+    WebView* wv = LiveWebView(ctx);
+    if (!wv || !args) {
         return S_OK;
     }
     COREWEBVIEW2_PERMISSION_KIND kind = 0;
@@ -4286,10 +4297,36 @@ static HRESULT OnPermissionRequested(
     if (FAILED(hr)) {
         return hr;
     }
-    if (kind == kPermissionKindClipboardRead) {
-        return args->put_State(kPermissionStateAllow);
+    static constexpr PermissionKind mapped[] = {
+        PermissionKind::Other,
+        PermissionKind::Microphone,
+        PermissionKind::Camera,
+        PermissionKind::Geolocation,
+        PermissionKind::Notifications,
+        PermissionKind::Sensors,
+        PermissionKind::ClipboardRead,
+        PermissionKind::AutomaticDownloads,
+        PermissionKind::FileSystemAccess,
+        PermissionKind::Autoplay,
+        PermissionKind::LocalFonts,
+        PermissionKind::Midi,
+        PermissionKind::WindowManagement,
+    };
+    PermissionKind request =
+        kind >= 0 && kind < (int)(sizeof(mapped) / sizeof(mapped[0]))
+            ? mapped[kind]
+            : PermissionKind::Other;
+    auto response = PermissionResponse::Default;
+    if (wv->permissionHandler) {
+        response = wv->permissionHandler(wv->ctx, request);
+    } else if (request == PermissionKind::ClipboardRead) {
+        // Existing C++ clipboard opt-in. It is why this handler was installed.
+        response = PermissionResponse::Allow;
     }
-    return S_OK;
+    if (response == PermissionResponse::Default) return S_OK;
+    return args->put_State(response == PermissionResponse::Allow
+                               ? kPermissionStateAllow
+                               : kPermissionStateDeny);
 }
 
 static HRESULT OnDownloadStarting(
@@ -4752,12 +4789,11 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs,
             return nullptr;
         }
     }
-    if (attrs->clipboard) {
-        auto* h =
-            MkHandler<Handler2<ICoreWebView2PermissionRequestedEventHandler,
-                               ICoreWebView2*,
-                               ICoreWebView2PermissionRequestedEventArgs*>>(
-                nullptr, OnPermissionRequested);
+    if (attrs->clipboard || wv->permissionHandler) {
+        auto* h = MkWebViewHandler<Handler2<
+            ICoreWebView2PermissionRequestedEventHandler, ICoreWebView2*,
+            ICoreWebView2PermissionRequestedEventArgs*>>(wv,
+                                                         OnPermissionRequested);
         HRESULT hr = webview->add_PermissionRequested(h, &token);
         h->Release();
         if (FAILED(hr)) {
@@ -4934,6 +4970,29 @@ bool WebViewReload(WebView* wv) {
         return false;
     }
     return SUCCEEDED(wv->webview->Reload());
+}
+
+bool WebViewGoBack(WebView* wv) {
+    return wv && SUCCEEDED(wv->webview->GoBack());
+}
+
+bool WebViewGoForward(WebView* wv) {
+    return wv && SUCCEEDED(wv->webview->GoForward());
+}
+
+bool WebViewCanGoBack(WebView* wv, bool* out) {
+    BOOL can = FALSE;
+    if (!wv || !out || FAILED(wv->webview->get_CanGoBack(&can))) return false;
+    *out = can != FALSE;
+    return true;
+}
+
+bool WebViewCanGoForward(WebView* wv, bool* out) {
+    BOOL can = FALSE;
+    if (!wv || !out || FAILED(wv->webview->get_CanGoForward(&can)))
+        return false;
+    *out = can != FALSE;
+    return true;
 }
 
 bool WebViewBounds(WebView* wv, Rect* out) {

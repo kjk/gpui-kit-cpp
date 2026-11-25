@@ -82,7 +82,43 @@ static void FractionalDpiKeepsTheDocumentSizeAndFullyVisibleEdge() {
     utassert(!WebViewWindowGeometry(document, document, 1.25, &bounds, clip));
 }
 
+static void MediaPermissionsRespectEachRequestedDevice() {
+    using wry::PermissionKind;
+    using wry::PermissionResponse;
+    struct PermissionAnswers {
+        PermissionResponse microphone;
+        PermissionResponse camera;
+        PermissionKind asked = PermissionKind::Other;
+    };
+    PermissionAnswers state = {PermissionResponse::Allow,
+                               PermissionResponse::Deny};
+    wry::WebViewAttributes options;
+    utassert(options.generalAutofillEnabled);
+    utassert(wry::WebViewMediaPermission(&options, true, false) ==
+             PermissionResponse::Default);
+    options.ctx = &state;
+    options.permissionHandler = [](void* data, PermissionKind kind) {
+        auto* answers = (PermissionAnswers*)data;
+        answers->asked = kind;
+        if (kind == PermissionKind::Microphone) return answers->microphone;
+        if (kind == PermissionKind::Camera) return answers->camera;
+        return PermissionResponse::Default;
+    };
+    utassert(wry::WebViewMediaPermission(&options, true, false) ==
+             PermissionResponse::Allow);
+    utassert(state.asked == PermissionKind::Microphone);
+    utassert(wry::WebViewMediaPermission(&options, true, true) ==
+             PermissionResponse::Deny);
+    state.camera = PermissionResponse::Default;
+    utassert(wry::WebViewMediaPermission(&options, true, true) ==
+             PermissionResponse::Default);
+    utassert(wry::WebViewMediaPermission(&options, false, false) ==
+             PermissionResponse::Default);
+    utassert(state.asked == PermissionKind::DisplayCapture);
+}
+
 void TestWryUri() {
+    MediaPermissionsRespectEachRequestedDevice();
     TestSuite("wry_uri");
     DroppingAWebViewRefreshesThePointerTarget();
     FractionalDocumentCoversTheClipWithoutMovingItsTopEdge();

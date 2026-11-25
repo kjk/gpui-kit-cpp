@@ -682,7 +682,7 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   (`WebViewDocumentFrame`) is applied to the wry rect, whose origin is
   the top left, rather than to a composition child.
 - **Linux webview bounds stay logical.** Upstream `device_bounds` passes
-  physical pixels because lb-wry then scales by GDK. `WebViewSetBounds`
+  physical pixels because Wry then scales by GDK. `WebViewSetBounds`
   in `wry_linux.cpp` already multiplies a logical rect by that factor
   for the X11 child, so the kit conversion is not applied again. Page
   zoom is `WebViewMatchPageScale`, which multiplies the script's zoom

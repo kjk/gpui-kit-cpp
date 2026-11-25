@@ -1,7 +1,7 @@
 /* The portable half of the port: wry/src/webview2/mod.rs's custom protocol
  * URI work-around, which is string work and nothing else.
  *
- * Part of the C++ port of lb-wry 0.53.3 (see src/wry/readme.md).
+ * Part of the C++ port of wry 0.57.3 (see src/wry/readme.md).
  *
  * It lives out here rather than in wry_win.cpp because the crate's own unit
  * test — `checks_if_custom_protocol_uri` — is over these three functions, and
@@ -14,6 +14,29 @@
 #include "wry/wry.h"
 
 namespace wry {
+
+PermissionResponse WebViewMediaPermission(const WebViewHandlers* handlers,
+                                          bool audio, bool video) {
+    if (!handlers || !handlers->permissionHandler) {
+        return PermissionResponse::Default;
+    }
+    auto ask = [&](PermissionKind kind) {
+        return handlers->permissionHandler(handlers->ctx, kind);
+    };
+    if (!audio && !video) return ask(PermissionKind::DisplayCapture);
+    auto microphone =
+        audio ? ask(PermissionKind::Microphone) : PermissionResponse::Allow;
+    auto camera =
+        video ? ask(PermissionKind::Camera) : PermissionResponse::Allow;
+    if (microphone == PermissionResponse::Deny ||
+        camera == PermissionResponse::Deny) {
+        return PermissionResponse::Deny;
+    }
+    return microphone == PermissionResponse::Allow &&
+                   camera == PermissionResponse::Allow
+               ? PermissionResponse::Allow
+               : PermissionResponse::Default;
+}
 
 // wkwebview/mod.rs cookies_for_url intentionally tests exact domain only:
 // no subdomain or path matching, unlike the native Windows cookie manager.

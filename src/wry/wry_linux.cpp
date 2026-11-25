@@ -1,7 +1,7 @@
 /* wry/src/webkitgtk/ — mod.rs, web_context.rs, drag_drop.rs and
  * synthetic_mouse_events.rs: the WebKitGTK backend.
  *
- * Part of the C++ port of lb-wry 0.53.3 (see src/wry/readme.md).
+ * Part of the C++ port of wry 0.57.3 (see src/wry/readme.md).
  *
  * WebKitGTK is a soft dependency, the second after libcurl: cmd/build.ts
  * defines GPUI_HAVE_WEBKITGTK when `pkg-config webkit2gtk-4.1` answers, and
@@ -422,6 +422,43 @@ static void OnTitle(GObject*, GParamSpec*, gpointer data) {
         wv->documentTitleChangedHandler(
             wv->ctx, FromCTemp(webkit_web_view_get_title(wv->webview)));
     }
+}
+
+static gboolean OnWryPermissionRequest(WebKitWebView*,
+                                       WebKitPermissionRequest* request,
+                                       gpointer data) {
+    WebView* wv = (WebView*)data;
+    PermissionResponse decision;
+    if (WEBKIT_IS_USER_MEDIA_PERMISSION_REQUEST(request)) {
+        auto* media = WEBKIT_USER_MEDIA_PERMISSION_REQUEST(request);
+        if (webkit_user_media_permission_is_for_display_device(media)) {
+            decision =
+                wv->permissionHandler(wv->ctx, PermissionKind::DisplayCapture);
+        } else {
+            bool audio =
+                webkit_user_media_permission_is_for_audio_device(media);
+            bool video =
+                webkit_user_media_permission_is_for_video_device(media);
+            decision = WebViewMediaPermission(wv, audio, video);
+        }
+    } else {
+        PermissionKind kind = PermissionKind::Other;
+        if (WEBKIT_IS_GEOLOCATION_PERMISSION_REQUEST(request)) {
+            kind = PermissionKind::Geolocation;
+        } else if (WEBKIT_IS_NOTIFICATION_PERMISSION_REQUEST(request)) {
+            kind = PermissionKind::Notifications;
+        } else if (WEBKIT_IS_POINTER_LOCK_PERMISSION_REQUEST(request)) {
+            kind = PermissionKind::PointerLock;
+        }
+        decision = wv->permissionHandler(wv->ctx, kind);
+    }
+    if (decision == PermissionResponse::Default) return FALSE;
+    if (decision == PermissionResponse::Allow) {
+        webkit_permission_request_allow(request);
+    } else {
+        webkit_permission_request_deny(request);
+    }
+    return TRUE;
 }
 
 static void OnLoadChanged(WebKitWebView* webview, WebKitLoadEvent event,
@@ -1096,6 +1133,10 @@ static WebView* NewGtk(GtkWidget* container, const WebViewAttributes* attrs,
         g_signal_connect(view, "notify::title", Cb(OnTitle), wv);
     }
     g_signal_connect(view, "load-changed", Cb(OnLoadChanged), wv);
+    if (wv->permissionHandler) {
+        g_signal_connect(view, "permission-request", Cb(OnWryPermissionRequest),
+                         wv);
+    }
     if (wv->newWindowReqHandler) {
         g_signal_connect(view, "create", Cb(OnCreate), wv);
     }
@@ -1495,6 +1536,30 @@ bool WebViewReload(WebView* wv) {
         return false;
     }
     webkit_web_view_reload(wv->webview);
+    return true;
+}
+
+bool WebViewGoBack(WebView* wv) {
+    if (!wv) return false;
+    webkit_web_view_go_back(wv->webview);
+    return true;
+}
+
+bool WebViewGoForward(WebView* wv) {
+    if (!wv) return false;
+    webkit_web_view_go_forward(wv->webview);
+    return true;
+}
+
+bool WebViewCanGoBack(WebView* wv, bool* out) {
+    if (!wv || !out) return false;
+    *out = webkit_web_view_can_go_back(wv->webview) != 0;
+    return true;
+}
+
+bool WebViewCanGoForward(WebView* wv, bool* out) {
+    if (!wv || !out) return false;
+    *out = webkit_web_view_can_go_forward(wv->webview) != 0;
     return true;
 }
 

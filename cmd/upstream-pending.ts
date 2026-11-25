@@ -25,6 +25,7 @@ const watched = [
   "markdown",
   "html5ever",
   "lb-wry",
+  "wry",
   "autocorrect",
   "unicode-linebreak",
   "gpui-pre",

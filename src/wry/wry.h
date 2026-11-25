@@ -1,9 +1,9 @@
 /* wry/src/lib.rs — the public API of the `wry` crate.
  *
- * `src/wry/` is a C++ port of lb-wry 0.53.3, the webview crate
+ * `src/wry/` is a C++ port of wry 0.57.3, the webview crate
  * gpui-kit's `crates/webview` (`gpui-webview`) drives. See
  * src/wry/readme.md for the file-for-file map and for what is deliberately
- * not ported, and cmd/versions.ts (`wry`) for the pinned version.
+ * not ported, and cmd/run.ts (`wry`) for the pinned version.
  *
  *     wry::WebViewAttributes attrs;
  *     attrs.url = StrL("https://example.com");
@@ -309,6 +309,31 @@ Str MacDownloadFileNameTemp(Str suggested, int collision);
 /** The handler half of `WebViewAttributes`. Every backend's `WebView`
     derives from it too, so `WebViewNew` keeps the whole set with one
     assignment: `WebViewHandlersSet(wv, attrs)`. */
+enum class PermissionKind : uint8_t {
+    Microphone,
+    Camera,
+    Geolocation,
+    Notifications,
+    ClipboardRead,
+    DisplayCapture,
+    Midi,
+    Sensors,
+    MediaKeySystemAccess,
+    LocalFonts,
+    WindowManagement,
+    PointerLock,
+    AutomaticDownloads,
+    FileSystemAccess,
+    Autoplay,
+    Other,
+};
+
+enum class PermissionResponse : uint8_t {
+    Default,
+    Allow,
+    Deny
+};
+
 struct WebViewHandlers {
     static bool AllowDownload(void*, Str, Str*) { return true; }
 
@@ -329,12 +354,17 @@ struct WebViewHandlers {
     DownloadStartedHandler downloadStartedHandler = AllowDownload;
     DownloadCompletedHandler downloadCompletedHandler = nullptr;
     DragDropHandler dragDropHandler = nullptr;
+    PermissionResponse (*permissionHandler)(void* ctx,
+                                            PermissionKind kind) = nullptr;
     /** `window.open`. Null denies every request, which is what wry's
         `NewWindowRequested` handler does when no closure is set. */
     NewWindowResponse (*newWindowReqHandler)(
         void* ctx, Str url, const NewWindowFeatures* features,
         WebView** createdWebView) = nullptr;
 };
+
+PermissionResponse WebViewMediaPermission(const WebViewHandlers* handlers,
+                                          bool audio, bool video);
 
 /** Copy the handlers of `attrs` into a backend webview (which derives from
     `WebViewHandlers`). */
@@ -372,6 +402,7 @@ struct WebViewAttributes : WebViewHandlers {
     /** Loaded if `url` is empty. */
     Str html;
     bool zoomHotkeysEnabled = false;
+    bool generalAutofillEnabled = true;
     const InitializationScript* initializationScripts = nullptr;
     int initializationScriptCount = 0;
     const CustomProtocol* customProtocols = nullptr;
@@ -470,6 +501,10 @@ bool WebViewLoadUrlWithHeaders(WebView* webview, Str url, const Header* headers,
 bool WebViewLoadHtml(WebView* webview, Str html);
 /** `WebView::reload`. */
 bool WebViewReload(WebView* webview);
+bool WebViewGoBack(WebView* webview);
+bool WebViewGoForward(WebView* webview);
+bool WebViewCanGoBack(WebView* webview, bool* out);
+bool WebViewCanGoForward(WebView* webview, bool* out);
 /** `WebView::bounds`. Physical, the way Rust reports them. */
 bool WebViewBounds(WebView* webview, Rect* out);
 /** `WebView::set_bounds`. */

@@ -1,7 +1,7 @@
 /* No wry backend, where GPUI_WRY_UNSUPPORTED (wry.h) says so: the portable
  * API answers "there is no webview here".
  *
- * Part of the C++ port of lb-wry 0.53.3 (see src/wry/readme.md).
+ * Part of the C++ port of wry 0.57.3 (see src/wry/readme.md).
  *
  * Linux built without libwebkit2gtk-4.1-dev lands here; wry_linux.cpp is the
  * WebKitGTK backend when it is there.
@@ -56,6 +56,18 @@ bool WebViewLoadHtml(WebView*, Str) {
     return false;
 }
 bool WebViewReload(WebView*) {
+    return false;
+}
+bool WebViewGoBack(WebView*) {
+    return false;
+}
+bool WebViewGoForward(WebView*) {
+    return false;
+}
+bool WebViewCanGoBack(WebView*, bool*) {
+    return false;
+}
+bool WebViewCanGoForward(WebView*, bool*) {
     return false;
 }
 bool WebViewBounds(WebView*, Rect*) {

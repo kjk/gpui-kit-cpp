@@ -1,10 +1,8 @@
 # src/wry — the wry webview crate, ported to C++
 
-This is a port of [wry](https://github.com/tauri-apps/wry) **0.53.3** — the
-`lb-wry` fork gpui-kit's `crates/webview` (the `gpui-webview` crate) depends
-on, and therefore the crate that defines what a webview in a gpui window
-means. `src/webview/` is the gpui-side half — the port of `crates/webview`
-itself — and it is the only thing in the tree that calls in here.
+This is a port of [wry](https://github.com/tauri-apps/wry) **0.57.3**, the
+version used by gpui-kit's `crates/webview`. The gpui adapter lives in
+`src/webview/`.
 
 The pin lives in [`cmd/run.ts`](../../cmd/run.ts) (`wry`) next to
 the gpui-kit, Zed GPUI, taffy and markdown pins, and moves the same way
@@ -48,7 +46,8 @@ halves are written out instead, and both are in `wry_win.cpp`:
   forward-declared; the ones we implement (`ICoreWebView2EnvironmentOptions`
   through 8, plus every event and completion handler) are there in full,
   because an implementation has to answer for every slot. A mechanical audit
-  compares all 97 definitions and IIDs with Wry's generated pinned bindings.
+  compared the existing vtable declarations and IIDs with Wry's
+  `webview2-com-sys` 0.39.1 bindings. The existing interfaces keep their ABI.
 - **The loader.** `CreateEnvironmentWithOptions` writes out the behavior of
   Wry's pinned `WebView2LoaderStatic.lib`. It applies the browser-folder,
   user-data-folder, browser-argument and release-channel environment and
@@ -73,8 +72,8 @@ halves are written out instead, and both are in `wry_win.cpp`:
   Two values the SDK's helper supplies and the runtime insists on: a user data
   folder (the exe's path with `.WebView2` after it, when the caller names
   none) and `TargetCompatibleBrowserVersion`, which is a *browser* version
-  (`137.0.3296.44`, `CORE_WEBVIEW_TARGET_PRODUCT_VERSION` in Wry's pinned
-  `webview2-com-sys 0.38.0`) and not the crate's own.
+  (`145.0.3800.47`, `CORE_WEBVIEW_TARGET_PRODUCT_VERSION` in Wry's pinned
+  `webview2-com-sys 0.39.1`).
 
 ## The macOS backend
 

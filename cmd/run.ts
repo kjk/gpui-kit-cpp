@@ -604,16 +604,16 @@ export const html5ever = {
 
 /**
  * The webview crate `crates/webview` (the `gpui-webview` crate) is built on:
- * `wry = { version = "0.53.3", package = "lb-wry" }`, longbridge's fork. We
+ * `wry = "0.57.3"`, from tauri-apps. We
  * port it: `src/wry/` is a C++ port of exactly this version, and
  * `src/webview/` is the gpui-side view `crates/webview` is. See
  * `src/wry/readme.md` for what is ported and what is not.
  */
 export const wry = {
   repo: "https://github.com/tauri-apps/wry",
-  crate: "lb-wry",
-  version: "0.53.3",
-  crateSha256: "d9cfe72bff8acf9af0d6d276569be5b9cb3f313f9882761ada5a50d3044214d4",
+  crate: "wry",
+  version: "0.57.3",
+  crateSha256: "ceb43f824178e8110e3181bfd478359c43b041452a9560d321bd8d121e468f86",
   dir: "src/wry",
 } as const;
 

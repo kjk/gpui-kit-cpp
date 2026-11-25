@@ -1,6 +1,6 @@
 /* wry/src/wkwebview/ — the WKWebView backend.
  *
- * Part of the C++ port of lb-wry 0.53.3 (see src/wry/readme.md).
+ * Part of the C++ port of wry 0.57.3 (see src/wry/readme.md).
  *
  * Objective-C++ under ARC, like the rest of the macOS half of this tree: the
  * amalgam is compiled `-x objective-c++ -fobjc-arc`, so an Objective-C
@@ -576,8 +576,22 @@ API_AVAILABLE(macos(11.3))
     (void)webView;
     (void)origin;
     (void)frame;
-    (void)type;
-    handler(WKPermissionDecisionGrant);
+    wry::WebView* wv = self.wv;
+    if (!wv || !wv->permissionHandler) {
+        handler(WKPermissionDecisionGrant);
+        return;
+    }
+    bool audio = type == WKMediaCaptureTypeMicrophone ||
+                 type == WKMediaCaptureTypeCameraAndMicrophone;
+    bool video = type == WKMediaCaptureTypeCamera ||
+                 type == WKMediaCaptureTypeCameraAndMicrophone;
+    auto result = audio || video ? wry::WebViewMediaPermission(wv, audio, video)
+                                 : wv->permissionHandler(
+                                       wv->ctx, wry::PermissionKind::Other);
+    handler(result == wry::PermissionResponse::Allow ? WKPermissionDecisionGrant
+            : result == wry::PermissionResponse::Deny
+                ? WKPermissionDecisionDeny
+                : WKPermissionDecisionPrompt);
 }
 
 - (WKWebView*)webView:(WKWebView*)webView
@@ -1347,6 +1361,30 @@ bool WebViewReload(WebView* wv) {
     return true;
 }
 
+bool WebViewGoBack(WebView* wv) {
+    if (!wv) return false;
+    [wv->webview goBack];
+    return true;
+}
+
+bool WebViewGoForward(WebView* wv) {
+    if (!wv) return false;
+    [wv->webview goForward];
+    return true;
+}
+
+bool WebViewCanGoBack(WebView* wv, bool* out) {
+    if (!wv || !out) return false;
+    *out = wv->webview.canGoBack;
+    return true;
+}
+
+bool WebViewCanGoForward(WebView* wv, bool* out) {
+    if (!wv || !out) return false;
+    *out = wv->webview.canGoForward;
+    return true;
+}
+
 bool WebViewBounds(WebView* wv, Rect* out) {
     if (!wv || !out) {
         return false;
@@ -1446,6 +1484,8 @@ bool WebViewSetBackgroundColor(WebView* wv, Rgba color) {
     if (!wv || !wv->webview) {
         return false;
     }
+    // Match creation with a background color when it is set after creation.
+    [wv->webview setValue:@NO forKey:@"drawsBackground"];
     ApplyWebViewBackground(wv->webview, color);
     return true;
 }
