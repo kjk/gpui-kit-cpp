@@ -701,6 +701,8 @@ static Str DecorationsText(const DecorationCollectionsState* state) {
     return state && state->input ? InputValue(state->input) : Str{};
 }
 
+static void NotifyInputDecorations(const InputState* input);
+
 TextDecorationCollection::TextDecorationCollection(
     const TextDecorationCollection& other)
     : state(other.state), id(other.id) {
@@ -745,6 +747,7 @@ bool TextDecorationCollection::Append(const TextDecoration* decorations,
             VecAppend(entry->decorations, normalized);
         }
     }
+    NotifyInputDecorations(state->input);
     return true;
 }
 
@@ -1275,6 +1278,22 @@ struct LineDecorationEntry {
     LineDecorationProvider provider;
 };
 
+struct InputDecorationApp {
+    App* app = nullptr;
+    int refs = 1;
+
+    void Release() {
+        if (--refs == 0) delete this;
+    }
+};
+
+// AppGlobalClear can precede a standalone editor's destruction.
+static void DetachInputDecorationApp(void* data) {
+    auto* binding = static_cast<InputDecorationApp*>(data);
+    binding->app = nullptr;
+    binding->Release();
+}
+
 struct RangeDecorationsState {
     int refs = 1;
     bool ownerAlive = true;
@@ -1282,7 +1301,23 @@ struct RangeDecorationsState {
     RangeDecorationCollections collections;
     Vec<LineDecorationEntry> lineProviders;
     uint64_t nextLineId = 0;
+    InputDecorationApp* renderApp = nullptr;
+    EntityId renderOwner = {};
+
+    ~RangeDecorationsState() {
+        if (renderApp) renderApp->Release();
+    }
 };
+
+static void NotifyInputDecorations(const InputState* input) {
+    const RangeDecorationsState* state =
+        input ? input->rangeDecorations : nullptr;
+    if (!state || !state->renderApp) return;
+    App* app = state->renderApp->app;
+    if (app && EntityGet(app, state->renderOwner)) {
+        NotifyEntity(app, state->renderOwner, nullptr);
+    }
+}
 
 static void RangeDecorationsRetain(RangeDecorationsState* state) {
     if (state) {
@@ -1332,7 +1367,9 @@ void RangeDecorationCollection::Set(const RangeDecoration* decorations, int n) {
     Vec<RangeDecoration> normalized;
     RangeDecorationsNormalize(InputValue(state->input), decorations, n,
                               &normalized);
-    live->Set(id, normalized.els, len(normalized));
+    if (live->Set(id, normalized.els, len(normalized))) {
+        NotifyInputDecorations(state->input);
+    }
 }
 
 void RangeDecorationCollection::Append(const RangeDecoration* decorations,
@@ -1344,7 +1381,9 @@ void RangeDecorationCollection::Append(const RangeDecoration* decorations,
     Vec<RangeDecoration> normalized;
     RangeDecorationsNormalize(InputValue(state->input), decorations, n,
                               &normalized);
-    live->Append(id, normalized.els, len(normalized));
+    if (live->Append(id, normalized.els, len(normalized))) {
+        NotifyInputDecorations(state->input);
+    }
 }
 
 void RangeDecorationCollection::Clear() {
@@ -1353,7 +1392,7 @@ void RangeDecorationCollection::Clear() {
 
 void RangeDecorationCollection::Dispose() {
     if (RangeDecorationCollections* live = RangeDecorationsLive(state)) {
-        live->Remove(id);
+        if (live->Remove(id)) NotifyInputDecorations(state->input);
     }
 }
 
@@ -1382,6 +1421,24 @@ static RangeDecorationsState* EnsureEditorDecorations(InputState* s) {
     return s->rangeDecorations;
 }
 
+void InputBindDecorationOwner(InputState* input, Ctx* cx) {
+    if (!cx->app || !cx->self.IsValid()) return;
+    RangeDecorationsState* state = EnsureEditorDecorations(input);
+    InputDecorationApp* binding = AppGlobalGet<InputDecorationApp>(cx->app);
+    if (!binding) {
+        binding = new InputDecorationApp();
+        binding->app = cx->app;
+        AppGlobalSetRaw(cx->app, AppGlobalKey<InputDecorationApp>(), binding,
+                        &DetachInputDecorationApp);
+    }
+    if (state->renderApp != binding) {
+        if (state->renderApp) state->renderApp->Release();
+        state->renderApp = binding;
+        binding->refs++;
+    }
+    state->renderOwner = cx->self;
+}
+
 RangeDecorationCollection InputCreateRangeDecorationsCollection(
     InputState* s, const RangeDecoration* decorations, int n) {
     RangeDecorationCollection result;
@@ -1394,6 +1451,7 @@ RangeDecorationCollection InputCreateRangeDecorationsCollection(
     result.id = result.state->collections
                     .Create(normalized.els, len(normalized));
     RangeDecorationsRetain(result.state);
+    NotifyInputDecorations(s);
     return result;
 }
 
@@ -1432,7 +1490,10 @@ void LineDecorationCollection::SetProvider(LineDecorationProvider provider,
     int index = LineProviderIndex(state, id);
     if (index >= 0) {
         state->lineProviders[index].provider = provider;
-        if (cx) Notify(cx);
+        if (cx)
+            Notify(cx);
+        else
+            NotifyInputDecorations(state->input);
     }
 }
 
@@ -1444,7 +1505,10 @@ void LineDecorationCollection::Dispose(Ctx* cx) {
     int index = LineProviderIndex(state, id);
     if (index >= 0) {
         VecRemoveAt(state->lineProviders, index);
-        if (cx) Notify(cx);
+        if (cx)
+            Notify(cx);
+        else
+            NotifyInputDecorations(state->input);
     }
 }
 
@@ -1465,7 +1529,10 @@ LineDecorationCollection InputCreateLineDecorationsCollection(
         result.state = state;
         result.id = entry.id;
         RangeDecorationsRetain(state);
-        if (cx) Notify(cx);
+        if (cx)
+            Notify(cx);
+        else
+            NotifyInputDecorations(s);
     }
     return result;
 }
@@ -2032,7 +2099,9 @@ void GutterDecorationCollection::Set(const GutterDecoration* decorations,
     }
     Vec<GutterDecoration> normalized;
     MarkNormalize(InputValue(state->input), decorations, n, &normalized);
-    live->Set(id, normalized.els, len(normalized));
+    if (live->Set(id, normalized.els, len(normalized))) {
+        NotifyInputDecorations(state->input);
+    }
 }
 
 void GutterDecorationCollection::Append(const GutterDecoration* decorations,
@@ -2043,7 +2112,9 @@ void GutterDecorationCollection::Append(const GutterDecoration* decorations,
     }
     Vec<GutterDecoration> normalized;
     MarkNormalize(InputValue(state->input), decorations, n, &normalized);
-    live->Append(id, normalized.els, len(normalized));
+    if (live->Append(id, normalized.els, len(normalized))) {
+        NotifyInputDecorations(state->input);
+    }
 }
 
 void GutterDecorationCollection::Clear() {
@@ -2052,7 +2123,7 @@ void GutterDecorationCollection::Clear() {
 
 void GutterDecorationCollection::Dispose() {
     if (MarkCollections<GutterDecoration>* live = GutterLive(state)) {
-        live->Remove(id);
+        if (live->Remove(id)) NotifyInputDecorations(state->input);
     }
 }
 
@@ -2098,8 +2169,10 @@ void OverviewRulerDecorationCollection::Set(
     }
     Vec<OverviewRulerDecoration> normalized;
     MarkNormalize(InputValue(state->input), decorations, n, &normalized);
-    live->Set(id, normalized.els, len(normalized));
-    state->cacheValid = false;
+    if (live->Set(id, normalized.els, len(normalized))) {
+        state->cacheValid = false;
+        NotifyInputDecorations(state->input);
+    }
 }
 
 void OverviewRulerDecorationCollection::Append(
@@ -2110,8 +2183,10 @@ void OverviewRulerDecorationCollection::Append(
     }
     Vec<OverviewRulerDecoration> normalized;
     MarkNormalize(InputValue(state->input), decorations, n, &normalized);
-    live->Append(id, normalized.els, len(normalized));
-    state->cacheValid = false;
+    if (live->Append(id, normalized.els, len(normalized))) {
+        state->cacheValid = false;
+        NotifyInputDecorations(state->input);
+    }
 }
 
 void OverviewRulerDecorationCollection::Clear() {
@@ -2120,8 +2195,10 @@ void OverviewRulerDecorationCollection::Clear() {
 
 void OverviewRulerDecorationCollection::Dispose() {
     if (MarkCollections<OverviewRulerDecoration>* live = OverviewLive(state)) {
-        live->Remove(id);
-        state->cacheValid = false;
+        if (live->Remove(id)) {
+            state->cacheValid = false;
+            NotifyInputDecorations(state->input);
+        }
     }
 }
 
@@ -2173,6 +2250,7 @@ GutterDecorationCollection InputCreateGutterDecorationsCollection(
     result.state = state;
     result.id = state->collections.Create(normalized.els, len(normalized));
     GutterDecorationsRetain(result.state);
+    NotifyInputDecorations(s);
     return result;
 }
 
@@ -2189,6 +2267,7 @@ OverviewRulerDecorationCollection InputCreateOverviewRulerDecorationsCollection(
     result.id = state->collections.Create(normalized.els, len(normalized));
     state->cacheValid = false;
     OverviewDecorationsRetain(result.state);
+    NotifyInputDecorations(s);
     return result;
 }
 

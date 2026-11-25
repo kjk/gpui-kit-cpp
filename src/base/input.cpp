@@ -3652,6 +3652,9 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     if (!state) {
         return TextEl(a, Str{});
     }
+    if (state->kind == InputKind::Editor && !LayoutInScratchPass()) {
+        InputBindDecorationOwner(state, cx);
+    }
     InputRenderBasics basics = InputRenderBegin(cx, state, projected, true);
     const InputEditorStyle& style = basics.style;
     float font = basics.font;

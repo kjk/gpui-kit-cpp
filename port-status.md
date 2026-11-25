@@ -350,10 +350,6 @@ The current update target is
 - **Scrollbar track clicks follow Windows.** A click pages; Shift+click jumps
   the thumb to the pointer. Rust jumps on every click
   (`src/gpui/window_common.cpp`).
-- **Editor range decorations do not notify their owning view.** Decorations
-  are measured and painted at the editor column's current visual rows, but
-  collection methods require the owning view to re-render
-  (`src/base/input.cpp` PaintEditorUnderlay).
 - **Replacing an owned context menu handler cancels its queued requests.**
   Rust retains a clone of the old handler through dispatch. C++ releases
   the handler's data when it is replaced (`src/base/input.cpp`).

@@ -265,6 +265,7 @@ struct RangeDecorationCollection {
 // within each style later collections and items paint over earlier ones.
 RangeDecorationCollection InputCreateRangeDecorationsCollection(
     InputState* s, const RangeDecoration* decorations, int n);
+void InputBindDecorationOwner(InputState* input, Ctx* cx);
 
 // input/editor/line_decorations.rs. The row is a zero-based buffer line.
 struct LineDecoration {

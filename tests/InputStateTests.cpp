@@ -12479,6 +12479,33 @@ static void GeometricDecorationsProjectFoldsWithoutChangingTrackedRanges() {
     TestAppFree(d.app);
 }
 
+static void EditorDecorationChangesInvalidateTheRenderedOwner() {
+    DecorationEditor d = DecorationEditorOpen("alpha\nbeta", false);
+    TestRunUntilParked(d.app);
+    RangeDecoration mark = RangeDecoration::New({0, 5});
+    RangeDecorationCollection ranges =
+        InputCreateRangeDecorationsCollection(d.editor, &mark, 1);
+    TestRunUntilParked(d.app);
+    int fills = 0, frames = 0;
+    utassert(InputLastRangeDecorationPaths(d.editor, d.win, &fills, &frames));
+    utassert(frames == 1);
+    ranges.Clear();
+    TestRunUntilParked(d.app);
+    InputLastRangeDecorationPaths(d.editor, d.win, &fills, &frames);
+    utassert(frames == 0);
+
+    GutterDecorationCollection gutter =
+        InputCreateGutterDecorationsCollection(d.editor, nullptr, 0);
+    TestRunUntilParked(d.app);
+    float withGutter = d.editor->lastBounds.x;
+    gutter.Dispose();
+    TestRunUntilParked(d.app);
+    utassert(d.editor->lastBounds.x < withGutter);
+    TestAppFree(d.app);
+    ranges.Set(&mark, 1);
+    utassert(!ranges.IsValid());
+}
+
 // element.rs geometric_decorations_track_edits_history_replacement_and_owner_
 // lifetime is GeometricDecorationsTrackEditsHistoryReplacementAndOwnerLifetime
 // above: everything it asserts is the collection's, which needs no frame.
@@ -13130,6 +13157,7 @@ static void RunElementWindowTests() {
     SoftWrapFollowsTheColumnInTheFrameItIsLaidOut();
     GeometricDecorationsIncludeCrlfBoundaries();
     GeometricDecorationsProjectFoldsWithoutChangingTrackedRanges();
+    EditorDecorationChangesInvalidateTheRenderedOwner();
 }
 
 // ─── touch.rs window tests ────────────────────────────────────────────────
