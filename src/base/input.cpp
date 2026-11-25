@@ -6123,6 +6123,12 @@ int InputContextMenuOffset(const InputState* s) {
     return s ? s->contextMenuOffset : -1;
 }
 
+bool InputContextMenuHit(const InputState* s, InputHit* out) {
+    if (!s || !out || !s->hasContextMenuHit) return false;
+    *out = s->contextMenuHit;
+    return true;
+}
+
 // RopeExt::offset_to_position: the row, and the column counted in
 // characters rather than bytes.
 RopePoint InputCursorPosition(const InputState* s) {
@@ -9930,6 +9936,9 @@ struct InputContextMenuJob {
     void* data = nullptr;
     InputContextMenuCapabilities caps = {};
     Point position = {};
+    int offset = 0;
+    InputHit hit = {};
+    bool hasHit = false;
     App* app = nullptr;
     Window* win = nullptr;
     InputState* state = nullptr;
@@ -9948,6 +9957,9 @@ static void RunContextMenuJob(InputContextMenuJob* job) {
         delete job;
         return;
     }
+    job->state->contextMenuOffset = job->offset;
+    job->state->contextMenuHit = job->hit;
+    job->state->hasContextMenuHit = job->hasHit;
     NativeMenu menu;
     job->handler(job->data, &menu, job->caps, job->position, job->app,
                  job->win);
@@ -9975,11 +9987,14 @@ static void RunContextMenuJob(InputContextMenuJob* job) {
 }
 
 void InputHandleRightClickMenu(InputState* s, App* app, Window* win,
-                               Point position, int offset) {
+                               Point position, int offset,
+                               const InputHit* hit) {
     if (!s || s->disabled || BaseIsInDeferredContext(app)) {
         return;
     }
     s->contextMenuOffset = offset;
+    s->hasContextMenuHit = hit != nullptr;
+    if (hit) s->contextMenuHit = *hit;
     if (!s->selectedRange.Contains(offset)) {
         InputMoveTo(s, app, win, offset);
     }
@@ -9994,6 +10009,9 @@ void InputHandleRightClickMenu(InputState* s, App* app, Window* win,
     job->data = s->contextMenuData;
     job->caps = InputContextMenuCapabilities::Of(s);
     job->position = position;
+    job->offset = offset;
+    job->hit = s->contextMenuHit;
+    job->hasHit = s->hasContextMenuHit;
     job->app = app;
     job->win = win;
     job->state = s;

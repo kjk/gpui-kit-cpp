@@ -1997,6 +1997,8 @@ static void InputRightPress(Window* win, const MouseDownEvent& in) {
     // The press publishes this field before a context menu resolves its
     // owner, including a field that was not focused in the last frame.
     int offset = InputIndexForPosition(s, &win->paint, in.x, in.y);
+    s->hasPendingContextMenuHit =
+        InputHitTest(s, win, {in.x, in.y}, &s->pendingContextMenuHit);
     if (!s->selectedRange.Contains(offset)) {
         InputMoveTo(s, win->app, win, offset);
     }
@@ -3391,8 +3393,10 @@ static void DispatchMouseUp(Window* win, const MouseUpEvent& in,
     if (released && released->hasPendingContextMenu) {
         InputState* s = released;
         s->hasPendingContextMenu = false;
-        InputHandleRightClickMenu(s, win->app, win, s->pendingContextMenuAt,
-                                  s->pendingContextMenuOffset);
+        InputHandleRightClickMenu(
+            s, win->app, win, s->pendingContextMenuAt,
+            s->pendingContextMenuOffset,
+            s->hasPendingContextMenuHit ? &s->pendingContextMenuHit : nullptr);
     } else if (in.button == MouseButton::Right) {
         // The release landed somewhere else: the menu the press was waiting
         // to open does not open, and the wait does not carry over to a later

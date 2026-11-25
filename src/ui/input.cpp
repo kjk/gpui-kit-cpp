@@ -248,6 +248,28 @@ struct InputContextMenuState {
     }
 };
 
+NativeMenu* DefaultContextMenu(NativeMenu* menu,
+                               const InputContextMenuCapabilities& caps) {
+    if (!menu || !menu->cx) return menu;
+    gpui::NativeMenu rows;
+    InputDefaultNativeMenu(caps, &rows);
+    Ctx* cx = menu->cx;
+    Listener select;
+    if (EntityHasDrop(cx->app, cx->self, &EntityDropT<InputContextMenuState>)) {
+        select = Listen(cx, &InputContextMenuState::OnSelect);
+    }
+    for (int i = 0; i < len(rows.items); i++) {
+        const gpui::NativeMenuItem& item = rows.items[i];
+        if (item.kind == gpui::NativeMenuItemKind::Separator) {
+            menu->Separator();
+        } else {
+            Str label = Tr(fmt("Input.%s", item.label).s);
+            menu->MenuWithDisabled(label, item.disabled, i + 1, select);
+        }
+    }
+    return menu;
+}
+
 // What the handler captures, owned by the state the way Rust's closure is:
 // the state frees it when the handler is replaced or the state goes, and a
 // field that renders again updates it in place.
@@ -262,7 +284,7 @@ struct InputContextMenu {
 
     // The handler: the menu, built and shown where the press was.
     static void Show(void* user, gpui::NativeMenu*,
-                     const InputContextMenuCapabilities&, Point position,
+                     const InputContextMenuCapabilities& caps, Point position,
                      App* app, Window* win) {
         auto* self = (InputContextMenu*)user;
         InputState* s = self ? self->state : nullptr;
@@ -278,20 +300,7 @@ struct InputContextMenu {
         if (self->build) {
             menu = self->build(&cx, menu, self->data);
         } else {
-            // The built-in rows, translated; a row's id is its index + 1 in
-            // the menu InputDefaultNativeMenu builds, rebuilt on selection.
-            gpui::NativeMenu rows;
-            InputDefaultNativeMenu(s, &rows);
-            for (int i = 0; i < len(rows.items); i++) {
-                const gpui::NativeMenuItem& row = rows.items[i];
-                if (row.kind == gpui::NativeMenuItemKind::Separator) {
-                    menu->Separator();
-                    continue;
-                }
-                Str label = Tr(fmt("Input.%s", row.label).s);
-                menu->MenuWithDisabled(label, row.disabled, i + 1);
-            }
-            menu->OnSelect(Listen(&cx, &InputContextMenuState::OnSelect));
+            DefaultContextMenu(menu, caps);
         }
         if (menu && !menu->IsEmpty()) {
             menu->Show(position.x, position.y);

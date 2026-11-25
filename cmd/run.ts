@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "9d70dc57d7152442855e0d4064e518d9dc238554",
+  sha: "5170bcaff72b6367d3481eab45d917d029875ab9",
   date: "2026-11-26",
-  subject: "fix(input): keep editor hover popovers compact and scrollable (#4131)",
+  subject: "editor: Tell a custom context menu where it was opened (#4135)",
   crates: {
     "gpui-kit": "0.11.0",
     "gpui-base": "0.11.0",

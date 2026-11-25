@@ -37,6 +37,7 @@ struct NativeMenuItem {
     // What choosing this row reports — Rust dispatches the row's Action, and
     // this is the value handed to onSelect in its place.
     int64_t id = 0;
+    Listener onSelect = {};
     NativeMenu* submenu = nullptr;
 };
 
@@ -51,7 +52,8 @@ struct NativeMenu {
 
     static NativeMenu* New(Ctx* cx);
     NativeMenu* Menu(Str label, int64_t id);
-    NativeMenu* MenuWithDisabled(Str label, bool disabled, int64_t id);
+    NativeMenu* MenuWithDisabled(Str label, bool disabled, int64_t id,
+                                 Listener onItemSelect = {});
     NativeMenu* MenuWithCheck(Str label, bool checked, int64_t id);
     NativeMenu* MenuWithIcon(Str label, IconName icon, int64_t id);
     // menu_with_icon(label, impl Into<Icon>, action): a path or `Data` icon.

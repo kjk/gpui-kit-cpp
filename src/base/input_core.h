@@ -165,6 +165,8 @@ struct NativeMenu {
 // that would change the text. Labels are the part of the "Input." locale key
 // after the dot; the styled layer translates them.
 void InputDefaultNativeMenu(const InputState* state, NativeMenu* out);
+void InputDefaultNativeMenu(const InputContextMenuCapabilities& capabilities,
+                            NativeMenu* out);
 // InputState::context_menu / set_context_menu_enabled.
 inline void InputSetContextMenuEnabled(InputState* state, bool enabled) {
     if (state) {
@@ -182,7 +184,8 @@ void InputOnContextMenu(InputState* state, InputContextMenuFn handler,
 // editor asks what is defined there, and the handler runs deferred -- after
 // the event is over -- with an empty menu and what the field can do.
 void InputHandleRightClickMenu(InputState* state, App* app, Window* win,
-                               Point position, int offset);
+                               Point position, int offset,
+                               const InputHit* hit = nullptr);
 
 } // namespace gpui
 #endif // GPUI_BASE_INPUT_CORE_H_

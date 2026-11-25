@@ -170,10 +170,14 @@ NativeMenu& NativeMenu::Separator() {
 }
 
 void InputDefaultNativeMenu(const InputState* state, NativeMenu* out) {
+    InputDefaultNativeMenu(InputContextMenuCapabilities::Of(state), out);
+}
+
+void InputDefaultNativeMenu(const InputContextMenuCapabilities& c,
+                            NativeMenu* out) {
     if (!out) {
         return;
     }
-    InputContextMenuCapabilities c = InputContextMenuCapabilities::Of(state);
     bool enabled = !c.IsDisabled();
     bool editable = enabled && !c.IsReadonly();
     if (c.IsCodeEditor()) {

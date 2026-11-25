@@ -7074,6 +7074,124 @@ static void ContextMenuReadsThePointerOffsetInsideASelection() {
     InputViewFree(&view);
 }
 
+static Point ContextMenuLineNumberPoint(InputState* state, Window* win,
+                                        float y) {
+    for (float x = state->gutterBox.x; x < state->gutterBox.Right(); x += 1) {
+        InputHit hit;
+        if (InputHitTest(state, win, {x, y}, &hit) &&
+            hit.area == InputHitArea::Gutter && hit.hasColumn &&
+            hit.column == GutterColumn::LineNumbers) {
+            return {x, y};
+        }
+    }
+    return {-1, y};
+}
+
+// element.rs a_right_click_on_the_gutter_tells_the_menu_its_row.
+static void RightClickMenuRetainsTheInputHitFromPress() {
+    InputView view = InputViewBuildEditor(
+        [](InputState* s, App*) { InputSetValue(s, StrL("one\ntwo\nthree")); });
+    struct Probe {
+        InputState* state;
+        InputHit hit = {};
+        int offset = -1;
+        bool hasHit = false;
+        static void OnMenu(void* data, NativeMenu*,
+                           const InputContextMenuCapabilities&, Point, App*,
+                           Window*) {
+            auto* self = static_cast<Probe*>(data);
+            self->hasHit = InputContextMenuHit(self->state, &self->hit);
+            self->offset = InputContextMenuOffset(self->state);
+        }
+    } probe = {view.input};
+    InputOnContextMenu(view.input, &Probe::OnMenu, &probe);
+    TestDraw(view.win);
+    Bounds second, third;
+    utassert(InputRangeToBounds(view.input, view.win, {4, 5}, &second));
+    utassert(InputRangeToBounds(view.input, view.win, {8, 9}, &third));
+    Point gutter =
+        ContextMenuLineNumberPoint(view.input, view.win, second.CenterY());
+    utassert(gutter.x >= 0);
+    Point text = {third.CenterX(), third.CenterY()};
+    TestSimulateMouseDown(view.win, gutter, MouseButton::Right);
+    TestSimulateMouseUp(view.win, text, MouseButton::Right);
+    TestRunUntilParked(view.app);
+    utassert(probe.hasHit && probe.hit.area == InputHitArea::Gutter);
+    utassert(probe.hit.hasColumn &&
+             probe.hit.column == GutterColumn::LineNumbers);
+    utassert(probe.hit.row == 1 && probe.offset == 4);
+    utassert(InputCursor(view.input) == 4);
+
+    TestSimulateMouseDown(view.win, text, MouseButton::Right);
+    TestSimulateMouseUp(view.win, text, MouseButton::Right);
+    TestRunUntilParked(view.app);
+    utassert(probe.hasHit && probe.hit.area == InputHitArea::Text &&
+             probe.hit.row == 2 && probe.offset == probe.hit.offset);
+    utassert(InputCursor(view.input) == probe.offset);
+    InputViewFree(&view);
+}
+
+struct CustomInputMenuProbe {
+    InputState editor;
+    bool appended = false;
+    Listener selectAll;
+    int64_t selectAllId = 0;
+
+    static component::NativeMenu* Build(Ctx*, component::NativeMenu* menu,
+                                        void* data) {
+        auto* self = static_cast<CustomInputMenuProbe*>(data);
+        InputHit hit;
+        if (InputContextMenuHit(&self->editor, &hit) &&
+            hit.area == InputHitArea::Gutter && hit.hasColumn &&
+            hit.column == GutterColumn::LineNumbers) {
+            menu->Menu(StrDup(menu->a, fmt("Line %d", hit.row)), 17)
+                ->Separator();
+        }
+        component::DefaultContextMenu(
+            menu, InputContextMenuCapabilities::Of(&self->editor));
+        int count = len(menu->items);
+        if (count >= 2) {
+            self->appended = StrEq(menu->items[0].label, "Line 1") &&
+                             menu->items[0].id == 17 &&
+                             StrEq(menu->items[count - 1].label, "Select All");
+            self->selectAll = menu->items[count - 1].onSelect;
+            self->selectAllId = menu->items[count - 1].id;
+        }
+        return nullptr;
+    }
+
+    static El* Render(CustomInputMenuProbe* self, Ctx* cx) {
+        return Div(cx->a)->SizeFull()->Child(
+            component::Editor::New(cx, StrL("context-menu"), &self->editor)
+                ->ContextMenu(&Build, self)
+                ->IntoEl());
+    }
+};
+
+// editor.rs a_custom_context_menu_knows_the_line_number_it_was_opened_on.
+static void CustomContextMenuCanAppendTheDefaultItems() {
+    App* app = TestAppNew();
+    auto view = EntityNew<CustomInputMenuProbe>(app);
+    auto* probe = view.Get(app);
+    MakeCodeEditor(&probe->editor);
+    InputSetValue(&probe->editor, StrL("one\ntwo\nthree"));
+    Window* win = TestWindowOpen(app, view);
+    TestDraw(win);
+    Bounds row;
+    utassert(InputRangeToBounds(&probe->editor, win, {4, 5}, &row));
+    Point at = ContextMenuLineNumberPoint(&probe->editor, win, row.CenterY());
+    utassert(at.x >= 0);
+    TestSimulateMouseDown(win, at, MouseButton::Right);
+    TestSimulateMouseUp(win, at, MouseButton::Right);
+    TestRunUntilParked(app);
+    utassert(probe->appended && probe->selectAll.IsValid());
+    ClickEvent click;
+    ListenerCall(app, win, ListenerFill(probe->selectAll, probe->selectAllId),
+                 &click);
+    utassert(StrEq(InputSelectedValue(&probe->editor), "one\ntwo\nthree"));
+    TestAppFree(app);
+}
+
 // state.rs test_set_auto_grow_keeps_rows_fitted: changing the limits
 // recounts the rows. A fresh auto_grow starts at min_rows, and the next
 // edit used to be the only thing that fitted them.
@@ -10352,6 +10470,8 @@ static void RunWindowTestsC() {
     DeferredContextMenusExpireWithTheirFieldOrOwnedHandler();
     ContextMenuHandlerCanReadItsInput();
     ContextMenuReadsThePointerOffsetInsideASelection();
+    RightClickMenuRetainsTheInputHitFromPress();
+    CustomContextMenuCanAppendTheDefaultItems();
     SetAutoGrowKeepsRowsFitted();
     AutoGrowTextareaFollowsWrappedRowsOnResizeAndEdit();
     TextareaDevicePixelHeights();

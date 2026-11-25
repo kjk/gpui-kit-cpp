@@ -24,13 +24,15 @@ static NativeMenuItem* PushItem(NativeMenu* m) {
 NativeMenu* NativeMenu::Menu(Str label, int64_t id) {
     return MenuWithDisabled(label, false, id);
 }
-NativeMenu* NativeMenu::MenuWithDisabled(Str label, bool disabled, int64_t id) {
+NativeMenu* NativeMenu::MenuWithDisabled(Str label, bool disabled, int64_t id,
+                                         Listener onItemSelect) {
     NativeMenuItem* it = PushItem(this);
     if (it) {
         it->kind = NativeMenuItemKind::Item;
         it->label = label;
         it->disabled = disabled;
         it->id = id;
+        it->onSelect = onItemSelect;
     }
     return this;
 }
@@ -170,34 +172,29 @@ static bool ShowNative(NativeMenu* m, float x, float y) {
     // Snapshot ids before PlatShowMenu: the OS tracking loop can paint, which
     // resets the frame arena this menu lives on.
     int count = NativeMenuSelectable(m, nullptr, 1 << 20);
-    int64_t* ids = nullptr;
+    struct Choice {
+        int64_t id;
+        Listener onSelect;
+    };
+    Vec<Choice> choices;
     if (count > 0) {
-        auto** table =
-            (const NativeMenuItem**)malloc((size_t)count * sizeof(void*));
-        ids = (int64_t*)malloc((size_t)count * sizeof(int64_t));
-        if (!table || !ids) {
-            free(table);
-            free(ids);
+        Vec<const NativeMenuItem*> table;
+        if (!VecResize(table, count) || !VecResize(choices, count))
             return false;
-        }
-        NativeMenuSelectable(m, table, count);
+        NativeMenuSelectable(m, table.els, count);
         for (int i = 0; i < count; i++) {
-            ids[i] = table[i] ? table[i]->id : 0;
+            const NativeMenuItem* item = table[i];
+            if (item) choices[i] = {item->id, item->onSelect};
         }
-        free(table);
     }
 
     int chosen = PlatShowMenu(win, plat, nItems, x, y, dark);
-    int64_t command = 0;
-    if (chosen > 0 && chosen <= count && ids) {
-        command = ids[chosen - 1];
-    }
-    free(ids);
-    if (command == 0) {
-        return true;
-    }
+    if (chosen <= 0 || chosen > count) return true;
+    Choice choice = choices[chosen - 1];
+    if (choice.id == 0 && !choice.onSelect.IsValid()) return true;
+    if (choice.onSelect.IsValid()) select = choice.onSelect;
     ClickEvent ev = {};
-    ListenerCall(app, win, ListenerFill(select, command), &ev);
+    ListenerCall(app, win, ListenerFill(select, choice.id), &ev);
     return true;
 }
 
@@ -343,7 +340,7 @@ static void OnFallbackConfirm(PopupMenuState* self, Ctx* cx, const ClickEvent*,
         return;
     }
     int64_t id = it->id;
-    Listener select = f->onSelect;
+    Listener select = it->onSelect.IsValid() ? it->onSelect : f->onSelect;
     PopupMenuDismissAll(self, cx);
     f->open = false;
     ClickEvent ev = {};

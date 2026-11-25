@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `9d70dc57d7152442855e0d4064e518d9dc238554` (2026-11-26,
-fix(input): keep editor hover popovers compact and scrollable (#4131)).
-Editor hovers use a viewport-constrained scrolling surface and compact Markdown, with a long-content story.
+Processed through `5170bcaff72b6367d3481eab45d917d029875ab9` (2026-11-26,
+editor: Tell a custom context menu where it was opened (#4135)).
+Custom input context menus can read the hit from the opening press and append the built-in menu items.
 The current update target is
-`9d70dc57d7152442855e0d4064e518d9dc238554`.
+`5170bcaff72b6367d3481eab45d917d029875ab9`.
 
 ## Known gaps vs Rust
 

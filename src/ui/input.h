@@ -30,6 +30,11 @@ using gpui::LineDecorationProvider;
 using gpui::Spacer;
 using gpui::SpacerProvider;
 
+// Append the editor's built-in items to a custom context menu.
+struct NativeMenu;
+NativeMenu* DefaultContextMenu(
+    NativeMenu* menu, const InputContextMenuCapabilities& capabilities);
+
 // crates/ui/src/input/language_config.rs::init: text/json/python editing
 // defaults. Unknown languages keep LanguageConfig::Default().
 void InputLanguageInit(App* app);
