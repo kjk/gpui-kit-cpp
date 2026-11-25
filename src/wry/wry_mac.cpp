@@ -1470,7 +1470,8 @@ bool WebViewSetClippedBounds(WebView* wv, Rect bounds, Rect visible) {
     return true;
 }
 
-bool WebViewSetVisibleRegion(WebView* wv, const Rect* pieces, int count) {
+static bool MacWebViewSetRegion(WebView* wv, const Rect* pieces, int count,
+                                bool clipDrawing) {
     if (!wv || !wv->clipView) return false;
     GpuiWryClipView* view = wv->clipView;
     [CATransaction begin];
@@ -1496,10 +1497,18 @@ bool WebViewSetVisibleRegion(WebView* wv, const Rect* pieces, int count) {
         mask.path = path;
         CGPathRelease(path);
         view.visibleMask = mask;
-        view.layer.mask = mask;
+        view.layer.mask = clipDrawing ? mask : nil;
     }
     [CATransaction commit];
     return true;
+}
+
+bool WebViewSetVisibleRegion(WebView* wv, const Rect* pieces, int count) {
+    return MacWebViewSetRegion(wv, pieces, count, true);
+}
+
+bool WebViewSetInputRegion(WebView* wv, const Rect* pieces, int count) {
+    return MacWebViewSetRegion(wv, pieces, count, false);
 }
 
 void WebViewSnapshot(WebView* wv, void* user, WebViewSnapshotFn complete) {

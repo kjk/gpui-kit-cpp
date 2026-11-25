@@ -82,9 +82,16 @@ void FrameBegin(PaintCtx* ctx);
 // rectangle worth redrawing, which is the whole view unless the level is
 // `damage` and the difference was small.
 bool FrameEnd(PaintCtx* ctx, Bounds* damage);
+enum class ReplayLayers : uint8_t {
+    All,
+    Tree,
+    Deferred
+};
 // Draw the collected frame through the ordinary Paint.h entry points.
-// `damage` null redraws all of it.
-void Replay(PaintCtx* ctx, const Bounds* damage);
+// A native compositor can place child surfaces between tree and deferred
+// layers. Null damage redraws the whole area.
+void Replay(PaintCtx* ctx, const Bounds* damage,
+            ReplayLayers layers = ReplayLayers::All);
 // An offscreen target opened inside a frame — a menu icon being rasterized —
 // draws for its own sake and not for the window's, so the recorder steps
 // aside for it. SuspendBegin hands back what to give SuspendEnd.

@@ -221,6 +221,42 @@ static void OffscreenPathMaskIsReused() {
 #endif
 }
 
+static void DeferredLayersReplayAboveNativeChildren() {
+#if !GPUI_OS_WASM
+    TestSuite("scene native child composition");
+    PaintCtx paint = {};
+    paint.pa = PaintAppNew();
+    paint.viewW = paint.viewH = 8;
+    uint8_t tree[8 * 8 * 4] = {};
+    uint8_t overlay[sizeof(tree)] = {};
+    bool started = PaintTargetBeginOffscreen(&paint, 8, 8);
+    utassert(started);
+    if (started) {
+        scene::FrameBegin(&paint);
+        scene::RecClear(&paint, Rgba8(255, 0, 0, 255));
+        paint.paintLayer = kPaintLayerPopup;
+        scene::RecFillRect(&paint, 2, 2, 4, 4, Rgba8(0, 0, 255, 128));
+        scene::FrameEnd(&paint, nullptr);
+        scene::Replay(&paint, nullptr, scene::ReplayLayers::Tree);
+        utassert(PaintTargetEndOffscreen(&paint, tree));
+        utassert(tree[(3 * 8 + 3) * 4] == 0);
+        utassert(tree[(3 * 8 + 3) * 4 + 2] == 255);
+
+        started = PaintTargetBeginOffscreen(&paint, 8, 8);
+        utassert(started);
+        if (started) {
+            scene::Replay(&paint, nullptr, scene::ReplayLayers::Deferred);
+            utassert(PaintTargetEndOffscreen(&paint, overlay));
+            utassert(overlay[3] == 0);
+            utassert(overlay[(3 * 8 + 3) * 4] >= 127);
+            utassert(overlay[(3 * 8 + 3) * 4 + 3] == 128);
+        }
+        scene::Free(&paint);
+    }
+    PaintAppFree(paint.pa);
+#endif
+}
+
 // Rust's Arc<RenderImage> keeps decoded pixels alive independently of the
 // loading cache. Exercise that contract across cache clear and two scenes.
 static void RecordedImagesSurviveCacheEviction() {
@@ -551,6 +587,7 @@ static void ColoredTextSurvivesRecordingAndRestyling() {
 }
 
 void TestScene() {
+    DeferredLayersReplayAboveNativeChildren();
     ColoredTextSurvivesRecordingAndRestyling();
     ObjectFitMatchesGpuiGeometry();
     FailedImagesLayOutTheirFallback();

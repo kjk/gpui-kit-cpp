@@ -36,6 +36,12 @@ uint64_t PaintResourceGenerationNew();
 // left unpainted would flash).
 bool PaintSceneFinish(PaintCtx* ctx, bool replayUnchanged);
 
+#if GPUI_OS_MAC
+// Route the next replay's deferred layers above the window's native children.
+bool MacPaintEnableNativeOverlay(PaintCtx* ctx);
+void MacWindowPresentNativeOverlay(Window* win, void* image);
+#endif
+
 // Copy h rows of w BGRA pixels between buffers whose rows are dstStride and
 // srcStride bytes apart, leaving any row padding of the destination alone.
 void PaintCopyBgraRows(uint8_t* dst, size_t dstStride, const uint8_t* src,

@@ -2037,7 +2037,7 @@ bool FrameEnd(PaintCtx* ctx, Bounds* damage) {
 
 // ─── replay ──────────────────────────────────────────────────────────────
 
-void Replay(PaintCtx* ctx, const Bounds* damage) {
+void Replay(PaintCtx* ctx, const Bounds* damage, ReplayLayers layers) {
     State* s = StateFor(ctx, false);
     if (!s) {
         return;
@@ -2060,6 +2060,9 @@ void Replay(PaintCtx* ctx, const Bounds* damage) {
     gStats.maskChanges = 0;
     for (int i = 0; i < len(gCur); i++) {
         const Prim& p = gCur[i];
+        if ((layers == ReplayLayers::Tree && p.layer > kPaintLayerTree) ||
+            (layers == ReplayLayers::Deferred && p.layer <= kPaintLayerTree))
+            continue;
         if (p.kind == kPScroll) {
             continue;
         }

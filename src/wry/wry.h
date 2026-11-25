@@ -520,6 +520,14 @@ bool WebViewSetVisibleRegion(WebView* webview, const Rect* pieces, int count);
 #else
 #define GPUI_WRY_CLIPPED_CHILD 0
 #endif
+#if GPUI_OS_MAC
+#define GPUI_WRY_INPUT_REGION 1
+// Restrict hits to the pieces while the native page continues to draw
+// throughout the clip rectangle.
+bool WebViewSetInputRegion(WebView* webview, const Rect* pieces, int count);
+#else
+#define GPUI_WRY_INPUT_REGION 0
+#endif
 #if GPUI_OS_WINDOWS || GPUI_WRY_CLIPPED_CHILD
 #define GPUI_WRY_SNAPSHOT 1
 // Capture the visible document viewport at the browser's native scale. The

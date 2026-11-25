@@ -10,6 +10,7 @@
 #include "gpui/platform.h"
 #include "base/input.h"
 #include "gpui/paint.h"
+#include "gpui/paint_backend.h"
 #include "gpui/window_loop.h"
 #include "sys/clock.h"
 #include "sys/executor.h"
@@ -717,10 +718,24 @@ static bool PressedButton(MouseButton* out) {
 
 } // namespace gpui
 
+@interface GpuiNativeOverlayView : NSImageView
+@end
+
+@implementation GpuiNativeOverlayView
+- (BOOL)isOpaque {
+    return NO;
+}
+- (NSView*)hitTest:(NSPoint)point {
+    (void)point;
+    return nil;
+}
+@end
+
 @interface GpuiView : NSView <NSTextInputClient> {
   @public
     gpui::Window* win;
     __strong NSString* textContentType;
+    GpuiNativeOverlayView* nativeOverlay;
     // The drag over the view carries text or a link, not files.
     BOOL textDrag;
 }
@@ -1873,27 +1888,62 @@ static void CaptureDrawWebViewsThenWrite(NSBitmapImageRep* out,
       }
     };
     for (NSUInteger i = 0; i < webs.count; i++) {
+        WKWebView* web = webs[i];
         NSRect r = webRects[i].rectValue;
         r.origin.x -= outOrigin.x;
         r.origin.y -= outOrigin.y;
-        [webs[i]
-            takeSnapshotWithConfiguration:nil
-                        completionHandler:^(NSImage* img, NSError*) {
-                          if (img && !written) {
-                              NSGraphicsContext* gc = [NSGraphicsContext
-                                  graphicsContextWithBitmapImageRep:out];
-                              [NSGraphicsContext saveGraphicsState];
-                              [NSGraphicsContext setCurrentContext:gc];
-                              [img drawInRect:r
-                                     fromRect:NSZeroRect
-                                    operation:NSCompositingOperationSourceOver
-                                     fraction:1];
-                              [NSGraphicsContext restoreGraphicsState];
-                          }
-                          if (--left == 0) {
-                              finish();
-                          }
-                        }];
+        // cacheDisplay included GPUI's transparent overlay but omitted the
+        // page. Restore the overlay only in the area replaced by the page
+        // snapshot, to keep the original compositing order.
+        NSImage* overlayImage = nil;
+        NSRect overlayRect = NSZeroRect;
+        NSRect pageClip = r;
+        for (NSView* parent = web.superview; parent; parent = parent
+                                                                  .superview) {
+            NSRect parentRect = [web.window
+                convertRectToScreen:[parent convertRect:parent.bounds
+                                                 toView:nil]];
+            parentRect.origin.x -= outOrigin.x;
+            parentRect.origin.y -= outOrigin.y;
+            pageClip = NSIntersectionRect(pageClip, parentRect);
+            if ([parent isKindOfClass:[GpuiView class]]) {
+                auto* overlay = ((GpuiView*)parent)->nativeOverlay;
+                overlayImage = overlay.image;
+                if (overlayImage) {
+                    overlayRect = [web.window
+                        convertRectToScreen:[overlay convertRect:overlay.bounds
+                                                          toView:nil]];
+                    overlayRect.origin.x -= outOrigin.x;
+                    overlayRect.origin.y -= outOrigin.y;
+                }
+                break;
+            }
+        }
+        [web takeSnapshotWithConfiguration:nil
+                         completionHandler:^(NSImage* img, NSError*) {
+                           if (img && !written) {
+                               NSGraphicsContext* gc = [NSGraphicsContext
+                                   graphicsContextWithBitmapImageRep:out];
+                               [NSGraphicsContext saveGraphicsState];
+                               [NSGraphicsContext setCurrentContext:gc];
+                               if (overlayImage) NSRectClip(pageClip);
+                               [img drawInRect:r
+                                      fromRect:NSZeroRect
+                                     operation:NSCompositingOperationSourceOver
+                                      fraction:1];
+                               if (overlayImage)
+                                   [overlayImage
+                                       drawInRect:overlayRect
+                                         fromRect:NSZeroRect
+                                        operation:
+                                            NSCompositingOperationSourceOver
+                                         fraction:1];
+                               [NSGraphicsContext restoreGraphicsState];
+                           }
+                           if (--left == 0) {
+                               finish();
+                           }
+                         }];
     }
     // A snapshot that never comes still leaves a file.
     dispatch_after(
@@ -2573,6 +2623,31 @@ void* PlatWindowHandle(Window* win) {
         return nullptr;
     }
     return (__bridge void*)win->plat->view;
+}
+
+void MacWindowPresentNativeOverlay(Window* win, void* image) {
+    GpuiView* view = win && win->plat ? win->plat->view : nil;
+    if (!view) return;
+    if (!image) {
+        [view->nativeOverlay removeFromSuperview];
+        view->nativeOverlay = nil;
+        return;
+    }
+    GpuiNativeOverlayView* overlay = view->nativeOverlay;
+    if (!overlay) {
+        overlay = [[GpuiNativeOverlayView alloc] initWithFrame:view.bounds];
+        overlay.wantsLayer = YES;
+        overlay.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+        overlay.imageScaling = NSImageScaleAxesIndependently;
+        overlay.accessibilityElement = NO;
+        view->nativeOverlay = overlay;
+    }
+    if (view.subviews.lastObject != overlay) {
+        [overlay removeFromSuperview];
+        [view addSubview:overlay positioned:NSWindowAbove relativeTo:nil];
+    }
+    overlay.image = [[NSImage alloc] initWithCGImage:(CGImageRef)image
+                                                size:view.bounds.size];
 }
 
 void PlatInstallAccessibilityHitTest(Window* win) {

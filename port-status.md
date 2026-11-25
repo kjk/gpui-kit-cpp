@@ -626,11 +626,11 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   See the browser section of AGENTS.md.
 - **Native webviews are child surfaces.** Desktop hosts clip the child
   to the content mask and keep the page's full size and scroll position.
-  Deferred overlays open matching drawing and input cutouts in the child
-  views. A browser viewport snapshot is drawn in the cutouts so translucent
-  overlay pixels blend with the page. Browser changes there follow the
-  asynchronous snapshot refresh. Outside the cutouts, the native child
-  draws and receives input directly (`src/webview/webview.cpp`).
+  macOS composites deferred GPUI layers above the live WKWebView and
+  restricts the browser's input where overlays intercept it. Windows and
+  Linux use matching drawing and input cutouts, with an asynchronous
+  viewport snapshot under translucent overlay pixels. macOS uses that
+  path when scene recording is disabled (`src/webview/webview.cpp`).
 - **Linux webview bounds stay logical.** Upstream `device_bounds` passes
   physical pixels because Wry then scales by GDK. `WebViewSetBounds`
   in `wry_linux.cpp` already multiplies a logical rect by that factor

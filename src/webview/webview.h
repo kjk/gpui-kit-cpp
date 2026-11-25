@@ -90,6 +90,9 @@ struct WebView {
     Vec<Bounds> visibleRegion;
     bool hasVisibleRegion = false;
     bool visibleRegionNeedsUpdate = false;
+#if GPUI_WRY_INPUT_REGION
+    bool liveOverlay = false;
+#endif
     WebViewBackdrop* backdrop = nullptr;
     // `windows::NativeClip`: the region last set on wry's host window, as
     // left, top, right, bottom in its device pixels. Windows only.

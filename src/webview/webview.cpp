@@ -3,6 +3,7 @@
 #include "webview/webview.h"
 
 #include "gpui/paint.h"
+#include "gpui/paint_backend.h"
 #include "gpui/platform.h"
 #include "sys/executor.h"
 
@@ -529,6 +530,13 @@ static void FinishNativeWebView(void* user, const Bounds* overlays, int count) {
     bool changed = self->visibleRegionNeedsUpdate ||
                    self->hasVisibleRegion != shaped ||
                    (shaped && len(region) != len(self->visibleRegion));
+#if GPUI_WRY_INPUT_REGION
+    PaintCtx* paint = self->window ? &self->window->paint : nullptr;
+    // Shadows and borders can reach the page without an input cutout.
+    bool liveOverlay = paint && len(paint->deferredPaint) &&
+                       MacPaintEnableNativeOverlay(paint);
+    changed = changed || self->liveOverlay != liveOverlay;
+#endif
     for (int i = 0; shaped && !changed && i < len(region); i++) {
         changed = !BoundsSame(region[i], self->visibleRegion[i]);
     }
@@ -550,11 +558,16 @@ static void FinishNativeWebView(void* user, const Bounds* overlays, int count) {
             }
         }
         wry::Rect empty = {};
-        bool applied = wry::WebViewSetVisibleRegion(raw,
-                                                    !shaped       ? nullptr
-                                                    : len(pieces) ? pieces.els
-                                                                  : &empty,
-                                                    len(pieces));
+        const wry::Rect* clip = !shaped       ? nullptr
+                                : len(pieces) ? pieces.els
+                                              : &empty;
+#if GPUI_WRY_INPUT_REGION
+        bool applied =
+            liveOverlay ? wry::WebViewSetInputRegion(raw, clip, len(pieces))
+                        : wry::WebViewSetVisibleRegion(raw, clip, len(pieces));
+#else
+        bool applied = wry::WebViewSetVisibleRegion(raw, clip, len(pieces));
+#endif
 #endif
         if (!applied) {
             HideNative(self, raw);
@@ -564,8 +577,17 @@ static void FinishNativeWebView(void* user, const Bounds* overlays, int count) {
         self->visibleRegion = region;
         self->hasVisibleRegion = shaped;
         self->visibleRegionNeedsUpdate = false;
+#if GPUI_WRY_INPUT_REGION
+        self->liveOverlay = liveOverlay;
+#endif
     }
     ShowNative(self, raw);
+#if GPUI_WRY_INPUT_REGION
+    if (liveOverlay) {
+        DropWebViewBackdrop(self);
+        return;
+    }
+#endif
     UpdateWebViewBackdrop(self, raw, shaped, changed);
 }
 #endif

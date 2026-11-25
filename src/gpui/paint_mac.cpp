@@ -39,6 +39,9 @@ struct PaintApp {
 
 struct PaintTarget {
     CGContextRef cg = nullptr;
+    CGContextRef overlay = nullptr;
+    int pxW = 0;
+    int pxH = 0;
 };
 
 // ─── lifecycle ────────────────────────────────────────────────────────────
@@ -85,17 +88,20 @@ Str PaintSystemUIFontMappedFamily() {
 }
 
 void PaintTargetDestroy(PaintTarget* rt) {
+    if (rt && rt->overlay) CGContextRelease(rt->overlay);
     delete rt;
 }
 
 // `native` is the CGContextRef the view's drawRect handed us. It is only
 // valid for this frame, so the target is rebuilt every time.
-bool PaintTargetBegin(PaintCtx* ctx, void* native, int, int) {
+bool PaintTargetBegin(PaintCtx* ctx, void* native, int pxW, int pxH) {
     if (!PaintTargetReplace(ctx, native)) {
         return false;
     }
     auto* t = new PaintTarget();
     t->cg = (CGContextRef)native;
+    t->pxW = pxW;
+    t->pxH = pxH;
     ctx->rt = t;
     CGContextSetShouldAntialias(t->cg, true);
     // Upright glyphs in a y-down space.
@@ -108,16 +114,8 @@ bool PaintTargetBegin(PaintCtx* ctx, void* native, int, int) {
 
 // The offscreen target: a bitmap context rather than the window's, kept here
 // until the pixels are read back out of it.
-static CGContextRef gOffscreenCg = nullptr;
-static int gOffscreenW = 0;
-static int gOffscreenH = 0;
-
-bool PaintTargetBeginOffscreen(PaintCtx* ctx, int pxW, int pxH) {
-    gOffscreenWasRecording = scene::SuspendBegin();
-    if (!ctx || !ctx->pa || pxW <= 0 || pxH <= 0) {
-        scene::SuspendEnd(gOffscreenWasRecording);
-        return false;
-    }
+static CGContextRef PaintMacFlippedBitmap(int pxW, int pxH) {
+    if (pxW <= 0 || pxH <= 0) return nullptr;
     CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
     CGBitmapInfo bitmapInfo =
         (CGBitmapInfo)((uint32_t)kCGImageAlphaPremultipliedFirst |
@@ -126,13 +124,26 @@ bool PaintTargetBeginOffscreen(PaintCtx* ctx, int pxW, int pxH) {
         CGBitmapContextCreate(nullptr, (size_t)pxW, (size_t)pxH, 8,
                               (size_t)pxW * 4, space, bitmapInfo);
     CGColorSpaceRelease(space);
-    if (!cg) {
-        return false;
-    }
+    if (!cg) return nullptr;
     // The window's view is flipped, so an offscreen target is flipped too and
     // everything drawn into it lands the same way up.
     CGContextTranslateCTM(cg, 0, (CGFloat)pxH);
     CGContextScaleCTM(cg, 1, -1);
+    return cg;
+}
+
+static CGContextRef gOffscreenCg = nullptr;
+static int gOffscreenW = 0;
+static int gOffscreenH = 0;
+
+bool PaintTargetBeginOffscreen(PaintCtx* ctx, int pxW, int pxH) {
+    gOffscreenWasRecording = scene::SuspendBegin();
+    CGContextRef cg =
+        ctx && ctx->pa ? PaintMacFlippedBitmap(pxW, pxH) : nullptr;
+    if (!cg) {
+        scene::SuspendEnd(gOffscreenWasRecording);
+        return false;
+    }
     gNoSceneBegin = true;
     if (!PaintTargetBegin(ctx, cg, pxW, pxH)) {
         gNoSceneBegin = false;
@@ -169,14 +180,44 @@ bool PaintTargetEndOffscreen(PaintCtx* ctx, uint8_t* outBgra) {
     return true;
 }
 
+bool MacPaintEnableNativeOverlay(PaintCtx* ctx) {
+    if (!ctx || !ctx->window || !ctx->rt || !scene::Recording() ||
+        ctx->viewW <= 0.f || ctx->viewH <= 0.f)
+        return false;
+    PaintTarget* target = ctx->rt;
+    if (target->overlay) return true;
+    CGContextRef overlay = PaintMacFlippedBitmap(target->pxW, target->pxH);
+    if (!overlay) return false;
+    CGContextClearRect(overlay, CGRectMake(0, 0, target->pxW, target->pxH));
+    CGContextScaleCTM(overlay, target->pxW / ctx->viewW,
+                      target->pxH / ctx->viewH);
+    CGContextSetTextMatrix(overlay, CGAffineTransformMakeScale(1, -1));
+    target->overlay = overlay;
+    return true;
+}
+
 bool PaintTargetEnd(PaintCtx* ctx) {
     // Skip means "the last present is still on screen". This context is the
     // window itself, and AppKit may already have cleared it, so an identical
     // frame still has to be painted or the area flashes.
-    PaintSceneFinish(ctx, true);
     if (!ctx || !ctx->rt) {
         return false;
     }
+    CGImageRef overlay = nullptr;
+    PaintTarget* target = ctx->rt;
+    if (target->overlay) {
+        scene::FrameEnd(ctx, nullptr);
+        scene::Replay(ctx, nullptr, scene::ReplayLayers::Tree);
+        CGContextRef base = target->cg;
+        target->cg = target->overlay;
+        scene::Replay(ctx, nullptr, scene::ReplayLayers::Deferred);
+        target->cg = base;
+        overlay = CGBitmapContextCreateImage(target->overlay);
+    } else {
+        PaintSceneFinish(ctx, true);
+    }
+    MacWindowPresentNativeOverlay(ctx->window, overlay);
+    if (overlay) CGImageRelease(overlay);
     PaintTargetFree(ctx);
     return true;
 }
