@@ -233,6 +233,9 @@ static El* FieldRender(Ctx* cx, const Field& fld, const FieldProps& props) {
         head->Child(label);
     }
     El* control = Div(a)->W(kFill)->Flex1();
+    if (props.horizontal) {
+        control->MinW(0);
+    }
     if (fld.control) {
         control->Child(fld.control);
     }
@@ -248,14 +251,22 @@ static El* FieldRender(Ctx* cx, const Field& fld, const FieldProps& props) {
     if (fld.description.IsSet()) {
         // Horizontal, the description lines up under the control.
         if (props.horizontal && hasLabel) {
-            desc->Child(Div(a)->W(lw));
+            desc->Child(Div(a)->W(lw)->Shrink0());
+        }
+        El* note = Div(a)->Font(12)->Fg(th.mutedFg);
+        if (props.horizontal) {
+            note->MinW(0);
         }
         if (fld.description.kind == FieldBuilderKind::Element) {
-            desc->Child(fld.description.element);
+            note->Child(fld.description.element);
         } else {
-            desc->Child(
-                TextEl(a, fld.description.string)->Font(12)->Fg(th.mutedFg));
+            El* text = TextEl(a, fld.description.string);
+            if (props.horizontal) {
+                text->Wrap();
+            }
+            note->Child(text);
         }
+        desc->Child(note);
     }
     f->Child(desc);
     return f;

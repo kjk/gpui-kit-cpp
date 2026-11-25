@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `c9174d9d8c98642c6d19025f60d29552d859aa28` (2026-11-25,
-component: Bump Windows resvg to 0.46 to match gpui-pre (#4107)).
-Reviewed the Windows resvg dependency consolidation. C++ uses its built-in SVG renderer.
+Processed through `ab8922323411d99be5d2cef4b7e4683f02f854b4` (2026-11-25,
+form: Let a horizontal field's content and description shrink so long text wraps (#4108)).
+Horizontal form controls and descriptions shrink to the space left by their label column.
 The current update target is
 `832cfdc0baef92855191dfdbbbcacd75f59d3df0`.
 

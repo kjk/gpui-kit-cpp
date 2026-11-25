@@ -255,8 +255,42 @@ static void AFieldRendersOutsideAForm() {
     AppGlobalClear(&app);
 }
 
+struct FormWrapView {
+    Bounds content = {};
+    Bounds description = {};
+
+    static El* Render(FormWrapView* self, Ctx* cx) {
+        Str words = StrL(
+            "Long content must wrap inside the form field to "
+            "stay within its label and viewport.");
+        El* content = TextEl(cx->a, words)->Wrap()->BoundsOut(&self->content);
+        El* form =
+            h_form(cx)
+                ->Child(field(content).Label(StrL("Name")).Description(words))
+                ->IntoEl()
+                ->W(260);
+        form->first->last->last->first->BoundsOut(&self->description);
+        return form;
+    }
+};
+
+static void HorizontalFieldWrapsLongContentAndDescription() {
+    App* app = TestAppNew();
+    component::Init(app);
+    auto view = EntityNew<FormWrapView>(app);
+    Window* win = TestWindowOpen(app, view, 260, 200);
+    TestDraw(win);
+    auto* state = view.Get(app);
+    utassertnear(state->content.x, state->description.x);
+    utassert(state->content.Right() <= 260.f);
+    utassert(state->description.Right() <= 260.f);
+    utassert(state->content.h > 20.f && state->description.h > 20.f);
+    TestAppFree(app);
+}
+
 void TestForm() {
     TestSuite("form");
+    HorizontalFieldWrapsLongContentAndDescription();
     FieldBuilderAndStandaloneFieldKeepSourceState();
     FormAxesUseSourceSpacingAndLabelWidths();
     HorizontalLabelIndentExistsWithoutLabel();
