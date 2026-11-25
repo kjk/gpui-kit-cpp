@@ -17,7 +17,7 @@ type Entry = {
 };
 
 const root = resolve(import.meta.dir, "..");
-const pinnedGpuiComponent = "7f82f479e43d1a886bccf63bf4eaa8cdeb815ab2";
+const pinnedGpuiComponent = "832cfdc0baef92855191dfdbbbcacd75f59d3df0";
 
 const baseModules = `
 accordion actions a11y_disabled alert_dialog animation async_util auto_scroll avatar button
@@ -672,13 +672,13 @@ function declarationSourceText(targets: string[]): string {
 // hash and forces this ledger to be reviewed with the pin update.
 const surfacePins: Record<CrateName, Record<SurfaceKind, { count: number; sha256: string }>> = {
   base: {
-    declaration: { count: 624, sha256: "6a62b22a03a3d4753af8f7ef9d204875749547c0986d349e529c0392a5dde0a8" },
-    "pub-use": { count: 179, sha256: "f7385ae39e4a0dea89f5bb3644817bf80367745c20c70e006444932ad74a5c34" },
-    test: { count: 1845, sha256: "50a04010d04b8311ae07301e7af71381c2a425334627e6b305832bc7f74e2001" },
+    declaration: { count: 626, sha256: "a8d7344afe57fa6f17571ad286ee5d5b4a7be186447cd2349f5b37265743cb05" },
+    "pub-use": { count: 180, sha256: "32b4e4e14b5cbfe63cb031d09af4f2454b163747a706633b6d9558ad7802b323" },
+    test: { count: 1855, sha256: "58efd2a3a9c47ed69da4f395b17484f6d2f406ec56d0f6de4d3786d18d65d057" },
   },
   ui: {
     declaration: { count: 483, sha256: "8b197d5eca4749dc5f8c0d6bdb7dcfd0893166e498d959a42c4063b3bf3c605f" },
-    "pub-use": { count: 173, sha256: "c0eac6bd6a5bdbd7133c6e7c6371e1607970f7dacffbd4dc0063abbccaef955f" },
+    "pub-use": { count: 173, sha256: "6ad2ffdc501fbd92e80eb0187dc3564d6943a252b5f43eb7799070ae21b7b2d5" },
     test: { count: 926, sha256: "17d7771ca7ed8759fd4bbb2f6baf737f2eb77eda3c2c2032c20c93b322430206" },
   },
 };

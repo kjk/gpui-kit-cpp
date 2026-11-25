@@ -11947,6 +11947,79 @@ static void GutterColumnOrderNormalizesAndMirrorsTheLanes() {
     TestAppFree(d.app);
 }
 
+// element.rs and spacer_map.rs. Spacers are laid out, mapped, and skipped by
+// character hit testing, and a closed fold removes its hidden line's spacer.
+static void EditorSpacersProjectAboveAndBelowTheText() {
+    DecorationEditor d = DecorationEditorOpen("first\nsecond\nthird\n", true);
+    InputState* s = d.editor;
+    TestDraw(d.win);
+    TestDraw(d.win);
+    InputDisplayMapRef map = InputDisplayMap(s);
+    int unspaced = InputDisplayRowCount(map);
+    Bounds second = {};
+    utassert(InputRangeToBounds(s, d.win, {6, 7}, &second));
+    struct Provider {
+        int calls = 0;
+        Selection asked;
+        static void Query(const InputState*, Selection lines, const App*,
+                          Arena* a, ArenaVec<Spacer>* out, void* data) {
+            auto* self = (Provider*)data;
+            self->calls++;
+            self->asked = lines;
+            out->Append(a, Spacer::Above(1, 1));
+            out->Append(a, Spacer::Below(0, 2).WithBackground(Rgb(1, 2, 3)));
+            out->Append(a, Spacer::Above(0, 1));
+            out->Append(a, Spacer::Below(90, 6));
+        }
+    } provider;
+    InputSetSpacerProvider(s, {&Provider::Query, &provider}, d.app, d.win);
+    TestDraw(d.win);
+    TestDraw(d.win);
+    utassert(provider.calls > 0 && provider.asked.start == 0 &&
+             provider.asked.end == 4);
+    utassert(InputDisplayRowCount(map) == unspaced + 4);
+    Selection firstRows = {}, secondRows = {};
+    utassert(InputBufferLineDisplayRows(map, 0, &firstRows));
+    utassert(firstRows.start == 1 && firstRows.end == 2);
+    utassert(InputBufferLineDisplayRows(map, 1, &secondRows));
+    utassert(secondRows.start == 5 && secondRows.end == 6);
+    utassert(InputIsSpacerRow(map, 0) && InputIsSpacerRow(map, 2));
+    utassert(InputIsSpacerRow(map, 4) && !InputIsSpacerRow(map, 5));
+    utassert(InputDisplayRowBufferLine(map, 2) == 0);
+    utassert(InputDisplayRowBufferLine(map, 4) == 1);
+    BufferPoint buffer = InputDisplayToBufferPoint(map, {4, 2});
+    utassert(buffer.line == 1 && buffer.col == 2);
+    DisplayPoint display = InputBufferToDisplayPoint(map, buffer);
+    utassert(display.row == 5 && display.col == 2);
+    Bounds moved = {};
+    utassert(InputRangeToBounds(s, d.win, {6, 7}, &moved));
+    utassertnear(moved.y - second.y, s->lastLineH * 4);
+    Point blank = {moved.x + 2, moved.y - s->lastLineH * 2.f};
+    utassert(InputIndexForPosition(s, &d.win->paint, blank.x, blank.y) == 5);
+    utassert(InputCharacterIndexForPoint(s, d.win, blank) == -1);
+
+    uint64_t stable = InputDisplayMapVersion(map);
+    int calls = provider.calls;
+    TestDraw(d.win);
+    utassert(provider.calls == calls);
+    InputRefreshSpacers(s, d.app, d.win);
+    TestDraw(d.win);
+    utassert(provider.calls == calls + 1);
+    utassert(InputDisplayMapVersion(map) == stable);
+    FoldRange fold = {0, 2};
+    InputSetFoldCandidates(s, &fold, 1);
+    InputSetFolded(s, d.app, d.win, 0, true);
+    TestDraw(d.win);
+    utassert(!InputBufferLineDisplayRows(map, 1, nullptr));
+    utassert(InputDisplayRowCount(map) == unspaced + 2);
+    utassert(InputDisplayMapVersion(map) != stable);
+    InputSetSpacerProvider(s, {}, d.app, d.win);
+    TestDraw(d.win);
+    utassert(!InputIsSpacerRow(map, 0));
+    utassert(InputDisplayRowCount(map) == unspaced - 1);
+    TestAppFree(d.app);
+}
+
 // element.rs text_origin_offset_tracks_rendered_gutter_and_scrolling.
 static void EditorTextOriginOffsetFollowsTheLaidOutGutter() {
     struct Host {
@@ -12912,6 +12985,7 @@ static void RunElementWindowTests() {
     EditorRightGutterKeepsTheTextAndHitGeometryOnItsOwnSide();
     EditorDisplayMapVersionFollowsWrappingFoldingAndEdits();
     GutterColumnOrderNormalizesAndMirrorsTheLanes();
+    EditorSpacersProjectAboveAndBelowTheText();
     GutterDecorationsStartingInAFoldMarkItsRowAndTheRest();
     GutterDecorationsOnlyLayOutTheVisibleRows();
     OverviewRulerMarksFollowTheContentHeightAndMerge();

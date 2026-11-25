@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `7f82f479e43d1a886bccf63bf4eaa8cdeb815ab2` (2026-11-25,
-editor: Let the gutter's columns be put in a chosen order (#4117)).
-Allow callers to reorder gutter columns from the text outward on either side.
+Processed through `832cfdc0baef92855191dfdbbbcacd75f59d3df0` (2026-11-25,
+editor: Add spacer rows to the display map (#4118)).
+Project provider-supplied spacer rows through editor layout, display queries, hit testing, and scrolling.
 The current update target is
 `832cfdc0baef92855191dfdbbbcacd75f59d3df0`.
 

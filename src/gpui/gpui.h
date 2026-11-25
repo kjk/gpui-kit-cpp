@@ -246,6 +246,7 @@ struct DecorationCollectionsState;
 // Gutter and overview-ruler stores (base/input_editor.cpp). Empty ranges are
 // line boundaries and are kept.
 struct GutterDecorationsState;
+struct EditorSpacers;
 struct OverviewRulerDecorationsState;
 // An editor's retained syntax context provider (base/input_editor.cpp).
 struct InputSyntaxCache;
@@ -6065,6 +6066,7 @@ struct InputState {
     // strip width is 3px until set_gutter_decorations_width says otherwise.
     // editorForeground is the fallback a mark with no color paints in.
     GutterDecorationsState* gutterDecorations = nullptr;
+    EditorSpacers* spacers = nullptr;
     OverviewRulerDecorationsState* overviewDecorations = nullptr;
     float gutterDecorationsWidth = 3.f;
     Rgba editorForeground = {0x17, 0x17, 0x17, 255};

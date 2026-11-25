@@ -1,6 +1,7 @@
 /* crates/base/src/input/editor data and projection facades. */
 
 #include "base/input_editor.h"
+#include "base/input.h"
 #include "base/input_tokens.h"
 #include "unicode-linebreak/unicode_linebreak.h"
 
@@ -2286,6 +2287,12 @@ static int RowsOnLine(const InputState* s, int line) {
 }
 
 static Selection DisplayRangeOfLine(const InputState* s, int line) {
+    if (s && s->spacers) {
+        Selection display = {};
+        if (InputBufferLineDisplayRows(InputDisplayMap(s), line, &display)) {
+            return display;
+        }
+    }
     if (RowsOnLine(s, line) <= 0) {
         return {-1, -1};
     }
@@ -2304,12 +2311,22 @@ static int DisplayRowOfLine(const InputState* s, int line) {
 }
 
 static int DisplayRowCountOf(const InputState* s) {
-    return s ? RowsBeforeLine(s, InputLinesLen(s)) : 0;
+    if (!s) return 0;
+    int displayed = s->spacers ? InputDisplayRowCount(InputDisplayMap(s)) : 0;
+    return displayed > 0 ? displayed : RowsBeforeLine(s, InputLinesLen(s));
 }
 
 static int BufferLineAtDisplay(const InputState* s, int displayRow) {
     if (!s) {
         return 0;
+    }
+    if (s->spacers) {
+        InputDisplayMapRef map = InputDisplayMap(s);
+        int rows = InputDisplayRowCount(map);
+        if (rows > 0) {
+            return InputDisplayRowBufferLine(
+                map, std::max(0, std::min(displayRow, rows - 1)));
+        }
     }
     int lines = InputLinesLen(s);
     bool wrapped = s->softWrap && s->wrap.valid && s->wrap.width > 0;
@@ -2424,8 +2441,14 @@ int InputLayoutGutterMarks(const InputState* s, float originX, double originY,
     Selection span = {0, len(text)};
     bool clip = viewBottom >= viewTop;
     if (clip) {
-        int first = (int)((viewTop - originY) / lineH);
-        int last = (int)((viewBottom - originY) / lineH) + 1;
+        int rows = DisplayRowCountOf(s);
+        int first = (int)std::min((viewTop - originY) / lineH, (double)rows);
+        int last =
+            (int)std::min((viewBottom - originY) / lineH, (double)rows) + 1;
+        if (s->spacers) {
+            first = BufferLineAtDisplay(s, first);
+            last = BufferLineAtDisplay(s, last) + 1;
+        }
         if (first < 0) {
             first = 0;
         }

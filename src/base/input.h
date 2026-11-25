@@ -296,8 +296,8 @@ int InputLastLineDecorationBackgrounds(const InputState* s, const Window* win,
 // last laid out; a test calls it to wrap without drawing.
 void InputUpdateWrapMap(InputState* s, PaintCtx* ctx, float width,
                         float fontSize, uint16_t fontWord);
-// InputState::display_map, on every text mode. Read-only: wrapped rows, and
-// the positions the field already maps. Reading it does not prepare text.
+// InputState::display_map, on every text mode. Queries cover the full
+// buffer and account for wrap rows, folds and editor spacers.
 // Before the first layout the count can be 0; prepared empty text has one
 // row. The count is content, not the row limit or the viewport. Text is
 // prepared during layout or by InputPrewrap.
@@ -319,6 +319,11 @@ bool InputBufferLineDisplayRows(InputDisplayMapRef map, int line,
                                 Selection* rows);
 int InputBufferLineDisplayRow(InputDisplayMapRef map, int line);
 int InputDisplayRowBufferLine(InputDisplayMapRef map, int row);
+bool InputIsSpacerRow(InputDisplayMapRef map, int row);
+DisplayPoint InputBufferToDisplayPoint(InputDisplayMapRef map,
+                                       BufferPoint point);
+BufferPoint InputDisplayToBufferPoint(InputDisplayMapRef map,
+                                      DisplayPoint point);
 // InputState::prewrap, on every text mode. `width` is the text area: the
 // field's width less its padding, and less the line-number gutter when an
 // editor shows line numbers. Before the first layout this wraps a little

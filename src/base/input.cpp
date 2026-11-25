@@ -1733,7 +1733,23 @@ int InputWrapRows(const InputState* s, int line, const int** starts,
     return item.nRows;
 }
 
-uint64_t InputDisplayMapVersion(InputDisplayMapRef map) {
+struct EditorSpacerRun {
+    Spacer spacer;
+    int ordinal = 0;
+    int prefix = 0;
+    int displayStart = 0;
+};
+
+struct EditorSpacers {
+    SpacerProvider provider;
+    Vec<EditorSpacerRun> runs;
+    uint64_t askedAt = 0;
+    uint64_t revision = 0;
+    bool asked = false;
+    int total = 0;
+};
+
+static uint64_t InputRowsVersion(InputDisplayMapRef map) {
     const InputState* s = map.state;
     if (!s) return 0;
     WrapMapOf(s, nullptr);
@@ -1742,8 +1758,92 @@ uint64_t InputDisplayMapVersion(InputDisplayMapRef map) {
            (LayoutModeIsFolding(s->mode) ? 2u : 0u);
 }
 
+uint64_t InputDisplayMapVersion(InputDisplayMapRef map) {
+    return InputRowsVersion(map) +
+           (map.state && map.state->spacers ? map.state->spacers->revision : 0);
+}
+
+void InputSetSpacerProvider(InputState* s, SpacerProvider provider, App* app,
+                            Window* win) {
+    if (!s || (!s->spacers && !provider.query)) return;
+    if (!s->spacers) s->spacers = new (std::nothrow) EditorSpacers;
+    if (!s->spacers) return;
+    s->spacers->provider = provider;
+    InputRefreshSpacers(s, app, win);
+}
+
+void InputRefreshSpacers(InputState* s, App* app, Window* win) {
+    if (s && s->spacers) {
+        s->spacers->asked = false;
+        Notify(app, win);
+    }
+}
+
+static int SpacerRowsTotal(const InputState* s) {
+    return s && s->spacers ? s->spacers->total : 0;
+}
+
+static int SpacerRunAtLine(const EditorSpacers* data, int line) {
+    int lo = 0;
+    int hi = len(data->runs);
+    while (lo < hi) {
+        int mid = lo + (hi - lo) / 2;
+        if (data->runs[mid].spacer.line < line)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    return lo;
+}
+
+static int SpacerRowsBeforeLine(const InputState* s, int line) {
+    const EditorSpacers* data = s->spacers;
+    if (!data || data->total == 0) return 0;
+    int at = SpacerRunAtLine(data, line);
+    return at == len(data->runs) ? data->total : data->runs[at].prefix;
+}
+
+static int SpacerRowsAboveLine(const InputState* s, int line) {
+    const EditorSpacers* data = s->spacers;
+    if (!data || data->total == 0) return 0;
+    int rows = 0;
+    for (int i = SpacerRunAtLine(data, line); i < len(data->runs); i++) {
+        const Spacer& spacer = data->runs[i].spacer;
+        if (spacer.line != line || !spacer.above) break;
+        rows += spacer.rows;
+    }
+    return rows;
+}
+
+static const EditorSpacerRun* SpacerRunAtRow(const InputState* s, int row) {
+    const EditorSpacers* data = s ? s->spacers : nullptr;
+    if (!data || data->total == 0) return nullptr;
+    int lo = 0;
+    int hi = len(data->runs);
+    while (lo < hi) {
+        int mid = lo + (hi - lo) / 2;
+        const EditorSpacerRun& run = data->runs[mid];
+        if (row < run.displayStart)
+            hi = mid;
+        else if (row >= run.displayStart + run.spacer.rows)
+            lo = mid + 1;
+        else
+            return &run;
+    }
+    return nullptr;
+}
+
+bool InputIsSpacerRow(InputDisplayMapRef map, int row) {
+    return SpacerRunAtRow(map.state, row) != nullptr;
+}
+
 static int InputPreparedBufferLines(const InputState* s) {
-    return InputWrapRowCount(InputDisplayMap(s)) > 0 ? InputLinesLen(s) : 0;
+    // An unwrapped editor can ask its provider before its first frame has
+    // published the viewport bounds.
+    bool preparingSpacers = s && s->spacers && s->spacers->asked;
+    return preparingSpacers || InputWrapRowCount(InputDisplayMap(s)) > 0
+               ? InputLinesLen(s)
+               : 0;
 }
 
 static int InputTextRowsAbove(const InputState* s, int line) {
@@ -1771,10 +1871,93 @@ static int InputTextRowsAbove(const InputState* s, int line) {
     return visible;
 }
 
+static int InputDisplayBlockStart(const InputState* s, int line) {
+    return InputTextRowsAbove(s, line) + SpacerRowsBeforeLine(s, line);
+}
+
+static void PrepareEditorSpacers(Ctx* cx, InputState* s, int lines) {
+    EditorSpacers* data = s->spacers;
+    if (!data) return;
+    uint64_t version = InputRowsVersion(InputDisplayMap(s));
+    if (data->asked && data->askedAt == version) return;
+    data->asked = true;
+    data->askedAt = version;
+    ArenaVec<Spacer> requested;
+    if (data->provider.query) {
+        data->provider.query(s, {0, lines}, cx->app, cx->a, &requested,
+                             data->provider.data);
+    }
+    Vec<EditorSpacerRun> runs;
+    int rowLimit = INT_MAX - InputTextRowsAbove(s, lines);
+    int total = 0;
+    for (int i = 0; i < len(requested); i++) {
+        Spacer spacer = requested[i];
+        if (spacer.rows <= 0 || spacer.line < 0 || spacer.line >= lines ||
+            (LayoutModeIsFolding(s->mode) &&
+             FoldMapLineHidden(&s->folds, spacer.line)))
+            continue;
+        spacer.rows = std::min(spacer.rows, rowLimit - total);
+        if (spacer.rows <= 0) break;
+        VecAppend(runs, EditorSpacerRun{spacer, i});
+        total += spacer.rows;
+    }
+    if (len(runs) > 1) {
+        qsort(runs.els, (size_t)len(runs), sizeof(EditorSpacerRun),
+              [](const void* lhs, const void* rhs) {
+                  const auto& a = *(const EditorSpacerRun*)lhs;
+                  const auto& b = *(const EditorSpacerRun*)rhs;
+                  if (a.spacer.line != b.spacer.line)
+                      return a.spacer.line < b.spacer.line ? -1 : 1;
+                  if (a.spacer.above != b.spacer.above)
+                      return a.spacer.above ? -1 : 1;
+                  return a.ordinal - b.ordinal;
+              });
+    }
+    int prefix = 0;
+    bool equal = len(runs) == len(data->runs);
+    for (int i = 0; i < len(runs); i++) {
+        auto& run = runs[i];
+        const auto& spacer = run.spacer;
+        run.prefix = prefix;
+        run.displayStart =
+            InputTextRowsAbove(s, spacer.line + !spacer.above) + prefix;
+        prefix += spacer.rows;
+        if (equal) {
+            const auto& old = data->runs[i];
+            equal = old.displayStart == run.displayStart &&
+                    old.spacer.line == spacer.line &&
+                    old.spacer.above == spacer.above &&
+                    old.spacer.rows == spacer.rows &&
+                    old.spacer.hasBackground == spacer.hasBackground &&
+                    (!spacer.hasBackground ||
+                     RgbaEq(old.spacer.background, spacer.background));
+        }
+    }
+    if (!equal) {
+        data->runs = std::move(runs);
+        data->total = total;
+        data->revision += 4;
+    }
+}
+
+static void AppendEditorSpacers(Ctx* cx, El* column, const InputState* s,
+                                int line, bool above, float lineH) {
+    const EditorSpacers* data = s->spacers;
+    if (!data || data->total == 0) return;
+    for (int i = SpacerRunAtLine(data, line); i < len(data->runs); i++) {
+        const Spacer& sp = data->runs[i].spacer;
+        if (sp.line != line) break;
+        if (sp.above != above) continue;
+        El* blank = Div(cx->a)->W(kFill)->Shrink0()->H(sp.rows * lineH);
+        if (sp.hasBackground) blank->Bg(sp.background);
+        column->Child(blank);
+    }
+}
+
 int InputDisplayRowCount(InputDisplayMapRef map) {
     const InputState* s = map.state;
     int lines = InputPreparedBufferLines(s);
-    return lines > 0 ? InputTextRowsAbove(s, lines) : 0;
+    return lines > 0 ? InputDisplayBlockStart(s, lines) : 0;
 }
 
 bool InputBufferLineDisplayRows(InputDisplayMapRef map, int line,
@@ -1784,6 +1967,9 @@ bool InputBufferLineDisplayRows(InputDisplayMapRef map, int line,
     Selection span = {InputTextRowsAbove(s, line),
                       InputTextRowsAbove(s, line + 1)};
     if (span.IsEmpty()) return false;
+    int offset = SpacerRowsBeforeLine(s, line) + SpacerRowsAboveLine(s, line);
+    span.start += offset;
+    span.end += offset;
     if (rows) *rows = span;
     return true;
 }
@@ -1793,6 +1979,13 @@ int InputBufferLineDisplayRow(InputDisplayMapRef map, int line) {
     if (line < 0 || line >= InputPreparedBufferLines(s)) return 0;
     Selection span = {};
     if (InputBufferLineDisplayRows(map, line, &span)) return span.start;
+    if (SpacerRowsTotal(s) > 0) {
+        FoldMapRebuild(const_cast<FoldMap*>(&s->folds), InputLinesLen(s));
+        int visible = FoldMapNearestVisibleLine(&s->folds, line);
+        if (InputBufferLineDisplayRows(map, visible, &span)) {
+            return span.end - 1;
+        }
+    }
     return std::max(0, InputTextRowsAbove(s, line) - 1);
 }
 
@@ -1802,13 +1995,26 @@ int InputDisplayRowBufferLine(InputDisplayMapRef map, int row) {
     int hi = InputPreparedBufferLines(map.state);
     while (lo < hi) {
         int mid = lo + (hi - lo) / 2;
-        if (InputTextRowsAbove(map.state, mid + 1) <= row) {
+        if (InputDisplayBlockStart(map.state, mid + 1) <= row) {
             lo = mid + 1;
         } else {
             hi = mid;
         }
     }
     return lo;
+}
+
+static int NearestTextDisplayRow(InputDisplayMapRef map, int row, bool down) {
+    const int total = InputDisplayRowCount(map);
+    auto walk = [&](int at, bool forward) {
+        while (const auto* run = SpacerRunAtRow(map.state, at)) {
+            at = forward ? run->displayStart + run->spacer.rows
+                         : run->displayStart - 1;
+        }
+        return at;
+    };
+    int text = walk(row, down);
+    return text >= 0 && text < total ? text : walk(row, !down);
 }
 
 void InputSetWrappingIndent(InputState* s, App* app, Window* win,
@@ -1833,6 +2039,38 @@ static int WrapRowOfOffset(const int* starts, int nRows, int local,
         k--;
     }
     return k;
+}
+
+DisplayPoint InputBufferToDisplayPoint(InputDisplayMapRef map,
+                                       BufferPoint point) {
+    int lines = InputPreparedBufferLines(map.state);
+    if (lines <= 0) return {};
+    int line = ClampI(point.line, 0, lines - 1);
+    Selection display = {};
+    if (!InputBufferLineDisplayRows(map, line, &display)) {
+        return {InputBufferLineDisplayRow(map, line), 0};
+    }
+    const int* starts = nullptr;
+    int count = InputWrapRows(map.state, line, &starts, nullptr);
+    Str source = InputSliceLine(map.state, line);
+    int col =
+        RopeClipOffset(source, ClampI(point.col, 0, len(source)), Bias::Left);
+    int row = WrapRowOfOffset(starts, count, col, false);
+    return {display.start + row, col - starts[row]};
+}
+
+BufferPoint InputDisplayToBufferPoint(InputDisplayMapRef map,
+                                      DisplayPoint point) {
+    int line = InputDisplayRowBufferLine(map, point.row);
+    Selection display = {};
+    if (!InputBufferLineDisplayRows(map, line, &display)) return {};
+    int row = ClampI(point.row, display.start, display.end - 1) - display.start;
+    Str source = InputSliceLine(map.state, line);
+    const int* starts = nullptr;
+    int count = InputWrapRows(map.state, line, &starts, nullptr);
+    int last = row + 1 < count ? starts[row + 1] : len(source);
+    int col = starts[row] + ClampI(point.col, 0, last - starts[row]);
+    return {line, RopeClipOffset(source, col, Bias::Left)};
 }
 
 // layout_cursors, for the cursors other than the active one: the part of each
@@ -3403,7 +3641,9 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     El* col = Div(a)->FlexCol()->W(kFill)->BindInput(state);
     col->BoundsOut(&state->contentBox);
     ApplyEditorAccessibility(col, state, style.mask || state->masked, text);
-    if (len(text) == 0) {
+    bool layoutSpacers = state->spacers && (state->spacers->provider.query ||
+                                            state->spacers->total > 0);
+    if (len(text) == 0 && !layoutSpacers) {
         state->scrollY = 0;
         state->layoutOriginY = 0;
         state->gutterLaneW = 0;
@@ -3438,6 +3678,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     }
 
     int rows = InputLinesLen(state);
+    if (len(text) == 0) text = StrL("");
     int digits = lineNumbers ? InputLineNumberLen(rows) : 0;
     uint16_t bodyWord = InputFontWordCascaded(style, state->cascadeFontWord);
     const EditorLineNumberRenderer& renderer = style.lineNumbers;
@@ -3596,6 +3837,11 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     // gutter's hitbox already is — and a row with no box yet is estimated at
     // one line, which the next frame corrects.
     //
+    if (layoutSpacers) {
+        PrepareEditorSpacers(cx, state, rows);
+        state->contentH = (double)InputDisplayBlockStart(state, rows) * lineH;
+    }
+
     // viewH is the clip box, not the content column. BindInput can record
     // the inner column's laid-out height (the whole document) or nothing
     // yet on the first frame of a file; either would build every line.
@@ -3626,7 +3872,20 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         double top = state->scrollY;
         double bottom = top + vh;
         bool folded = len(state->folds.folded) != 0;
-        if (!wrap && !folded) {
+        if (SpacerRowsTotal(state) > 0) {
+            InputDisplayMapRef display = InputDisplayMap(state);
+            int last = InputDisplayBlockStart(state, rows) - 1;
+            int firstDisplay = (int)std::min(top / lineH, (double)last);
+            int lastDisplay = (int)std::min(bottom / lineH, (double)last);
+            firstRow = std::max(
+                0, InputDisplayRowBufferLine(display, firstDisplay) - kSlack);
+            endRow =
+                std::min(rows, InputDisplayRowBufferLine(display, lastDisplay) +
+                                   1 + kSlack);
+            padTop = DisplayRowDocY(state, firstRow, lineH);
+            padBottom = DisplayRowDocY(state, rows, lineH) -
+                        DisplayRowDocY(state, endRow, lineH);
+        } else if (!wrap && !folded) {
             int first = (int)std::min(top / lineH, (double)rows) - kSlack;
             int end = (int)std::min(bottom / lineH + 1 + kSlack, (double)rows);
             firstRow = first < 0 ? 0 : (first > rows ? rows : first);
@@ -3984,6 +4243,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         if (folding && FoldMapLineHidden(&state->folds, row)) {
             continue;
         }
+        AppendEditorSpacers(cx, col, state, row, true, lineH);
         // The spans and matches are in document order and the walk carries on
         // where the last row left off, so a range that does not start at the
         // top has to skip what came before it.
@@ -4051,10 +4311,12 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             } else {
                 shown = ShowTabs(a, cx->win ? &cx->win->paint : nullptr, state,
                                  line);
-                el = TextEl(a, shown.text)
+                bool placeholder = len(text) == 0;
+                el = TextEl(a, placeholder ? state->placeholder : shown.text)
                          ->Font(font)
                          ->LineHeight(lineMult)
-                         ->Fg(style.foreground);
+                         ->Fg(placeholder ? style.mutedForeground
+                                          : style.foreground);
                 InputFace(el, style);
             }
             if (paintedRow) {
@@ -4383,6 +4645,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                 underlay->foldColor = state->foldBackground;
             }
             col->Child(el);
+            AppendEditorSpacers(cx, col, state, row, false, lineH);
             continue;
         }
         // LINE_NUMBER_RIGHT_MARGIN: what separates the numbers from the text.
@@ -4463,6 +4726,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             underlay->lineBands[row - firstRow] = band;
         }
         col->Child(band);
+        AppendEditorSpacers(cx, col, state, row, false, lineH);
     }
     if (rangePaint && painted) {
         rangePaint->nRows = painted->geometry.nRows;
@@ -4717,6 +4981,7 @@ InputState::~InputState() {
         gPendingPaste.state = nullptr;
     }
     InputDecorationsFree(this);
+    delete spacers;
     if (contextMenuDrop && contextMenuData) {
         contextMenuDrop(contextMenuData);
     }
@@ -5997,9 +6262,11 @@ static double InputOffsetDisplayY(const InputState* s, int offset,
     int row = RopeOffsetToPoint(InputValue(s), offset).row;
     if (FoldMapLineHidden(&s->folds, row)) {
         row = FoldMapNearestVisibleLine(&s->folds, row);
-        return DisplayRowDocY(s, row, lineH);
+        return DisplayRowDocY(s, row, lineH) +
+               SpacerRowsAboveLine(s, row) * lineH;
     }
-    double y = DisplayRowDocY(s, row, lineH);
+    double y =
+        DisplayRowDocY(s, row, lineH) + SpacerRowsAboveLine(s, row) * lineH;
     // Read the rows the last layout stored. Catching the map up here would
     // rewrap during the edit, before the frame that owns the new width.
     const InputWrapMap* m = &s->wrap;
@@ -9755,13 +10022,18 @@ static double DisplayLineH(const InputState* s, int row, float lineH) {
     if (FoldMapLineHidden(&s->folds, row)) {
         return 0;
     }
-    return (double)InputWrapRows(s, row, nullptr, nullptr) * lineH;
+    int blanks =
+        SpacerRowsBeforeLine(s, row + 1) - SpacerRowsBeforeLine(s, row);
+    return ((double)InputWrapRows(s, row, nullptr, nullptr) + blanks) * lineH;
 }
 
 // Document y of `row`: the visual rows above it, less the ones a fold hides.
 static double DisplayRowDocY(const InputState* s, int row, float lineH) {
     if (!s || row <= 0) {
         return 0;
+    }
+    if (SpacerRowsTotal(s) > 0) {
+        return (double)InputDisplayBlockStart(s, row) * lineH;
     }
     const InputWrapMap* m = WrapMapOf(s, nullptr);
     bool folded = len(s->folds.folded) > 0;
@@ -10008,7 +10280,8 @@ static bool VerticalTargetDisplay(const InputState* s, Window* win, int lines,
         return false;
     }
     PaintCtx* ctx = &win->paint;
-    if (!WrapMapOf(s, ctx)) {
+    bool spaced = SpacerRowsTotal(s) > 0;
+    if (!WrapMapOf(s, ctx) && !spaced) {
         return false;
     }
     RopePoint p = RopeOffsetToPoint(t, from);
@@ -10034,6 +10307,23 @@ static bool VerticalTargetDisplay(const InputState* s, Window* win, int lines,
     int maxLine = RopeLinesLen(t) - 1;
     int line = p.row;
     int row = k;
+    if (spaced) {
+        InputDisplayMapRef map = InputDisplayMap(s);
+        Selection current = {};
+        int display = InputBufferLineDisplayRows(map, line, &current)
+                          ? current.start + k
+                          : InputBufferLineDisplayRow(map, line);
+        int last = InputDisplayRowCount(map) - 1;
+        int64_t shifted = (int64_t)display + lines;
+        int targetRow =
+            shifted < 0 ? 0 : (shifted > last ? last : (int)shifted);
+        targetRow = NearestTextDisplayRow(map, targetRow, lines > 0);
+        line = InputDisplayRowBufferLine(map, targetRow);
+        Selection target = {};
+        if (!InputBufferLineDisplayRows(map, line, &target)) return false;
+        row = targetRow - target.start;
+        lines = 0;
+    }
     for (int step = lines; step < 0; step++) {
         if (row > 0) {
             row--;
@@ -11535,7 +11825,12 @@ static int FirstVisibleOffset(const InputState* s) {
     int rows = InputLinesLen(s);
     int row = rows - 1;
     const InputWrapMap* map = WrapMapOf(s, nullptr);
-    if (len(s->folds.folded) == 0) {
+    if (SpacerRowsTotal(s) > 0) {
+        InputDisplayMapRef display = InputDisplayMap(s);
+        int last = InputDisplayRowCount(display) - 1;
+        row = InputDisplayRowBufferLine(
+            display, (int)std::min(s->scrollY / lineH, (double)last));
+    } else if (len(s->folds.folded) == 0) {
         row = map ? map->tree.LineAtRow((int)std::min(s->scrollY / lineH,
                                                       (double)map->totalRows))
                   : (int)std::min(s->scrollY / lineH, (double)(rows - 1));
@@ -11917,7 +12212,22 @@ int InputIndexForPosition(const InputState* s, PaintCtx* ctx, float x, float y,
     // wrapped line's visual rows it wanted.
     double relY = 0;
     const InputWrapMap* map = WrapMapOf(s, ctx);
-    if (len(s->folds.folded) == 0 && lineH > 0) {
+    if (SpacerRowsTotal(s) > 0 && lineH > 0) {
+        InputDisplayMapRef display = InputDisplayMap(s);
+        int last = InputDisplayRowCount(display) - 1;
+        int displayRow =
+            (int)std::min(std::max(0., docY) / lineH, (double)last);
+        if (const auto* run = SpacerRunAtRow(s, displayRow)) {
+            int line = run->spacer.line;
+            int start = InputLineStartOffset(s, line);
+            return run->spacer.above ? start
+                                     : start + len(InputSliceLine(s, line));
+        }
+        row = InputDisplayRowBufferLine(display, displayRow);
+        Selection range = {};
+        InputBufferLineDisplayRows(display, row, &range);
+        relY = std::max(0., docY - (double)range.start * lineH);
+    } else if (len(s->folds.folded) == 0 && lineH > 0) {
         double displayRow = std::max(0., docY) / lineH;
         row = map ? map->tree.LineAtRow(
                         (int)std::min(displayRow, (double)map->totalRows))

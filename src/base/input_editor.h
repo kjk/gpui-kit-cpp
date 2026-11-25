@@ -278,6 +278,33 @@ struct LineDecoration {
     }
 };
 
+// crates/base/src/input/editor/spacers.rs. Blank display rows anchored to a
+// buffer line. They take up space without adding text or tab stops.
+struct Spacer {
+    int line = 0;
+    int rows = 0;
+    bool above = false;
+    bool hasBackground = false;
+    Rgba background = {};
+
+    static Spacer Above(int line, int rows) { return {line, rows, true}; }
+    static Spacer Below(int line, int rows) { return {line, rows, false}; }
+    Spacer WithBackground(Rgba color) const {
+        return {line, rows, above, true, color};
+    }
+};
+
+struct SpacerProvider {
+    // The editor borrows data and asks after wrapping, for all buffer lines.
+    void (*query)(const InputState* input, Selection lines, const App* app,
+                  Arena* a, ArenaVec<Spacer>* out, void* data) = nullptr;
+    void* data = nullptr;
+};
+
+void InputSetSpacerProvider(InputState* s, SpacerProvider provider, App* app,
+                            Window* win);
+void InputRefreshSpacers(InputState* s, App* app, Window* win);
+
 struct LineDecorationProvider {
     // Append to out for the requested half-open row range. The caller owns
     // data, which must live until the collection is cleared or disposed.

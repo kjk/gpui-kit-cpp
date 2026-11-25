@@ -25,6 +25,8 @@ using gpui::GutterColumn;
 using gpui::LineDecoration;
 using gpui::LineDecorationCollection;
 using gpui::LineDecorationProvider;
+using gpui::Spacer;
+using gpui::SpacerProvider;
 
 // crates/ui/src/input/language_config.rs::init: text/json/python editing
 // defaults. Unknown languages keep LanguageConfig::Default().
