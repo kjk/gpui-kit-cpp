@@ -24,6 +24,18 @@ static bool ObjectId(Str value, int minLength) {
     return true;
 }
 
+static bool GitOutputIsUtf8(Str text) {
+    const auto* bytes = (const uint8_t*)text.s;
+    for (int at = 0; at < len(text);) {
+        int count = bytes[at] < 0x80
+                        ? 1
+                        : Utf8StrictAt(bytes + at, len(text) - at, nullptr);
+        if (count <= 0) return false;
+        at += count;
+    }
+    return true;
+}
+
 struct TigCommit {
     Str hash, shortHash, author, date, subject;
     Str Subject() const {
@@ -82,15 +94,22 @@ struct TigJob {
         Str failure;
         bool ran = shell::ProcessRunBounded(
             StrL("git"), args, count + 3, nullptr, &result, &failure, &options);
-        if (ran && result.code == 0) {
-            *out = result.out;
-            result.out = {};
+        bool ok = ran && result.code == 0;
+        if (ok) {
+            ok = GitOutputIsUtf8(result.out);
+            if (ok) {
+                *out = result.out;
+                result.out = {};
+            } else {
+                error =
+                    StrDup(StrL("This Git output isn't UTF-8. Convert the "
+                                "source encoding to view it."));
+            }
         } else if (!quiet || !ran) {
             Str detail = len(failure) ? failure : StrTrim(result.err);
             error =
                 StrDup(len(detail) ? detail : StrL("Git returned an error."));
         }
-        bool ok = ran && result.code == 0;
         result.Free();
         StrFree(failure);
         return ok;
