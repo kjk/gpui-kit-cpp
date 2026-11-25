@@ -4169,6 +4169,7 @@ static Str LeafPieceText(const LeafGeometry& leaf, const LeafPiece& piece) {
 static Point LeafPositionInPiece(const LeafGeometry& leaf,
                                  const LeafPiece& piece, int index) {
     Bounds bounds = piece.bounds;
+    if (piece.start == piece.end) return {bounds.x, bounds.y};
     if (piece.atom) {
         float x = index >= piece.end ? bounds.Right() : bounds.x;
         return {x, std::max(bounds.y, bounds.Bottom() - leaf.lineHeight)};
@@ -4202,6 +4203,7 @@ static const LeafPiece* LeafHitPiece(const LeafGeometry& leaf, Point at) {
 
 static int LeafIndexInPiece(const LeafGeometry& leaf, const LeafPiece& piece,
                             Point at) {
+    if (piece.start == piece.end) return piece.start;
     if (piece.atom) {
         return at.x < piece.bounds.CenterX() ? piece.start : piece.end;
     }
@@ -4231,7 +4233,8 @@ Point LeafGeometry::PositionForIndex(int index) const {
         const LeafPiece* trailing = nullptr;
         for (int i = 0; i < pieceCount; i++) {
             const LeafPiece& piece = pieces[i];
-            if (piece.start <= index && index < piece.end) {
+            if (piece.start == index ||
+                (piece.start < index && index < piece.end)) {
                 return LeafPositionInPiece(*this, piece, index);
             }
             if (piece.end <= index) {
@@ -4292,6 +4295,9 @@ Point LeafGeometry::PositionForCaret(Caret caret) const {
         for (int i = 0; i < pieceCount; i++) {
             const LeafPiece& piece = pieces[i];
             bool upstream = caret.affinity == CaretAffinity::Upstream;
+            if (piece.start == index && piece.end == index) {
+                return LeafPositionInPiece(*this, piece, index);
+            }
             if (piece.start < piece.end &&
                 (upstream ? piece.end == index : piece.start == index)) {
                 return LeafPositionInPiece(*this, piece, index);
@@ -4454,9 +4460,13 @@ static void EditorHostFlowPrepaint(PaintCtx* ctx, El* e, void* user) {
     for (int i = 0; leaf.pieces && i < count; i++) {
         const HostFlowPiece& entry = flow->pieces[i];
         El* piece = entry.element;
-        int end = entry.atom ? entry.end : entry.start + len(piece->text);
-        if (entry.start < end && end <= leaf.textLen) {
-            leaf.pieces[leaf.pieceCount++] = {ElTextContentBounds(piece),
+        bool emptyLine = entry.start == entry.end;
+        int end = entry.atom || emptyLine ? entry.end
+                                          : entry.start + len(piece->text);
+        if ((entry.start < end || emptyLine) && end <= leaf.textLen) {
+            Bounds bounds = ElTextContentBounds(piece);
+            if (emptyLine) bounds.w = 0;
+            leaf.pieces[leaf.pieceCount++] = {bounds,
                                               entry.start,
                                               end,
                                               piece->laidFont,
@@ -5020,7 +5030,14 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
     int lastWordLo = 0;
     El* pending = nullptr;
     El* pendingGroup = nullptr;
-    auto breaks = unicode_linebreak::LineBreaks(flowText.TakeStr());
+    Str flowSource = flowText.TakeStr();
+    auto reportEmptyLine = [&](int at) {
+        if (row->first || !len(flowSource)) return;
+        // A hard line without glyphs still owns a caret at its byte start.
+        row->MinH(FontLen(cx, font * kLineHeight));
+        reportPiece(row, at, at, false);
+    };
+    auto breaks = unicode_linebreak::LineBreaks(flowSource);
     unicode_linebreak::LineBreak nextBreak;
     bool hasBreak = breaks.Next(&nextBreak);
     auto appendPending = [&]() {
@@ -5226,6 +5243,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             if (c == '\n') {
                 flush();
                 appendPending();
+                reportEmptyLine(leafAt + i);
                 SrcBreak();
                 col->Child(row);
                 row = AlignRow(Div(a)->FlexRow()->FlexWrap(), align);
@@ -5268,6 +5286,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
     if (hasReveal && revealOut && lastWord) {
         RevealMark(lastWord, lastWordLo, revealOffset);
     }
+    reportEmptyLine(leafAt);
     col->Child(row);
     return col->ReportLineSpan(FontLen(cx, font * kLineHeight));
 }

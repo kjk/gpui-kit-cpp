@@ -296,8 +296,8 @@ The current update target is
   also searches across expansions, with the per-character lowercase
   mapping for Greek sigma (`src/ui/label.cpp`).
 - **Mixed editor leaves report visible fragments.** Mixed paragraphs expose
-  their laid-out word and atom boxes through `LeafGeometry` (`text.cpp`).
-  Empty lines within a mixed leaf and editor decorations still need coverage.
+  their laid-out words, atoms and empty-line caret anchors through
+  `LeafGeometry` (`text.cpp`). Editor decorations still need coverage.
 - **High-DPI on Windows.** A window draws at its monitor's dpi and follows
   `WM_DPICHANGED` (`window_win.cpp`, `SetDpi` in `paint_win.cpp`).
   `GPUI_DPI=<dpi>` forces a dpi for checking layout on a 100% display.

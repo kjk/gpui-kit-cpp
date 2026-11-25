@@ -1347,6 +1347,7 @@ struct Caret {
 struct LeafPiece {
     Bounds bounds;
     int start;
+    // Equal to start for the caret anchor on an empty hard line.
     int end;
     float font;
     float lineH;

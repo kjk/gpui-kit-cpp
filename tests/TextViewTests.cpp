@@ -9408,6 +9408,40 @@ static void WrappedMixedLeafCaretsKeepTheirLine() {
     TestAppFree(app);
 }
 
+static void EmptyHardLinesInMixedEditorTextHaveCaretGeometry() {
+    App* app = TestAppNew();
+    Arena* a = ArenaNew();
+    MdNode* doc = HostNode(a, MdKind::Doc);
+    MdNode* paragraph = HostPara(a, "\nstart\n\n", true, 1);
+    MdRun* atom = HostRun(a, "");
+    atom->hasCustom = true;
+    atom->custom.text = StrL("atom");
+    paragraph->runLast->next = atom;
+    atom->next = HostRun(a, "\n\n");
+    paragraph->runLast = atom->next;
+    HostAdd(doc, paragraph);
+    Window* win = nullptr;
+    OpenEditorHost(app, doc, 200, &win);
+    const LeafGeometry* leaf = EditorHostLeaf(1);
+    utassert(leaf && leaf->mixed);
+    if (leaf) {
+        const int offsets[] = {0, 1, 7, 8, 12, 13};
+        float previousY = -1;
+        for (int offset : offsets) {
+            Point position = leaf->PositionForIndex(offset);
+            utassert(position.y > previousY);
+            previousY = position.y;
+            Point center = {position.x + 1, position.y + leaf->lineHeight / 2};
+            utassert(leaf->CaretForPosition(center).index == offset);
+        }
+        utassert(leaf->PositionForCaret(editor_host::Caret::Upstream(13))
+                     .y == leaf->PositionForIndex(13).y);
+    }
+    EditorHostEnd();
+    ArenaDelete(a);
+    TestAppFree(app);
+}
+
 static void RekeyingClonedLeavesPreservesEachIdentity() {
     App* app = TestAppNew();
     Arena* a = ArenaNew();
@@ -11115,6 +11149,7 @@ void TestTextView() {
     WrappedLeafMapsIndicesAndPositions();
     WrappedWholeLeafCaretsKeepTheirLine();
     WrappedMixedLeafCaretsKeepTheirLine();
+    EmptyHardLinesInMixedEditorTextHaveCaretGeometry();
     LinkTooltipFollowsThePointerAndClearsOnExit();
     ALinkTooltipTracksOneRenderingOfASharedDocument();
 #if GPUI_MARKDOWN_FULL
