@@ -488,8 +488,8 @@ int ProcessTimeoutMilliseconds(double seconds) {
 }
 
 double ProcessBoundedTimeoutSeconds(const ProcessOptions* options) {
-    return (options && options->timeoutSeconds > 0) ? options->timeoutSeconds
-                                                    : 30.0;
+    return (options && options->timeoutSeconds != 0) ? options->timeoutSeconds
+                                                     : 30.0;
 }
 
 void ProcessBoundedStopError(Str command, bool cancelled, double timeoutSeconds,

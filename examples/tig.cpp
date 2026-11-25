@@ -74,6 +74,7 @@ struct TigJob {
         for (int i = 0; i < count; i++) args[i + 3] = arguments[i];
         shell::ProcessOptions options;
         options.inheritEnvironment = true;
+        options.timeoutSeconds = -1;
         // Git's patch is limited by the length of a Str, not by the
         // scripting API's capture budget.
         options.maxOutputBytes = INT32_MAX - 1;

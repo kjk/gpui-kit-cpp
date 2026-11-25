@@ -587,9 +587,8 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   context, inline, separator, indicator, tint, hover, and wrap). The
   Alex review comment is on the pull request. The per-hunk tree-sitter test
   stays under the scanner gap above.
-- **`tig` uses the native process runner.** The desktop example needs Git
-  on `PATH`. It captures up to the representable string size and retains
-  the runner's 30-second deadline (`examples/tig.cpp`, `src/shell/process.h`).
+- **`tig` uses the native process runner.** The desktop example captures Git
+  output up to the representable string size (`examples/tig.cpp`).
 - **The Base showcase's editor is plain text with a gutter.** Upstream's
   page installs its own syntect highlighter (`syntect_highlighter.rs`,
   a third-party crate) for Rust, colours its captures through

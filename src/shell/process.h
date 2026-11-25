@@ -35,7 +35,8 @@ struct ProcessOptions {
     // False — `process.run`'s contract — clears the child environment.
     bool inheritEnvironment = false;
     // 0 keeps process.run's 30 second deadline. A caller that asked for
-    // `timeoutMs` passes that duration in seconds.
+    // `timeoutMs` passes that duration in seconds. A negative duration
+    // disables the deadline for a host-owned run.
     double timeoutSeconds = 0;
     // Host-only override. Zero keeps process.run's 8 MiB per stream.
     int maxOutputBytes = 0;
@@ -209,7 +210,7 @@ bool ProcessCaptureAppend(StrBuilder* out, const char* bytes, int count,
                           Str* error, const char* name,
                           const ProcessOptions* options);
 
-// process.run's deadline: `options->timeoutSeconds`, or 30 seconds.
+// Effective deadline in seconds, or a negative value for no deadline.
 double ProcessBoundedTimeoutSeconds(const ProcessOptions* options);
 // The reason a bounded run stopped before its child exited.
 void ProcessBoundedStopError(Str command, bool cancelled, double timeoutSeconds,
@@ -235,7 +236,8 @@ bool ProcessBoundedPump(Str command, const ProcessOptions* options,
         if (ok && !closed[1]) ok = drain(1, err, &closed[1], "stderr");
         bool cancelled = cancellation && cancellation->IsCancelled();
         if (!ok || cancelled ||
-            ClockMonotonicSecondsSinceStart() - started >= timeoutSeconds) {
+            (timeoutSeconds > 0 &&
+             ClockMonotonicSecondsSinceStart() - started >= timeoutSeconds)) {
             if (ok)
                 ProcessBoundedStopError(command, cancelled, timeoutSeconds,
                                         error);
