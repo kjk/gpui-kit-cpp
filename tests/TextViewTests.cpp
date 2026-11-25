@@ -6906,6 +6906,29 @@ static void MixedObjectStrikesStayInsideTheSharedProse() {
     TswClose(&v);
 }
 
+static void MixedObjectMarkFollowsItsGlyphRange() {
+    TswView v = TswOpen(
+        "<p><strong>keep</strong> <mark>paint</mark> tail "
+        "<img src='assets/icons/heart.svg'></p>",
+        TswContainer::Window, true);
+    const TextHit* hit = HitContaining(v.win, "keep paint tail");
+    utassert(hit && hit->highlightedElement);
+    if (hit && hit->highlightedElement) {
+        const auto* element = hit->highlightedElement;
+        utassert(!element->style.hasBg);
+        int marks = 0;
+        for (int i = 0; i < element->nSpans; i++) {
+            const auto& span = element->spans[i];
+            if (!span.bg.a) continue;
+            marks++;
+            utassert(span.lo == 5 && span.hi == 10 &&
+                     RgbaEq(span.bg, Rgb(0xfe, 0xf0, 0x8a)));
+        }
+        utassert(marks == 1);
+    }
+    TswClose(&v);
+}
+
 static void RevealingProseBesideAnInlineObjectKeepsTheShapedRun() {
     const char* markdown =
         "**Several words before** ![icon](assets/icons/heart.svg) after";
@@ -9015,6 +9038,7 @@ static void TestTextStateWindow() {
     MixedObjectProseSharesFontsLinksAndSourceRanges();
     InlineObjectsKeepBidiRunsTogether();
     MixedObjectStrikesStayInsideTheSharedProse();
+    MixedObjectMarkFollowsItsGlyphRange();
     RevealingProseBesideAnInlineObjectKeepsTheShapedRun();
     ParserPluginsKeepTheirConfigurationAcrossAsyncUpdates();
     SelectAllFollowsAnAppendedParse();

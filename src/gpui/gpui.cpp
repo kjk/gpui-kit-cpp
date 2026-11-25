@@ -9327,12 +9327,17 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
                 if (parts[p].hi <= w.lo) {
                     continue;
                 }
+                int from = std::max(parts[p].lo, w.lo);
+                if (e->glyphWashes && highlightLayout) {
+                    PaintHighlightWash(ctx, e, highlightLayout, from,
+                                       parts[p].hi, parts[p].bg);
+                    continue;
+                }
                 auto paint =
                     e->glyphWashes ? &PaintTextRangeBoxes : &PaintTextRange;
                 paint(ctx, e->text, font, e->laidMaxW > 0 ? e->laidMaxW : e->w,
                       e->style.wrap, ElTextWeight(e), e->style.lineHeight, e->x,
-                      e->y, std::max(parts[p].lo, w.lo), parts[p].hi,
-                      parts[p].bg, ElTextAlign(e));
+                      e->y, from, parts[p].hi, parts[p].bg, ElTextAlign(e));
             }
         }
         if (lo >= 0 && hi > lo) {

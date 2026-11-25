@@ -4784,8 +4784,7 @@ static TextFontRanges SliceInlineFonts(Arena* arena, TextFontRanges fonts,
 }
 
 static bool CanShareObjectProse(const MdRun* run) {
-    return !run->hasCustom && !len(run->imgSrc) &&
-           !(run->marks & (MdCode | MdHighlight));
+    return !run->hasCustom && !len(run->imgSrc) && !(run->marks & MdCode);
 }
 
 static InlineTextAdvances* ObjectProseAdvances(Arena* arena, const MdRun* run,
@@ -4828,25 +4827,36 @@ static void PaintObjectProse(PaintCtx* paint, El* element, void* data) {
     PaintShapedTextLinks(paint, element, &state->links);
 }
 
-static void StrikeObjectProse(El* word) {
+static void DecorateObjectProse(El* word, bool strike) {
+    bool mark = word->style.hasBg;
+    if (!strike && !mark) return;
     ArenaVec<TextSpan> spans;
     int start = 0;
+    auto append = [&](TextSpan span) {
+        if (mark) span.bg = word->style.bg.color;
+        if (!span.color.a) span.color = word->style.color;
+        spans.Append(word->arena, span);
+    };
     auto whole = [&](int end) {
-        if (start < end) {
-            TextSpan span{start, end, word->style.color};
-            spans.Append(word->arena, span);
-        }
+        if (start < end) append({start, end, word->style.color});
     };
     for (int i = 0; i < word->nSpans; i++) {
         auto span = word->spans[i];
         whole(span.lo);
-        if (!span.color.a) span.color = word->style.color;
-        spans.Append(word->arena, span);
+        append(span);
         start = span.hi;
     }
     whole(len(word->text));
-    word->lifecycle->strikes = spans.Flatten(word->arena);
-    word->lifecycle->strikeCount = len(spans);
+    auto* ranges = spans.Flatten(word->arena);
+    if (strike) {
+        word->lifecycle->strikes = ranges;
+        word->lifecycle->strikeCount = len(spans);
+    }
+    if (mark) {
+        // The mark follows the shaped glyphs and paints over selection.
+        word->style.hasBg = false;
+        word->Spans(ranges, len(spans));
+    }
 }
 
 // The flex pass used the shaped advances to place words and atomic objects.
@@ -4868,7 +4878,7 @@ static void ShapeInlineObjectRows(PaintCtx*, El* row, void*) {
     }
     for (El* word = row->first; word; word = word->next) {
         auto* fragment = InlineFragment(word);
-        if (fragment && fragment->strike) StrikeObjectProse(word);
+        if (fragment) DecorateObjectProse(word, fragment->strike);
     }
     for (El* first = row->first; first; first = first->next) {
         const InlineTextFragment* start = InlineFragment(first);
@@ -5286,9 +5296,9 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
         if (wordRun) {
             SrcMark(w, wordRun->marks, wordRun->href);
             SrcMap(w, wordRun->segments, wordRun->segmentCount, wordStart);
-            RangeWashes(w, n, runOffset + wordStart,
-                        runOffset + wordStart + wordLen,
-                        (marks & MdHighlight) != 0, (marks & MdCode) != 0);
+            RangeWashes(
+                w, n, runOffset + wordStart, runOffset + wordStart + wordLen,
+                (marks & MdHighlight) && !fragmentText, (marks & MdCode) != 0);
             // The word the reveal starts in, or, for a line break that lays
             // out no word, the first word after it.
             if (hasReveal && revealOut &&
