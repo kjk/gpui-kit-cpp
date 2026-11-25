@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `c148acddf16bb869cd3a7d707520bd0a5b67820d` (2026-11-25,
-markdown: Join a soft break between CJK characters without a space (#4123)).
-Markdown soft breaks between wide East Asian characters leave no rendered space and preserve source selection offsets.
+Processed through `dc765f8867554f456d7587ecb877d90b9aaa7334` (2026-11-25,
+kbd: Add `Kbd::label` to show a hint that is not one keystroke (#4124)).
+Keyboard hints can display literal text. The story shows key ranges and alternatives.
 The current update target is
 `9d70dc57d7152442855e0d4064e518d9dc238554`.
 

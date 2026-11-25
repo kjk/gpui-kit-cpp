@@ -258,6 +258,10 @@ Kbd* Kbd::New(Ctx* cx, Keystroke stroke) {
     return New(cx, KbdFormatStr(cx, stroke));
 }
 
+Kbd* Kbd::Label(Ctx* cx, Str label) {
+    return New(cx, label);
+}
+
 Kbd* Kbd::Appearance(bool v) {
     appearance = v;
     return this;

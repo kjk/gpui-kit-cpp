@@ -44,6 +44,21 @@ El* KbdStory::Render(KbdStory*, Ctx* cx) {
     StorySectionAdd(out, row2);
     page->Child(out);
 
+    El* labels = StorySection(cx, "Label",
+                              "Shows text that is not a single keystroke, such "
+                              "as a range or a choice of keys.");
+    StorySectionBody(labels)->W(560);
+    El* hints =
+        Div(a)->FlexRow()->W(kFill)->JustifyCenter()->Gap(8)->FlexWrap();
+    hints->Child(component::Kbd::Label(cx, StrL("Esc"))->IntoEl())
+        ->Child(component::Kbd::Label(cx, StrL("⌘1–9"))->IntoEl())
+        ->Child(component::Kbd::Label(cx, StrL("↑↓"))->IntoEl())
+        ->Child(component::Kbd::Label(cx, StrL("Enter / Tab"))
+                    ->Outline()
+                    ->IntoEl());
+    StorySectionAdd(labels, hints);
+    page->Child(labels);
+
     return page;
 }
 

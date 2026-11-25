@@ -194,6 +194,25 @@ static void AnUnfocusedTriggerResolvesItsContextBinding() {
     KeymapClear();
 }
 
+// kbd.rs label_shows_its_text_as_given.
+static void LabelShowsItsTextAsGiven() {
+    Arena* arena = ArenaNew();
+    App app;
+    Ctx cx = {&app, nullptr, arena};
+    for (Str label : {StrL("Esc"), StrL("⌘1–9"), StrL("↑↓"),
+                      StrL("Enter / Tab"), StrL("cmd-a")}) {
+        utassert(StrEq(Kbd::Label(&cx, label)->IntoEl()->first->text, label));
+        utassert(StrEq(
+            Kbd::Label(&cx, label)->Appearance(false)->IntoEl()->text, label));
+    }
+    Keystroke stroke;
+    utassert(KeystrokeParse(arena, StrL("cmd-a"), &stroke));
+    utassert(StrEq(Kbd::New(&cx, stroke)->IntoEl()->first->text,
+                   KbdFormatStr(&cx, stroke)));
+    ArenaDelete(arena);
+    AppGlobalClear(&app);
+}
+
 void TestKbd() {
     TestSuite("kbd");
     AShortcutComesFromTheBinding();
@@ -203,4 +222,5 @@ void TestKbd() {
     ANamedKeyKeepsItsName();
     AnythingElseIsCapitalised();
     ABufferTooSmallStillEndsTheString();
+    LabelShowsItsTextAsGiven();
 }

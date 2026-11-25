@@ -64,6 +64,8 @@ struct Kbd {
     static Kbd* New(Ctx* cx, Str stroke);
     // The keystroke, spelled the way this platform spells it.
     static Kbd* New(Ctx* cx, Keystroke stroke);
+    // A literal key hint, such as a range or a choice of keys.
+    static Kbd* Label(Ctx* cx, Str label);
     // The chord bound to `action`, or null when nothing is — which is what a
     // menu row with no shortcut shows.
     static Kbd* ForAction(Ctx* cx, uint32_t action,

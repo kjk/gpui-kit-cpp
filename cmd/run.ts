@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "c148acddf16bb869cd3a7d707520bd0a5b67820d",
+  sha: "dc765f8867554f456d7587ecb877d90b9aaa7334",
   date: "2026-11-25",
-  subject: "markdown: Join a soft break between CJK characters without a space (#4123)",
+  subject: "kbd: Add `Kbd::label` to show a hint that is not one keystroke (#4124)",
   crates: {
     "gpui-kit": "0.11.0",
     "gpui-base": "0.11.0",
