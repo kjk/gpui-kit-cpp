@@ -4302,6 +4302,22 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
                               diff->syntaxHighlight &&
                                   len(SideOf(file, side)->lines[line].text) <=
                                       state->syntaxMaxLineLength);
+        const auto& sourceLine = SideOf(file, side)->lines[line];
+        if (WindowAccessibilityActive(cx->win)) {
+            const char* description = !changed ? "Diff.SourceLine"
+                                      : side == DiffSide::Original
+                                          ? "Diff.RemovedLine"
+                                          : "Diff.AddedLine";
+            const TrArg args[] = {
+                {"side", Tr(side == DiffSide::Original ? "Diff.Original"
+                                                       : "Diff.Modified")},
+                {"line", fmt("%d", number)},
+            };
+            source->Role(AccessibilityRole::Label)
+                ->AriaValue(sourceLine.text)
+                ->AriaDescription(
+                    StrDup(cx->a, TrFmtTemp(description, args, 2)));
+        }
         bool hover = diff->onTextHover != nullptr;
         bool click = diff->onLineClick || diff->onTextClick;
         DiffTextRun* run = ArenaNew<DiffTextRun>(cx->a);

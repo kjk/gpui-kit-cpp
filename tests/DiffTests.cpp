@@ -1722,6 +1722,16 @@ static void SplitCodeSelectionKeepsTheSourceSideAndTabs() {
     TestSimulateMouseUp(stage.win, otherSide, MouseButton::Left, {}, 3);
     Arena* a = ArenaNew();
     utassert(StrEq(state->SelectedText(a), "\t\xcf\x80 new"));
+    bool accessibleSource = false;
+    for (const AccessibilityNode& node : stage.win->accessibility) {
+        if (node.info.role == AccessibilityRole::Label &&
+            StrEq(node.info.value, "\t\xcf\x80 new")) {
+            accessibleSource = len(node.info.description) > 0 &&
+                               StrEq(node.info.PlatformName(), node.info.value);
+            break;
+        }
+    }
+    utassert(accessibleSource);
     ArenaDelete(a);
     TestAppFree(stage.app);
 }

@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `1c7e9717c4a6db6b9c264ae5e121b11883e6938c` (2026-11-25,
-editor: Add gutter icons to line decorations (#4120)).
-Line decorations can reserve an icon column and paint themed SVG markers beside line numbers.
+Processed through `5573590624ba9d63e061c9e1a6d30235c10f4f43` (2026-11-25,
+diff: Expose a source line's text as its accessibility value (#4121)).
+The diff viewer exposes each source line as a label with the original text as its accessibility value.
 The current update target is
 `5573590624ba9d63e061c9e1a6d30235c10f4f43`.
 

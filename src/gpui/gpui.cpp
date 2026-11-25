@@ -11199,7 +11199,9 @@ static void AccessibilityCollectNode(El* e, Vec<AccessibilityNode>* out,
         if (e->lifecycle && e->lifecycle->documentSource) {
             node.document = *e->lifecycle->documentSource;
         }
-        if (!node.info.label.s &&
+        bool labelHasValue =
+            node.info.role == AccessibilityRole::Label && node.info.value.s;
+        if (!node.info.label.s && !labelHasValue &&
             AccessibilityNameFromContents(node.info.role)) {
             node.info.label = AccessibilityText(e);
         }
