@@ -5984,6 +5984,56 @@ static void TextareaTokenRangeIsItsChip() {
     InputViewFree(&view);
 }
 
+// element.rs layout_token_lines shapes the text on both sides of a chip
+// using the document's clipped highlight runs.
+static void TextareaDecorationsShapeTextBesideChips() {
+    InputView view = InputViewBuildTextarea([](InputState* s, App*) {
+        LayoutModeSetRows(&s->mode, 4);
+        InputSetValue(s, StrL("mmmmmm @alice mmmmmm"));
+    });
+    InputState* state = view.input;
+    utassert(InputReplaceRangeWithToken(
+                 state, view.app, view.win, 7, 13,
+                 InlineToken::New(StrL("a"), StrL("@alice"))) ==
+             InlineTokenError::Ok);
+    InputSetTokenPresentation(state, &HundredWideToken, nullptr, nullptr,
+                              nullptr, false);
+    TextSpan style;
+    style.color = Rgb(30, 40, 50);
+    style.bg = Rgb(200, 210, 220);
+    style.underline = true;
+    style.fontWeight = FontWeight::Bold;
+    TextDecoration decoration = TextDecoration::New({0, 20}, style);
+    InputTextareaSetDecorations(state, &decoration, 1, nullptr);
+    TestDraw(view.win);
+
+    uint16_t bold = (state->lastFontWord & ~kFontWeightMask) | kFontWeightBold;
+    auto measure = [&](Str text) {
+        return MeasureText(&view.win->paint, text, state->lastFont, 0, false,
+                           bold)
+            .w;
+    };
+    Bounds left = {}, chip = {}, right = {};
+    utassert(InputRangeToBounds(state, view.win, {0, 7}, &left));
+    utassert(InputRangeToBounds(state, view.win, {7, 13}, &chip));
+    utassert(InputRangeToBounds(state, view.win, {13, 20}, &right));
+    utassertnear(left.w, measure(StrL("mmmmmm ")));
+    utassertnear(chip.w, 100.f);
+    utassertnear(right.w, measure(StrL(" mmmmmm")));
+
+    Vec<RangeCorners> corners;
+    utassert(InputLastRangeCorners(state, view.win, {7, 13}, &corners) == 1);
+    if (len(corners) == 1) {
+        utassertnear(corners[0].topLeft.x, chip.x);
+        utassertnear(corners[0].topRight.x, chip.Right());
+    }
+    Point caret = {};
+    utassert(InputLastCaretPoint(state, view.win, 16, &caret));
+    utassert(InputIndexForPosition(state, &view.win->paint, caret.x,
+                                   caret.y + state->lastLineH / 2) == 16);
+    InputViewFree(&view);
+}
+
 // state.rs single_line_is_centered_in_a_taller_frame: the frame is laid out
 // by the application, which should not have to center a single line in it.
 struct CenteredFrame {
@@ -11842,6 +11892,7 @@ static void RunWindowTests() {
     OnTokenHoverBuilder();
     InlineTokenGeometryAndReentrantActivation();
     TextareaTokenRangeIsItsChip();
+    TextareaDecorationsShapeTextBesideChips();
     TextareaCursorTreatsCrlfAsOneNewline();
     OnlyAMultiLineInputPaintsScrollbars();
     ReadonlyRejectsUserEditsOnlyInAWindow();

@@ -2546,12 +2546,18 @@ static InputRenderBasics InputRenderBegin(Ctx* cx, InputState* state,
 
 // One text run between a row's chips: the whole gap, shaped as one fragment
 // the way Rust shapes it. Where the row breaks is the wrap map's business.
-static void EmitTokenTextRun(El* row, Arena* a, const InputEditorStyle& style,
-                             float font, float lineMult, Str slice,
-                             int docStart, const Selection& sel, bool caret,
-                             int cursor) {
+struct InputTokenPiece {
+    El* el;
+    int start;
+    int end;
+    bool chip;
+};
+
+static El* EmitTokenTextRun(El* row, Arena* a, const InputEditorStyle& style,
+                            float font, float lineMult, Str slice, int docStart,
+                            const Selection& sel, bool caret, int cursor) {
     if (!row || len(slice) == 0) {
-        return;
+        return nullptr;
     }
     El* piece = TextEl(a, slice)
                     ->Font(font)
@@ -2579,6 +2585,7 @@ static void EmitTokenTextRun(El* row, Arena* a, const InputEditorStyle& style,
         piece->Caret(cursor - docStart, style.caret);
     }
     row->Child(piece);
+    return piece;
 }
 
 // Split a document range into text runs and chips. Tokens cannot contain
@@ -2587,13 +2594,20 @@ static void EmitTokenTextRun(El* row, Arena* a, const InputEditorStyle& style,
 static void AppendTokenPieces(El* row, Ctx* cx, InputState* state,
                               const InputEditorStyle& style, float font,
                               float lineMult, float lineH, Str run, int start,
-                              const Selection& sel, bool caret, int cursor) {
+                              const Selection& sel, bool caret, int cursor,
+                              ArenaVec<InputTokenPiece>* pieces = nullptr) {
     if (!row) {
         return;
     }
     const Vec<InlineTokenSpan>* spans = InputTokens(state);
     int end = start + len(run);
     int at = start;
+    auto text = [&](int lo, int hi) {
+        El* el = EmitTokenTextRun(row, cx->a, style, font, lineMult,
+                                  Str(run.s + lo - start, hi - lo), lo, sel,
+                                  caret, cursor);
+        if (pieces && el) pieces->Append(cx->a, {el, lo, hi, false});
+    };
     if (spans) {
         for (int i = 0; i < len(spans); i++) {
             const InlineTokenSpan& span = (*spans)[i];
@@ -2603,21 +2617,16 @@ static void AppendTokenPieces(El* row, Ctx* cx, InputState* state,
             if (span.start >= end) {
                 break;
             }
-            if (span.start > at) {
-                EmitTokenTextRun(row, cx->a, style, font, lineMult,
-                                 Str(run.s + (at - start), span.start - at), at,
-                                 sel, caret, cursor);
-            }
-            row->Child(
-                TokenChip(cx, state, span, sel, lineH, style, font, true));
+            if (span.start > at) text(at, span.start);
+            El* chip =
+                TokenChip(cx, state, span, sel, lineH, style, font, true);
+            row->Child(chip);
+            if (pieces && chip)
+                pieces->Append(cx->a, {chip, span.start, span.end, true});
             at = span.end;
         }
     }
-    if (at < end) {
-        EmitTokenTextRun(row, cx->a, style, font, lineMult,
-                         Str(run.s + (at - start), end - at), at, sel, caret,
-                         cursor);
-    }
+    if (at < end) text(at, end);
 }
 
 static float SingleLineTokenCaretX(PaintCtx* ctx, const InputState* s,
@@ -2961,6 +2970,30 @@ static void ApplyInputRowSpans(El* el, const TextSpan* spans, int count) {
     el->Highlights(highlights, count);
 }
 
+static void ApplyInputDocumentSpans(El* el, const TextSpan* spans, int count,
+                                    int start, int end, const TabShown& shown,
+                                    int* first) {
+    while (*first < count && spans[*first].hi <= start) ++*first;
+    int last = *first;
+    while (last < count && spans[last].lo < end) ++last;
+    if (last == *first) return;
+    auto* clipped =
+        (TextSpan*)Alloc(el->arena, (last - *first) * (int)sizeof(TextSpan));
+    if (!clipped) return;
+    int n = 0;
+    for (int i = *first; i < last; i++) {
+        const TextSpan& span = spans[i];
+        int lo = std::max(span.lo, start) - start;
+        int hi = std::min(span.hi, end) - start;
+        if (lo >= hi) continue;
+        clipped[n] = span;
+        clipped[n].lo = MapTab(shown, lo);
+        clipped[n].hi = MapTab(shown, hi);
+        n++;
+    }
+    if (n > 0) ApplyInputRowSpans(el, clipped, n);
+}
+
 // element.rs layout_range_decorations and its paint. Rust builds one path per
 // decoration in prepaint from the shaped lines and paints the fills, then the
 // frames, below the selection. The rows here are elements the flex column
@@ -2971,6 +3004,8 @@ static void ApplyInputRowSpans(El* el, const TextSpan* spans, int count) {
 struct RangeDecorationRow {
     El* text = nullptr; // the visual row's shaped run (a token row's box)
     const int* tabMap = nullptr;
+    const InputTokenPiece* pieces = nullptr;
+    int pieceCount = 0;
     int start = 0;     // the buffer offset of the row's first byte
     int len = 0;       // the row's length
     int lineStart = 0; // the logical line it belongs to
@@ -2997,19 +3032,80 @@ struct RangeDecorationRow {
         return lo;
     }
 
-    bool HasFontRanges() const {
-        return text && text->lifecycle && text->lifecycle->fontRanges.count;
+    bool HasShapedPieces() const {
+        return pieceCount > 0 ||
+               (text && text->lifecycle && text->lifecycle->fontRanges.count);
     }
 };
 
+static int InputPieceHit(PaintCtx* ctx, const El* el, float x, float y) {
+    TextLayout* layout = ElTextLayout(ctx, el);
+    if (!layout) return -1;
+    int offset = TextLayoutHitPoint(layout, el->text, x - el->x, y);
+    TextLayoutRelease(layout);
+    return ClampI(offset, 0, len(el->text));
+}
+
 static int ShapedInputRowHit(PaintCtx* ctx, const RangeDecorationRow& row,
                              float x, float y) {
-    TextLayout* layout = ElTextLayout(ctx, row.text);
-    if (!layout) return -1;
-    int display =
-        TextLayoutHitPoint(layout, row.text->text, x - row.text->x, y);
-    TextLayoutRelease(layout);
-    return row.SourceOffset(ClampI(display, 0, len(row.text->text)));
+    if (row.pieceCount == 0) {
+        int display = InputPieceHit(ctx, row.text, x, y);
+        return display < 0 ? -1 : row.SourceOffset(display);
+    }
+    for (int i = 0; i < row.pieceCount; i++) {
+        const InputTokenPiece& piece = row.pieces[i];
+        if (x >= piece.el->Bounds().Right()) continue;
+        if (piece.chip)
+            return (x < piece.el->Bounds().CenterX() ? piece.start
+                                                     : piece.end) -
+                   row.start;
+        int local = InputPieceHit(ctx, piece.el, x, piece.el->h * 0.5f);
+        return local < 0 ? -1 : piece.start - row.start + local;
+    }
+    return row.len;
+}
+
+static Point ShapedInputRowCaretPoint(PaintCtx* ctx,
+                                      const RangeDecorationRow& row, int offset,
+                                      bool affinity) {
+    if (row.pieceCount == 0) {
+        return ElTextCaretPoint(
+            ctx, row.text, row.DisplayOffset(offset - row.start), affinity);
+    }
+    for (int i = 0; i < row.pieceCount; i++) {
+        const InputTokenPiece& piece = row.pieces[i];
+        if (offset >= piece.end && i + 1 < row.pieceCount) continue;
+        if (piece.chip) {
+            float x =
+                offset < piece.end ? piece.el->x : piece.el->Bounds().Right();
+            return {x, row.text->y};
+        }
+        Point caret =
+            ElTextCaretPoint(ctx, piece.el, offset - piece.start, affinity);
+        return {caret.x, row.text->y};
+    }
+    return {row.text->x, row.text->y};
+}
+
+static bool InputTokenRangeEdges(PaintCtx* ctx, const RangeDecorationRow& row,
+                                 int start, int end, float* left,
+                                 float* right) {
+    bool found = false;
+    for (int i = 0; i < row.pieceCount; i++) {
+        const InputTokenPiece& piece = row.pieces[i];
+        int lo = std::max(start, piece.start);
+        int hi = std::min(end, piece.end);
+        if (lo >= hi) continue;
+        Bounds box = piece.el->Bounds();
+        if (!piece.chip && ElTextRangeRects(ctx, piece.el, lo - piece.start,
+                                            hi - piece.start, &box, 1) == 0) {
+            continue;
+        }
+        *left = found ? std::min(*left, box.x) : box.x;
+        *right = found ? std::max(*right, box.Right()) : box.Right();
+        found = true;
+    }
+    return found;
 }
 
 struct RangeDecorationPath {
@@ -3042,7 +3138,8 @@ static int RangeDecorationCorners(PaintCtx* ctx, const RangeDecorationPaint* p,
     int before = len(out);
     for (int r = 0; r < p->nRows; r++) {
         const RangeDecorationRow& row = p->rows[r];
-        if (!row.text || row.text->kind != ElKind::Text) {
+        if (!row.text ||
+            (row.text->kind != ElKind::Text && row.pieceCount == 0)) {
             continue;
         }
         int rowEnd = row.start + row.len;
@@ -3058,25 +3155,33 @@ static int RangeDecorationCorners(PaintCtx* ctx, const RangeDecorationPaint* p,
         float left = row.text->x;
         float right = row.text->x;
         Bounds rect = {};
-        if (hasText && ElTextRangeRects(ctx, row.text,
+        if (hasText) {
+            if (row.pieceCount > 0) {
+                hasText = InputTokenRangeEdges(ctx, row, startIx, endIx, &left,
+                                               &right);
+            } else if (ElTextRangeRects(ctx, row.text,
                                         row.DisplayOffset(startIx - row.start),
                                         row.DisplayOffset(endIx - row.start),
-                                        &rect, 1) == 0) {
+                                        &rect, 1) > 0) {
+                left = rect.x;
+                right = rect.Right();
+            } else {
+                hasText = false;
+            }
+        }
+        if (!hasText && !newline) {
             // Nothing shaped there (a lone '\r'): only a newline cell, if
             // the range has one, is left to draw.
-            if (!newline) {
-                continue;
-            }
-            hasText = false;
+            continue;
         }
-        if (hasText) {
-            left = rect.x;
-            right = rect.x + rect.w;
-        } else if (row.len > 0) {
+        if (!hasText && row.len > 0) {
             // The newline cell alone, where the row's text ends.
             Bounds whole = {};
-            if (ElTextRangeRects(ctx, row.text, 0, len(row.text->text), &whole,
-                                 1) > 0) {
+            if (row.pieceCount > 0) {
+                left = right =
+                    row.pieces[row.pieceCount - 1].el->Bounds().Right();
+            } else if (ElTextRangeRects(ctx, row.text, 0, len(row.text->text),
+                                        &whole, 1) > 0) {
                 left = right = whole.x + whole.w;
             }
         }
@@ -3101,7 +3206,7 @@ struct InputPaintedRows {
     uint64_t docVersion = 0;
     RangeDecorationPaint geometry;
     RangeDecorationPaint* decorations = nullptr;
-    bool hasFontRanges = false;
+    bool hasShapedPieces = false;
     // What the column painted the active line from.
     const struct EditorUnderlay* underlay = nullptr;
 };
@@ -3116,6 +3221,24 @@ static const InputPaintedRows* LastPaintedRows(const InputState* s,
         return nullptr;
     }
     return s->paintedRows;
+}
+
+static const RangeDecorationRow* LastShapedInputRow(const InputState* s,
+                                                    PaintCtx* ctx, int start,
+                                                    int length) {
+    const InputPaintedRows* painted =
+        ctx ? LastPaintedRows(s, ctx->window) : nullptr;
+    if (!painted || !painted->hasShapedPieces ||
+        painted->docVersion != s->docVersion) {
+        return nullptr;
+    }
+    for (int i = 0; i < painted->geometry.nRows; i++) {
+        const RangeDecorationRow& row = painted->geometry.rows[i];
+        if (row.start == start && row.len == length && row.HasShapedPieces()) {
+            return &row;
+        }
+    }
+    return nullptr;
 }
 
 // Counts the rows last frame painted for which `want(row)` holds, handing
@@ -4512,6 +4635,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             if (painted && painted->geometry.rows &&
                 painted->geometry.nRows < visualRows) {
                 paintedRow = &painted->geometry.rows[painted->geometry.nRows++];
+                *paintedRow = {};
                 paintedRow->start = start;
                 paintedRow->len = len(line);
                 paintedRow->lineStart = lineStart;
@@ -4519,6 +4643,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                 paintedRow->first = firstSeg;
                 paintedRow->last = lastSeg;
             }
+            ArenaVec<InputTokenPiece> tokenPieces;
             if (tokenLine) {
                 // Overlay chips instead of the raw token text, matching
                 // Input::New: the row's text runs and its atomic chips, one
@@ -4528,7 +4653,8 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                 state->lastFont = font;
                 el = Div(a)->FlexRow()->ItemsCenter()->H(lineH);
                 AppendTokenPieces(el, cx, state, style, font, lineMult, lineH,
-                                  line, start, sel, caret, cursor);
+                                  line, start, sel, caret, cursor,
+                                  &tokenPieces);
             } else {
                 shown = ShowTabs(a, cx->win ? &cx->win->paint : nullptr, state,
                                  line);
@@ -4543,6 +4669,9 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             if (paintedRow) {
                 paintedRow->text = el;
                 paintedRow->tabMap = shown.map;
+                paintedRow->pieces = tokenPieces.Flatten(a);
+                if (paintedRow->pieces)
+                    paintedRow->pieceCount = len(tokenPieces);
             }
             // element.rs MAX_HIGHLIGHT_LINE_LENGTH: a line longer than this --
             // minified output, generated code -- draws in the default style
@@ -4550,44 +4679,24 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             // over an enormous run. The cursor is not advanced here; the next
             // row's catch-up loop above skips whatever this one left behind.
             const int kMaxHighlightLineLen = 10000;
-            // Highlight, diagnostics and selection belong to the shaped
-            // TextEl. A token row is already split into runs and chips.
-            if (!tokenLine && nDocSpans > 0 &&
-                len(lineText) <= kMaxHighlightLineLen) {
-                while (spanAt < nDocSpans && docSpans[spanAt].hi <= start) {
-                    spanAt++;
-                }
-                int first = spanAt;
-                int count = 0;
-                while (first + count < nDocSpans &&
-                       docSpans[first + count].lo < start + len(line)) {
-                    count++;
-                }
-                if (count > 0) {
-                    auto* rowSpans =
-                        (TextSpan*)Alloc(a, (int)sizeof(TextSpan) * count);
-                    int nRowSpans = 0;
-                    for (int k = 0; k < count; k++) {
-                        const TextSpan& sp = docSpans[first + k];
-                        int lo = 0;
-                        int hi = 0;
-                        if (!ClipToLine(sp.lo, sp.hi, start, len(line), &lo,
-                                        &hi)) {
-                            continue;
-                        }
-                        rowSpans[nRowSpans] = sp;
-                        rowSpans[nRowSpans].lo = MapTab(shown, lo);
-                        rowSpans[nRowSpans].hi = MapTab(shown, hi);
-                        nRowSpans++;
-                    }
-                    if (nRowSpans > 0) {
-                        ApplyInputRowSpans(el, rowSpans, nRowSpans);
-                        if (paintedRow && paintedRow->HasFontRanges()) {
-                            painted->hasFontRanges = true;
+            // A chip owns the paint for its bytes. Surrounding text receives
+            // the same document spans as any other text in the field.
+            if (nDocSpans > 0 && len(lineText) <= kMaxHighlightLineLen) {
+                if (tokenLine) {
+                    for (const InputTokenPiece& piece : tokenPieces) {
+                        if (!piece.chip) {
+                            ApplyInputDocumentSpans(piece.el, docSpans,
+                                                    nDocSpans, piece.start,
+                                                    piece.end, {}, &spanAt);
                         }
                     }
+                } else {
+                    ApplyInputDocumentSpans(el, docSpans, nDocSpans, start,
+                                            start + len(line), shown, &spanAt);
                 }
             }
+            if (paintedRow && paintedRow->HasShapedPieces())
+                painted->hasShapedPieces = true;
             // element.rs composes the diagnostic styles over the rest: a wavy
             // underline in the severity's colour, which is a run of its own
             // rather than a recolouring of the glyphs.
@@ -10389,6 +10498,12 @@ static int WrapRowFragments(const InputState* s, Str line, WrapRowSpan r,
 // inside a chip stands at the chip's left edge.
 static float WrapRowX(PaintCtx* ctx, const InputState* s, Str line,
                       WrapRowSpan r, int local) {
+    if (const RangeDecorationRow* row =
+            LastShapedInputRow(s, ctx, r.lineStart + r.lo, r.hi - r.lo)) {
+        Point caret = ShapedInputRowCaretPoint(
+            ctx, *row, r.lineStart + ClampI(local, r.lo, r.hi), true);
+        return r.x + caret.x - row->text->x;
+    }
     WrapFragment frags[64];
     int n = WrapRowFragments(s, line, r, frags, dimofi(frags));
     float x = r.x;
@@ -10457,6 +10572,12 @@ static int WrapRowIndexAt(PaintCtx* ctx, const InputState* s, Str line,
                           WrapRowSpan r, float x) {
     if (r.hi <= r.lo || !ctx || (x <= r.x && s->kind != InputKind::Textarea)) {
         return r.lo;
+    }
+    if (const RangeDecorationRow* row =
+            LastShapedInputRow(s, ctx, r.lineStart + r.lo, r.hi - r.lo)) {
+        int offset = ShapedInputRowHit(ctx, *row, row->text->x + x - r.x,
+                                       row->text->h * 0.5f);
+        if (offset >= 0) return r.lo + offset;
     }
     WrapFragment frags[64];
     int n = WrapRowFragments(s, line, r, frags, dimofi(frags));
@@ -12493,28 +12614,23 @@ int InputIndexForPosition(const InputState* s, PaintCtx* ctx, float x, float y,
     int nRows = InputWrapRows(s, row, &starts, &indent);
     int k = lineH > 0 ? (int)std::min(relY / lineH, (double)(nRows - 1)) : 0;
     WrapRowSpan r = WrapRowSpanOf(starts, nRows, indent, len(line), k, start);
-    if (const InputPaintedRows* painted = LastPaintedRows(s, ctx->window);
-        painted && painted->hasFontRanges &&
-        painted->docVersion == s->docVersion) {
-        for (int i = 0; i < painted->geometry.nRows; i++) {
-            const RangeDecorationRow& run = painted->geometry.rows[i];
-            if (run.start != start + r.lo || run.len != r.hi - r.lo ||
-                !run.HasFontRanges()) {
-                continue;
-            }
-            int offset = ShapedInputRowHit(ctx, run, x, lineH * 0.5f);
-            if (offset < 0) break;
-            if (lineEndAffinity && offset == run.len && !run.last)
+    if (const RangeDecorationRow* run =
+            LastShapedInputRow(s, ctx, start + r.lo, r.hi - r.lo)) {
+        int offset = ShapedInputRowHit(ctx, *run, x, lineH * 0.5f);
+        if (offset >= 0) {
+            if (lineEndAffinity && offset == run->len && !run->last)
                 *lineEndAffinity = true;
-            if (columnsPastLineEnd && offset == run.len && run.last) {
-                float endX = ElTextCaretPoint(ctx, run.text,
-                                              run.DisplayOffset(offset), true)
+            if (columnsPastLineEnd && offset == run->len && run->last) {
+                float endX = ShapedInputRowCaretPoint(ctx, *run,
+                                                      run->start + offset, true)
                                  .x;
-                float spaceW = ElTextSpaceWidth(ctx, run.text);
+                const El* fontRun =
+                    run->pieceCount > 0 ? run->pieces[0].el : run->text;
+                float spaceW = ElTextSpaceWidth(ctx, fontRun);
                 if (x > endX && spaceW > 0)
                     *columnsPastLineEnd = (int)((x - endX) / spaceW + 0.5f);
             }
-            return run.start + offset;
+            return run->start + offset;
         }
     }
     float localX = x - b.x;
@@ -13896,6 +14012,10 @@ bool InputLastCaretPoint(const InputState* s, Window* win, int offset,
         if (offset == row.start && !row.first && affinity) {
             continue;
         }
+        if (row.HasShapedPieces()) {
+            *out = ShapedInputRowCaretPoint(ctx, row, offset, affinity);
+            return true;
+        }
         if (row.text->kind != ElKind::Text) {
             // A row with chips in it is a row of fragments, walked the way
             // the hit test walks it.
@@ -13906,11 +14026,6 @@ bool InputLastCaretPoint(const InputState* s, Window* win, int offset,
             float x = WrapRowX(ctx, s, Str(text.s + row.lineStart, row.lineLen),
                                r, offset - row.lineStart);
             *out = {row.text->x + x, row.text->y};
-            return true;
-        }
-        if (row.HasFontRanges()) {
-            *out = ElTextCaretPoint(
-                ctx, row.text, row.DisplayOffset(offset - row.start), affinity);
             return true;
         }
         Str line = Str(text.s + row.start, row.len);
@@ -14034,18 +14149,26 @@ int InputCharacterIndexForPoint(const InputState* s, Window* win, Point at) {
         if (!run || at.y < run->y || at.y >= run->y + s->lastLineH) {
             continue;
         }
-        if (row.HasFontRanges()) {
+        if (row.HasShapedPieces()) {
             int hit = ShapedInputRowHit(ctx, row, at.x, at.y - run->y);
             if (hit < 0) return -1;
             Str source(text.s + row.start, row.len);
             auto covers = [&](int lo, int hi) {
+                if (row.pieceCount > 0) {
+                    float left = 0.f, right = 0.f;
+                    return InputTokenRangeEdges(ctx, row, row.start + lo,
+                                                row.start + hi, &left,
+                                                &right) &&
+                           at.x >= left && at.x < right;
+                }
                 Bounds glyph;
                 return ElTextRangeRects(ctx, run, row.DisplayOffset(lo),
                                         row.DisplayOffset(hi), &glyph, 1) > 0 &&
                        at.x >= glyph.x && at.x < glyph.Right();
             };
-            int edge =
-                InputCursorBoundary(s, row.start + hit, Bias::Left) - row.start;
+            int edge = ClampI(
+                InputCursorBoundary(s, row.start + hit, Bias::Left) - row.start,
+                0, row.len);
             if (edge < row.len &&
                 covers(edge, TextNextGraphemeBoundary(source, edge))) {
                 return Utf8OffsetToUtf16(text, row.start + edge);
