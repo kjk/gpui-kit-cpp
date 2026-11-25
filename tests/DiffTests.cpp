@@ -1341,10 +1341,12 @@ static void DecorationsCoverTheirRangeAndTheLastSuppliedWins() {
 struct DiffHighlightView {
     Entity<DiffState> state;
     DiffSpanHighlight spans[4];
+    bool wrap = false;
 
     static El* Render(DiffHighlightView* self, Ctx* cx) {
         return Diff::New(cx, self->state)
             ->SyntaxHighlight(false)
+            ->SoftWrap(self->wrap)
             ->SpanHighlights(self->spans, 4)
             ->IntoEl();
     }
@@ -1356,6 +1358,56 @@ static El* FindDiffCodeRun(El* root, Str text) {
         if (El* match = FindDiffCodeRun(child, text)) return match;
     }
     return nullptr;
+}
+
+// diff/mod.rs line_highlights layers explicit spans over the inline changes.
+static void InlineChangesPaintBothSidesAndRespectExplicitSpanPriority() {
+    App* app = TestAppNew();
+    Init(app);
+    auto view = EntityNew<DiffHighlightView>(app);
+    auto* self = view.Get(app);
+    self->state = EntityNew<DiffState>(app);
+    auto* state = self->state.Get(app);
+    state->Bind(app, self->state);
+    Vec<DiffFile*> files;
+    utassert(
+        Parse("--- a/hi.txt\n+++ b/hi.txt\n@@ -1 +1 @@\n"
+              "-\tlet total = price;\n+\tlet total = cost;\n",
+              &files));
+    state->SetFiles(files.els, len(files), nullptr);
+    state->EnsurePresentation();
+
+    auto modified =
+        DiffLinePosition::New(StrL("hi.txt"), DiffSide::Modified, 1);
+    Rgba explicitColor = Rgb(0, 0, 255);
+    self->spans[0] = DiffSpanHighlight::New(modified, {14, 16})
+                         .WithBackground(explicitColor);
+    Window* win = TestWindowOpen(app, view, 400, 200, 1);
+    const Theme& theme = ActiveTheme(app);
+    for (int pass = 0; pass < 2; pass++) {
+        self->wrap = pass != 0;
+        El* root = EntityRender(app, win, win->frameArena, view.id);
+        LayoutEl(&win->paint, root, 0, 0, 400, 200, 14, Rgba{});
+        const El* oldRun =
+            FindDiffCodeRun(root, StrL("    let total = price;"));
+        const El* newRun = FindDiffCodeRun(root, StrL("    let total = cost;"));
+        utassert(oldRun && oldRun->nWashes == 1);
+        utassert(newRun && newRun->nWashes == 3);
+        if (oldRun && oldRun->nWashes == 1) {
+            const TextSpan& wash = oldRun->washes[0];
+            utassert(wash.lo == 16 && wash.hi == 21);
+            utassert(RgbaEq(wash.bg, RgbaOpacity(theme.danger, 0.3f)));
+        }
+        if (newRun && newRun->nWashes == 3) {
+            const TextSpan* wash = newRun->washes;
+            utassert(wash[0].lo == 16 && wash[0].hi == 17);
+            utassert(wash[1].lo == 17 && wash[1].hi == 19);
+            utassert(wash[2].lo == 19 && wash[2].hi == 20);
+            utassert(RgbaEq(wash[0].bg, RgbaOpacity(theme.success, 0.3f)));
+            utassert(RgbaEq(wash[1].bg, explicitColor));
+        }
+    }
+    TestAppFree(app);
 }
 
 // decoration_tests.rs span_highlights_group_by_line_in_supplied_order.
@@ -2074,6 +2126,7 @@ void TestDiff() {
     UnifiedAnnotationsStayInTheViewportWhileCodeScrolls();
     DecorationsCoverTheirRangeAndTheLastSuppliedWins();
     SpanHighlightsKeepLineAndOrderThroughTabExpansion();
+    InlineChangesPaintBothSidesAndRespectExplicitSpanPriority();
     GutterMarkersActivateWithoutSelectingLines();
     TextHoverReportsTheCharacterAndOnlyChanges();
     AModifierAloneReportsTheCharacterAgain();

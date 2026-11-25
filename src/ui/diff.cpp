@@ -3280,13 +3280,18 @@ static int InsertDiffHighlight(TextSpan* runs, int count, const TextSpan& span,
 }
 
 static DiffHighlightRuns BuildDiffHighlightRuns(Ctx* cx, const Diff* diff,
-                                                Str path, DiffSide side,
-                                                const DiffFileSide* source,
-                                                const DiffSourceLine& line) {
+                                                const DiffFile* file,
+                                                DiffSide side, int lineIx,
+                                                bool showInline) {
     DiffHighlightRuns runs;
-    if (!diff->spanHighlightCount) return runs;
+    int inlineCount = 0;
+    const DiffRun* changes =
+        showInline ? file->InlineAt(side, lineIx, &inlineCount) : nullptr;
+    if (!diff->spanHighlightCount && !inlineCount) return runs;
+    const DiffFileSide* source = SideOf(file, side);
+    const DiffSourceLine& line = source->lines[lineIx];
     DiffLinePosition position =
-        DiffLinePosition::New(path, side, line.lineNumber);
+        DiffLinePosition::New(file->path, side, line.lineNumber);
     int lo = 0, hi = diff->spanHighlightCount;
     while (lo < hi) {
         int mid = lo + (hi - lo) / 2;
@@ -3300,17 +3305,27 @@ static DiffHighlightRuns BuildDiffHighlightRuns(Ctx* cx, const Diff* diff,
     while (end < diff->spanHighlightCount &&
            SamePosition(diff->spanHighlights[end]->position, position))
         end++;
-    if (end == lo) return runs;
+    if (end == lo && !inlineCount) return runs;
 
     // Later fills and foregrounds override earlier values independently.
     // A new range can introduce at most two boundaries in either run list.
-    int cap = 2 * (end - lo);
+    int cap = inlineCount + 2 * (end - lo);
     runs.washes = (TextSpan*)Alloc(cx->a, cap * (int)sizeof(TextSpan));
+    const Theme& theme = ActiveTheme(cx->app);
+    Rgba status = side == DiffSide::Original ? theme.danger : theme.success;
+    for (int i = 0; i < inlineCount; i++) {
+        TextSpan wash;
+        wash.lo = DisplayOff(source, line, changes[i].start);
+        wash.hi = DisplayOff(source, line, changes[i].end);
+        wash.bg = RgbaOpacity(status, 0.3f);
+        runs.washes[runs.washCount++] = wash;
+    }
+    if (end == lo) return runs;
     runs.colors = (TextSpan*)Alloc(cx->a, cap * (int)sizeof(TextSpan));
     auto* scratch = (TextSpan*)Alloc(cx->a, cap * (int)sizeof(TextSpan));
     runs.underlines =
         (TextSpan*)Alloc(cx->a, (end - lo) * (int)sizeof(TextSpan));
-    Rgba fill = RgbaOpacity(ActiveTheme(cx->app).warning, 0.5f);
+    Rgba fill = RgbaOpacity(theme.warning, 0.5f);
     for (int i = lo; i < end; i++) {
         const DiffSpanHighlight& item = *diff->spanHighlights[i];
         int start = IMax(0, item.span.start);
@@ -3518,11 +3533,11 @@ static void RecordDiffCodeWidth(PaintCtx* paint, El* row, void*) {
 
 static El* CodeText(Ctx* cx, const Diff* diff, const DiffState* state,
                     int fileIx, const DiffFile* file, DiffSide side, int ix,
-                    bool syntax) {
+                    bool syntax, bool showInline) {
     const DiffFileSide* source = SideOf(file, side);
     const DiffSourceLine& line = source->lines[ix];
     const auto runs =
-        BuildDiffHighlightRuns(cx, diff, file->path, side, source, line);
+        BuildDiffHighlightRuns(cx, diff, file, side, ix, showInline);
     El* row = CodeTextRuns(cx, state, fileIx, file, side, ix, syntax,
                            diff->softWrap, runs);
     UnderlineDiffRuns(cx, row, line.display, runs);
@@ -4573,7 +4588,8 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
         El* source = CodeText(cx, diff, state, row.file, file, side, line,
                               diff->syntaxHighlight &&
                                   len(SideOf(file, side)->lines[line].text) <=
-                                      state->syntaxMaxLineLength);
+                                      state->syntaxMaxLineLength,
+                              changed && !selected);
         const auto& sourceLine = SideOf(file, side)->lines[line];
         if (WindowAccessibilityActive(cx->win)) {
             const char* description = !changed ? "Diff.SourceLine"
