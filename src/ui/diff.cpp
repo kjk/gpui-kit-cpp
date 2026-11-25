@@ -4282,22 +4282,77 @@ static uint32_t Act(const char* name) {
     return ActionOf(Str(name));
 }
 
+static int ActiveDiffSide(const DiffState* self, DiffSide* side) {
+    if (self->hasSelection && self->hasCursor) {
+        *side = self->cursor.side;
+        return FileIx(self, self->cursor.path);
+    }
+    const DiffTextSelection& text = self->textSelection;
+    if (text.hitText && text.anchor != text.cursor) {
+        *side = text.side;
+        return text.file;
+    }
+    if (!len(self->rows)) return -1;
+    int top = IMin(IMax((int)(self->listScroll.offset / 24.f), 0),
+                   len(self->rows) - 1);
+    int file = self->rows[top].file;
+    *side = self->files[file]->LinesCount(DiffSide::Modified)
+                ? DiffSide::Modified
+                : DiffSide::Original;
+    return file;
+}
+
 static void OnDiffAction(DiffState* self, Ctx* cx, const ActionEvent* ev) {
-    int dir = 0;
-    if (ev->action == Act("diff::ScrollDown") ||
-        ev->action == Act("diff::ExtendDown"))
-        dir = 1;
-    if (ev->action == Act("diff::ScrollUp") ||
-        ev->action == Act("diff::ExtendUp"))
-        dir = -1;
-    if (dir != 0) {
-        int next = self->scrollItem + dir;
-        if (next < 0) next = 0;
-        if (next >= len(self->rows)) next = len(self->rows) - 1;
-        self->scrollItem = next;
-        VirtualListScrollToItemDeferred(&self->listScroll, next,
-                                        ScrollStrategy::Top);
-        Notify(cx);
+    bool all = ev->action == input::SelectAll();
+    bool extend = ev->action == Act("diff::ExtendUp") ||
+                  ev->action == Act("diff::ExtendDown");
+    bool up = ev->action == Act("diff::ScrollUp") ||
+              ev->action == Act("diff::ExtendUp");
+    bool down = ev->action == Act("diff::ScrollDown") ||
+                ev->action == Act("diff::ExtendDown");
+    if (all || up || down) {
+        DiffSide side;
+        int file = ActiveDiffSide(self, &side);
+        if (file < 0 || file >= len(self->files)) return;
+        const DiffFile* doc = self->files[file];
+        int count = doc->LinesCount(side);
+        if (!count) return;
+        int index = self->hasCursor && self->cursor.side == side &&
+                            StrEq(self->cursor.path, doc->Path())
+                        ? doc->LineIndex(side, self->cursor.line)
+                        : -1;
+        index = all         ? count - 1
+                : index < 0 ? 0
+                            : IMin(IMax(index + (up ? -1 : 1), 0), count - 1);
+        DiffLinePosition cursor = DiffLinePosition::New(
+            doc->Path(), side, doc->LineNumber(side, index));
+        DiffLinePosition anchor = cursor;
+        if (all) {
+            anchor.line = doc->LineNumber(side, 0);
+        } else if (extend && self->hasAnchor &&
+                   CanExtend(self, self->anchor, cursor)) {
+            anchor = self->anchor;
+        }
+        DiffLineRange range = Between(anchor, cursor);
+        bool changed = !self->hasSelection || !RangeEq(self->selected, range);
+        TextSelection::Clear(cx->win, cx->app);
+        self->SetSelectedLines(true, range, cx);
+        self->anchor = anchor;
+        self->cursor = cursor;
+        DiffEvent event;
+        event.hasRange = true;
+        event.path = range.path;
+        event.side = range.side;
+        event.endSide = range.endSide;
+        event.start = range.start;
+        event.end = range.end;
+        if (changed) {
+            event.kind = DiffEventKind::SelectionChanged;
+            Emit(self, cx, event);
+        }
+        event.kind = DiffEventKind::SelectionEnded;
+        Emit(self, cx, event);
+        if (!all) self->ScrollToLine(cursor, cx);
         return;
     }
     if (ev->action == input::Copy()) {
@@ -4578,6 +4633,7 @@ El* Diff::IntoEl() {
     root->OnAction(Act("diff::ExtendUp"), ListenTo(state, &OnDiffAction));
     root->OnAction(Act("diff::ExtendDown"), ListenTo(state, &OnDiffAction));
     root->OnAction(input::Copy(), ListenTo(state, &OnDiffAction));
+    root->OnAction(input::SelectAll(), ListenTo(state, &OnDiffAction));
     // A key alone changes what the pointer is over: with it held, the word
     // beneath may be a link. Heard only while the diff has focus.
     if (onTextHover) {

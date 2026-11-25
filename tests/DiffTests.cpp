@@ -1716,6 +1716,30 @@ static void SplitCodeSelectionKeepsTheSourceSideAndTabs() {
     TestAppFree(stage.app);
 }
 
+// Up/down choose a source line. Shift keeps the anchor while the cursor moves.
+static void DiffKeyboardSelectsAndExtendsSourceLines() {
+    PointerStage stage = StagePointer(false);
+    DiffState* state = stage.host->state.Get(stage.app);
+    TestFocus(stage.win, state->focus);
+    TestSimulateKeystrokes(stage.win, "down");
+    utassert(state->HasSelectedLines() && state->SelectedLines().start == 1 &&
+             state->SelectedLines().end == 1);
+    TestSimulateKeystrokes(stage.win, "shift-down");
+    utassert(state->SelectedLines().start == 1 && state->SelectedLines()
+                                                          .end == 2);
+    TestSimulateKeystrokes(stage.win, "shift-up");
+    utassert(state->SelectedLines().start == 1 && state->SelectedLines()
+                                                          .end == 1);
+    TestSimulateKeystrokes(stage.win, "secondary-a");
+    utassert(state->SelectedLines().start == 1 && state->SelectedLines()
+                                                          .end == 2);
+    TestSimulateKeystrokes(stage.win, "secondary-c");
+    Arena* a = ArenaNew();
+    utassert(StrEq(TestReadFromClipboard(a), "fn place() {}\nfn other() {}\n"));
+    ArenaDelete(a);
+    TestAppFree(stage.app);
+}
+
 static bool HeardHit(const PointerHost::Heard& heard, int line, int offset,
                      const char* text, bool platform) {
     return heard.has && heard.line == line && heard.offset == offset &&
@@ -1845,6 +1869,7 @@ void TestDiff() {
     AClaimedTextClickKeepsTheLineHandlerQuiet();
     CodeSelectionCopiesCharactersAndWords();
     SplitCodeSelectionKeepsTheSourceSideAndTabs();
+    DiffKeyboardSelectsAndExtendsSourceLines();
     AnUnclaimedTextClickFallsThroughToTheLine();
     HasLineCountsFoldedLinesButNotAbsentOnes();
 }
