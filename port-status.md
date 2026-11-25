@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `146eaf025d8bb4f0f20119b4d64c4917940bd9ad` (2026-11-24,
-editor: Add row backgrounds with line decorations (#4091)).
-Editors query per-row background providers for the visible rows and draw their bands behind the text and gutter.
+Processed through `20d42c2b6de177f74609d18f9225e940aa45d8b4` (2026-11-24,
+base: Build test-support's image without default formats (#4095)).
+Reviewed the Rust test-support image feature cleanup. Headless C++ tests use the runtime image seam.
 The current update target is
 `832cfdc0baef92855191dfdbbbcacd75f59d3df0`.
 
