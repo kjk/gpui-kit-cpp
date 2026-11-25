@@ -1,6 +1,12 @@
 #include "Story.h"
 
 struct HoverCardStory {
+    float documentationScroll = 0;
+    static void OnDocumentationScroll(HoverCardStory* self, Ctx* cx,
+                                      const ScrollEvent* ev) {
+        self->documentationScroll = ev->offsetY;
+        Notify(cx);
+    }
     static El* Render(HoverCardStory* self, Ctx* cx);
 };
 
@@ -46,7 +52,7 @@ static El* PlainCard(Ctx* cx, Str body) {
         ->Child(StoryTxt(cx, body, 14, th.foreground));
 }
 
-El* HoverCardStory::Render(HoverCardStory*, Ctx* cx) {
+El* HoverCardStory::Render(HoverCardStory* self, Ctx* cx) {
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
     El* page = Div(a)->FlexCol()->Gap(24)->W(kFill);
@@ -112,6 +118,80 @@ El* HoverCardStory::Render(HoverCardStory*, Ctx* cx) {
         ->Child(StoryTxt(cx, StrL(" to see their profile"), 16, th.foreground));
     StorySectionAdd(rich, richRow);
     page->Child(rich);
+
+    El* documentation =
+        StorySection(cx, "Long Content",
+                     "Bound the body and give the overflow one scroll owner, "
+                     "so a long card keeps its footprint.");
+    StorySectionBody(documentation)->W(520);
+    El* docs = nullptr;
+    if (Showing(cx, StrL("long-content"))) {
+        El* body = Div(a)->FlexCol()->W(440)->MaxH(180)->Gap(8);
+        body->Child(
+            StoryTxt(cx,
+                     StrL("pub fn open_delay(self, delay: Duration) -> Self"),
+                     14, th.foreground)
+                ->Mono());
+        body->Child(
+            StoryTxt(cx,
+                     StrL("Sets how long the pointer must rest on the trigger "
+                          "before the card opens, and how long the card stays "
+                          "open once the pointer leaves."),
+                     14, th.mutedFg)
+                ->Wrap());
+        body->Child(
+            Div(a)
+                ->Pad(8)
+                ->Radius(th.radius)
+                ->Bg(th.tokens.muted)
+                ->Child(
+                    StoryTxt(cx,
+                             StrL("let card = HoverCard::new(\"account\")\n    "
+                                  ".open_delay(Duration::from_millis(300))\n   "
+                                  " .close_delay(Duration::from_millis(150));"),
+                             12, th.foreground)
+                        ->Mono()));
+        body->Child(
+            StoryTxt(cx,
+                     StrL("The open delay is cancelled when the pointer leaves "
+                          "the trigger early, so a pointer passing over the "
+                          "trigger never flashes the card. Both delays default "
+                          "to the presentation in the theme."),
+                     14, th.mutedFg)
+                ->Wrap());
+        body->Child(
+            StoryTxt(
+                cx,
+                StrL("A long card keeps the same footprint as a short one: "
+                     "bound the body and let it scroll. Extending the card "
+                     "instead pushes it past the window edge, where the shell "
+                     "clips it and the reader cannot reach the rest."),
+                14, th.mutedFg)
+                ->Wrap());
+        body->Child(
+            Div(a)
+                ->FlexRow()
+                ->Gap(4)
+                ->Child(StoryTxt(cx, StrL("See"), 14, th.mutedFg))
+                ->Child(component::Link::New(cx, StrL("long-content-reference"))
+                            ->Text(StrL("API reference"))
+                            ->IntoEl()));
+        docs = component::ScrollableElement::VerticalScrollbar(
+            cx, body, StrL("long-content-scroll"), self->documentationScroll,
+            Listen(cx, &OnDocumentationScroll));
+    }
+    El* docRow = Div(a)->FlexCol()->Gap(8)->ItemsCenter();
+    docRow->Child(
+        component::HoverCard::New(cx, StrL("long-content"))
+            ->Trigger(component::Link::New(cx, StrL("long-content-link"))
+                          ->Text(StrL("Hover for documentation"))
+                          ->IntoEl())
+            ->Content(docs)
+            ->IntoEl());
+    docRow->Child(StoryTxt(cx, StrL("Scroll inside the card for the rest"), 12,
+                           th.mutedFg));
+    StorySectionAdd(documentation, docRow);
+    page->Child(documentation);
 
     El* timing = StorySection(
         cx, "Timing",

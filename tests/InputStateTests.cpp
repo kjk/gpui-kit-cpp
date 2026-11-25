@@ -15096,6 +15096,46 @@ static void EditorGutterOverridesApplyOnlyToTheNumberLane() {
     TestAppFree(app);
 }
 
+struct EditorHoverScrollProbe {
+    InputState input;
+    El* surface = nullptr;
+
+    static El* Render(EditorHoverScrollProbe* self, Ctx* cx) {
+        self->input.popoverTriggerBounds = {262, 8, 16, 16};
+        StrBuilder markdown(cx->a);
+        markdown.Append(StrL("```rust\nfn demo() {}\n```\n\n"));
+        for (int i = 0; i < 24; i++) {
+            markdown.Append(StrL("Documentation for this editor symbol.\n\n"));
+        }
+        El* popup = component::HoverPopover::New(cx, &self->input, {0, 1},
+                                                 markdown.TakeStr())
+                        ->IntoEl();
+        self->surface = FindNamedEl(popup, "hover-popover-content");
+        return Div(cx->a)->SizeFull()->Child(popup);
+    }
+};
+
+static void EditorHoverScrollsInsideTheWindow() {
+    App* app = TestAppNew();
+    auto view = EntityNew<EditorHoverScrollProbe>(app);
+    Window* win = TestWindowOpen(app, view, 300, 180);
+    TestDraw(win);
+    El* surface = view.Get(app)->surface;
+    utassert(surface && surface->first);
+    if (surface && surface->first) {
+        Bounds bounds = surface->Bounds();
+        utassert(bounds.x >= 8 && bounds.Right() <= 292);
+        utassert(bounds.y >= 24 && bounds.Bottom() <= 172);
+        utassert(surface->first->contentH > surface->first->h);
+        TestSimulateScrollWheel(win, {bounds.CenterX(), bounds.CenterY()},
+                                {0, -64});
+        TestDraw(win);
+        surface = view.Get(app)->surface;
+        utassert(surface && surface->first && surface->first->scrollY > 0);
+    }
+    TestAppFree(app);
+}
+
 void TestInputState() {
     EditorGutterOverridesApplyOnlyToTheNumberLane();
     LaterHighlightLayerWinsOverEarlierOne();
@@ -15109,6 +15149,7 @@ void TestInputState() {
     PrewrapWrapsWithTheWrappingIndent();
     PrewrapDoesNothingOnceLaidOut();
     TestSuite("input_state");
+    EditorHoverScrollsInsideTheWindow();
     LosingFocusEndsImeComposition();
     ForwardWordDeletionStopsAtWhitespaceAndLineBreaks();
     LargeEditorKeepsViewportLocalRowGeometry();

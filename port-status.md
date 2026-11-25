@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `e8992dca8ff74be459a8dc00fba65176781fdd13` (2026-11-26,
-editor: Add hit_test to tell what a point in the editor is over (#4128)).
-Editor hit testing reports text offsets, gutter lanes, buffer rows and spacers, including around completion previews.
+Processed through `9d70dc57d7152442855e0d4064e518d9dc238554` (2026-11-26,
+fix(input): keep editor hover popovers compact and scrollable (#4131)).
+Editor hovers use a viewport-constrained scrolling surface and compact Markdown, with a long-content story.
 The current update target is
 `9d70dc57d7152442855e0d4064e518d9dc238554`.
 

@@ -4,6 +4,7 @@
 #include "ui/input.h"
 #include "ui/theme.h"
 #include "ui/popover.h"
+#include "ui/scroll.h"
 #include "ui/text.h"
 #include "base/positioner.h"
 #include "sys/executor.h"
@@ -17,6 +18,28 @@ namespace component {
 // the listener owner that gives the frame rows the same pointer behavior.
 struct InputMenuViewState {
     InputState* input = nullptr;
+    Selection popoverRange = {-1, -1};
+    float popoverScroll = 0;
+    El* popoverScrollArea = nullptr;
+
+    static void PopoverScroll(InputMenuViewState* self, Ctx* cx,
+                              const ScrollEvent* event) {
+        self->popoverScroll = event->offsetY;
+        Notify(cx);
+    }
+
+    static void PopoverWheel(InputMenuViewState* self, Ctx* cx,
+                             const ScrollWheelEvent* event) {
+        // The runtime offers wheels to the input under the pointer before
+        // normal scrollers. Consume the gesture here, including at the ends.
+        const_cast<ScrollWheelEvent*>(event)->propagate = false;
+        El* area = self->popoverScrollArea;
+        if (!area) return;
+        float end = std::max(0.f, area->contentH - area->h);
+        self->popoverScroll =
+            ClampF(self->popoverScroll - event->deltaY, 0.f, end);
+        Notify(cx);
+    }
 
     static void CompletionClick(InputMenuViewState* self, Ctx* cx,
                                 const ClickEvent*, int64_t ix) {
@@ -611,18 +634,70 @@ DiagnosticPopover* DiagnosticPopover::New(Ctx* cx, InputState* state,
 // placed above the trigger's bounds — or above the hovered point when the
 // trigger was not laid out — start-aligned, 8 px off.
 static El* PlaceEditorPopover(Ctx* cx, InputState* input, El* surface,
-                              const char* kind, float hoverX, float hoverY) {
+                              const char* kind, Selection range, Str markdown,
+                              float hoverX, float hoverY) {
     Entity<InputMenuViewState> view = InputMenuView(cx, input, kind);
-    surface
-        ->OnMouseDownOut(ListenTo(view, &InputMenuViewState::PopoverOutside));
+    InputMenuViewState* state = view.Get(cx);
+    if (!state) return nullptr;
+    if (state->popoverRange.start != range.start || state->popoverRange
+                                                            .end != range.end) {
+        state->popoverRange = range;
+        state->popoverScroll = 0;
+    }
     Bounds trigger = input->popoverTriggerBounds;
     if (trigger.w <= 0 || trigger.h <= 0) {
         trigger = {hoverX, hoverY, 1, 1};
     }
+    float inset = Rems(cx, 0.5f);
+    WinSize viewport = cx->win ? WindowSize(cx->win) : WinSize{512, 320};
+    float width =
+        std::min(Rems(cx, 32), std::max(0.f, viewport.dipW - 2 * inset));
+    float top = std::max(0.f, trigger.y - inset);
+    float bottom = std::max(0.f, viewport.dipH - trigger.Bottom() - inset);
+    float height = std::min(Rems(cx, 20), std::max(top, bottom));
+    const Theme& theme = ThemeNow(cx->app);
+    TextViewStyle style = TextViewStyle::Default();
+    style.WithParagraphGap(Rems(cx, 0.5f));
+    Style code;
+    code.hasBg = true;
+    code.bg = theme.transparent;
+    code.fontSize = 12;
+    style.WithCodeBlock(code, StyleFieldBg | StyleFieldPad | StyleFieldBorder |
+                                  StyleFieldRadius | StyleFieldFontSize);
+    El* document = TextView::New(cx, markdown)
+                       ->Font(14)
+                       ->Style(style)
+                       ->CodeBlockActions(
+                           [](Ctx*, void*, Str, Str) -> El* { return nullptr; })
+                       ->Link([](TextViewLink* link, const App*, void*) {
+                           return StrFind(link->url, StrL("https://")) == 0 ||
+                                  StrFind(link->url, StrL("http://")) == 0;
+                       })
+                       ->Selectable()
+                       ->IntoEl();
+    El* body = Div(cx->a)
+                   ->Id(StrL("hover-popover-body"))
+                   ->FlexCol()
+                   ->W(kFill)
+                   ->Pad(Rems(cx, 0.5f))
+                   ->Child(document);
+    El* area = Div(cx->a)->FlexCol()->W(kFill)->MaxH(height)->Child(body);
+    state->popoverScrollArea = ScrollableElement::VerticalScrollbar(
+        cx, area, Str(kind), state->popoverScroll,
+        ListenTo(view, &InputMenuViewState::PopoverScroll));
+    surface->Id(StrL("hover-popover-content"))
+        ->W(width)
+        ->MaxH(height)
+        ->FontFamily(theme.fontFamily)
+        ->Child(state->popoverScrollArea)
+        ->BoundsOut(&input->popoverBounds)
+        ->OnScrollWheel(ListenTo(view, &InputMenuViewState::PopoverWheel))
+        ->OnMouseDownOut(ListenTo(view, &InputMenuViewState::PopoverOutside));
     return Positioner::Side(cx, trigger)
         ->Placement(gpui::Placement::Top)
         ->Align(gpui::Align::Start)
-        ->Margin(8)
+        ->Margin(inset)
+        ->Occlude()
         ->Child(surface)
         ->IntoEl();
 }
@@ -640,29 +715,15 @@ El* DiagnosticPopover::IntoEl() {
     else if (item.severity == DiagnosticSeverity::Hint)
         foreground = theme.cyan;
     Rgba background = RgbaMix(theme.background, foreground, 0.8f);
-    TextViewStyle textStyle = TextViewStyle::Default();
-    textStyle.WithParagraphGap(Rems(cx, 0.5f)); // rems(0.5)
-    El* body = TextView::New(cx, item.message)
-                   ->Font(12)
-                   ->Style(textStyle)
-                   ->Selectable()
-                   ->IntoEl();
     El* surface = Div(a)
-                      ->MinW(200)
-                      ->MaxW(500)
-                      ->MaxH(320)
-                      ->ClipY()
-                      // px_1 / py_0p5
-                      ->PadX(Rems(cx, 0.25f))
-                      ->PadY(Rems(cx, 0.125f))
+                      ->FlexCol()
                       ->Radius(theme.radius)
                       ->Bg(background)
                       ->Fg(foreground)
-                      ->Border(1, foreground)
-                      ->BoundsOut(&state->popoverBounds)
-                      ->Child(body);
+                      ->Border(1, foreground);
     return PlaceEditorPopover(cx, state, surface, "diagnostic-popover",
-                              state->hoverDiagnosticX, state->hoverDiagnosticY);
+                              item.range, item.message, state->hoverDiagnosticX,
+                              state->hoverDiagnosticY);
 }
 
 HoverPopover* HoverPopover::New(Ctx* cx, InputState* editor,
@@ -679,25 +740,9 @@ HoverPopover* HoverPopover::New(Ctx* cx, InputState* editor,
 El* HoverPopover::IntoEl() {
     if (!editor || len(hover) <= 0) return nullptr;
     const Theme& theme = ThemeNow(cx->app);
-    TextViewStyle textStyle = TextViewStyle::Default();
-    textStyle.WithParagraphGap(Rems(cx, 0.5f)); // rems(0.5)
-    El* surface = PopoverSurface(cx, Div(a)
-                                         ->MinW(200)
-                                         ->MaxW(500)
-                                         ->MaxH(320)
-                                         ->ClipY()
-                                         ->PadX(Rems(cx, 0.5f))
-                                         ->PadY(Rems(cx, 0.25f)));
-    surface
-        ->Child(TextView::New(cx, hover)
-                    ->Font(12)
-                    ->Style(textStyle)
-                    ->Selectable()
-                    ->IntoEl())
-        ->Fg(theme.foreground)
-        ->BoundsOut(&editor->popoverBounds);
-    return PlaceEditorPopover(cx, editor, surface, "hover-popover",
-                              editor->hoverX, editor->hoverY);
+    El* surface = PopoverSurface(cx, Div(a)->FlexCol())->Fg(theme.foreground);
+    return PlaceEditorPopover(cx, editor, surface, "hover-popover", symbolRange,
+                              hover, editor->hoverX, editor->hoverY);
 }
 
 // HighlightTheme::style — what registry.rs resolves a capture name with.
