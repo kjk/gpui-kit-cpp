@@ -149,6 +149,7 @@ for feature combinations and comparison commands.
 ```rs
 use gpui_kit::component::button::*;
 use gpui_kit::component::*;
+use gpui_kit::component::label::Label;
 use gpui_kit::*;
 
 pub struct HelloWorld;
@@ -160,7 +161,7 @@ impl Render for HelloWorld {
             .size_full()
             .items_center()
             .justify_center()
-            .child("Hello, World!")
+            .child(Label::new("Hello, World!"))
             .child(
                 Button::new("ok")
                     .primary()
@@ -205,6 +206,17 @@ npx skills add longbridge/gpui-kit
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
 | `gpui-kit`               | Setup, component catalog, usage patterns, GPUI mechanics (elements, entities, async, focus, actions, tests), and the Coding Guides. |
 | `gpui-kit-design-guides` | The Design Guides: layout, spacing, hierarchy, interaction states, overlays, and interface copy.                                    |
+
+### Claude Code plugin
+
+Claude Code users can install both skills as one plugin instead:
+
+```text
+/plugin marketplace add longbridge/gpui-kit
+/plugin install gpui-kit@gpui-kit
+```
+
+The skills are then available as `/gpui-kit:gpui-kit` and `/gpui-kit:gpui-kit-design-guides`. The plugin uses the `skills/` directory on `main`, so it tracks the latest GPUI Kit API; run `/plugin marketplace update gpui-kit` to update and `/plugin uninstall gpui-kit@gpui-kit` to remove it.
 
 ## Development
 

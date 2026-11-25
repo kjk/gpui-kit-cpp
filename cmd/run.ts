@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "a528ab120bcdf13c75c5649993d48d5cdbb9732a",
+  sha: "9ef02b1f6d9aaf44e0522eeec1448609d69f1554",
   date: "2026-11-23",
-  subject: "docs: Fix guide links in standalone skills (#4088)",
+  subject: "skills: Add Claude Code plugin (#4089)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",

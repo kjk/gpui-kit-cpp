@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `a528ab120bcdf13c75c5649993d48d5cdbb9732a` (2026-11-23,
-docs: Fix guide links in standalone skills (#4088)).
-Reviewed the links in the standalone Rust skill documentation.
+Processed through `9ef02b1f6d9aaf44e0522eeec1448609d69f1554` (2026-11-23,
+skills: Add Claude Code plugin (#4089)).
+Refreshed the Introduction page with the pinned upstream README.
 The current update target is
 `832cfdc0baef92855191dfdbbbcacd75f59d3df0`.
 
