@@ -3737,8 +3737,12 @@ static void RecordDiffCodeRun(PaintCtx* paint, El* el, void* data) {
     run.visible = visible;
     run.text = el->text;
     run.layout = el->laidLayout;
-    if (run.layout) TextLayoutAddRef(run.layout);
-    VecAppend(state->codeRuns, run);
+    if (run.layout)
+        TextLayoutAddRef(run.layout);
+    else if (len(run.text))
+        run.layout = ElTextLayout(paint, el);
+    if (!VecAppend(state->codeRuns, run) && run.layout)
+        TextLayoutRelease(run.layout);
 }
 
 static El* CodeTextRuns(Ctx* cx, const DiffState* state, int fileIx,
@@ -3890,9 +3894,6 @@ struct DiffTextRun {
     int file = 0;
     DiffSide side = DiffSide::Original;
     int ix = 0;
-    // The paint offset the source was drawn at, and its font size.
-    float scrollX = 0;
-    float font = 0;
 };
 
 // Find the nearest visible source run on the anchor side. Compare row
@@ -4235,57 +4236,40 @@ static void OnDiffGutterMove(DiffState* self, Ctx* cx, const MouseMoveEvent* ev,
 // it, masked to what is visible, so its left edge less the horizontal
 // scroll is where the text starts. Unlike a caret hit it never snaps to
 // the nearest text: past a line's end is over no character.
-static bool DiffTextAt(const DiffState* state, PaintCtx* paint,
-                       const DiffTextRun* run, Point point, Bounds box,
-                       DiffTextPosition* out) {
-    if (!run || run->file < 0 || run->file >= len(state->files)) return false;
+static bool DiffTextAt(const DiffState* state, const DiffTextRun* run,
+                       Point point, Bounds box, DiffTextPosition* out) {
+    if (!run || run->file < 0 || run->file >= len(state->files) ||
+        !box.Contains(point))
+        return false;
     const DiffFile* file = state->files[run->file];
     const DiffFileSide* source = SideOf(file, run->side);
     if (run->ix < 0 || run->ix >= len(source->lines)) return false;
     const DiffSourceLine& line = source->lines[run->ix];
-    if (run->diff->softWrap) {
-        const auto* shaped =
-            DiffSelectionRun(state, point, run->file, run->side);
-        if (!shaped || shaped->line != run->ix || !shaped->layout ||
-            !shaped->visible.Contains(point))
-            return false;
-        Vec<TextGlyphBox> glyphs;
-        TextGlyphBoxes(shaped->layout, shaped->text, &glyphs);
-        Point local = {point.x - shaped->bounds.x, point.y - shaped->bounds.y};
+    bool wrap = run->diff->softWrap;
+    Vec<TextGlyphBox> glyphs;
+    for (const auto& shaped : state->codeRuns) {
+        if (shaped.file != run->file || shaped.side != run->side ||
+            shaped.line != run->ix || !shaped.layout ||
+            point.x < shaped.visible.x || point.x >= shaped.visible.Right() ||
+            (wrap && !shaped.visible.Contains(point)))
+            continue;
+        VecClear(glyphs);
+        TextGlyphBoxes(shaped.layout, shaped.text, &glyphs);
+        Point local = {point.x - shaped.bounds.x, point.y - shaped.bounds.y};
         for (const TextGlyphBox& glyph : glyphs) {
             if (local.x >= glyph.left && local.x < glyph.right &&
-                local.y >= glyph.top && local.y < glyph.top + glyph.h) {
+                (!wrap ||
+                 (local.y >= glyph.top && local.y < glyph.top + glyph.h))) {
                 out->position = DiffLinePosition::New(file->path, run->side,
                                                       line.lineNumber);
-                out->offset = SourceOff(source, line, glyph.lo);
+                int displayOffset = shaped.displayStart + glyph.lo;
+                out->offset = SourceOff(source, line, displayOffset);
                 out->text = line.text;
                 return true;
             }
         }
-        return false;
     }
-    float relX = point.x - (box.x - run->scrollX);
-    if (relX < 0 || !len(line.display)) return false;
-    Size extent;
-    TextLayout* layout = TextLayoutNew(paint, line.display, run->font, 0, false,
-                                       kFontMono, 0, &extent);
-    if (!layout) return false;
-    Vec<TextGlyphBox> glyphs;
-    int n = TextGlyphBoxes(layout, line.display, &glyphs);
-    TextLayoutRelease(layout);
-    int at = -1;
-    for (int i = 0; i < n; i++) {
-        if (relX >= glyphs[i].left && relX < glyphs[i].right) {
-            at = glyphs[i].lo;
-            break;
-        }
-    }
-    if (at < 0 || at >= len(line.display)) return false;
-    out->position =
-        DiffLinePosition::New(file->path, run->side, line.lineNumber);
-    out->offset = SourceOff(source, line, at);
-    out->text = line.text;
-    return true;
+    return false;
 }
 
 static bool SameTextHover(const DiffState* state, const DiffTextPosition* hit,
@@ -4320,8 +4304,7 @@ static void OnDiffTextMove(DiffState* self, Ctx* cx, const MouseMoveEvent* ev,
     OnDiffSelectionMove(self, cx, ev);
     if (!run->diff->onTextHover) return;
     DiffTextPosition hit;
-    bool has =
-        DiffTextAt(self, &cx->win->paint, run, {ev->x, ev->y}, ev->el, &hit);
+    bool has = DiffTextAt(self, run, {ev->x, ev->y}, ev->el, &hit);
     const DiffTextPosition* now = has ? &hit : nullptr;
     if (SameTextHover(self, now, ev->modifiers)) return;
     HearTextHover(self, cx, run->diff, now, ev->modifiers);
@@ -4381,7 +4364,7 @@ static void OnDiffModifiersChanged(DiffState* self, Ctx* cx,
     float y = cx->win->mouseY;
     const DiffTextRun* run = DiffTextRunAt(cx->win, diff->state, x, y, &box);
     DiffTextPosition hit;
-    bool has = run && DiffTextAt(self, &cx->win->paint, run, {x, y}, box, &hit);
+    bool has = run && DiffTextAt(self, run, {x, y}, box, &hit);
     HearTextHover(self, cx, diff, has ? &hit : nullptr, now);
 }
 
@@ -4404,8 +4387,7 @@ static void OnDiffTextClick(DiffState* self, Ctx* cx, const ClickEvent* ev,
             return;
         DiffTextPosition hit;
         if (diff->onTextClick && cx->win &&
-            DiffTextAt(self, &cx->win->paint, run, {ev->x, ev->y}, ev->el,
-                       &hit) &&
+            DiffTextAt(self, run, {ev->x, ev->y}, ev->el, &hit) &&
             diff->onTextClick(cx, &hit, ev, diff->textClickUser))
             return;
     }
@@ -4819,8 +4801,6 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
         run->file = row.file;
         run->side = side;
         run->ix = line;
-        run->scrollX = diff->softWrap ? 0 : state->horizontalScrollX;
-        run->font = ThemeFontSize(cx->app);
         if (diff->hasTextCursor) source->Cursor(diff->textCursor);
         if (click) {
             source->OnClick(ListenTo(diff->state, &OnDiffTextClick,

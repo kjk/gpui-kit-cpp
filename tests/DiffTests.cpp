@@ -2095,6 +2095,39 @@ static void TextHoverReportsTheCharacterAndOnlyChanges() {
     TestAppFree(stage.app);
 }
 
+// Hit a later syntax run after a source tab expands to four display columns.
+static void TextHitsUsePaintedSyntaxRunsAndSourceOffsets() {
+    PointerStage stage =
+        StagePointer(true, StrL("--- a/file.rs\n+++ b/file.rs\n@@ -1 +1 @@\n"
+                                "-\tlet result = 23;\n+\tlet result = 44;\n"));
+    TestRunUntilParked(stage.app);
+    auto* state = stage.host->state.Get(stage.app);
+    Point point;
+    bool found = false;
+    for (const auto& run : state->codeRuns) {
+        if (run.side != DiffSide::Modified || !run.layout ||
+            !StrEq(run.text, StrL("44")))
+            continue;
+        Vec<TextGlyphBox> glyphs;
+        if (!TextGlyphBoxes(run.layout, run.text, &glyphs)) continue;
+        point = {run.bounds.x + (glyphs[0].left + glyphs[0].right) * 0.5f,
+                 run.visible.CenterY()};
+        found = true;
+        break;
+    }
+    utassert(found);
+    if (found) {
+        TestSimulateMouseMove(stage.win, point);
+        utassert(stage.host->hoveredCount == 1);
+        utassert(HeardHit(stage.host->hovered[0], 1, 14, "\tlet result = 44;",
+                          false));
+        TestSimulateClick(stage.win, point);
+        utassert(stage.host->textClickCount == 1 &&
+                 stage.host->textClicks[0][1] == 14);
+    }
+    TestAppFree(stage.app);
+}
+
 // pointer_tests.rs a_modifier_alone_reports_the_character_again.
 static void AModifierAloneReportsTheCharacterAgain() {
     PointerStage stage = StagePointer(true);
@@ -2252,6 +2285,7 @@ void TestDiff() {
     BuiltInDiffSyntaxLandsFromTheExecutorAndResetsAtHunks();
     GutterMarkersActivateWithoutSelectingLines();
     TextHoverReportsTheCharacterAndOnlyChanges();
+    TextHitsUsePaintedSyntaxRunsAndSourceOffsets();
     AModifierAloneReportsTheCharacterAgain();
     AClaimedTextClickKeepsTheLineHandlerQuiet();
     CodeSelectionCopiesCharactersAndWords();

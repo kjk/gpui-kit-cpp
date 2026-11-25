@@ -572,9 +572,9 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   simpler split than Rust's Unicode word segmentation, and the unmatched
   region has a bounded LCS matrix.
   Character hover and click
-  (`OnTextHover`, `OnTextClick`) find the character from the line's glyph
-  boxes and the hit box rather than from TextSelection's painted runs, and
-  the hover box spans the row height. An application syntax
+  (`OnTextHover`, `OnTextClick`) use the same painted run geometry as diff
+  selection. Unwrapped text remains targetable across the row height.
+  An application syntax
   highlighter with caller-owned callback data runs on the UI thread,
   once per hunk side.
   Without soft wrap, both modes use the runtime's horizontal scrollbar
