@@ -6881,6 +6881,31 @@ static void InlineObjectsKeepBidiRunsTogether() {
     TswClose(&v);
 }
 
+static void MixedObjectStrikesStayInsideTheSharedProse() {
+    if (!TestMarkdownIsFull()) return;
+    TswView v =
+        TswOpen("**keep** ~~remove~~ end ![icon](assets/icons/heart.svg)",
+                TswContainer::Window);
+    const TextHit* hit = HitContaining(v.win, "keep remove end");
+    utassert(hit && hit->highlightedElement);
+    if (hit && hit->highlightedElement) {
+        const auto* element = hit->highlightedElement;
+        utassert(!element->style.strike && element->lifecycle
+                                                   ->strikeCount == 1);
+        if (element->lifecycle->strikeCount == 1) {
+            const TextSpan& span = element->lifecycle->strikes[0];
+            utassert(span.lo == 5 && span.hi == 11);
+        }
+        char output[64];
+        int count = CopyTextHitsIn(&v.win->paint, hit->docOff,
+                                   hit->docOff + len(StrL("keep remove end")),
+                                   hit->scope, output, (int)sizeof(output),
+                                   SelectionFormat::SourceAcrossStyles);
+        utassert(StrEq(Str(output, count), "**keep** ~~remove~~ end"));
+    }
+    TswClose(&v);
+}
+
 static void RevealingProseBesideAnInlineObjectKeepsTheShapedRun() {
     const char* markdown =
         "**Several words before** ![icon](assets/icons/heart.svg) after";
@@ -8989,6 +9014,7 @@ static void TestTextStateWindow() {
     InlineObjectsShareRowsWithShapedProse();
     MixedObjectProseSharesFontsLinksAndSourceRanges();
     InlineObjectsKeepBidiRunsTogether();
+    MixedObjectStrikesStayInsideTheSharedProse();
     RevealingProseBesideAnInlineObjectKeepsTheShapedRun();
     ParserPluginsKeepTheirConfigurationAcrossAsyncUpdates();
     SelectAllFollowsAnAppendedParse();

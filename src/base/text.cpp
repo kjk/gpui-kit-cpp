@@ -4785,7 +4785,7 @@ static TextFontRanges SliceInlineFonts(Arena* arena, TextFontRanges fonts,
 
 static bool CanShareObjectProse(const MdRun* run) {
     return !run->hasCustom && !len(run->imgSrc) &&
-           !(run->marks & (MdCode | MdHighlight | MdDel)) &&
+           !(run->marks & (MdCode | MdHighlight)) &&
            StrFind(run->text, StrL("\n")) < 0;
 }
 
@@ -4823,6 +4823,27 @@ static void PaintObjectProse(PaintCtx* paint, El* element, void* data) {
     PaintShapedTextLinks(paint, element, &state->links);
 }
 
+static void StrikeObjectProse(El* word) {
+    ArenaVec<TextSpan> spans;
+    int start = 0;
+    auto whole = [&](int end) {
+        if (start < end) {
+            TextSpan span{start, end, word->style.color};
+            spans.Append(word->arena, span);
+        }
+    };
+    for (int i = 0; i < word->nSpans; i++) {
+        auto span = word->spans[i];
+        whole(span.lo);
+        if (!span.color.a) span.color = word->style.color;
+        spans.Append(word->arena, span);
+        start = span.hi;
+    }
+    whole(len(word->text));
+    word->lifecycle->strikes = spans.Flatten(word->arena);
+    word->lifecycle->strikeCount = len(spans);
+}
+
 // The flex pass used the shaped advances to place words and atomic objects.
 // Each contiguous visual text span becomes one run for paint and editor
 // geometry. Keep the first fragment's source offset for source selection.
@@ -4839,6 +4860,10 @@ static void ShapeInlineObjectRows(PaintCtx*, El* row, void*) {
         item->last->next = item->next;
         if (row->last == item) row->last = item->last;
         link = &item->last->next;
+    }
+    for (El* word = row->first; word; word = word->next) {
+        auto* fragment = InlineFragment(word);
+        if (fragment && fragment->strike) StrikeObjectProse(word);
     }
     for (El* first = row->first; first; first = first->next) {
         const InlineTextFragment* start = InlineFragment(first);
@@ -4861,6 +4886,7 @@ static void ShapeInlineObjectRows(PaintCtx*, El* row, void*) {
         ArenaVec<TextSpan> spans;
         ArenaVec<TextSpan> washes;
         ArenaVec<TextSpan> underlines;
+        ArenaVec<TextSpan> strikes;
         ArenaVec<TextFade> fades;
         ArenaVec<SourceSegment> mapped;
         ArenaVec<SelSourceSpan> sourceStyles;
@@ -4965,6 +4991,8 @@ static void ShapeInlineObjectRows(PaintCtx*, El* row, void*) {
             append(washes, part->washes, part->nWashes);
             first->glyphWashes |= part->glyphWashes;
             append(underlines, part->underlines, part->nUnderlines);
+            append(strikes, part->lifecycle->strikes,
+                   part->lifecycle->strikeCount);
             int fadeCount = 0;
             const TextFade* partFades = part->FadesGet(&fadeCount);
             append(fades, partFades, fadeCount);
@@ -4983,6 +5011,8 @@ static void ShapeInlineObjectRows(PaintCtx*, El* row, void*) {
             Str(start->advances->text.s + start->start, end - start->start);
         first->lifecycle->fontRanges = SliceInlineFonts(
             first->arena, start->advances->fonts, start->start, end);
+        first->lifecycle->strikes = strikes.Flatten(first->arena);
+        first->lifecycle->strikeCount = len(strikes);
         if (len(sourceStyles)) {
             auto* map = ArenaNew<SelSourceMap>(first->arena);
             map->segments = mapped.Flatten(first->arena);
@@ -5234,8 +5264,10 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
         if (wordLen <= 0) {
             return;
         }
+        bool fragmentText = advances && !shapeLine;
         uint8_t wordMarks =
-            advances ? (uint8_t)(marks & ~(MdBold | MdItalic)) : marks;
+            fragmentText ? (uint8_t)(marks & ~(MdBold | MdItalic | MdDel))
+                         : marks;
         El* w = Word(StrDup(a, Str(word, wordLen)), font, color, wordMarks,
                      weight, href, highlight, hasHighlight);
         if (shapeLine || (marks & MdCode)) {
@@ -5262,11 +5294,12 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             lastWordLo = runOffset + wordStart;
         }
         ApplyTextForeground(a, w, w->text, wordLeaf, ranges, nRanges);
-        if (advances && !shapeLine) {
+        if (fragmentText) {
             if (!w->lifecycle) w->lifecycle = ArenaNew<ElLifecycle>(a);
             auto* fragment = ArenaNew<InlineTextFragment>(a);
             int start = wordLeaf - advanceStart;
-            *fragment = {advances, start, start + wordLen, href};
+            *fragment = {advances, start, start + wordLen, href,
+                         (marks & MdDel) != 0};
             w->lifecycle->inlineTextFragment = fragment;
             w->lifecycle->fontRanges =
                 SliceInlineFonts(a, advances->fonts, start, start + wordLen);

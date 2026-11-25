@@ -2891,6 +2891,7 @@ struct InlineTextFragment {
     int start;
     int end;
     Str href;
+    bool strike = false;
 };
 
 struct ElLifecycle {
@@ -2900,6 +2901,8 @@ struct ElLifecycle {
     void* user = nullptr;
     const LinkTooltipTarget* linkTooltip = nullptr;
     const InlineTextFragment* inlineTextFragment = nullptr;
+    const TextSpan* strikes = nullptr;
+    int strikeCount = 0;
     bool inlineTextGroup = false;
     bool inlineCodeBox = false;
     // on_pinch: rare, so here rather than in El

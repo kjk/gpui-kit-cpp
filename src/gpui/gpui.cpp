@@ -6969,6 +6969,13 @@ int TextFadeSpans(Arena* a, int textLen, Rgba base, const TextSpan* spans,
     return n;
 }
 
+static void PaintGlyphStrike(PaintCtx* ctx, float x, float y,
+                             const Bounds& glyphs, float baseline,
+                             float thickness, Rgba color) {
+    CanvasFillRect(ctx, x + glyphs.x, y + glyphs.y + baseline * 0.65f, glyphs.w,
+                   thickness, color);
+}
+
 // One shaped layout: backgrounds first, foreground colors through the
 // backend's single pass or range-clip fallback, then decorations.
 static void PaintTextSpans(PaintCtx* ctx, El* e, float font, Rgba base) {
@@ -8132,9 +8139,9 @@ static void PaintHighlightStrokes(PaintCtx* ctx, const El* e,
         }
         if (style.strike.thickness > 0) {
             Rgba ink = style.strike.hasColor ? style.strike.color : color;
-            CanvasFillRect(ctx, x, y + baseline * 0.65f, r.w,
-                           style.strike.thickness,
-                           TextFadeColor(ink, style.fade));
+            PaintGlyphStrike(ctx, e->x, e->y, r, baseline,
+                             style.strike.thickness,
+                             TextFadeColor(ink, style.fade));
         }
     }
 }
@@ -8169,6 +8176,28 @@ static void PaintHighlightedText(PaintCtx* ctx, const El* e, TextLayout* layout,
         PaintHighlightStrokes(
             ctx, e, layout, run,
             run.style.hasColor ? run.style.color : foreground);
+    }
+}
+
+static void PaintTextStrikes(PaintCtx* ctx, const El* e, TextLayout* layout,
+                             const TextFade* fades, int fadeCount) {
+    float baseline = TextLayoutBaseline(layout);
+    for (int i = 0; i < e->lifecycle->strikeCount; i++) {
+        const auto& strike = e->lifecycle->strikes[i];
+        const TextSpan* parts;
+        int count = TextFadeSpans(e->arena, strike.hi, strike.color, &strike, 1,
+                                  fades, fadeCount, &parts);
+        for (int p = 0; p < count; p++) {
+            int lo = std::max(strike.lo, parts[p].lo);
+            if (lo >= parts[p].hi || !parts[p].color.a) continue;
+            Bounds stack[32];
+            int n = 0;
+            Bounds* rects =
+                TextRangeRectsFull(layout, e->text, lo, parts[p].hi, stack, &n);
+            for (int r = 0; r < n; r++)
+                PaintGlyphStrike(ctx, e->x, e->y, rects[r], baseline, 1.f,
+                                 parts[p].color);
+        }
     }
 }
 
@@ -9199,7 +9228,8 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
                                    : RuntimeStyleNow(ctx->app).foreground;
         TextLayout* highlightLayout = nullptr;
         bool hasHighlights = e->lifecycle && e->lifecycle->highlightCount > 0;
-        if (hasHighlights || ElTextFontRanges(e).count) {
+        bool hasStrikes = e->lifecycle && e->lifecycle->strikeCount > 0;
+        if (hasHighlights || hasStrikes || ElTextFontRanges(e).count) {
             highlightLayout = ElTextLayout(ctx, e);
         }
         int lo = e->selLo;
@@ -9416,6 +9446,8 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
                     ElTextFontRanges(e));
             }
         }
+        if (highlightLayout && hasStrikes)
+            PaintTextStrikes(ctx, e, highlightLayout, fades, nFades);
         if (clipText) {
             CanvasPopClip(ctx);
         }
