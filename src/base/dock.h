@@ -447,6 +447,7 @@ struct DockState {
     // skin's shared state is this entity here, as for the toggle above.
     bool closeButtonVisible = false;
     bool collapsedTabBarVisible = true;
+    bool splitDividerLineVisible = true;
     // Latest rendered closed extent, used by the bottom resize gesture.
     float closedBottomExtent = kClosedBottomStrip;
     // DockArea::version, kept so a layout that was loaded writes back the
@@ -703,6 +704,7 @@ struct DockHandleCtx {
     Axis axis = Axis::Horizontal;
     bool active = false;
     ResizeHandleState state = ResizeHandleState::Idle;
+    Entity<DockState> dock = {};
 };
 
 // TabGroupContext: one tab group as the skin sees it.

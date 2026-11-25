@@ -27,6 +27,11 @@ ResizeIndicator ResizeHandleIndicator(ResizeHandleState state) {
 }
 
 El* RenderResizeHandle(void*, const ResizeHandleContext* handle, Ctx* cx) {
+    return RenderResizeHandleWith(cx, handle, true);
+}
+
+El* RenderResizeHandleWith(Ctx* cx, const ResizeHandleContext* handle,
+                           bool showLine) {
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
     bool horizontal = AxisIsHorizontal(handle->AxisValue());
@@ -50,7 +55,10 @@ El* RenderResizeHandle(void*, const ResizeHandleContext* handle, Ctx* cx) {
 
     // The hairline fills the handle's content area exactly, so it has
     // nothing to give: shrinking it collapses the divider.
-    El* line = Div(a)->FlexNone()->FlexRow()->Bg(th.border);
+    El* line = Div(a)->FlexNone()->FlexRow();
+    if (showLine) {
+        line->Bg(th.border);
+    }
     if (horizontal) {
         line->W(1)->H(kFill)->ItemsCenter();
     } else {

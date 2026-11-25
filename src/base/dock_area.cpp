@@ -428,6 +428,7 @@ El* SplitHandle(const AreaCtx& ac, int node, int ix, Axis axis) {
     h.axis = axis;
     h.state = hst ? hst->Get() : ResizeHandleState::Idle;
     h.active = ResizeHandleStateIsActive(h.state);
+    h.dock = ac.state;
     if (ac.r->splitHandle) {
         // The renderer's transitions are keyed under the handle's own name.
         IdScope handleScope(cx, hid);

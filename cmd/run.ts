@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "71cabe2f741058972db58dc17de72e5dde3ca2ab",
+  sha: "a5233e67ddad5be83118b88019ac637259f66278",
   date: "2026-11-23",
-  subject: "text: Keep closing marks and spaces after a word as wide as the line on its line (#4087)",
+  subject: "dock: Allow DockSkin to hide the resting split divider line (#4084)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",

@@ -30,6 +30,8 @@ ResizeIndicator ResizeHandleIndicator(ResizeHandleState state);
 
 // render_resize_handle: the hairline, and the indicator riding on it.
 El* RenderResizeHandle(void* user, const ResizeHandleContext* handle, Ctx* cx);
+El* RenderResizeHandleWith(Ctx* cx, const ResizeHandleContext* handle,
+                           bool showLine);
 
 // resize_handle_appearance: this design system's divider appearance, for a
 // handle base does not already hand it — a dock split, or a hand-rolled

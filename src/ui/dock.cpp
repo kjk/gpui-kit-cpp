@@ -91,6 +91,18 @@ void DockSkin::SetCollapsedTabBarVisible(App* app, Window* win, bool visible) {
     }
 }
 
+bool DockSkin::IsSplitDividerLineVisible(App* app) const {
+    DockState* value = state.Get(app);
+    return value ? value->splitDividerLineVisible : true;
+}
+
+void DockSkin::SetSplitDividerLineVisible(App* app, Window* win, bool visible) {
+    if (DockState* value = state.Get(app)) {
+        value->splitDividerLineVisible = visible;
+        NotifyEntity(app, state.id, win);
+    }
+}
+
 El* DockInvalidPanelRender(Ctx* cx, void* data) {
     (void)data;
     Arena* a = cx->a;
@@ -541,7 +553,8 @@ static El* SkinSplitHandle(Ctx* cx, void*, const DockHandleCtx* h) {
     // render_resize_handle: the hairline, and the indicator that grows on it
     // as the pointer hovers, presses and drags.
     ResizeHandleContext handle = {h->axis, h->state};
-    return RenderResizeHandle(nullptr, &handle, cx);
+    bool line = DockSkin::New(h->dock).IsSplitDividerLineVisible(cx->app);
+    return RenderResizeHandleWith(cx, &handle, line);
 }
 
 // DockSkin::render_resize_handle. One id per placement: the docks all render

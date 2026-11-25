@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `71cabe2f741058972db58dc17de72e5dde3ca2ab` (2026-11-23,
-text: Keep closing marks and spaces after a word as wide as the line on its line (#4087)).
-Styled inline flow keeps closing punctuation and following spaces together across run boundaries.
+Processed through `a5233e67ddad5be83118b88019ac637259f66278` (2026-11-23,
+dock: Allow DockSkin to hide the resting split divider line (#4084)).
+DockSkin can hide the resting split divider line while the indicator and resize band keep their geometry.
 The current update target is
 `832cfdc0baef92855191dfdbbbcacd75f59d3df0`.
 

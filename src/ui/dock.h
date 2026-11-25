@@ -74,6 +74,8 @@ struct DockSkin {
     void SetCloseButtonVisible(App* app, Window* win, bool visible);
     bool IsCollapsedTabBarVisible(App* app) const;
     void SetCollapsedTabBarVisible(App* app, Window* win, bool visible);
+    bool IsSplitDividerLineVisible(App* app) const;
+    void SetSplitDividerLineVisible(App* app, Window* win, bool visible);
     const DockRenderer* Renderer() const;
 };
 
