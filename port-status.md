@@ -580,9 +580,6 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   gutters and headers, and the scroll range is estimated from the widest
   lines ranked by UTF-8 scalar count.
   The gutter marker lane is one row square inside the fill-width row.
-  The add-annotation
-  button inset is not
-  applied because that button is not painted.
   An outside press clears the gutter range and reports the change.
   `SetSelectedLines` updates the range programmatically. The story page
   shows every example patch from `diff_story.rs`

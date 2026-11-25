@@ -4064,6 +4064,70 @@ bool DiffRunBounds(Window* win, DiffSide side, int lineIx, Bounds* out) {
     return found != 0;
 }
 
+struct DiffAnnotationPress {
+    const Diff* view = nullptr;
+    DiffLineRange range = {};
+};
+
+static void AddDiffAnnotation(DiffState*, Ctx* cx, const ClickEvent*,
+                              int64_t arg) {
+    const auto* press =
+        reinterpret_cast<const DiffAnnotationPress*>((intptr_t)arg);
+    press->view->onAddAnnotation(cx, &press->range, press->view->addUser);
+}
+
+static El* DiffAnnotationButton(Ctx* cx, const Diff* diff, const DiffFile* file,
+                                DiffSide side, int line, float left,
+                                const DiffLineRange* selected) {
+    if (!diff->onAddAnnotation) return nullptr;
+    int number = file->LineNumber(side, line);
+    auto* press = ArenaNew<DiffAnnotationPress>(cx->a);
+    press->view = diff;
+    press->range = selected
+                       ? *selected
+                       : DiffLineRange::New(file->Path(), side, number, number);
+    bool selectionEnd = false;
+    if (selected) {
+        if (selected->IsSingleSide()) {
+            selectionEnd = number == IMax(selected->start, selected->end);
+        } else {
+            int first =
+                file->PatchIx(selected->side,
+                              file->LineIndex(selected->side, selected->start));
+            int last = file->PatchIx(
+                selected->endSide,
+                file->LineIndex(selected->endSide, selected->end));
+            selectionEnd = file->PatchIx(side, line) == IMax(first, last);
+        }
+    }
+    const Theme& theme = ActiveTheme(cx->app);
+    const TrArg args[] = {{"line", fmt("%d", number)}};
+    El* button =
+        Div(cx->a)
+            ->PathClick(side == DiffSide::Original
+                            ? StrL("add-original-annotation")
+                            : StrL("add-modified-annotation"))
+            ->Absolute()
+            ->Top(0)
+            ->Left(left)
+            ->W(24)
+            ->H(24)
+            ->FlexRow()
+            ->ItemsCenter()
+            ->JustifyCenter()
+            ->Bg(theme.tokens.primary)
+            ->Radius(theme.radius)
+            ->Role(AccessibilityRole::Button)
+            ->AriaLabel(StrDup(cx->a, TrFmtTemp("Diff.AddAnnotation", args, 1)))
+            ->StopMouseDown()
+            ->SuppressTextSelection()
+            ->OnClick(ListenTo(diff->state, &AddDiffAnnotation,
+                               (int64_t)(intptr_t)press))
+            ->Child(IconEl(cx->a, IconName::Plus, 12)->Fg(theme.primaryFg));
+    if (!selectionEnd) button->GroupHoverVisible();
+    return button;
+}
+
 static El* RenderRow(void* user, Ctx* cx, int ix) {
     Diff* diff = (Diff*)user;
     DiffState* state = diff->state.Get(cx);
@@ -4280,6 +4344,8 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
         }
         // px_2. The row's horizontal inset matches the width budget.
         box->PadX(8);
+        float annotationLeft = 8.f;
+        if (diff->onAddAnnotation) box->Group();
         int number = SideOf(file, side)->lines[line].lineNumber;
         bool selected = lineSelected(side, line);
         Rgba bg = changed ? (side == DiffSide::Original ? theme.danger
@@ -4304,6 +4370,7 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
         }
         if (diff->lineNumber) {
             int width = file->lineNumberDigits * 8 + 12;
+            annotationLeft += (float)width;
             auto* pos = ArenaNew<DiffLinePosition>(cx->a);
             *pos = DiffLinePosition::New(file->path, side, number);
             auto arg = (int64_t)(intptr_t)pos;
@@ -4324,6 +4391,7 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
                                 ->Fg(theme.mutedFg)));
         }
         if (markerLane) {
+            annotationLeft += 24.f;
             El* lane = Div(cx->a)
                            ->Id(StrL("marker-lane"))
                            ->W(24)
@@ -4420,6 +4488,9 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
             hoverBox->OnHover(ListenTo(diff->state, &OnDiffTextLeave,
                                        (int64_t)(intptr_t)run));
         }
+        box->Child(DiffAnnotationButton(cx, diff, file, side, line,
+                                        annotationLeft,
+                                        selected ? &state->selected : nullptr));
         if (present && diff->annotationContent && diff->annotations) {
             for (int i = 0; i < diff->annotationCount; i++) {
                 const DiffAnnotation& ann = diff->annotations[i];

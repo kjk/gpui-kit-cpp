@@ -1566,9 +1566,18 @@ struct PointerHost {
     bool softWrap = false;
     DiffAnnotation annotation = {};
     float annotationHeight = 0;
+    bool enableAddAnnotation = false;
+    int annotationPresses = 0;
+    DiffLineRange annotationRange = {};
 
     static El* RenderAnnotation(Ctx* cx, const DiffAnnotation*, void* user) {
         return Div(cx->a)->H(static_cast<PointerHost*>(user)->annotationHeight);
+    }
+
+    static void AddAnnotation(Ctx*, const DiffLineRange* range, void* user) {
+        auto* self = static_cast<PointerHost*>(user);
+        self->annotationPresses++;
+        self->annotationRange = *range;
     }
 
     static void OnTextHover(Ctx*, const DiffTextPosition* hit,
@@ -1606,6 +1615,10 @@ struct PointerHost {
                 ->SoftWrap(self->softWrap)
                 ->Annotations(&self->annotation, self->annotation.hasPosition)
                 ->RenderAnnotation(&PointerHost::RenderAnnotation, self)
+                ->OnAddAnnotation(self->enableAddAnnotation
+                                      ? &PointerHost::AddAnnotation
+                                      : nullptr,
+                                  self)
                 ->SpanHighlights(&self->span, 1)
                 ->OnTextHover(&PointerHost::OnTextHover, self)
                 ->OnTextClick(&PointerHost::OnTextClick, self)
@@ -1787,6 +1800,37 @@ static void DiffMeasuresWrappedLinesAndChangingAnnotations() {
     TestAppFree(stage.app);
 }
 
+static void AnnotationButtonPassesTheSelectedRange() {
+    PointerStage stage = StagePointer(false);
+    PointerHost* host = stage.host;
+    DiffState* state = host->state.Get(stage.app);
+    host->enableAddAnnotation = true;
+    state->SetSelectedLines(
+        true, DiffLineRange::New(StrL("file.rs"), DiffSide::Modified, 1, 2),
+        nullptr);
+    TestDraw(stage.win);
+    const AccessibilityNode* button = nullptr;
+    for (const auto& node : stage.win->accessibility) {
+        if (node.info.role == AccessibilityRole::Button &&
+            StrEq(node.info.label, "Add annotation to line 2")) {
+            button = &node;
+            break;
+        }
+    }
+    utassert(button);
+    if (button) {
+        Point at = {button->bounds.CenterX(), button->bounds.CenterY()};
+        TestSimulateClick(stage.win, at);
+        utassert(host->annotationPresses == 1 &&
+                 host->annotationRange.start == 1 &&
+                 host->annotationRange.end == 2 &&
+                 host->annotationRange.side == DiffSide::Modified);
+        utassert(state->HasSelectedLines() && state->SelectedLines()
+                                                      .start == 1);
+    }
+    TestAppFree(stage.app);
+}
+
 static bool HeardHit(const PointerHost::Heard& heard, int line, int offset,
                      const char* text, bool platform) {
     return heard.has && heard.line == line && heard.offset == offset &&
@@ -1945,6 +1989,7 @@ void TestDiff() {
     SplitCodeSelectionKeepsTheSourceSideAndTabs();
     DiffKeyboardSelectsAndExtendsSourceLines();
     DiffMeasuresWrappedLinesAndChangingAnnotations();
+    AnnotationButtonPassesTheSelectedRange();
     AnUnclaimedTextClickFallsThroughToTheLine();
     HasLineCountsFoldedLinesButNotAbsentOnes();
 }
