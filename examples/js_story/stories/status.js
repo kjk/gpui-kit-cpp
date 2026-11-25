@@ -38,6 +38,7 @@ export const REGISTERED_SURFACES = [
   "Label",
   "Link",
   "List",
+  "LiveRegion",
   "MenuBar",
   "Marker",
   "Message",

@@ -16,13 +16,18 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `73e6431081a1ff8b810013b63d39a6d9d76259e6` (2026-11-25,
-editor: Let the gutter sit on the right of the text (#4099)).
-Support a mirrored editor gutter, including paint clipping, padding, and horizontal track bounds.
+Processed through `d05399b1242ab7de4c96841a4be2542c8dd56b65` (2026-11-25,
+live_region: Add LiveRegion to announce status changes to screen readers (#4094)).
+Add LiveRegion to the themed UI, native accessibility, story, and shell component registry.
 The current update target is
 `832cfdc0baef92855191dfdbbbcacd75f59d3df0`.
 
 ## Known gaps vs Rust
+
+- **Mobile LiveRegion announcements use the host accessibility adapter.**
+  The portable tree exposes the status role, text and priority. Native
+  announcement delivery is implemented by the Windows, macOS, Linux and web
+  hosts.
 
 - **Mixed inline layout uses element widths.** Closing marks and spaces
   across style boundaries share a flex item with the preceding word.

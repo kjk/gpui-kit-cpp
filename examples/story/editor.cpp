@@ -485,7 +485,7 @@ struct EditorDiffStory {
     double lastY = 0;
 
     static void ChooseLayout(EditorDiffStory* self, Ctx* cx, const ClickEvent*,
-                             intptr_t value) {
+                             int64_t value) {
         self->mirrored = value != 0;
         UpdatePlacement(self, cx);
         Notify(cx);

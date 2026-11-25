@@ -2686,11 +2686,18 @@ enum class AccessibilityAction : uint8_t {
     SetValue
 };
 
+enum class AccessibilityLive : uint8_t {
+    Off,
+    Polite,
+    Assertive,
+};
+
 struct AccessibilityInfo {
     AccessibilityRole role = AccessibilityRole::None;
     // Beside the role, in the padding before the first pointer.
     AccessibilityToggled toggled = AccessibilityToggled::Unset;
     AccessibilityOrientation orientation = AccessibilityOrientation::Unset;
+    AccessibilityLive live = AccessibilityLive::Off;
     // GPUI's `accessibility_id`: a developer-assigned identifier for test
     // and automation clients, separate from the element id used by layout
     // and hit testing.
@@ -3418,6 +3425,7 @@ struct El {
     El* Role(AccessibilityRole role);
     El* AccessibilityId(Str authorId);
     El* AriaLabel(Str label);
+    El* AriaLive(AccessibilityLive live);
     // A Document role whose text is read on demand; see
     // AccessibilityDocumentSource. Local: Rust apps hand AccessKit the text.
     El* AccessibilityDocument(const AccessibilityDocumentSource& source);
@@ -3902,6 +3910,8 @@ struct HitRect {
 // frame copy of the element behavior so an OS adapter can invoke it later.
 struct AccessibilityNode {
     uint32_t id = 0;
+    uint32_t livePath = 0;
+    bool liveChanged = false;
     int parent = -1;
     Bounds bounds = {};
     AccessibilityInfo info = {};
@@ -3926,6 +3936,11 @@ struct AccessibilityNode {
     AccessibilityDocumentSource document = {};
     Str textExcerpt = {};
     int textExcerptStart = 0;
+};
+
+struct AccessibilityLiveSnapshot {
+    uint32_t path = 0;
+    uint64_t textHash = 0;
 };
 
 // A scrolled box the frame painted, and the scrollbar drawn down its right
@@ -7740,6 +7755,9 @@ struct Window {
     // Rebuilt after layout from the frame's element tree. Platform adapters
     // read this; it owns no strings or callbacks beyond the frame arena.
     Vec<AccessibilityNode> accessibility;
+    Vec<AccessibilityLiveSnapshot> accessibilityLive[2];
+    int accessibilityLiveFrame = 0;
+    bool hasLiveRegions = false;
     // Semantic-content hash from the last frame. Native adapters receive one
     // children-invalidated event only when it changes, not on every animation
     // repaint.

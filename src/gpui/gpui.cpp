@@ -1813,6 +1813,10 @@ El* El::AriaLabel(Str label) {
     accessibility.label = label;
     return this;
 }
+El* El::AriaLive(AccessibilityLive live) {
+    accessibility.live = live;
+    return this;
+}
 El* El::AccessibilityDocument(const AccessibilityDocumentSource& source) {
     if (!lifecycle) lifecycle = ArenaNew<ElLifecycle>(arena);
     auto* copy = ArenaNew<AccessibilityDocumentSource>(arena);
@@ -11156,6 +11160,9 @@ static void AccessibilityCollectNode(El* e, Vec<AccessibilityNode>* out,
         node.parent = semanticParent;
         node.bounds = e->Bounds();
         node.info = e->accessibility;
+        if (node.info.live != AccessibilityLive::Off) {
+            node.livePath = e->pathId;
+        }
         node.input = e->input;
         if (!node.input && node.info.role != AccessibilityRole::Document) {
             node.input = AccessibilityInput(e);

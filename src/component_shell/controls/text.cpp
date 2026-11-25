@@ -7,11 +7,17 @@
 #include "ui/kbd.h"
 #include "ui/label.h"
 #include "ui/link.h"
+#include "ui/live_region.h"
 
 namespace gpui::component_shell::controls::text {
 
 struct StringPayload {
     Str value;
+};
+
+struct LiveRegionPayload {
+    Str id;
+    Str text;
 };
 
 struct LabelOp {
@@ -49,6 +55,21 @@ static bool ConstructString(PayloadBuild* build, const ComponentArgument* args,
 static bool ConstructLabel(PayloadBuild* build, const ComponentArgument* args,
                            int) {
     return ConstructString(build, args, "Label", "text");
+}
+
+static bool ConstructLiveRegion(PayloadBuild* build,
+                                const ComponentArgument* args, int) {
+    if (len(args[0].string) == 0) {
+        return build->Fail(StrL("LiveRegion id must not be empty"));
+    }
+    *build->New<LiveRegionPayload>() = {args[0].string, args[1].string};
+    return true;
+}
+
+static bool RecordAssertive(PayloadBuild* build, const ComponentArgument*,
+                            int) {
+    *build->New<bool>() = true;
+    return true;
 }
 
 static bool ConstructLink(PayloadBuild* build, const ComponentArgument* args,
@@ -131,6 +152,25 @@ static El* MaterializeLabel(MaterializeRequest* request) {
         }
     });
     return request->Finish(Div(cx->a)->Child(label->IntoEl()));
+}
+
+static El* MaterializeLiveRegion(MaterializeRequest* request) {
+    if (request->ChildrenLen() != 0) {
+        return request
+            ->Fail(StrL("LiveRegion does not accept children; pass its text to "
+                        "the constructor"));
+    }
+    const auto* payload = request->PayloadAs<LiveRegionPayload>();
+    if (!payload) {
+        return request
+            ->Fail(StrL("LiveRegion received an incompatible payload"));
+    }
+    auto* region =
+        component::LiveRegion::New(request->cx, payload->id, payload->text);
+    EachMethod<bool>(request, [&](bool assertive) {
+        if (assertive) region->Assertive();
+    });
+    return request->Finish(region->IntoEl());
 }
 
 struct OpenHref {
@@ -219,6 +259,22 @@ static constexpr ComponentDescriptor kLabel = {
     "presentation.",
     &MaterializeLabel};
 
+static constexpr ArgumentDescriptor kLiveRegionArgs[] = {
+    {"id", SchemaString()},
+    {"text", SchemaString()}};
+static constexpr ConstructorDescriptor kLiveRegionConstructors[] = {
+    {"LiveRegion", kLiveRegionArgs, &ConstructLiveRegion}};
+static constexpr MethodDescriptor kLiveRegionMethods[] = {
+    {"assertive",
+     {},
+     "Interrupts current speech instead of waiting for it.",
+     &RecordAssertive}};
+static constexpr ComponentDescriptor kLiveRegion = {
+    "LiveRegion", kLiveRegionConstructors, kLiveRegionMethods,
+    "Text that screen readers announce whenever it changes. Keep the id "
+    "stable.",
+    &MaterializeLiveRegion};
+
 static constexpr ConstructorDescriptor kLinkConstructors[] = {
     {"Link", kIdArguments, &ConstructLink}};
 static constexpr MethodDescriptor kLinkMethods[] = {
@@ -256,7 +312,8 @@ bool RegisterControlsText(shell::ComponentRegistry* registry,
                           shell::RegistryError* error) {
     return registry->Register(&controls::text::kLabel, error) &&
            registry->Register(&controls::text::kLink, error) &&
-           registry->Register(&controls::text::kKbd, error);
+           registry->Register(&controls::text::kKbd, error) &&
+           registry->Register(&controls::text::kLiveRegion, error);
 }
 
 } // namespace gpui::component_shell

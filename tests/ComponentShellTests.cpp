@@ -1138,18 +1138,21 @@ void ClickBubbling(Host& host, El* root, El* target) {
 void ControlsRegisterTheSupportedPublicExports() {
     FamilyCatalog catalog(&component_shell::RegisterControls);
     utassert(catalog.ok);
-    const char* expected[] = {"Button", "Checkbox", "Switch", "Toggle", "Badge",
-                              "Tag",    "Label",    "Link",   "Kbd"};
+    const char* expected[] = {"Button", "Checkbox",  "Switch", "Toggle",
+                              "Badge",  "Tag",       "Label",  "Link",
+                              "Kbd",    "LiveRegion"};
+    const int count = (int)(sizeof(expected) / sizeof(expected[0]));
     int at = 0;
     bool same = true;
     for (int i = 0; i < catalog.frozen.DescriptorCount(); i++) {
         for (const ConstructorDescriptor& ctor :
              catalog.frozen.Descriptor((uint32_t)i)->constructors) {
-            same = same && at < 9 && strcmp(ctor.exportName, expected[at]) == 0;
+            same = same && at < count &&
+                   strcmp(ctor.exportName, expected[at]) == 0;
             at++;
         }
     }
-    utassert(same && at == 9);
+    utassert(same && at == count);
 }
 
 // every_control_uses_closed_argument_schemas_and_documents_its_surface
@@ -7047,10 +7050,10 @@ void QuestionnaireRefusesWhatRustRefuses() {
 // With every family registered, the catalog's whole `declare module
 // "gpui-component"` block and its Element union are byte for byte what the
 // Rust catalog writes: every export in the same order, nothing missing and
-// nothing extra (136 element types and 17 state exports).
+// nothing extra (137 element types and 17 state exports).
 void WholeCatalogDeclarationsEqualRust() {
     const FrozenComponentRegistry* frozen = component_shell::Components();
-    utassert(frozen->DescriptorCount() == 136);
+    utassert(frozen->DescriptorCount() == 137);
     utassert(frozen->StateCount() == 17);
 
     StrBuilder rust;

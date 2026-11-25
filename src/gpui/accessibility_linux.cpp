@@ -2181,7 +2181,7 @@ void AccessibilityLinuxPump() {
 }
 
 static void SendEvent(Window* win, uint32_t nodeId, const char* member,
-                      const char* detail, int detail1) {
+                      const char* detail, int detail1, Str payload = {}) {
     if (!gA11y.ready || !win || !gA11y.app) return;
     int wi = -1;
     for (int i = 0; i < len(gA11y.app->windows); i++) {
@@ -2201,7 +2201,7 @@ static void SendEvent(Window* win, uint32_t nodeId, const char* member,
     PutString(&body, detail);
     PutI32(&body, detail1);
     PutI32(&body, 0);
-    PutVariantString(&body, "s", Str{});
+    PutVariantString(&body, "s", payload);
     PutEmptyStringDict(&body);
     SendMessage(4, 0, &fields, &body);
     VecReset(fields.bytes);
@@ -2210,6 +2210,14 @@ static void SendEvent(Window* win, uint32_t nodeId, const char* member,
 
 void AccessibilityLinuxTreeChanged(Window* win) {
     SendEvent(win, 0, "ChildrenChanged", "invalidate", 0);
+    if (!win) return;
+    for (int i = 0; i < len(win->accessibility); i++) {
+        const auto& node = win->accessibility[i];
+        if (node.liveChanged) {
+            SendEvent(win, node.id, "Announcement", "", (int)node.info.live,
+                      node.info.label);
+        }
+    }
 }
 
 void AccessibilityLinuxFocusChanged(Window* win, int focusId) {

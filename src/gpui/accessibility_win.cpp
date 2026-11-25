@@ -107,6 +107,8 @@ static int AccessibilityControlType(AccessibilityRole role) {
             return UIA_SliderControlTypeId;
         case AccessibilityRole::SpinButton:
             return UIA_SpinnerControlTypeId;
+        case AccessibilityRole::Status:
+            return UIA_StatusBarControlTypeId;
         case AccessibilityRole::Tab:
             return UIA_TabItemControlTypeId;
         case AccessibilityRole::Table:
@@ -187,6 +189,8 @@ static const wchar_t* AccessibilityRoleName(AccessibilityRole role) {
             return L"slider";
         case AccessibilityRole::SpinButton:
             return L"spinbutton";
+        case AccessibilityRole::Status:
+            return L"status";
         case AccessibilityRole::Switch:
             return L"switch";
         case AccessibilityRole::Tab:
@@ -1011,6 +1015,8 @@ HRESULT WinAccessibilityNode::GetPropertyValue(PROPERTYID property,
         VariantInit(out);
         out->vt = VT_BSTR;
         out->bstrVal = SysAllocString(AccessibilityRoleName(info.role));
+    } else if (property == UIA_LiveSettingPropertyId) {
+        VariantInt(out, (int)info.live);
     } else if (property == UIA_IsEnabledPropertyId) {
         VariantBool(out, !info.disabled);
     } else if (property == UIA_IsControlElementPropertyId ||
@@ -2493,6 +2499,13 @@ void AccessibilityWinTreeChanged(WinAccessibility* accessibility) {
         UiaRaiseStructureChangedEvent(
             static_cast<IRawElementProviderSimple*>(accessibility),
             StructureChangeType_ChildrenInvalidated, nullptr, 0);
+        const auto& nodes = accessibility->win->accessibility;
+        for (int i = 0; i < len(nodes); i++) {
+            if (nodes[i].liveChanged) {
+                AccessibilityRaiseNodeEvent(accessibility, i,
+                                            UIA_LiveRegionChangedEventId);
+            }
+        }
     }
     AccessibilityDocumentsChanged(accessibility, listening);
 }

@@ -1554,6 +1554,66 @@ static void ADocumentSourceEnumeratesItsPartsOnDemand() {
     FreeAccessibilityFrame(&f);
 }
 
+// crates/kit/tests/integration/live_region.rs
+static void LiveRegionAnnouncesChangesAndKeepsTheSameNodeIdentity() {
+    struct Host {
+        bool show = true;
+        bool sibling = false;
+        Str id = StrL("status");
+        Str text = StrL("Saved 3 files");
+        static El* Render(Host* self, Ctx* cx) {
+            El* root = Div(cx->a);
+            if (self->sibling) {
+                root->Child(Div(cx->a)->Role(AccessibilityRole::Heading));
+            }
+            if (self->show) {
+                root->Child(component::LiveRegion::New(cx, self->id, self->text)
+                                ->Assertive()
+                                ->IntoEl());
+            }
+            return root;
+        }
+    };
+    App* app = TestAppNew();
+    auto view = EntityNew<Host>(app);
+    Host* host = view.Get(app);
+    Window* win = TestWindowOpen(app, view, 240, 140);
+    utassert(len(win->accessibility) == 1);
+    const auto status = [&]() -> const AccessibilityNode& {
+        return win->accessibility[len(win->accessibility) - 1];
+    };
+    utassert(status().info.role == AccessibilityRole::Status);
+    utassert(status().info.live == AccessibilityLive::Assertive);
+    utassert(StrEq(status().info.label, host->text));
+    utassert(StrEq(status().info.value, host->text));
+    utassert(status().liveChanged && !win->focusId);
+    uint32_t path = status().livePath;
+    host->sibling = true;
+    TestDraw(win);
+    utassert(len(win->accessibility) == 2 && !status().liveChanged);
+    utassert(status().livePath == path);
+    host->text = StrL("Could not save");
+    TestDraw(win);
+    utassert(status().liveChanged);
+    host->text = {};
+    TestDraw(win);
+    utassert(!status().liveChanged && len(status().info.label) == 0 &&
+             len(status().info.value) == 0);
+    host->text = StrL("Could not save");
+    TestDraw(win);
+    utassert(status().liveChanged);
+    host->id = StrL("new-status");
+    TestDraw(win);
+    utassert(status().livePath != path && status().liveChanged);
+    host->show = false;
+    TestDraw(win);
+    utassert(len(win->accessibility) == 1);
+    host->show = true;
+    TestDraw(win);
+    utassert(status().liveChanged && !win->focusId);
+    TestAppFree(app);
+}
+
 void TestAccessibility() {
     TextViewPublishesItsRenderedBodyToAccessibility();
     ButtonExposesOptionalDisclosureState();
@@ -1590,4 +1650,5 @@ void TestAccessibility() {
     ALongDocumentExposesOnlyTheCaretExcerpt();
     ADocumentSourceIsReadOnDemand();
     ADocumentSourceEnumeratesItsPartsOnDemand();
+    LiveRegionAnnouncesChangesAndKeepsTheSameNodeIdentity();
 }

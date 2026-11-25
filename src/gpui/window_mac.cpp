@@ -246,6 +246,13 @@ static NSArray* GpuiAccessibilityChildren(gpui::Window* win, int parent) {
     return node ? GpuiAccessibilityRole(node->info.role)
                 : NSAccessibilityUnknownRole;
 }
+- (NSString*)accessibilitySubrole {
+    const gpui::AccessibilityNode* node = GpuiAccessibilityNode(self);
+    if (node && node->info.role == gpui::AccessibilityRole::Status) {
+        return @"AXApplicationStatus";
+    }
+    return [super accessibilitySubrole];
+}
 - (NSString*)accessibilityLabel {
     const gpui::AccessibilityNode* node = GpuiAccessibilityNode(self);
     return node ? GpuiAccessibilityString(node->info.label) : @"";
@@ -2458,6 +2465,21 @@ void PlatAccessibilityTreeChanged(Window* win) {
     [win->plat->accessibilityElements removeObjectsForKeys:stale];
     NSAccessibilityPostNotification(win->plat->view,
                                     NSAccessibilityLayoutChangedNotification);
+    for (int i = 0; i < len(win->accessibility); i++) {
+        const auto& node = win->accessibility[i];
+        if (!node.liveChanged) continue;
+        NSString* announcement = GpuiAccessibilityString(node.info.value);
+        if (!announcement) continue;
+        auto priority = node.info.live == AccessibilityLive::Assertive
+                            ? NSAccessibilityPriorityHigh
+                            : NSAccessibilityPriorityMedium;
+        NSAccessibilityPostNotificationWithUserInfo(
+            win->plat->window, NSAccessibilityAnnouncementRequestedNotification,
+            @{
+                NSAccessibilityAnnouncementKey : announcement,
+                NSAccessibilityPriorityKey : @(priority)
+            });
+    }
 }
 
 void PlatAccessibilityFocusChanged(Window* win, int focusId) {

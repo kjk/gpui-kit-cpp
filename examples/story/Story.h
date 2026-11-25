@@ -46,6 +46,7 @@ enum {
     StoryLabel,
     StoryLayoutDirection,
     StoryList,
+    StoryLiveRegion,
     StoryMenu,
     StoryMarker,
     StoryMessage,

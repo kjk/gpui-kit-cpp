@@ -316,6 +316,34 @@ static uint64_t AccessibilityHashStr(uint64_t hash, Str value) {
                : hash;
 }
 
+static bool AccessibilityTrackLiveRegions(Window* win) {
+    int previous = win->accessibilityLiveFrame;
+    win->accessibilityLiveFrame = 1 - previous;
+    const auto& last = win->accessibilityLive[previous];
+    auto& current = win->accessibilityLive[win->accessibilityLiveFrame];
+    VecClear(current);
+    bool announce = false;
+    for (int i = 0; i < len(win->accessibility); i++) {
+        auto& node = win->accessibility[i];
+        Str text = node.info.label;
+        if (node.info.live == AccessibilityLive::Off || len(text) == 0) {
+            continue;
+        }
+        uint32_t path = node.livePath ? node.livePath : node.id;
+        uint64_t textHash = AccessibilityHashStr(0xcbf29ce484222325ull, text);
+        node.liveChanged = true;
+        for (int j = 0; j < len(last); j++) {
+            if (last[j].path == path) {
+                node.liveChanged = last[j].textHash != textHash;
+                break;
+            }
+        }
+        announce |= node.liveChanged;
+        VecAppend(current, AccessibilityLiveSnapshot{path, textHash});
+    }
+    return announce;
+}
+
 static uint64_t AccessibilityTreeHash(const Vec<AccessibilityNode>& nodes) {
     uint64_t hash = 0xcbf29ce484222325ull;
     hash = AccessibilityHashBytes(hash, &nodes.len, (int)sizeof(len(nodes)));
@@ -337,6 +365,7 @@ static uint64_t AccessibilityTreeHash(const Vec<AccessibilityNode>& nodes) {
         GPUI_A11Y_HASH(node.document.textRevision);
         GPUI_A11Y_HASH(node.document.selectionRevision);
         GPUI_A11Y_HASH(info.role);
+        GPUI_A11Y_HASH(info.live);
         hash = AccessibilityHashStr(hash, info.authorId);
         hash = AccessibilityHashStr(hash, info.label);
         hash = AccessibilityHashStr(hash, info.description);
@@ -619,6 +648,7 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     win->rendered.len = 0;
     VecClear(win->debugViewRoots);
     win->hasRovingTabs = false;
+    win->hasLiveRegions = false;
     El* root = EntityRender(win->app, win, win->frameArena, win->root);
     // Rust draws the prompt in place of a drag or a tooltip.
     El* prompt = win->prompt.IsValid()
@@ -676,12 +706,14 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
             AccessibilityCollect(root, &win->accessibility);
             uint64_t accessibilityHash =
                 AccessibilityTreeHash(win->accessibility);
-            if (accessibilityHash != win->accessibilityHash) {
+            bool announce = AccessibilityTrackLiveRegions(win);
+            if (announce || accessibilityHash != win->accessibilityHash) {
                 win->accessibilityHash = accessibilityHash;
                 PlatAccessibilityTreeChanged(win);
             }
         } else {
             win->accessibilityHash = 0;
+            VecClear(win->accessibilityLive[win->accessibilityLiveFrame]);
         }
         // A dialog that has just opened takes focus into itself, which is what
         // Rust gets from tracking focus on the trap container.

@@ -40,6 +40,7 @@
 #include "ui/input.h"
 #include "ui/kbd.h"
 #include "ui/label.h"
+#include "ui/live_region.h"
 #include "ui/link.h"
 #include "ui/list.h"
 #include "ui/marker.h"

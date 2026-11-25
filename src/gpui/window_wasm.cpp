@@ -1043,8 +1043,37 @@ void PlatInstallAccessibilityHitTest(Window* win) {
     (void)win;
 }
 
+EM_JS(void, GpJsAnnounceStatus, (int assertive, const char* bytes, int size), {
+    const text = UTF8ToString(bytes, size);
+    const id = assertive ? "gpui-assertive-status" : "gpui-polite-status";
+    let region = document.getElementById(id);
+    if (!region) {
+        region = document.createElement("div");
+        region.id = id;
+        region.setAttribute("aria-live", assertive ? "assertive" : "polite");
+        region.style.cssText =
+            "position:absolute;width:1px;height:1px;overflow:hidden;" +
+            "clip-path:inset(50%)";
+        document.body.appendChild(region);
+    }
+    requestAnimationFrame(function() {
+        const message = document.createElement("div");
+        message.textContent = text;
+        region.appendChild(message);
+        setTimeout(function() { message.remove(); }, 5000);
+    });
+});
+
 void PlatAccessibilityTreeChanged(Window* win) {
-    (void)win;
+    if (!win || !win->plat) return;
+    for (int i = 0; i < len(win->accessibility); i++) {
+        const auto& node = win->accessibility[i];
+        if (node.liveChanged) {
+            Str text = node.info.label;
+            GpJsAnnounceStatus(node.info.live == AccessibilityLive::Assertive,
+                               text.s, len(text));
+        }
+    }
 }
 
 void PlatAccessibilityFocusChanged(Window* win, int focusId) {
@@ -1054,8 +1083,7 @@ void PlatAccessibilityFocusChanged(Window* win, int focusId) {
 
 // A canvas has no native accessibility API, so nothing reads the tree.
 bool PlatAccessibilityWanted(Window* win) {
-    (void)win;
-    return false;
+    return win && win->hasLiveRegions;
 }
 
 bool PlatReduceMotion() {

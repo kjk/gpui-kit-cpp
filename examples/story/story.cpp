@@ -139,6 +139,8 @@ static const StoryInfo kMeta[StoryCount] = {
     {"layout-direction", "Layout Direction",
      "Right-to-left layout follows one global direction for the whole app."},
     {"list", "List", "A list displays a series of items."},
+    {"live-region", "LiveRegion",
+     "Announce status changes to screen readers without moving focus."},
     {"menu", "Menu", "Popup menu and context menu"},
     {"marker", "Marker",
      "A compact row for conversation status, notifications, and separators."},
