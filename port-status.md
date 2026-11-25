@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `e97fe438129c5e4ccab504f2e6fafd9a4e396bba` (2026-11-23,
-chore: Bump v0.11.0 (#4092)).
-Advanced the workspace to 0.11.0 and the Zed reference to gpui-pre 0.3.14.
+Processed through `59d2accb8d55555842071833ddec3c242a609cdd` (2026-11-24,
+text: Share a paragraph's cached highlights with its inline flow (#4093)).
+The parsed Markdown cache already shares run marks and links with the inline renderer. A regression test checks their identity across frames.
 The current update target is
 `832cfdc0baef92855191dfdbbbcacd75f59d3df0`.
 

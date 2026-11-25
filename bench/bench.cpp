@@ -97,9 +97,9 @@ void BenchCase(const char* group, const char* name, const char* unit,
     for (int i = 0; i < n; i++) {
         // Rust's `iter_batched`: the setup is outside the measurement.
         setup.Call();
-        double start = TimeNow();
+        double start = ClockMonotonicSecondsSinceStart();
         run.Call();
-        double elapsed = TimeNow() - start;
+        double elapsed = ClockMonotonicSecondsSinceStart() - start;
         VecAppend(times, elapsed);
     }
 
@@ -176,6 +176,7 @@ int GpuiMain(int argc, char** argv) {
     BenchHtml5ever();
     BenchMotion();
     BenchTableFrames();
+    BenchTextViewFrames();
     printf("\nelapsed %.1fs\n", TimeNow() - started);
     return 0;
 }

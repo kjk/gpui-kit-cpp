@@ -3004,6 +3004,40 @@ static void AnUnchangedFlowIsNotLaidOutAgain() {
     AppGlobalClear(&app);
 }
 
+// text/node.rs inline_flow_items_share_the_cached_highlights_and_links.
+static void InlineFlowSharesCachedMarksAndLinks() {
+    App app;
+    ThemeSet(&app, ThemeMode::Light);
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    Str source = StrL("[see](https://example.com) `run()`");
+    const MdRun* first = nullptr;
+    for (int frame = 0; frame < 3; frame++) {
+        a->Reset();
+        auto* view = TextView::New(&cx, source);
+        MdNode* doc =
+            MdParseCachedForTest(&cx, a, source, &view->markdownExtensions);
+        LayoutEl(nullptr, view->RenderDocument(doc), 0, 0, 400, 300, 14,
+                 Rgba{});
+        const MdRun* run = doc->first->runFirst;
+        if (frame == 0) {
+            first = run;
+        }
+        utassert(run == first);
+        utassert(run && (run->marks & MdLink) &&
+                 StrEq(run->href, StrL("https://example.com")));
+        const MdRun* code = RunText(doc->first->runFirst, "run()");
+        utassert(code && (code->marks & MdCode));
+    }
+    WindowKeyedFree(win);
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
 static bool ListBodyIsFlexAuto(El* e) {
     if (!e) {
         return false;
@@ -10865,6 +10899,7 @@ void TestTextView() {
     if (TestMarkdownIsFull()) FlowPositionSkipsBlocksThatRenderNothing();
     FlowPositionReportsThePreviousHeadingOrRule();
     AnUnchangedFlowIsNotLaidOutAgain();
+    InlineFlowSharesCachedMarksAndLinks();
     InlineCodeLineIsAsTallAsAPlainLine();
     OversizedInlineCodeWrapsWithOneInsetPerSide();
     ClosingMarkAndSpaceStayWithInlineCode();

@@ -163,5 +163,6 @@ void BenchHtml5ever();
 void BenchMotion();
 // bench/TableFrameBench.cpp - the DataTable and uniform-list frame cases.
 void BenchTableFrames();
+void BenchTextViewFrames();
 
 #endif // GPUI_BENCH_H_
