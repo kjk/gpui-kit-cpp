@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `2fa019b5d42f7a554fccc729ea642478e5b93889` (2026-11-25,
-input: Add ReplaceNext and ReplaceAll actions to the search panel (#4122)).
-Replace actions use the search panel replacement field from the editor and panel.
+Processed through `c148acddf16bb869cd3a7d707520bd0a5b67820d` (2026-11-25,
+markdown: Join a soft break between CJK characters without a space (#4123)).
+Markdown soft breaks between wide East Asian characters leave no rendered space and preserve source selection offsets.
 The current update target is
 `9d70dc57d7152442855e0d4064e518d9dc238554`.
 

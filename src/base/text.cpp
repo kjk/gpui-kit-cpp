@@ -2298,8 +2298,18 @@ static bool MdClaimedInline(MdBuild* b, const md::Node* n, MarkdownNode* out) {
     return false;
 }
 
-// Fold prose white space after mdast has already distinguished soft breaks
-// from explicit break and code nodes. Keep the parser's slice when unchanged.
+// markdown.rs is_east_asian_wide. Hangul keeps the inter-word space.
+static bool MarkdownEastAsianWide(uint32_t c) {
+    return (c >= 0x2E80 && c <= 0x2FFF) || (c >= 0x3000 && c <= 0x303E) ||
+           (c >= 0x3041 && c <= 0x312F) || (c >= 0x3190 && c <= 0x33FF) ||
+           (c >= 0x3400 && c <= 0x4DBF) || (c >= 0x4E00 && c <= 0xA4CF) ||
+           (c >= 0xF900 && c <= 0xFAFF) || (c >= 0xFE30 && c <= 0xFE4F) ||
+           (c >= 0xFF01 && c <= 0xFF9F) || (c >= 0xFFE0 && c <= 0xFFE6) ||
+           (c >= 0x1AFF0 && c <= 0x1B2FF) || (c >= 0x20000 && c <= 0x3FFFD);
+}
+
+// Fold prose whitespace after mdast has separated hard breaks and code
+// nodes. A soft break between wide East Asian characters joins them.
 static Str CollapseMarkdownSpace(Arena* a, Str value) {
     bool spaced = false;
     int changed = 0;
@@ -2313,14 +2323,33 @@ static Str CollapseMarkdownSpace(Arena* a, Str value) {
     if (changed == len(value)) return value;
     StrBuilder text(a);
     text.Reserve(len(value));
-    text.Append(Str(value.s, changed));
-    for (int i = changed; i < len(value); i++) {
-        char c = value.s[i];
-        bool space = c == ' ' || c == '\t' || c == '\n' || c == '\r';
-        if (!space || !spaced) {
-            text.AppendChar(space ? ' ' : c);
+    auto isSpace = [](char c) {
+        return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+    };
+    for (int i = 0; i < len(value);) {
+        int start = i;
+        if (!isSpace(value.s[i])) {
+            do {
+                i++;
+            } while (i < len(value) && !isSpace(value.s[i]));
+            text.Append(Str(value.s + start, i - start));
+            continue;
         }
-        spaced = space;
+        int breaks = 0;
+        do {
+            char c = value.s[i++];
+            if (c == '\r' && i < len(value) && value.s[i] == '\n') i++;
+            if (c == '\r' || c == '\n') breaks++;
+        } while (i < len(value) && isSpace(value.s[i]));
+        if (breaks == 1 && start > 0 && i < len(value)) {
+            uint32_t before = 0;
+            uint32_t after = 0;
+            Utf8At(value, Utf8Prev(value, start), &before);
+            Utf8At(value, i, &after);
+            if (MarkdownEastAsianWide(before) && MarkdownEastAsianWide(after))
+                continue;
+        }
+        text.AppendChar(' ');
     }
     return text.TakeStr();
 }

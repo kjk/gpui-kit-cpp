@@ -736,6 +736,33 @@ static void TestMarkdownSoftBreak(Arena* a) {
     utassert(TextIs(a, Child(doc, 0), "a b\nc"));
 }
 
+// markdown.rs soft_break_between_cjk_characters_joins_without_a_space.
+static void TestMarkdownCjkSoftBreak(Arena* a) {
+    struct Case {
+        const char* source;
+        const char* expected;
+    };
+    const Case cases[] = {
+        {"第一行\n第二行", "第一行第二行"},
+        {"第一行\r\n第二行", "第一行第二行"},
+        {"第一行\r第二行", "第一行第二行"},
+        {"第一行 \n  第二行", "第一行第二行"},
+        {"日本語の\nテキスト", "日本語のテキスト"},
+        {"句子结束。\n下一句", "句子结束。下一句"},
+        {"（括号）\n继续", "（括号）继续"},
+        {"ｶﾀｶﾅ\nｶﾀｶﾅ", "ｶﾀｶﾅｶﾀｶﾅ"},
+        {"中文\nEnglish", "中文 English"},
+        {"English\n中文", "English 中文"},
+        {"中文,\n中文", "中文, 中文"},
+        {"한국어\n문장", "한국어 문장"},
+        {"one\ntwo", "one two"},
+    };
+    for (const Case& c : cases) {
+        MdNode* doc = MdParse(a, Str(c.source));
+        utassert(TextIs(a, Child(doc, 0), c.expected));
+    }
+}
+
 // markdown.rs white_space_folds_like_html.
 static void TestMarkdownWhitespaceFoldsLikeHtml(Arena* a) {
     MdNode* doc = MdParse(a, StrL("two  spaces\n\nText <!-- note --> "
@@ -4361,6 +4388,10 @@ static void TestSourceRangesAcrossFoldedWhitespace() {
 }
 
 static void TestSourceRangeSoftBreaks() {
+    // selected_source_range_maps_cjk_joined_across_a_soft_break.
+    utassert(RangeIs("第一\n第二", 0, 6, "0..6"));
+    utassert(RangeIs("第一\n第二", 6, 12, "7..13"));
+    utassert(RangeIs("第一\n第二", 0, 12, "0..13"));
     utassert(RangeIs("a\n   b", 0, 1, "0..1"));
     utassert(RangeIs("a\n   b", 2, 3, "5..6"));
     utassert(RangeIs("a\n   b", 0, 3, "0..6"));
@@ -11129,6 +11160,7 @@ void TestTextView() {
     TestHtmlTrailingBreaksAtTextBlocks(a);
     TestMarkdownHardBreak(a);
     TestMarkdownSoftBreak(a);
+    TestMarkdownCjkSoftBreak(a);
     if (TestMarkdownIsFull()) TestMarkdownWhitespaceFoldsLikeHtml(a);
     TestMarkdownWhitespaceKeepsLeadingCodeSpaces(a);
     TestHtmlImage(a);
