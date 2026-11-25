@@ -2938,6 +2938,10 @@ struct EditorUnderlay {
     float textOriginOffset = 0;
     ArenaVec<El*> gutters;
     ArenaVec<El*> gutterMarks;
+    float gutterStrip = 0;
+    float decorationsX = 0;
+    bool mirrorMarks = false;
+    float leftGutterInset = 0;
     Bounds textMask = {};
     El** lineBands = nullptr;
     Selection bandRows = {};
@@ -3047,27 +3051,29 @@ static void PaintEditorUnderlay(PaintCtx* ctx, El* e, void* user) {
     Bounds viewport = ctx->hasHitMask ? ctx->hitMask : e->Bounds();
     bool rightGutter = s->gutterSide == Side::Right;
     float fixedX = e->x + s->scrollX;
+    float gutterX = fixedX + u->leftGutterInset;
     float left = fixedX + (rightGutter ? u->textOriginOffset
-                                       : std::max(s->scrollbarClearance,
-                                                  s->gutterLaneW));
+                                       : gutterX - fixedX + s->gutterLaneW);
     float right = viewport.Right();
     if (rightGutter && s->gutterLaneW > 0) {
         if (s->viewW > 0) {
             right = std::min(right, fixedX + s->viewW);
         }
         right -= s->gutterLaneW;
-        for (int i = 0; i < len(u->gutters); i++) {
-            El* gutter = u->gutters[i];
-            gutter->PaintOffset(right - gutter->x, 0);
-            if (i == 0) {
-                s->gutterBox = {right, gutter->y, gutter->w, gutter->h};
-            }
+        gutterX = right;
+    }
+    for (int i = 0; i < len(u->gutters); i++) {
+        El* gutter = u->gutters[i];
+        gutter->PaintOffset(gutterX - gutter->x, 0);
+        if (i == 0) {
+            s->gutterBox = {gutterX, gutter->y, gutter->w, gutter->h};
         }
-        for (int i = 0; i < len(u->gutterMarks); i++) {
-            El* mark = u->gutterMarks[i];
-            float x = right + s->gutterLaneW - (mark->x - e->x) - mark->w;
-            mark->PaintOffset(x - mark->x, 0);
-        }
+    }
+    for (int i = 0; i < len(u->gutterMarks); i++) {
+        El* mark = u->gutterMarks[i];
+        float x = mark->x - e->x;
+        if (u->mirrorMarks) x = u->gutterStrip - x - mark->w;
+        mark->PaintOffset(gutterX + u->decorationsX + x - mark->x, 0);
     }
     left = ClampF(left, viewport.x, viewport.x + viewport.w);
     u->textMask = {left, viewport.y, std::max(0.f, right - left), viewport.h};
@@ -3458,9 +3464,21 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             : 0.f;
     // An empty decoration collection still reserves its lane.
     float gutterStrip = InputGutterStripWidth(state);
+    const float laneWidths[] = {foldW, numW, gutterStrip};
     state->gutterLaneW = gutterStrip + numW + foldW;
     state->gutterGap = numberGap;
     bool rightGutter = state->gutterSide == Side::Right;
+    GutterColumn order[3];
+    float laneX[3];
+    int laneIndex[3];
+    float laneOffset = 0;
+    for (int i = 0; i < 3; i++) {
+        GutterColumn lane = state->gutterOrder[rightGutter ? i : 2 - i];
+        order[i] = lane;
+        laneIndex[(int)lane] = i;
+        laneX[(int)lane] = laneOffset;
+        laneOffset += laneWidths[(int)lane];
+    }
     float gutterWidth = state->gutterLaneW + numberGap;
     float textOriginOffset =
         std::max(rightGutter ? 0.f : gutterWidth, state->scrollbarClearance);
@@ -3938,6 +3956,12 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         underlay->projected = projected;
         underlay->lineNumbers = lineNumbers;
         underlay->textOriginOffset = textOriginOffset;
+        underlay->gutterStrip = gutterStrip;
+        underlay->decorationsX = laneX[(int)GutterColumn::Decorations];
+        underlay->mirrorMarks = laneIndex[(int)GutterColumn::Decorations] >
+                                laneIndex[(int)GutterColumn::LineNumbers];
+        underlay->leftGutterInset =
+            rightGutter ? 0 : textOriginOffset - gutterWidth;
         if (InputHasLineDecorationProviders(state)) {
             TrackLineDecorationBands(underlay, a, {firstRow, endRow});
         }
@@ -4338,7 +4362,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             }
         }
         MaskEditorText(el, underlay);
-        if (!lineNumbers && !folding) {
+        if (state->gutterLaneW <= 0.f) {
             if (textReservation > 0) {
                 // Offset the run itself so range geometry and hit testing
                 // use the same origin as the painted text.
@@ -4371,10 +4395,10 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                        ->H((float)nVis * lineH)
                        ->ItemsStart();
         if (rightGutter) {
-            band->PadL(textOriginOffset)->PadR(gutterStrip);
+            band->PadL(textOriginOffset);
             band->Child(el);
         } else {
-            band->PadL(gutterStrip + textOriginOffset - gutterWidth);
+            band->PadL(textOriginOffset - gutterWidth);
         }
         // active_line: the wash under the line the caret is on, gutter and
         // all, and the editor's padding left of the gutter. The column
@@ -4402,30 +4426,26 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                 numCell->JustifyEnd();
             }
         }
-        El* gutter = numCell;
+        El* gutter = Div(a)->FlexRow()->ItemsCenter()->H(lineH)->Shrink0();
+        El* fold = nullptr;
         if (folding) {
             // The line-number column and the fold icons are one hit strip,
             // the way Rust's line_number_hitbox covers both. PathClick on
             // every row so entering the gutter from the text changes hover
             // id and rebuilds -- otherwise the editor already owns hover and
             // a move over the numbers would not show the chevrons.
-            // The fold hitbox starts where the numbers end: Rust widens
-            // the column by FOLD_ICON_HITBOX_WIDTH and puts the icon in it.
-            gutter = Div(a)
-                         ->FlexRow()
-                         ->ItemsCenter()
-                         ->H(lineH)
-                         ->Shrink0()
-                         ->PathClick(StrDup(a, fmt("gutter-%d", row)));
-            El* fold = FoldChevron(a, state, style, row, activeRow, lineH,
-                                   gutterHover);
-            if (rightGutter) {
-                gutter->Child(fold)->Child(numCell);
-            } else {
-                gutter->Child(numCell)->Child(fold);
-            }
+            gutter->PathClick(StrDup(a, fmt("gutter-%d", row)));
+            fold = FoldChevron(a, state, style, row, activeRow, lineH,
+                               gutterHover);
         }
-        if (rightGutter && underlay) {
+        El* decorations = gutterStrip > 0.f
+                              ? Div(a)->W(gutterStrip)->H(lineH)->Shrink0()
+                              : nullptr;
+        El* lanes[] = {fold, numCell, decorations};
+        for (GutterColumn lane : order) {
+            gutter->Child(lanes[(int)lane]);
+        }
+        if (underlay) {
             underlay->gutters.Append(a, gutter);
         } else if (row == firstRow) {
             gutter->BoundsOut(&state->gutterBox);
@@ -4549,7 +4569,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                         mark->Radius(markW * 0.5f);
                     }
                     col->Child(mark);
-                    if (rightGutter && underlay) {
+                    if (underlay) {
                         underlay->gutterMarks.Append(a, mark);
                     }
                 }
@@ -6405,6 +6425,27 @@ void InputSetEditorPaddings(InputState* s, Edges paddings) {
 void InputSetGutterSide(InputState* s, Side side, App* app, Window* win) {
     if (s && s->gutterSide != side) {
         s->gutterSide = side;
+        Notify(app, win);
+    }
+}
+
+void InputSetGutterOrder(InputState* s, const GutterColumn* columns, int count,
+                         App* app, Window* win) {
+    if (!s) return;
+    GutterColumn order[3];
+    unsigned seen = 0;
+    int n = 0;
+    auto add = [&](GutterColumn column) {
+        unsigned index = (unsigned)column;
+        if (index < 3 && !(seen & (1u << index))) {
+            order[n++] = column;
+            seen |= 1u << index;
+        }
+    };
+    for (int i = 0; columns && i < count && n < 3; i++) add(columns[i]);
+    for (GutterColumn column : kDefaultGutterOrder) add(column);
+    if (memcmp(s->gutterOrder, order, sizeof(order)) != 0) {
+        memcpy(s->gutterOrder, order, sizeof(order));
         Notify(app, win);
     }
 }

@@ -42,6 +42,10 @@ struct EditorScrollbarContext {
 
 void InputSetEditorPaddings(InputState* s, Edges paddings);
 void InputSetGutterSide(InputState* s, Side side, App* app, Window* win);
+// Listed lanes come first. Repeated lanes are ignored, omitted lanes keep
+// their default relative order. Null or an empty list restores the default.
+void InputSetGutterOrder(InputState* s, const GutterColumn* columns, int count,
+                         App* app, Window* win);
 void InputSetScrollbarPlacement(InputState* s, ScrollbarPlacement placement,
                                 App* app, Window* win);
 void SetScrollbarRenderer(InputState* s, EditorScrollbarRenderer renderer,

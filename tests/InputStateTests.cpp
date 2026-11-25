@@ -11912,6 +11912,41 @@ static void EditorDisplayMapVersionFollowsWrappingFoldingAndEdits() {
     utassert(InputDisplayRowCount(map) == 2);
 }
 
+// element.rs custom gutter column order.
+static void GutterColumnOrderNormalizesAndMirrorsTheLanes() {
+    DecorationEditor d = DecorationEditorOpen("fn f() {\n    x();\n}\n", false);
+    InputState* s = d.editor;
+    auto decorations = InputCreateGutterDecorationsCollection(s, nullptr, 0);
+    FoldRange fold = {0, 2};
+    InputSetFoldCandidates(s, &fold, 1);
+    const GutterColumn chosen[] = {GutterColumn::Decorations,
+                                   GutterColumn::LineNumbers,
+                                   GutterColumn::Decorations};
+    InputSetGutterOrder(s, chosen, 3, d.app, d.win);
+    utassert(s->gutterOrder[0] == GutterColumn::Decorations);
+    utassert(s->gutterOrder[1] == GutterColumn::LineNumbers);
+    utassert(s->gutterOrder[2] == GutterColumn::FoldIcons);
+    for (Side side : {Side::Left, Side::Right}) {
+        InputSetGutterSide(s, side, d.app, d.win);
+        TestDraw(d.win);
+        TestDraw(d.win);
+        utassert(len(s->foldIcons) == 1);
+        if (len(s->foldIcons) == 1) {
+            Bounds icon = s->foldIcons[0].bounds;
+            if (side == Side::Left) {
+                utassertnear(icon.x, s->gutterBox.x);
+            } else {
+                utassertnear(icon.Right(), s->gutterBox.Right());
+            }
+        }
+    }
+    InputSetGutterOrder(s, nullptr, 0, d.app, d.win);
+    utassert(s->gutterOrder[0] == GutterColumn::FoldIcons);
+    utassert(s->gutterOrder[2] == GutterColumn::Decorations);
+    decorations.Clear();
+    TestAppFree(d.app);
+}
+
 // element.rs text_origin_offset_tracks_rendered_gutter_and_scrolling.
 static void EditorTextOriginOffsetFollowsTheLaidOutGutter() {
     struct Host {
@@ -12876,6 +12911,7 @@ static void RunElementWindowTests() {
     EditorTextIsClippedToItsSideOfTheGutter();
     EditorRightGutterKeepsTheTextAndHitGeometryOnItsOwnSide();
     EditorDisplayMapVersionFollowsWrappingFoldingAndEdits();
+    GutterColumnOrderNormalizesAndMirrorsTheLanes();
     GutterDecorationsStartingInAFoldMarkItsRowAndTheRest();
     GutterDecorationsOnlyLayOutTheVisibleRows();
     OverviewRulerMarksFollowTheContentHeightAndMerge();

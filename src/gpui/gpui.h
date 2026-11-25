@@ -35,6 +35,17 @@ enum class Side : uint8_t {
     Right
 };
 
+// Editor gutter lanes from the text outward, on either side.
+enum class GutterColumn : uint8_t {
+    FoldIcons,
+    LineNumbers,
+    Decorations,
+};
+
+inline constexpr GutterColumn kDefaultGutterOrder[] = {
+    GutterColumn::FoldIcons, GutterColumn::LineNumbers,
+    GutterColumn::Decorations};
+
 // gpui::ClipboardItem, flattened for the port's POD boundary. Every field is
 // borrowed from the Arena passed to ClipboardGetItem: text is UTF-8, image is
 // an encoded image stream accepted by ImageSource::FromImage, and external
@@ -5958,6 +5969,8 @@ struct InputState {
     float gutterGap = 0;
     float scrollbarClearance = 0;
     Side gutterSide = Side::Left;
+    GutterColumn gutterOrder[3] = {
+        kDefaultGutterOrder[0], kDefaultGutterOrder[1], kDefaultGutterOrder[2]};
     bool softWrap = true;
     // show_whitespaces: paint a mid-dot on every space and an arrow on
     // every tab. Off until the editor's status bar turns it on.

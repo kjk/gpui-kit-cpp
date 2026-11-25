@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f8993a53721439f119d492fbf3c57c0b963e33f5` (2026-11-25,
-editor: Add a version to the display map (#4100)).
-Expose the editor-owned display projection and invalidate cached queries when its rows change.
+Processed through `7f82f479e43d1a886bccf63bf4eaa8cdeb815ab2` (2026-11-25,
+editor: Let the gutter's columns be put in a chosen order (#4117)).
+Allow callers to reorder gutter columns from the text outward on either side.
 The current update target is
 `832cfdc0baef92855191dfdbbbcacd75f59d3df0`.
 
