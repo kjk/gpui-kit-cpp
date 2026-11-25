@@ -1655,7 +1655,7 @@ HRESULT WinAccessibilityNode::RangeFromPoint(UiaPoint point,
         return hr;
     }
     Str text = WindowAccessibilityTextValue(*node);
-    if (!node->input) {
+    if (!node->input || node->textExcerpt.s) {
         *out = new WinTextRange(root, id, 0, 0);
         return S_OK;
     }
@@ -2192,12 +2192,12 @@ HRESULT WinTextRange::Select() {
         return UIA_E_ELEMENTNOTAVAILABLE;
     }
     Clamp();
-    Str text = InputValue(node->input);
+    Str text = WindowAccessibilityTextValue(*node);
     int lo = RopeOffsetUtf16ToOffset(text, start);
     int hi = RopeOffsetUtf16ToOffset(text, end);
-    InputSetSelectedRange(node->input, root->win->app, root->win, lo, hi);
-    AppInvalidate(root->win);
-    return S_OK;
+    return WindowAccessibilitySetTextSelection(root->win, *node, {lo, hi})
+               ? S_OK
+               : UIA_E_ELEMENTNOTAVAILABLE;
 }
 
 HRESULT WinTextRange::AddToSelection() {

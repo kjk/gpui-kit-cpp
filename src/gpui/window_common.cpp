@@ -1647,10 +1647,13 @@ Str WindowAccessibilityTextValue(const AccessibilityNode& node) {
         return text.s ? text : StrL("");
     }
     if (node.info.role == AccessibilityRole::Document) return node.info.value;
-    if (!node.input || !node.info.value.s ||
-        !AccessibilityRoleTakesText(node.info.role) ||
+    if (!node.input || !AccessibilityRoleTakesText(node.info.role) ||
         node.info.role == AccessibilityRole::PasswordInput ||
         node.input->masked || !node.input->accessibilityValueExposed) {
+        return {};
+    }
+    if (node.textExcerpt.s) return node.textExcerpt;
+    if (!node.info.value.s || !InputExposesFullAccessibilityText(node.input)) {
         return {};
     }
     Str text = InputValue(node.input);
@@ -1719,6 +1722,13 @@ bool WindowAccessibilityTextSelection(const AccessibilityNode& node,
     if (!WindowAccessibilityTextValue(node).s) return false;
     if (node.input) {
         *out = node.input->selectedRange;
+        if (node.textExcerpt.s) {
+            out->start =
+                std::max(0, std::min(out->start - node.textExcerptStart,
+                                     len(node.textExcerpt)));
+            out->end = std::max(0, std::min(out->end - node.textExcerptStart,
+                                            len(node.textExcerpt)));
+        }
         return true;
     }
     if (node.textSelectionStart < 0) return false;
@@ -1726,8 +1736,28 @@ bool WindowAccessibilityTextSelection(const AccessibilityNode& node,
     return true;
 }
 
+bool WindowAccessibilitySetTextSelection(Window* win,
+                                         const AccessibilityNode& node,
+                                         Selection range) {
+    Str text = WindowAccessibilityTextValue(node);
+    if (!win || !node.input || !text.s) return false;
+    int start = node.textExcerpt.s ? node.textExcerptStart : 0;
+    InputSetSelectedRange(node.input, win->app, win,
+                          start + ClampI(range.start, 0, len(text)),
+                          start + ClampI(range.end, 0, len(text)));
+    AppInvalidate(win);
+    return true;
+}
+
 int WindowAccessibilityTextCaret(const AccessibilityNode& node) {
-    if (node.input) return InputCursor(node.input);
+    if (node.input) {
+        int focus = InputCursor(node.input);
+        if (node.textExcerpt.s) {
+            focus = std::max(0, std::min(focus - node.textExcerptStart,
+                                         len(node.textExcerpt)));
+        }
+        return focus;
+    }
     Selection selection;
     if (node.document.text) {
         return WindowAccessibilityTextSelection(node, &selection)
@@ -1854,10 +1884,9 @@ bool WindowAccessibilityPerform(Window* win, uint32_t nodeId,
         // runs: InputReplaceAll is the programmatic path and lifts the edit
         // restrictions, so a field made read-only or disabled since the node
         // was collected must not be written through it.
-        if (!node.input || !InputIsEditable(node.input)) {
+        if (!InputAccessibilitySetValue(node.input, win->app, win, &value)) {
             return false;
         }
-        InputReplaceAll(node.input, win->app, win, value);
         AppInvalidate(win);
         return true;
     }

@@ -1754,7 +1754,7 @@ static Bounds TextBounds(const LinuxAccessible& object,
                          const AccessibilityNode& node, Selection bytes,
                          uint32_t coordType) {
     if (object.part >= 0) return ComponentBounds(object, coordType);
-    if (!node.input) return {};
+    if (!node.input || node.textExcerpt.s) return {};
     if (!InputIsSingleLine(node.input)) {
         return ComponentBounds(object, coordType);
     }
@@ -1833,13 +1833,10 @@ static bool HandleText(const Incoming& in, const LinuxAccessible& object) {
         }
         int lo = (int)ReadU32(in.body, in.bodyLen, &at);
         int hi = (int)ReadU32(in.body, in.bodyLen, &at);
-        if (node.input) {
-            InputSetSelectedRange(node.input, object.win->app, object.win,
-                                  Utf8ByteForCharacter(text, lo),
-                                  Utf8ByteForCharacter(text, hi));
-            AppInvalidate(object.win);
-        }
-        PutBool(&body, node.input != nullptr);
+        PutBool(&body, WindowAccessibilitySetTextSelection(
+                           object.win, node,
+                           {Utf8ByteForCharacter(text, lo),
+                            Utf8ByteForCharacter(text, hi)}));
         signature = "b";
     } else if (textInterface && StrIs(in.member, "RemoveSelection")) {
         if (node.input) {
@@ -1857,7 +1854,7 @@ static bool HandleText(const Incoming& in, const LinuxAccessible& object) {
         int y = ReadI32(in.body, in.bodyLen, &at);
         uint32_t coordType = ReadU32(in.body, in.bodyLen, &at);
         Point point = ComponentPointInWindow(object, x, y, coordType);
-        int offset = node.input
+        int offset = node.input && !node.textExcerpt.s
                          ? InputIndexForPosition(node.input, &object.win->paint,
                                                  point.x, point.y)
                          : -1;
@@ -1901,12 +1898,9 @@ static bool HandleText(const Incoming& in, const LinuxAccessible& object) {
         signature = "a{ss}ii";
     } else if (textInterface && StrIs(in.member, "SetCaretOffset")) {
         int offset = (int)ReadU32(in.body, in.bodyLen, &at);
-        if (node.input) {
-            InputMoveTo(node.input, object.win->app, object.win,
-                        Utf8ByteForCharacter(text, offset));
-            AppInvalidate(object.win);
-        }
-        PutBool(&body, node.input != nullptr);
+        int byte = Utf8ByteForCharacter(text, offset);
+        PutBool(&body, WindowAccessibilitySetTextSelection(object.win, node,
+                                                           {byte, byte}));
         signature = "b";
     } else if (editableInterface && StrIs(in.member, "SetTextContents")) {
         Str value = ReadString(in.body, in.bodyLen, &at);

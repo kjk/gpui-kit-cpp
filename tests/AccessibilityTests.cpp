@@ -734,6 +734,62 @@ static void ALargeDocumentIsNavigableFromStartToEnd() {
     FreeAccessibilityFrame(&f);
 }
 
+// a11y_text.rs bounded_excerpt_preserves_unicode_and_clips_reversed_selection
+// and state.rs accessibility_set_value_cannot_replace_a_bounded_document.
+static void ALongDocumentExposesOnlyTheCaretExcerpt() {
+    AccessibilityFrame f = NewAccessibilityFrame();
+    component::Init(&f.app);
+    InputState input;
+    input.kind = InputKind::Textarea;
+    auto collect = [&]() {
+        El* field = component::Textarea::New(&f.cx, StrL("bounded"), &input)
+                        ->Rows(3)
+                        ->IntoEl();
+        AccessibilityCollect(field, &f.win->accessibility);
+        return RoleNode(f.win->accessibility,
+                        AccessibilityRole::MultilineTextInput);
+    };
+
+    InputSetValue(&input, StrL("before"));
+    const AccessibilityNode* old = collect();
+    utassert(old && (old->actions & AccessibilityActionSetValue));
+    StrBuilder document(f.cx.a);
+    for (int i = 0; i < 3000; i++) document.Append(StrL("?"));
+    document.Append(StrL("here"));
+    Str cat = StrL("\xe7\x8c\xab");
+    while (len(document) <= kFullAccessibilityTextLimit) {
+        document.Append(cat);
+    }
+    Str source = document.TakeStr();
+    InputSetValue(&input, source);
+    if (old) {
+        utassert(!WindowAccessibilityPerform(f.win, old->id,
+                                             AccessibilityAction::SetValue,
+                                             StrL("replacement")));
+        utassert(StrEq(InputValue(&input), source));
+    }
+    InputSetSelectedRangeWithDirection(&input, &f.app, f.win, 3000, len(source),
+                                       true);
+    const AccessibilityNode* node = collect();
+    utassert(node && !node->info.value.s &&
+             !(node->actions & AccessibilityActionSetValue));
+    if (node) {
+        Str excerpt = WindowAccessibilityTextValue(*node);
+        utassert(len(excerpt) <= 4096 && StrEndsWith(excerpt, cat));
+        Selection selection = {};
+        utassert(WindowAccessibilityTextSelection(*node, &selection));
+        int caret = WindowAccessibilityTextCaret(*node);
+        utassert(selection.start == caret && selection.end == len(excerpt));
+        utassert(caret >= 0 && caret + 4 <= len(excerpt) &&
+                 StrEq(Str(excerpt.s + caret, 4), StrL("here")));
+        utassert(WindowAccessibilitySetTextSelection(f.win, *node,
+                                                     {caret + 1, caret + 3}));
+        utassert(input.selectedRange.start == 3001 && input.selectedRange
+                                                              .end == 3003);
+    }
+    FreeAccessibilityFrame(&f);
+}
+
 // crates/base/src/a11y_disabled.rs
 // a_disabled_control_marks_its_node_disabled. The wrapper there only sets
 // the flag GPUI's element had no setter for. El::AriaDisabled is that
@@ -1531,6 +1587,7 @@ void TestAccessibility() {
     SingleLineRangesUseTheCurrentFrameGeometry();
     MultilineAccessibilityKeepsLineBreaksAndSelection();
     ALargeDocumentIsNavigableFromStartToEnd();
+    ALongDocumentExposesOnlyTheCaretExcerpt();
     ADocumentSourceIsReadOnDemand();
     ADocumentSourceEnumeratesItsPartsOnDemand();
 }

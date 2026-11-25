@@ -107,9 +107,15 @@ void InputAccessibilityFocus(InputState* state, Window* win) {
     FocusHandleFocus(win, state->focus);
 }
 
+bool InputExposesFullAccessibilityText(const InputState* state) {
+    return state && (InputIsSingleLine(state) ||
+                     len(state->text) <= kFullAccessibilityTextLimit);
+}
+
 bool InputAccessibilitySetValue(InputState* state, App* app, Window* win,
                                 const Str* value) {
-    if (!state || !value || !InputIsEditable(state)) {
+    if (!state || !value || !InputIsEditable(state) ||
+        !InputExposesFullAccessibilityText(state)) {
         return false;
     }
     InputReplaceAll(state, app, win, *value);

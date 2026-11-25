@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "ab8922323411d99be5d2cef4b7e4683f02f854b4",
+  sha: "c77088781e9197e23392f66c0f1a9674868ec5b6",
   date: "2026-11-25",
-  subject: "form: Let a horizontal field's content and description shrink so long text wraps (#4108)",
+  subject: "input: Limit accessibility text to the caret's surroundings in large documents (#4110)",
   crates: {
     "gpui-kit": "0.11.0",
     "gpui-base": "0.11.0",

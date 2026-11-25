@@ -86,6 +86,8 @@ void InputSetAccessibility(InputState* state, const InputAccessibility& value);
 void InputAccessibilityFocus(InputState* state, Window* win);
 bool InputAccessibilitySetValue(InputState* state, App* app, Window* win,
                                 const Str* value);
+constexpr int kFullAccessibilityTextLimit = 1024 * 1024;
+bool InputExposesFullAccessibilityText(const InputState* state);
 
 // editor/mod.rs EditorLineNumberRenderer. Hooks live with the element for
 // this frame. The number lane is measured once before the editor wraps.

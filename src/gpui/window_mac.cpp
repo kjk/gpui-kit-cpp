@@ -438,9 +438,7 @@ static NSArray* GpuiAccessibilityChildren(gpui::Window* win, int parent) {
     int lo = gpui::RopeOffsetUtf16ToOffset(text, (int)range.location);
     int hi = gpui::RopeOffsetUtf16ToOffset(
         text, (int)(range.location + range.length));
-    gpui::InputSetSelectedRange(node->input, gpuiWindow->app, gpuiWindow, lo,
-                                hi);
-    gpui::AppInvalidate(gpuiWindow);
+    gpui::WindowAccessibilitySetTextSelection(gpuiWindow, *node, {lo, hi});
 }
 - (NSRange)accessibilityVisibleCharacterRange {
     NSInteger length = [self accessibilityNumberOfCharacters];
@@ -495,7 +493,7 @@ static NSArray* GpuiAccessibilityChildren(gpui::Window* win, int parent) {
     const gpui::AccessibilityNode* node = GpuiAccessibilityNode(self);
     gpui::Str text =
         node ? gpui::WindowAccessibilityTextValue(*node) : gpui::Str{};
-    if (!text.s || !node->input || !gpuiWindow->plat ||
+    if (!text.s || !node->input || node->textExcerpt.s || !gpuiWindow->plat ||
         !gpuiWindow->plat->view) {
         return NSMakeRange(NSNotFound, 0);
     }

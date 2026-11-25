@@ -11102,6 +11102,24 @@ static void AccessibilityInfoOwnStrings(Arena* a, AccessibilityInfo* info) {
     info->placeholder = StrDup(a, info->placeholder);
 }
 
+static void AccessibilityCaptureInputText(Arena* a, AccessibilityNode* node) {
+    if (!node->info.value.s || !node->input ||
+        InputExposesFullAccessibilityText(node->input)) {
+        return;
+    }
+    constexpr int kExcerptBytes = 4 * 1024;
+    Str text = InputValue(node->input);
+    int focus = ClampI(InputCursor(node->input), 0, len(text));
+    while (!Utf8IsCharBoundary(text, focus)) focus--;
+    int start = std::max(0, focus - kExcerptBytes / 2);
+    int end = focus + std::min(len(text) - focus, kExcerptBytes / 2);
+    while (!Utf8IsCharBoundary(text, start)) start++;
+    while (!Utf8IsCharBoundary(text, end)) end--;
+    node->info.value = {};
+    node->textExcerpt = StrDup(a, Str(text.s + start, end - start));
+    node->textExcerptStart = start;
+}
+
 static void AccessibilityCollectNode(El* e, Vec<AccessibilityNode>* out,
                                      int semanticParent, uint32_t* nextId) {
     if (!e || !out || !nextId) {
@@ -11114,6 +11132,11 @@ static void AccessibilityCollectNode(El* e, Vec<AccessibilityNode>* out,
         node.parent = semanticParent;
         node.bounds = e->Bounds();
         node.info = e->accessibility;
+        node.input = e->input;
+        if (!node.input && node.info.role != AccessibilityRole::Document) {
+            node.input = AccessibilityInput(e);
+        }
+        AccessibilityCaptureInputText(e->arena, &node);
         AccessibilityInfoOwnStrings(e->arena, &node.info);
         AccessibilityDocumentText document;
         if (e->lifecycle && e->lifecycle->accessibilityDocument) {
@@ -11152,15 +11175,11 @@ static void AccessibilityCollectNode(El* e, Vec<AccessibilityNode>* out,
         node.clickActionArg = e->clickActionArg;
         node.clickActionFocusId = e->clickActionFocusId;
         node.slider = e->slider;
-        node.input = e->input;
         if (!node.slider && node.info.role == AccessibilityRole::Slider) {
             // The semantic slider wraps its visual track; the track owns the
             // state that mouse dragging needs. AccessKit puts the actions on
             // the wrapper, so find that same state below it.
             node.slider = AccessibilitySlider(e);
-        }
-        if (!node.input && node.info.role != AccessibilityRole::Document) {
-            node.input = AccessibilityInput(e);
         }
         if (!node.focusId && AccessibilityRoleCanFocus(node.info.role)) {
             node.focusId =
@@ -11187,7 +11206,8 @@ static void AccessibilityCollectNode(El* e, Vec<AccessibilityNode>* out,
             node.actions |= AccessibilityActionFocus;
         }
         if (!node.info.disabled && node.input && !node.input->disabled &&
-            !node.input->readonly) {
+            !node.input->readonly &&
+            InputExposesFullAccessibilityText(node.input)) {
             node.actions |= AccessibilityActionSetValue;
         }
         VecAppend(*out, node);

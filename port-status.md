@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `ab8922323411d99be5d2cef4b7e4683f02f854b4` (2026-11-25,
-form: Let a horizontal field's content and description shrink so long text wraps (#4108)).
-Horizontal form controls and descriptions shrink to the space left by their label column.
+Processed through `c77088781e9197e23392f66c0f1a9674868ec5b6` (2026-11-25,
+input: Limit accessibility text to the caret's surroundings in large documents (#4110)).
+Multiline inputs over 1 MiB expose a UTF-8 excerpt around the caret and reject whole-document accessibility replacement.
 The current update target is
 `832cfdc0baef92855191dfdbbbcacd75f59d3df0`.
 

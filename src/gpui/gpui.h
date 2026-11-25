@@ -3918,6 +3918,8 @@ struct AccessibilityNode {
     int textSelectionStart = -1;
     int textSelectionEnd = -1;
     AccessibilityDocumentSource document = {};
+    Str textExcerpt = {};
+    int textExcerptStart = 0;
 };
 
 // A scrolled box the frame painted, and the scrollbar drawn down its right
@@ -9059,6 +9061,9 @@ bool WindowAccessibilityPartRange(const AccessibilityNode& node, int part,
                                   Selection* out);
 bool WindowAccessibilityTextSelection(const AccessibilityNode& node,
                                       Selection* out);
+bool WindowAccessibilitySetTextSelection(Window* win,
+                                         const AccessibilityNode& node,
+                                         Selection range);
 int WindowAccessibilityTextCaret(const AccessibilityNode& node);
 // Logical lines retain their newline, including CRLF. A final newline
 // leaves an empty last line for a caret at the end of the document.
