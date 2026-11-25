@@ -47,14 +47,13 @@ table tag text theme toolbar touch_selection tooltip tree
   .trim()
   .split(/\s+/);
 
-const partialBase = new Set(["input"]);
+const partialBase = new Set<string>();
 const adapterBase = new Set(["component_traits", "element_ext", "event", "measure", "observe", "test_support", "text"]);
 const partialUi = new Set<string>();
 const adapterUi = new Set(["component_traits", "element_ext", "highlighter", "styled"]);
 
 const partialReasons: Record<string, string> = {
   "base/global_state": "the App global carries selection/popover state; entity-stack coverage remains partial",
-  "base/input": "multiline inline completions overlay later rows, so painted row bounds do not include their height",
 };
 
 const adapterReasons: Record<string, string> = {

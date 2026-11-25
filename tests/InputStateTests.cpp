@@ -8289,6 +8289,7 @@ static void TextareaDecorationsFollowEditsAndRender() {
     InputSetValue(s, StrL("héllo world"));
     TextSpan style;
     style.color = Rgb(0x10, 0x40, 0x80);
+    style.fontWeight = FontWeight::Bold;
     TextDecoration marks[] = {TextDecoration::New({2, 4}, style),
                               TextDecoration::New({7, 12}, style),
                               TextDecoration::New({100, 200}, style)};
@@ -8314,10 +8315,41 @@ static void TextareaDecorationsFollowEditsAndRender() {
     TextSpan spans[2] = {};
     utassert(InputDecorationSpans(s, spans, 2) == 2);
     utassert(spans[0].lo == 3 && spans[1].hi == 10);
+    utassert(spans[0].fontWeight == FontWeight::Bold);
     TestDraw(view.win);
     InputSetValue(s, StrL(""));
     InputTextareaDecorations(s, &count);
     utassert(count == 0);
+    InputViewFree(&view);
+}
+
+static void TextareaDecorationWeightShapesCaretAndHitTesting() {
+    InputView view = InputViewBuildTextarea();
+    InputState* state = view.input;
+    Str value = StrL("mmmmmmmmmm");
+    InputSetValue(state, value);
+    TextSpan bold;
+    bold.color.a = 0;
+    bold.fontWeight = FontWeight::Bold;
+    TextSpan color;
+    color.color = Rgb(240, 40, 20);
+    TextDecoration decorations[] = {TextDecoration::New({0, len(value)}, bold),
+                                    TextDecoration::New({2, 5}, color)};
+    InputTextareaSetDecorations(state, decorations, 2, nullptr);
+    TestDraw(view.win);
+
+    Bounds range;
+    utassert(InputRangeToBounds(state, view.win, {0, len(value)}, &range));
+    uint16_t weight =
+        (state->lastFontWord & ~kFontWeightMask) | kFontWeightBold;
+    float expected =
+        MeasureText(&view.win->paint, value, state->lastFont, 0, false, weight)
+            .w;
+    utassertnear(range.w, expected);
+    Point caret;
+    utassert(InputLastCaretPoint(state, view.win, 6, &caret));
+    utassert(InputIndexForPosition(state, &view.win->paint, caret.x,
+                                   caret.y + state->lastLineH / 2) == 6);
     InputViewFree(&view);
 }
 
@@ -9190,6 +9222,7 @@ static void RunWindowTestsB() {
     UndoManagerCompositionIsolatedFromLongTyping();
     UnmarkReportsTheKeptPreeditAsOneChange();
     TextareaDecorationsFollowEditsAndRender();
+    TextareaDecorationWeightShapesCaretAndHitTesting();
     SettingTokensPreservesTextSelectionAndHistory();
     SettingTokensRefreshesTheirLaidOutBounds();
     UndoManagerSelectedReplacementIsAtomic();

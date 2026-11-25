@@ -1515,16 +1515,14 @@ void InputPaintOverviewRuler(InputState* s, PaintCtx* ctx, float trackX,
                              double contentHeight, float paddingTop,
                              float lineHeight);
 
+enum class FontWeight : uint16_t;
+
 // A run of a text element painted differently from the rest of it: GPUI's
 // HighlightStyle over a range, which is what a syntax highlighter's captures
 // and an editor's TextDecorations both come to. The runs are UTF-8 offsets
 // into the element's own text and must not overlap; whatever they leave over
 // paints in the element's own colour.
 //
-// Weight and slant are not here. A run drawn in another face would shape to
-// other widths, and every run of an element shares one shaped layout — the
-// colour, the wash behind it and the rule under it are what can change
-// without re-shaping.
 struct TextSpan {
     int lo = 0;
     int hi = 0;
@@ -1537,6 +1535,9 @@ struct TextSpan {
     bool underline = false;
     // UnderlineStyle::wavy — the squiggle a diagnostic is marked with.
     bool wavy = false;
+    // Editor decorations can change shaping. Zero inherits the row's weight.
+    // Set color alpha to zero for a weight-only decoration.
+    FontWeight fontWeight = {};
 };
 
 // HighlightStyle::fade_out over the bytes [lo, hi) of a run: they paint that
@@ -5792,11 +5793,9 @@ struct InputHighlighter {
                    FoldRange** out) const;
 };
 
-// element.rs compose_decoration_collections, flat: the `decs` win over the
-// `spans` they overlap — every span is cut back to what the decorations
-// leave it, and the decorations go in whole. Both lists are ordered by `lo`
-// and so is the result, written back into `spans` through the caller's
-// scratch `tmp` (at least `cap` long).
+// element.rs compose_decoration_collections: decorations override the
+// properties they set in application order. The input spans and result
+// are ordered by `lo`. The caller supplies `cap` entries in each buffer.
 int InputComposeSpans(TextSpan* spans, int n, const TextSpan* decs, int nDecs,
                       int cap, TextSpan* tmp);
 
@@ -7317,6 +7316,9 @@ void PaintEl(PaintCtx* ctx, El* e);
 // editor's range decorations, which span rows). Returns how many were
 // written.
 Bounds ElTextContentBounds(const El* e);
+TextLayout* ElTextLayout(PaintCtx* ctx, const El* e);
+Point ElTextCaretPoint(PaintCtx* ctx, const El* e, int offset,
+                       bool lineEndAffinity);
 int ElTextRangeRects(PaintCtx* ctx, const El* e, int lo, int hi, Bounds* out,
                      int cap);
 // A link inside a shaped text run uses its painted glyph ranges for input.

@@ -1568,8 +1568,10 @@ El* Highlighter::IntoEl() {
     // tens of runs, never a document's worth.
     const int kMaxSpans = 4096;
     int semanticCap = state ? std::min(1024, len(state->semanticTokens)) : 0;
-    int cap = std::min(kMaxSpans,
-                       semanticCap + 2 * std::min(kMaxSpans, nDecorations));
+    int cap = nDecorations > 0
+                  ? std::min(kMaxSpans, 2 * (semanticCap +
+                                             std::min(kMaxSpans, nDecorations)))
+                  : semanticCap;
     auto* spans =
         cap > 0 ? (TextSpan*)Alloc(a, (int)sizeof(TextSpan) * cap) : nullptr;
     int n = spans ? SemanticSpans(cx, state, text, spans, semanticCap) : 0;

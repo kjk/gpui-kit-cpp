@@ -2868,9 +2868,8 @@ static El* FoldChevron(Arena* a, InputState* state,
 }
 
 // element.rs combine_highlights, one decoration at a time. A later
-// decoration is laid over the runs already produced, so it wins on the
-// bytes it covers, including over an earlier decoration. Empty ranges are
-// dropped. The result stays in order, built in the caller's scratch.
+// decoration overrides the properties it sets over earlier runs. Empty
+// ranges are dropped and the result stays in order.
 int InputComposeSpans(TextSpan* spans, int n, const TextSpan* decs, int nDecs,
                       int cap, TextSpan* tmp) {
     if (!spans || !tmp || cap <= 0) return 0;
@@ -2880,35 +2879,86 @@ int InputComposeSpans(TextSpan* spans, int n, const TextSpan* decs, int nDecs,
         const TextSpan& dec = decs[d];
         if (dec.hi <= dec.lo) continue;
         int m = 0;
-        int i = 0;
-        for (; i < count && m < cap; i++) {
+        auto append = [&](TextSpan span, int lo, int hi) {
+            if (lo >= hi || m == cap) return;
+            if (m > 0) {
+                TextSpan& previous = tmp[m - 1];
+                if (previous.hi == lo && RgbaEq(previous.color, span.color) &&
+                    RgbaEq(previous.bg, span.bg) &&
+                    previous.underline == span.underline &&
+                    previous.wavy == span.wavy &&
+                    previous.fontWeight == span.fontWeight) {
+                    previous.hi = hi;
+                    return;
+                }
+            }
+            span.lo = lo;
+            span.hi = hi;
+            tmp[m++] = span;
+        };
+        int at = dec.lo;
+        for (int i = 0; i < count; i++) {
             TextSpan sp = spans[i];
             if (sp.hi <= sp.lo) continue;
             if (sp.hi <= dec.lo) {
-                tmp[m++] = sp;
+                append(sp, sp.lo, sp.hi);
                 continue;
             }
-            if (sp.lo >= dec.hi) break;
-            // The part before the decoration survives; the part after it is
-            // put back for the rest of this decoration to look at.
-            if (sp.lo < dec.lo && m < cap) {
-                TextSpan head = sp;
-                head.hi = dec.lo;
-                tmp[m++] = head;
+            if (sp.lo >= dec.hi) {
+                append(dec, at, dec.hi);
+                at = dec.hi;
+                append(sp, sp.lo, sp.hi);
+                continue;
             }
-            if (sp.hi > dec.hi) {
-                spans[i].lo = dec.hi;
-                break;
+            append(sp, sp.lo, dec.lo);
+            append(dec, at, sp.lo);
+            TextSpan combined = sp;
+            if (dec.color.a != 0) combined.color = dec.color;
+            if (dec.bg.a != 0) combined.bg = dec.bg;
+            if (dec.underline) {
+                combined.underline = true;
+                combined.wavy = dec.wavy;
             }
+            if (dec.fontWeight != FontWeight{})
+                combined.fontWeight = dec.fontWeight;
+            at = std::min(sp.hi, dec.hi);
+            append(combined, std::max(sp.lo, dec.lo), at);
+            append(sp, dec.hi, sp.hi);
         }
-        if (m < cap) tmp[m++] = dec;
-        for (; i < count && m < cap; i++) {
-            if (spans[i].hi > spans[i].lo) tmp[m++] = spans[i];
-        }
+        append(dec, at, dec.hi);
         for (int k = 0; k < m; k++) spans[k] = tmp[k];
         count = m;
     }
     return count;
+}
+
+static void ApplyInputRowSpans(El* el, const TextSpan* spans, int count) {
+    bool weighted = false;
+    for (int i = 0; i < count; i++) {
+        weighted |= spans[i].fontWeight != FontWeight{};
+    }
+    if (!weighted) {
+        el->Spans(spans, count);
+        return;
+    }
+    auto* highlights =
+        (TextHighlight*)Alloc(el->arena, count * (int)sizeof(TextHighlight));
+    if (!highlights) {
+        el->Spans(spans, count);
+        return;
+    }
+    for (int i = 0; i < count; i++) {
+        const TextSpan& span = spans[i];
+        HighlightStyle style;
+        style.weight = span.fontWeight;
+        style.hasColor = span.color.a != 0;
+        style.color = span.color;
+        style.background = span.bg;
+        style.underline.thickness = span.underline ? 1.f : 0.f;
+        style.wavy = span.wavy;
+        highlights[i] = {span.lo, span.hi, style};
+    }
+    el->Highlights(highlights, count);
 }
 
 // element.rs layout_range_decorations and its paint. Rust builds one path per
@@ -2920,13 +2970,47 @@ int InputComposeSpans(TextSpan* spans, int n, const TextSpan* decs, int nDecs,
 // selection and the text, which is Rust's order.
 struct RangeDecorationRow {
     El* text = nullptr; // the visual row's shaped run (a token row's box)
-    int start = 0;      // the buffer offset of the row's first byte
-    int len = 0;        // the row's length
-    int lineStart = 0;  // the logical line it belongs to
-    int lineLen = 0;    // that line's length, without its newline
-    bool first = true;  // the line's first visual row
-    bool last = true;   // the line's last visual row
+    const int* tabMap = nullptr;
+    int start = 0;     // the buffer offset of the row's first byte
+    int len = 0;       // the row's length
+    int lineStart = 0; // the logical line it belongs to
+    int lineLen = 0;   // that line's length, without its newline
+    bool first = true; // the line's first visual row
+    bool last = true;  // the line's last visual row
+
+    int DisplayOffset(int source) const {
+        return tabMap ? tabMap[source] : source;
+    }
+
+    int SourceOffset(int display) const {
+        if (!tabMap) return display;
+        int lo = 0;
+        int hi = len;
+        while (lo < hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (tabMap[mid] < display)
+                lo = mid + 1;
+            else
+                hi = mid;
+        }
+        if (lo > 0 && display - tabMap[lo - 1] < tabMap[lo] - display) --lo;
+        return lo;
+    }
+
+    bool HasFontRanges() const {
+        return text && text->lifecycle && text->lifecycle->fontRanges.count;
+    }
 };
+
+static int ShapedInputRowHit(PaintCtx* ctx, const RangeDecorationRow& row,
+                             float x, float y) {
+    TextLayout* layout = ElTextLayout(ctx, row.text);
+    if (!layout) return -1;
+    int display =
+        TextLayoutHitPoint(layout, row.text->text, x - row.text->x, y);
+    TextLayoutRelease(layout);
+    return row.SourceOffset(ClampI(display, 0, len(row.text->text)));
+}
 
 struct RangeDecorationPath {
     Point* points = nullptr;
@@ -2974,8 +3058,10 @@ static int RangeDecorationCorners(PaintCtx* ctx, const RangeDecorationPaint* p,
         float left = row.text->x;
         float right = row.text->x;
         Bounds rect = {};
-        if (hasText && ElTextRangeRects(ctx, row.text, startIx - row.start,
-                                        endIx - row.start, &rect, 1) == 0) {
+        if (hasText && ElTextRangeRects(ctx, row.text,
+                                        row.DisplayOffset(startIx - row.start),
+                                        row.DisplayOffset(endIx - row.start),
+                                        &rect, 1) == 0) {
             // Nothing shaped there (a lone '\r'): only a newline cell, if
             // the range has one, is left to draw.
             if (!newline) {
@@ -2989,7 +3075,8 @@ static int RangeDecorationCorners(PaintCtx* ctx, const RangeDecorationPaint* p,
         } else if (row.len > 0) {
             // The newline cell alone, where the row's text ends.
             Bounds whole = {};
-            if (ElTextRangeRects(ctx, row.text, 0, row.len, &whole, 1) > 0) {
+            if (ElTextRangeRects(ctx, row.text, 0, len(row.text->text), &whole,
+                                 1) > 0) {
                 left = right = whole.x + whole.w;
             }
         }
@@ -3014,6 +3101,7 @@ struct InputPaintedRows {
     uint64_t docVersion = 0;
     RangeDecorationPaint geometry;
     RangeDecorationPaint* decorations = nullptr;
+    bool hasFontRanges = false;
     // What the column painted the active line from.
     const struct EditorUnderlay* underlay = nullptr;
 };
@@ -4177,9 +4265,9 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             nOwn = own ? InputDecorationSpans(state, own, nOwn) : 0;
         }
         if (style.nSpans > 0 || nOwn > 0) {
-            // Compose in the arena: every decoration adds at most itself and
-            // one split, so the bound is exact.
-            int cap = nHl + 2 * style.nSpans + 2 * nOwn;
+            // Each endpoint may start a separate run, including the gaps
+            // covered by a decoration between existing syntax runs.
+            int cap = 2 * (nHl + style.nSpans + nOwn);
             auto* buf = (TextSpan*)Alloc(a, (int)sizeof(TextSpan) * cap);
             auto* tmp = (TextSpan*)Alloc(a, (int)sizeof(TextSpan) * cap);
             if (buf && tmp) {
@@ -4208,7 +4296,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         if (nOwn > 0) {
             TextSpan* own = (TextSpan*)Alloc(a, (int)sizeof(TextSpan) * nOwn);
             nOwn = own ? InputDecorationSpans(state, own, nOwn) : 0;
-            int cap = style.nSpans + 2 * nOwn;
+            int cap = 2 * (style.nSpans + nOwn);
             auto* buf = (TextSpan*)Alloc(a, (int)sizeof(TextSpan) * cap);
             auto* tmp = (TextSpan*)Alloc(a, (int)sizeof(TextSpan) * cap);
             if (own && buf && tmp && nOwn > 0) {
@@ -4435,6 +4523,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             }
             if (paintedRow) {
                 paintedRow->text = el;
+                paintedRow->tabMap = shown.map;
             }
             // element.rs MAX_HIGHLIGHT_LINE_LENGTH: a line longer than this --
             // minified output, generated code -- draws in the default style
@@ -4473,7 +4562,10 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                         nRowSpans++;
                     }
                     if (nRowSpans > 0) {
-                        el->Spans(rowSpans, nRowSpans);
+                        ApplyInputRowSpans(el, rowSpans, nRowSpans);
+                        if (paintedRow && paintedRow->HasFontRanges()) {
+                            painted->hasFontRanges = true;
+                        }
                     }
                 }
             }
@@ -12384,6 +12476,30 @@ int InputIndexForPosition(const InputState* s, PaintCtx* ctx, float x, float y,
     int nRows = InputWrapRows(s, row, &starts, &indent);
     int k = lineH > 0 ? (int)std::min(relY / lineH, (double)(nRows - 1)) : 0;
     WrapRowSpan r = WrapRowSpanOf(starts, nRows, indent, len(line), k, start);
+    if (const InputPaintedRows* painted = LastPaintedRows(s, ctx->window);
+        painted && painted->hasFontRanges &&
+        painted->docVersion == s->docVersion) {
+        for (int i = 0; i < painted->geometry.nRows; i++) {
+            const RangeDecorationRow& run = painted->geometry.rows[i];
+            if (run.start != start + r.lo || run.len != r.hi - r.lo ||
+                !run.HasFontRanges()) {
+                continue;
+            }
+            int offset = ShapedInputRowHit(ctx, run, x, lineH * 0.5f);
+            if (offset < 0) break;
+            if (lineEndAffinity && offset == run.len && !run.last)
+                *lineEndAffinity = true;
+            if (columnsPastLineEnd && offset == run.len && run.last) {
+                float endX = ElTextCaretPoint(ctx, run.text,
+                                              run.DisplayOffset(offset), true)
+                                 .x;
+                float spaceW = ElTextSpaceWidth(ctx, run.text);
+                if (x > endX && spaceW > 0)
+                    *columnsPastLineEnd = (int)((x - endX) / spaceW + 0.5f);
+            }
+            return run.start + offset;
+        }
+    }
     float localX = x - b.x;
     if (s->kind == InputKind::Textarea || s->align != 0) {
         AlignWrapRow(ctx, s, line, starts, nRows, &r);
@@ -13713,6 +13829,11 @@ bool InputLastCaretPoint(const InputState* s, Window* win, int offset,
             *out = {row.text->x + x, row.text->y};
             return true;
         }
+        if (row.HasFontRanges()) {
+            *out = ElTextCaretPoint(
+                ctx, row.text, row.DisplayOffset(offset - row.start), affinity);
+            return true;
+        }
         Str line = Str(text.s + row.start, row.len);
         // The multiple of the font layout gave the row (InputLineMult).
         float lineMult = lineH * 16.f / WindowRemSize(win) / font;
@@ -13833,6 +13954,27 @@ int InputCharacterIndexForPoint(const InputState* s, Window* win, Point at) {
         const El* run = row.text;
         if (!run || at.y < run->y || at.y >= run->y + s->lastLineH) {
             continue;
+        }
+        if (row.HasFontRanges()) {
+            int hit = ShapedInputRowHit(ctx, row, at.x, at.y - run->y);
+            if (hit < 0) return -1;
+            Str source(text.s + row.start, row.len);
+            auto covers = [&](int lo, int hi) {
+                Bounds glyph;
+                return ElTextRangeRects(ctx, run, row.DisplayOffset(lo),
+                                        row.DisplayOffset(hi), &glyph, 1) > 0 &&
+                       at.x >= glyph.x && at.x < glyph.Right();
+            };
+            int edge =
+                InputCursorBoundary(s, row.start + hit, Bias::Left) - row.start;
+            if (edge < row.len &&
+                covers(edge, TextNextGraphemeBoundary(source, edge))) {
+                return Utf8OffsetToUtf16(text, row.start + edge);
+            }
+            int prev = TextPreviousGraphemeBoundary(source, edge);
+            return prev < edge && covers(prev, edge)
+                       ? Utf8OffsetToUtf16(text, row.start + prev)
+                       : -1;
         }
         Str line(text.s + row.lineStart, row.lineLen);
         WrapRowSpan span;

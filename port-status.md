@@ -181,10 +181,6 @@ The current update target is
   flex placement still apply to the whole span, so a long span can start
   below preceding prose and reserve its full width on the final line.
 
-- **Textarea decoration styling uses `TextSpan`.** The layer follows edits
-  and supports text color, background and underline. Rust's highlight
-  style can also change the glyph weight within the run.
-
 - **The Markdown example renders MathJax on a background worker.** Native
   builds use Node and the optional website installation. The browser and a
   native build without that package render the same Unicode fallback as a

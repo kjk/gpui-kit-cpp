@@ -2311,7 +2311,14 @@ El* El::Highlights(const TextHighlight* runs, int n) {
         end = run.hi;
         uint16_t weight = FontWeightBits(run.style.weight, 0);
         if (weight || run.style.fontStyle != HighlightFontStyle::Inherit) {
-            fonts[fontCount++] = {run.lo, run.hi, weight, run.style.fontStyle};
+            if (fontCount > 0 && fonts[fontCount - 1].hi == run.lo &&
+                fonts[fontCount - 1].weight == weight &&
+                fonts[fontCount - 1].style == run.style.fontStyle) {
+                fonts[fontCount - 1].hi = run.hi;
+            } else {
+                fonts[fontCount++] = {run.lo, run.hi, weight,
+                                      run.style.fontStyle};
+            }
         }
     }
     if (!lifecycle) lifecycle = ArenaNew<ElLifecycle>(arena);
@@ -8065,7 +8072,7 @@ static bool ResolveLineClamp(PaintCtx* ctx, El* e, float* clipBottom) {
 
 // A text run's shaped layout, as the painter measured it: the width it was
 // laid out at and the font it was drawn in.
-static TextLayout* ElTextLayout(PaintCtx* ctx, const El* e) {
+TextLayout* ElTextLayout(PaintCtx* ctx, const El* e) {
     if (!ctx || !e || e->kind != ElKind::Text || !e->text.s) {
         return nullptr;
     }
@@ -8230,8 +8237,8 @@ struct CaretPlace {
     float h = 0;
 };
 
-static CaretPlace MeasureCaretPlace(PaintCtx* ctx, El* e, float font, int off,
-                                    bool lineEndAffinity) {
+static CaretPlace MeasureCaretPlace(PaintCtx* ctx, const El* e, float font,
+                                    int off, bool lineEndAffinity) {
     CaretPlace place;
     place.x = e->x;
     place.y = e->y;
@@ -8246,7 +8253,8 @@ static CaretPlace MeasureCaretPlace(PaintCtx* ctx, El* e, float font, int off,
     // further along the line it stands.
     TextLayout* tl =
         TextMeasLayout(ctx, e->text, font, maxW, e->style.wrap, ElTextWeight(e),
-                       e->style.lineHeight, nullptr, nullptr, ElTextAlign(e));
+                       e->style.lineHeight, nullptr, nullptr, ElTextAlign(e),
+                       ElTextFontRanges(e));
     if (!tl) {
         return place;
     }
@@ -8275,6 +8283,13 @@ static CaretPlace MeasureCaretPlace(PaintCtx* ctx, El* e, float font, int off,
     }
     TextLayoutRelease(tl);
     return place;
+}
+
+Point ElTextCaretPoint(PaintCtx* ctx, const El* e, int offset,
+                       bool lineEndAffinity) {
+    CaretPlace place =
+        MeasureCaretPlace(ctx, e, e->laidFont, offset, lineEndAffinity);
+    return {place.x, place.y};
 }
 
 // last_layout: where the caret ended up inside the run. caretWinY is the
