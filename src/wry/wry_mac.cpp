@@ -97,6 +97,7 @@ struct WebView : WebViewHandlers {
     WKWebView* webview = nil;
     WKUserContentController* manager = nil;
     NSView* parentView = nil;
+    NSView* clipView = nil;
     bool isChild = false;
     bool visible = true;
 
@@ -1188,7 +1189,19 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs,
     if (attrs->hasBackgroundColor) {
         ApplyWebViewBackground(wv->webview, attrs->backgroundColor);
     }
-    [parentView addSubview:wv->webview];
+    if (asChild) {
+        NSRect documentFrame = wv->webview.frame;
+        wv->clipView = [[NSView alloc] initWithFrame:documentFrame];
+        wv->clipView.clipsToBounds = YES;
+        wv->clipView.hidden = !attrs->visible;
+        wv->clipView.autoresizingMask = NSViewMinYMargin;
+        wv->webview.autoresizingMask = NSViewNotSizable;
+        [parentView addSubview:wv->clipView];
+        [wv->clipView addSubview:wv->webview];
+        wv->webview.frame = wv->clipView.bounds;
+    } else {
+        [parentView addSubview:wv->webview];
+    }
     if (!asChild) {
         wv->webview.frame = parentView.bounds;
         NSWindow* window = parentView.window;
@@ -1230,6 +1243,7 @@ void WebViewFree(WebView* wv) {
         wv->webview.UIDelegate = nil;
         [wv->webview removeFromSuperview];
     }
+    [wv->clipView removeFromSuperview];
     // Every Objective-C delegate stores a non-owning WebView pointer. WebKit
     // may still retain a delegate or scheme handler while queued callbacks
     // drain, so sever those pointers before deleting the C++ state.
@@ -1389,11 +1403,14 @@ bool WebViewBounds(WebView* wv, Rect* out) {
     if (!wv || !out) {
         return false;
     }
-    NSView* parent = wv->webview.superview;
+    NSView* parent = wv->parentView;
     if (!parent) {
         return false;
     }
     NSRect frame = wv->webview.frame;
+    if (wv->clipView) {
+        frame = [parent convertRect:frame fromView:wv->clipView];
+    }
     double y = parent.isFlipped ? frame.origin.y
                                 : parent.frame.size.height - frame.origin.y -
                                       frame.size.height;
@@ -1403,6 +1420,10 @@ bool WebViewBounds(WebView* wv, Rect* out) {
 }
 
 bool WebViewSetBounds(WebView* wv, Rect bounds) {
+    return WebViewSetClippedBounds(wv, bounds, bounds);
+}
+
+bool WebViewSetClippedBounds(WebView* wv, Rect bounds, Rect visible) {
     if (!wv) {
         return false;
     }
@@ -1411,7 +1432,7 @@ bool WebViewSetBounds(WebView* wv, Rect bounds) {
         // was added to.
         return true;
     }
-    NSView* parent = wv->webview.superview;
+    NSView* parent = wv->clipView.superview;
     if (!parent) {
         return false;
     }
@@ -1423,7 +1444,13 @@ bool WebViewSetBounds(WebView* wv, Rect bounds) {
     NSRect frame;
     frame.origin = WindowPosition(parent, x, y, h);
     frame.size = NSMakeSize(w, h);
-    wv->webview.frame = frame;
+    double vx = ToLogical(visible.position.x, visible.position.logical, scale);
+    double vy = ToLogical(visible.position.y, visible.position.logical, scale);
+    double vw = ToLogical(visible.size.width, visible.size.logical, scale);
+    double vh = ToLogical(visible.size.height, visible.size.logical, scale);
+    wv->clipView
+        .frame = {WindowPosition(parent, vx, vy, vh), NSMakeSize(vw, vh)};
+    wv->webview.frame = [wv->clipView convertRect:frame fromView:parent];
     return true;
 }
 
@@ -1432,6 +1459,7 @@ bool WebViewSetVisible(WebView* wv, bool visible) {
         return false;
     }
     wv->webview.hidden = visible ? NO : YES;
+    wv->clipView.hidden = visible ? NO : YES;
     wv->visible = visible;
     return true;
 }
@@ -1515,8 +1543,9 @@ bool WebViewReparent(WebView* wv, void* parentWindow) {
         return false;
     }
     NSView* parent = (__bridge NSView*)parentWindow;
-    [wv->webview removeFromSuperview];
-    [parent addSubview:wv->webview];
+    NSView* host = wv->clipView ? wv->clipView : wv->webview;
+    [host removeFromSuperview];
+    [parent addSubview:host];
     wv->parentView = parent;
     if (!wv->isChild) {
         wv->webview.frame = parent.bounds;

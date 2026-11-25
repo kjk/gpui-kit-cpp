@@ -364,10 +364,8 @@ static void HideNative(WebView* self, wry::WebView* raw) {
 // same frame reads the webview's bounds.
 //
 // `set_geometry`: the content mask is the clip. An empty clip hides the
-// native view and leaves the page loaded. On Windows a partial clip is a
-// window region on wry's host window. Elsewhere it keeps the full document
-// bounds, so the native view extends past its container: there is no
-// composition surface to clip it without resizing the page.
+// native view and leaves the page loaded. Each desktop backend clips the
+// native child while keeping the page at the full document dimensions.
 static bool ApplyGeometry(WebView* self, wry::WebView* raw, Bounds document,
                           Bounds visible) {
 #if GPUI_WEBVIEW_NATIVE_CLIP
@@ -393,7 +391,13 @@ static bool ApplyGeometry(WebView* self, wry::WebView* raw, Bounds document,
     wry::Rect r;
     r.position = wry::LogicalPosition(frame.x, frame.y);
     r.size = wry::LogicalSize(frame.w, frame.h);
+#if GPUI_WRY_CLIPPED_CHILD
+    wry::Rect viewport = {wry::LogicalPosition(visible.x, visible.y),
+                          wry::LogicalSize(visible.w, visible.h)};
+    return wry::WebViewSetClippedBounds(raw, r, viewport);
+#else
     return wry::WebViewSetBounds(raw, r);
+#endif
 }
 
 static void PaintWebView(PaintCtx* ctx, El* e, void* user) {

@@ -255,6 +255,7 @@ struct WebView : WebViewHandlers {
     GdkDisplay* display = nullptr;
     ::Display* xdisplay = nullptr;
     ::Window x11Window = 0;
+    ::Window x11Document = 0;
     ::Window parentWindow = 0;
     GtkWidget* gtkWindow = nullptr;
     bool followsParent = false;
@@ -393,7 +394,8 @@ static bool OwnsXFocus(WebView* wv) {
     ::Window focus = 0;
     int revert = 0;
     XGetInputFocus(wv->xdisplay, &focus, &revert);
-    return focus != 0 && (focus == PlugXid(wv) || focus == wv->x11Window);
+    return focus != 0 && (focus == PlugXid(wv) || focus == wv->x11Window ||
+                          focus == wv->x11Document);
 }
 
 static void GiveXFocus(WebView* wv, Time time) {
@@ -1273,7 +1275,7 @@ static void PlaceMappedPlug(WebView* wv) {
     }
     XWindowAttributes ca = {};
     XTrap trap(wv->display);
-    if (!XGetWindowAttributes(wv->xdisplay, wv->x11Window, &ca)) {
+    if (!XGetWindowAttributes(wv->xdisplay, wv->x11Document, &ca)) {
         return;
     }
     XMoveResizeWindow(wv->xdisplay, plug, 0, 0, (unsigned)std::max(ca.width, 1),
@@ -1282,13 +1284,18 @@ static void PlaceMappedPlug(WebView* wv) {
     XFlush(wv->xdisplay);
 }
 
-static void ResizeContainer(WebView* wv, int x, int y, int w, int h) {
+static void ResizeClippedContainer(WebView* wv, int x, int y, int w, int h,
+                                   int vx, int vy, int vw, int vh) {
     w = std::max(w, 1);
     h = std::max(h, 1);
     {
         XTrap trap(wv->display);
-        XMoveResizeWindow(wv->xdisplay, wv->x11Window, x, y, (unsigned)w,
-                          (unsigned)h);
+        XMoveResizeWindow(wv->xdisplay, wv->x11Window, vx, vy,
+                          (unsigned)std::max(vw, 1), (unsigned)std::max(vh, 1));
+        if (wv->x11Document != wv->x11Window) {
+            XMoveResizeWindow(wv->xdisplay, wv->x11Document, x - vx, y - vy,
+                              (unsigned)w, (unsigned)h);
+        }
         ::Window plug = PlugXid(wv);
         if (plug) {
             XMoveResizeWindow(wv->xdisplay, plug, 0, 0, (unsigned)w,
@@ -1300,6 +1307,10 @@ static void ResizeContainer(WebView* wv, int x, int y, int w, int h) {
     gtk_window_resize(GTK_WINDOW(wv->gtkWindow), w, h);
     GtkAllocation a = {0, 0, w, h};
     gtk_widget_size_allocate(wv->gtkWindow, &a);
+}
+
+static void ResizeContainer(WebView* wv, int x, int y, int w, int h) {
+    ResizeClippedContainer(wv, x, y, w, h, x, y, w, h);
 }
 
 // A webview that is not a child follows its parent's size.
@@ -1341,7 +1352,16 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs,
         return nullptr;
     }
     // `create_gtk_window`, as a plug (see the top of the file).
-    GtkWidget* plug = gtk_plug_new_for_display(display, container);
+    ::Window document = container;
+    if (asChild) {
+        XWindowAttributes frame = {};
+        XGetWindowAttributes(xdpy, container, &frame);
+        document = XCreateSimpleWindow(
+            xdpy, container, 0, 0, (unsigned)std::max(frame.width, 1),
+            (unsigned)std::max(frame.height, 1), 0, 0, 0);
+        XMapWindow(xdpy, document);
+    }
+    GtkWidget* plug = gtk_plug_new_for_display(display, document);
     GtkWidget* vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_container_add(GTK_CONTAINER(plug), vbox);
 
@@ -1353,6 +1373,7 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs,
     wv->display = display;
     wv->xdisplay = xdpy;
     wv->x11Window = container;
+    wv->x11Document = document;
     wv->parentWindow = parent;
     wv->gtkWindow = plug;
     wv->isChild = asChild;
@@ -1572,6 +1593,16 @@ bool WebViewBounds(WebView* wv, Rect* out) {
         XWindowAttributes a = {};
         XTrap trap(wv->display);
         if (XGetWindowAttributes(wv->xdisplay, wv->x11Window, &a)) {
+            if (wv->x11Document != wv->x11Window) {
+                XWindowAttributes child = {};
+                if (XGetWindowAttributes(wv->xdisplay, wv->x11Document,
+                                         &child)) {
+                    a.x += child.x;
+                    a.y += child.y;
+                    a.width = child.width;
+                    a.height = child.height;
+                }
+            }
             out->position = LogicalPosition(a.x, a.y);
             out->size = LogicalSize(a.width, a.height);
         }
@@ -1584,6 +1615,10 @@ bool WebViewBounds(WebView* wv, Rect* out) {
 }
 
 bool WebViewSetBounds(WebView* wv, Rect bounds) {
+    return WebViewSetClippedBounds(wv, bounds, bounds);
+}
+
+bool WebViewSetClippedBounds(WebView* wv, Rect bounds, Rect visible) {
     if (!wv) {
         return false;
     }
@@ -1595,7 +1630,12 @@ bool WebViewSetBounds(WebView* wv, Rect bounds) {
     if (wv->hasX11 && !wv->followsParent) {
         // GTK moves and sizes in logical pixels and X in device pixels.
         int s = (int)scale;
-        ResizeContainer(wv, x * s, y * s, w * s, h * s);
+        int vx = ToLogical(visible.position.x, visible.position.logical, scale);
+        int vy = ToLogical(visible.position.y, visible.position.logical, scale);
+        int vw = ToLogical(visible.size.width, visible.size.logical, scale);
+        int vh = ToLogical(visible.size.height, visible.size.logical, scale);
+        ResizeClippedContainer(wv, x * s, y * s, w * s, h * s, vx * s, vy * s,
+                               vw * s, vh * s);
     }
     return true;
 }

@@ -635,23 +635,12 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   `Module.set_theme(dark)`. An opaque manual redirect is refused because the
   browser hides the target that the shell must capability-check.
   See the browser section of AGENTS.md.
-- **No GPUI Fast native composition surface.** Upstream always
-  reparents a macOS WKWebView, and on Linux an X11 overlay window,
-  onto `WindowCompositionSurface` so overlays draw above the page
-  (`crates/webview/src/composition.rs` and `linux.rs`). The
-  `gpui-fast` feature is a no-op; composition is not optional. This
-  tree has one engine and parents the webview on the window
-  (`src/webview/webview.cpp`). Without that container, a content mask
-  cannot clip the page without resizing it, except on Windows, where
-  (as upstream `windows.rs`) a window region on wry's host HWND clips
-  it. Elsewhere a partial clip keeps the full document bounds, so the
-  native view extends past its container and covers overlays in that
-  box. It is hidden only when the clip
-  misses it entirely, or the application hides it. A failed geometry
-  update is logged once, until a later update succeeds. The hit box
-  is already the masked intersection. The macOS whole-point rounding
-  (`WebViewDocumentFrame`) is applied to the wry rect, whose origin is
-  the top left, rather than to a composition child.
+- **Native webviews are child surfaces.** macOS and Linux clip the child
+  to the content mask and keep the page's full size and scroll position.
+  Windows clips with a window region. Upstream attaches its native child
+  to a composition surface that lets GPUI paint overlays above the page.
+  Overlays that overlap the visible portion of the child can still sit
+  behind the page here (`src/webview/webview.cpp`).
 - **Linux webview bounds stay logical.** Upstream `device_bounds` passes
   physical pixels because Wry then scales by GDK. `WebViewSetBounds`
   in `wry_linux.cpp` already multiplies a logical rect by that factor

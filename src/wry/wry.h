@@ -509,6 +509,14 @@ bool WebViewCanGoForward(WebView* webview, bool* out);
 bool WebViewBounds(WebView* webview, Rect* out);
 /** `WebView::set_bounds`. */
 bool WebViewSetBounds(WebView* webview, Rect bounds);
+#if GPUI_OS_MAC || (GPUI_OS_LINUX && !GPUI_WRY_UNSUPPORTED)
+#define GPUI_WRY_CLIPPED_CHILD 1
+// Both rectangles are relative to the parent. Clip the child without
+// changing the web page's viewport size or local coordinates.
+bool WebViewSetClippedBounds(WebView* webview, Rect document, Rect visible);
+#else
+#define GPUI_WRY_CLIPPED_CHILD 0
+#endif
 /** `WebView::set_visible`. */
 bool WebViewSetVisible(WebView* webview, bool visible);
 /** `WebView::focus`. */

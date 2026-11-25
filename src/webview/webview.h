@@ -188,8 +188,8 @@ El* WebViewEl(Entity<WebView> view, Ctx* cx);
 Bounds WebViewDocumentFrame(Bounds document);
 
 // Windows clips a partially visible webview with a window region on wry's
-// host window (`windows.rs`). Elsewhere a partial clip keeps the full
-// document bounds and the native view extends past its container.
+// host window (`windows.rs`). Linux and macOS clip through wry's child
+// container.
 #if GPUI_OS_WINDOWS
 #define GPUI_WEBVIEW_NATIVE_CLIP 1
 #else
