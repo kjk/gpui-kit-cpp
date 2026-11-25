@@ -14,7 +14,7 @@ const fail = (message) => {
 };
 
 const inventory = JSON.parse(
-  read("crates/component-shell/component-inventory.json"),
+  read(".work/gpui-component/crates/shell/component-inventory.json"),
 );
 const catalogSource = read("examples/js_story/catalog.js");
 const coverageSource = read("examples/js_story/stories/coverage.js");
@@ -282,7 +282,7 @@ if (
 }
 
 if (
-  !/new Message\(\)\.alignment\(message\.alignment\)/s.test(registeredSource) ||
+  !/new Message\(\)\s*\.alignment\(message\.alignment\)/s.test(registeredSource) ||
   !/new Bubble\(\)[\s\S]*?\.alignment\(message\.alignment\)/s.test(registeredSource)
 ) {
   fail("MessageScroller rows must compose aligned Message and Bubble components");
@@ -324,8 +324,8 @@ if (
 
 if (
   !registeredSource.includes('.menu_width(320)') ||
-  !registeredSource.includes('EditorState("fn main()') ||
-  !registeredSource.includes('", "rust")') ||
+  !/EditorState\(\s*["']fn main\(\)/.test(registeredSource) ||
+  !/["'],\s*"rust"\)/.test(registeredSource) ||
   !registeredSource.includes('new Scrollbar("story-scrollbar", handle)') ||
   !registeredSource.includes('new Scrollbar("story-scrollbar-horizontal", horizontalHandle)') ||
   !registeredSource.includes('.scroll_axis("horizontal")') ||

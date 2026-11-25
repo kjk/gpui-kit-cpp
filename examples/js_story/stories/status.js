@@ -23,6 +23,7 @@ export const REGISTERED_SURFACES = [
   "DataTable",
   "DescriptionList",
   "Dialog",
+  "Diff",
   "DropdownButton",
   "Editor",
   "Empty",
@@ -77,6 +78,7 @@ export const REGISTERED_SURFACES = [
   "Stepper",
   "Toggle",
   "Toolbar",
+  "TitleBar",
   "Tooltip",
   "Tree",
 ];

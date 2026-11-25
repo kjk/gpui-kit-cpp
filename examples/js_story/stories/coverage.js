@@ -1,7 +1,7 @@
 // One checked relationship for every gallery route. Some inventory surfaces
 // (such as Plot) share the Rust Story that owns their example.
 export const coveredBy = [
-  { route: "introduction", registrations: ["Link"] },
+  { route: "introduction", registrations: ["Link", "TitleBar"] },
   { route: "accordion", registrations: ["Accordion"] },
   { route: "alert", registrations: ["Alert"] },
   { route: "alert-dialog", registrations: ["AlertDialog"] },
@@ -24,6 +24,7 @@ export const coveredBy = [
   { route: "date-picker", registrations: ["DatePicker"] },
   { route: "description-list", registrations: ["DescriptionList"] },
   { route: "dialog", registrations: ["Dialog"] },
+  { route: "diff", registrations: ["Diff"] },
   { route: "dock", registrations: [] },
   { route: "dropdown-button", registrations: ["DropdownButton"] },
   { route: "editor", registrations: ["Editor", "Text"] },
