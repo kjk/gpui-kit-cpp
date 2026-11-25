@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `5170bcaff72b6367d3481eab45d917d029875ab9` (2026-11-26,
-editor: Tell a custom context menu where it was opened (#4135)).
-Custom input context menus can read the hit from the opening press and append the built-in menu items.
+Processed through `6d7004f557d7da932992768f784b07ae97411fed` (2026-11-26,
+feat(gpui-pre): upgrade the accesskit version (#4140)).
+The Rust snapshot generator now targets newer AccessKit adapters for future
+GPUI releases. The locked GPUI reference and C++ native bridges are unchanged.
 The current update target is
-`5170bcaff72b6367d3481eab45d917d029875ab9`.
+`6d7004f557d7da932992768f784b07ae97411fed`.
 
 ## Known gaps vs Rust
 
