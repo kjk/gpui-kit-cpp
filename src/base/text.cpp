@@ -8403,9 +8403,8 @@ El* TextView::Block(MdNode* n, int depth, bool inList, bool isLast) {
         }
         case MdKind::List: {
             El* list = Div(a)->FlexCol()->MinW(0)->PadB(mb);
-            if (depth > 0) {
-                list->PadL(baseFont * 1.4f);
-            }
+            // The containing item's continuation column supplies the indent
+            // for a nested list, just as render_list_item does upstream.
             int ix = 0;
             for (MdNode* c = n->first; c; c = c->next) {
                 if (c->kind != MdKind::Item) {

@@ -9670,14 +9670,19 @@ static void ParagraphAfterSublistUsesTheSameItemMarker() {
     LayoutEl(&v.win->paint, root, 0, 0, 600, 500, theme.fontSize,
              theme.foreground);
     El* first = StreamTextEl(root, StrL("Prepare:"));
+    El* nestedMarker = StreamTextEl(root, StrL("\xe2\x97\xa6"));
     El* afterList = StreamTextEl(root, StrL("Then tag."));
     El* afterParagraph = StreamTextEl(root, StrL("Then announce."));
-    utassert(first && afterList && afterParagraph);
+    utassert(first && nestedMarker && afterList && afterParagraph);
     utassert(CountListMarker(root, StrL("1.")) == 1);
     utassert(CountListMarker(root, StrL("2.")) == 1);
-    if (first && afterList && afterParagraph) {
+    if (first && nestedMarker && afterList && afterParagraph) {
+        // Continuations use the fixed indent. The first paragraph follows
+        // the marker column, which can widen to fit its label and padding.
         utassertnear(afterList->x, afterParagraph->x);
-        utassertnear(afterList->x, first->x);
+        utassertnear(nestedMarker->x, afterList->x);
+        utassertnear(afterList->x, 16.f * 1.4f);
+        utassert(first->x >= afterList->x || TestNear(first->x, afterList->x));
     }
     TswClose(&v);
 }
