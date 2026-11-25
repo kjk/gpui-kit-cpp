@@ -1,8 +1,7 @@
 #include "Story.h"
 
-// crates/story/src/stories/diff_story.rs — the example patches, the
-// toolbar, and the pull-request review comment. Soft wrap is stored on
-// the diff and not applied; the add-annotation button is not painted.
+// crates/story/src/stories/diff_story.rs - example patches, toolbar, and
+// pull-request review comments.
 
 static const char* kReview =
     "diff --git a/src/retry.rs b/src/retry.rs\n"
@@ -126,8 +125,15 @@ static const char* kExamples[] = {
 };
 
 struct DiffStory {
+    struct Comment {
+        component::DiffAnnotation annotation;
+        Str body;
+        bool resolved = false;
+    };
+
     StoryToolbarState toolbar;
     Entity<component::DiffState> state;
+    EntityId owner = {};
     bool loaded = false;
     int example = 0;
     // diff_story.rs defaults: tint on, hover and wrap off, words, hunk
@@ -138,12 +144,19 @@ struct DiffStory {
     int inlineIx = 0;
     int separator = 0;
     int indicator = 0;
-    bool commentResolved = false;
-    component::DiffAnnotation note = {};
+    Vec<Comment> comments;
     // A diagnostic on the changed delay line, and the marker that opens it.
     component::DiffDecoration diagnostic = {};
     component::DiffGutterMarker overflow = {};
     bool diagnosticReady = false;
+
+    ~DiffStory() {
+        for (int i = 1; i < len(comments); i++) {
+            StrFree(comments[i].annotation.id);
+            StrFree(comments[i].annotation.path);
+            StrFree(comments[i].body);
+        }
+    }
 
     static component::DiffState* State(DiffStory* self, Ctx* cx) {
         return self->state.Get(cx);
@@ -230,10 +243,15 @@ struct DiffStory {
         self->wrap = !self->wrap;
         Notify(cx);
     }
-    static void OnResolve(DiffStory* self, Ctx* cx, const ClickEvent*) {
-        self->commentResolved = !self->commentResolved;
+    static void OnResolve(DiffStory* self, Ctx* cx, const ClickEvent*,
+                          int64_t index) {
+        if (index < 0 || index >= len(self->comments)) return;
+        Comment& comment = self->comments[(int)index];
+        comment.resolved = !comment.resolved;
         Notify(cx);
     }
+    static void AddComment(Ctx* cx, const component::DiffLineRange* range,
+                           void* user);
     static void OnOverflow(DiffStory*, Ctx* cx, const ClickEvent*) {
         WindowPushNotification(
             cx, StrL("2_u32.pow(attempt) overflows for attempts above 31"));
@@ -258,32 +276,60 @@ El* DiffStory::RenderOverflow(Ctx* cx,
         ->IntoEl();
 }
 
-El* DiffStory::RenderComment(Ctx* cx, const component::DiffAnnotation*,
+void DiffStory::AddComment(Ctx* cx, const component::DiffLineRange* range,
+                           void* user) {
+    auto* self = (DiffStory*)user;
+    auto at = component::DiffLinePosition::New(StrDup(range->path),
+                                               range->endSide, range->end);
+    Comment comment;
+    comment.annotation = component::DiffAnnotation::Line(
+        StrDup(fmt("comment-%d", len(self->comments))), at);
+    int start = range->start < range->end ? range->start : range->end;
+    int end = range->start > range->end ? range->start : range->end;
+    comment.body =
+        StrDup(start == end ? fmt("New comment on line %d.", end)
+                            : fmt("New comment on lines %d–%d.", start, end));
+    if (!VecAppend(self->comments, comment)) {
+        StrFree(comment.annotation.id);
+        StrFree(comment.annotation.path);
+        StrFree(comment.body);
+        return;
+    }
+    Ctx owner = *cx;
+    owner.self = self->owner;
+    Notify(&owner);
+}
+
+El* DiffStory::RenderComment(Ctx* cx, const component::DiffAnnotation* note,
                              void* user) {
     DiffStory* self = (DiffStory*)user;
+    int index = 0;
+    while (index < len(self->comments) &&
+           !StrEq(self->comments[index].annotation.Id(), note->Id())) {
+        index++;
+    }
+    if (index == len(self->comments)) return nullptr;
+    const Comment& comment = self->comments[index];
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
     El* who = Div(a)->FlexRow()->Gap(8)->ItemsCenter();
     who->Child(TextEl(a, StrL("Alex"))->Font(14)->Medium());
-    who->Child(TextEl(a, self->commentResolved ? StrL("Resolved")
-                                               : StrL("Review comment"))
-                   ->Font(12)
-                   ->Fg(th.mutedFg));
+    who->Child(
+        TextEl(a, comment.resolved ? StrL("Resolved") : StrL("Review comment"))
+            ->Font(12)
+            ->Fg(th.mutedFg));
     El* head =
         Div(a)->FlexRow()->W(kFill)->ItemsCenter()->JustifyBetween()->Gap(8);
     head->Child(who);
-    head->Child(
-        component::Button::New(cx, StrL("retry-delay-review"))
-            ->Ghost()
-            ->WithSize(UiSize::XSmall)
-            ->Label(self->commentResolved ? StrL("Reopen") : StrL("Resolve"))
-            ->OnClick(Listen(cx, &DiffStory::OnResolve))
-            ->IntoEl());
+    head->Child(component::Button::New(cx, note->Id())
+                    ->Ghost()
+                    ->WithSize(UiSize::XSmall)
+                    ->Label(comment.resolved ? StrL("Reopen") : StrL("Resolve"))
+                    ->OnClick(Listen(cx, &DiffStory::OnResolve, index))
+                    ->IntoEl());
     El* col = Div(a)->FlexCol()->W(kFill)->Gap(8)->Child(head);
-    if (!self->commentResolved) {
-        col->Child(TextEl(a, StrL("Should callers be able to configure the "
-                                  "6.4-second delay cap?"))
-                       ->Font(14));
+    if (!comment.resolved) {
+        col->Child(TextEl(a, comment.body)->Font(14));
     }
     return col;
 }
@@ -412,14 +458,18 @@ static component::PopupMenu* CheckedMenu(
 
 El* DiffStory::Render(DiffStory* self, Ctx* cx) {
     if (!self->loaded) {
+        self->owner = cx->self;
         self->state = EntityNew<component::DiffState>(cx->app);
         component::DiffState* st = self->state.Get(cx);
         st->Bind(cx->app, self->state);
         LoadExample(self, cx);
-        self->note = component::DiffAnnotation::Line(
+        auto note = component::DiffAnnotation::Line(
             StrL("retry-delay-review"),
             component::DiffLinePosition::New(
                 StrL("src/retry.rs"), component::DiffSide::Modified, 21));
+        VecAppend(self->comments,
+                  Comment{note, StrL("Should callers be able to configure the "
+                                     "6.4-second delay cap?")});
         self->loaded = true;
     }
     component::DiffState* st = self->state.Get(cx);
@@ -536,11 +586,22 @@ El* DiffStory::Render(DiffStory* self, Ctx* cx) {
                     .WithLabel(StrL("Possible overflow"));
             self->diagnosticReady = true;
         }
+        using component::DiffAnnotation;
+        int count = len(self->comments);
+        auto* annotations =
+            (DiffAnnotation*)Alloc(cx->a, count * (int)sizeof(DiffAnnotation));
+        if (annotations) {
+            for (int i = 0; i < count; i++) {
+                new (&annotations[i])
+                    DiffAnnotation(self->comments[i].annotation);
+            }
+        }
         diff->Decorations(&self->diagnostic, 1)
             ->GutterMarkers(&self->overflow, 1)
             ->RenderGutterMarker(&DiffStory::RenderOverflow, self)
-            ->Annotations(&self->note, 1)
-            ->RenderAnnotation(&DiffStory::RenderComment, self);
+            ->Annotations(annotations, annotations ? count : 0)
+            ->RenderAnnotation(&DiffStory::RenderComment, self)
+            ->OnAddAnnotation(&DiffStory::AddComment, self);
     }
     El* body = Div(cx->a)->FlexCol()->W(kFill)->Gap(8);
     body->Child(TextEl(cx->a, Str(kExamples[self->example]))->Medium());
