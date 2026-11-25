@@ -37,11 +37,13 @@ struct ProcessOptions {
     // 0 keeps process.run's 30 second deadline. A caller that asked for
     // `timeoutMs` passes that duration in seconds.
     double timeoutSeconds = 0;
+    // Host-only override. Zero keeps process.run's 8 MiB per stream.
+    int maxOutputBytes = 0;
 };
 
 // Runs one explicitly granted executable with an empty child environment,
-// captures each output stream up to 8 MiB, and kills the process tree after
-// 30 seconds unless `options->timeoutSeconds` names another deadline. This
+// captures each stream up to 8 MiB and kills the process tree after
+// 30 seconds, with host-only overrides in ProcessOptions. This
 // is blocking and belongs on ExecSpawn's worker half.
 bool ProcessRunBounded(Str command, const Str* args, int count,
                        ProcessCancellation* cancellation, ProcessOutput* out,
@@ -202,10 +204,10 @@ void ProcessEventPushExit(ProcessEventBox* box, ProcessStreamEvent event);
 
 int ProcessTimeoutMilliseconds(double seconds);
 
-// Appends one read from a bounded run's stdout or stderr (`name`), refusing
-// to let either grow past 8 MiB.
+// Appends one read from stdout or stderr under the host's capture limit.
 bool ProcessCaptureAppend(StrBuilder* out, const char* bytes, int count,
-                          Str* error, const char* name);
+                          Str* error, const char* name,
+                          const ProcessOptions* options);
 
 // process.run's deadline: `options->timeoutSeconds`, or 30 seconds.
 double ProcessBoundedTimeoutSeconds(const ProcessOptions* options);

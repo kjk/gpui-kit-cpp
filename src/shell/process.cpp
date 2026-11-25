@@ -461,13 +461,25 @@ void ProcessEventPushExit(ProcessEventBox* box, ProcessStreamEvent event) {
 }
 
 bool ProcessCaptureAppend(StrBuilder* out, const char* bytes, int count,
-                          Str* error, const char* name) {
+                          Str* error, const char* name,
+                          const ProcessOptions* options) {
     constexpr int kProcessStreamLimit = 8 * 1024 * 1024;
-    if (len(out) > kProcessStreamLimit - count) {
-        ErrorOutSet(error, fmt("child %s exceeded 8 MiB", Str(name)));
+    int limit = kProcessStreamLimit;
+    if (options && options->maxOutputBytes > 0) {
+        limit = std::min(options->maxOutputBytes, INT32_MAX - 1);
+    }
+    if (count > limit - len(out)) {
+        ErrorOutSet(error,
+                    limit == kProcessStreamLimit
+                        ? fmt("child %s exceeded 8 MiB", Str(name))
+                        : fmt("child %s exceeded %d bytes", Str(name), limit));
         return false;
     }
-    out->Append(Str(bytes, count));
+    if (!out->Append(Str(bytes, count))) {
+        ErrorOutSet(error,
+                    fmt("could not allocate child %s capture", Str(name)));
+        return false;
+    }
     return true;
 }
 

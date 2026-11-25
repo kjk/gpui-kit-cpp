@@ -68,12 +68,12 @@ static void StdinFromDevNull() {
 }
 
 static bool DrainFd(int fd, StrBuilder* out, bool* closed, Str* error,
-                    const char* name) {
+                    const char* name, const ProcessOptions* options) {
     char bytes[8192];
     for (;;) {
         ssize_t n = read(fd, bytes, sizeof(bytes));
         if (n > 0) {
-            if (!ProcessCaptureAppend(out, bytes, (int)n, error, name))
+            if (!ProcessCaptureAppend(out, bytes, (int)n, error, name, options))
                 return false;
             continue;
         }
@@ -160,7 +160,7 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
         command, options, cancellation, error, &stdoutText, &stderrText, closed,
         &done,
         [&](int stream, StrBuilder* text, bool* isClosed, const char* name) {
-            return DrainFd(pipes[stream], text, isClosed, error, name);
+            return DrainFd(pipes[stream], text, isClosed, error, name, options);
         },
         [&]() {
             kill(-pid, SIGKILL);

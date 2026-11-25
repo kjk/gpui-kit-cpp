@@ -264,7 +264,8 @@ static bool PipeEnded(HANDLE* pipe, bool* closed, Str* error,
 }
 
 static bool DrainPipe(HANDLE* pipe, StrBuilder* output, bool* closed,
-                      Str* error, const char* name) {
+                      Str* error, const char* name,
+                      const ProcessOptions* options) {
     for (;;) {
         DWORD available = 0;
         if (!PeekNamedPipe(*pipe, nullptr, 0, nullptr, &available, nullptr)) {
@@ -279,7 +280,8 @@ static bool DrainPipe(HANDLE* pipe, StrBuilder* output, bool* closed,
             return PipeEnded(pipe, closed, error, name);
         }
         if (count == 0) return true;
-        if (!ProcessCaptureAppend(output, bytes, (int)count, error, name))
+        if (!ProcessCaptureAppend(output, bytes, (int)count, error, name,
+                                  options))
             return false;
     }
 }
@@ -467,7 +469,8 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
             closed, &done,
             [&](int stream, StrBuilder* text, bool* isClosed,
                 const char* name) {
-                return DrainPipe(pipes[stream], text, isClosed, error, name);
+                return DrainPipe(pipes[stream], text, isClosed, error, name,
+                                 options);
             },
             [&]() {
                 TerminateJobObject(job, 1);
