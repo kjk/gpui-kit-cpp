@@ -10,6 +10,7 @@
 #include "sys/executor.h"
 
 #include <commctrl.h>
+#include <directmanipulation.h>
 #include <dwmapi.h>
 #include <imm.h>
 #include <ole2.h>
@@ -24,8 +25,11 @@ namespace gpui {
 
 static const wchar_t* kWndClass = L"GpuiSystemMonitor";
 
+struct WinTouchpad;
+
 struct PlatWindow {
     HWND hwnd = nullptr;
+    WinTouchpad* touchpad = nullptr;
     // RegisterDragDrop holds the drop target until RevokeDragDrop.
     bool fileDrop = false;
     // Installed when component::Root first renders (with a WM_GETOBJECT
@@ -829,6 +833,254 @@ static bool TouchGesture(Window* win, LPARAM lParam) {
     WindowDispatchInput(win, &in);
     CloseGestureInfoHandle(hgi);
     return true;
+}
+
+static constexpr UINT_PTR kWinTouchpadTimer = 2;
+static constexpr LONG kWinTouchpadViewport = 1000;
+
+void WinTouchpadTransform::End(Point at, Modifiers mods,
+                               Vec<PlatformInput>* events) {
+    if (kind == Kind::Scroll) {
+        VecAppend(*events, InputScrollWheel(at.x, at.y, 0, 0, true, mods,
+                                            TouchPhase::Ended));
+    } else if (kind == Kind::Pinch) {
+        VecAppend(*events, InputPinch(at.x, at.y, 0, mods, TouchPhase::Ended));
+    }
+    kind = Kind::None;
+}
+
+static bool WinTouchpadNearlyEqual(float a, float b) {
+    constexpr float epsilon = 0.00001f;
+    return fabsf(a - b) <
+           epsilon * std::max(epsilon, std::max(fabsf(a), fabsf(b)));
+}
+
+void WinTouchpadTransform::Apply(float nextScale, Point next, Point at,
+                                 Modifiers mods, Vec<PlatformInput>* events) {
+    if (nextScale <= 0.f || (WinTouchpadNearlyEqual(nextScale, scale) &&
+                             WinTouchpadNearlyEqual(next.x, offset.x) &&
+                             WinTouchpadNearlyEqual(next.y, offset.y))) {
+        return;
+    }
+
+    if (!WinTouchpadNearlyEqual(nextScale, 1.f) && kind != Kind::Pinch) {
+        End(at, mods, events);
+        kind = Kind::Pinch;
+        VecAppend(*events,
+                  InputPinch(at.x, at.y, 0, mods, TouchPhase::Started));
+    }
+    if (kind == Kind::Pinch) {
+        VecAppend(*events, InputPinch(at.x, at.y, nextScale / scale - 1.f, mods,
+                                      TouchPhase::Moved));
+    } else {
+        TouchPhase phase =
+            kind == Kind::None ? TouchPhase::Started : TouchPhase::Moved;
+        kind = Kind::Scroll;
+        VecAppend(*events,
+                  InputScrollWheel(at.x, at.y, next.x - offset.x,
+                                   next.y - offset.y, true, mods, phase));
+    }
+    scale = nextScale;
+    offset = next;
+}
+
+// GPUI Windows direct_manipulation.rs. The viewport is only a gesture
+// recognizer. It never renders. Queue its callbacks until Update returns so
+// application input handlers can close a window without reentering COM.
+struct WinTouchpad final : IDirectManipulationViewportEventHandler {
+    LONG references = 1;
+    HWND hwnd = nullptr;
+    IDirectManipulationManager* manager = nullptr;
+    IDirectManipulationUpdateManager* updater = nullptr;
+    IDirectManipulationViewport* viewport = nullptr;
+    DWORD cookie = 0;
+    bool attached = false;
+    bool activated = false;
+    UINT32 contact = 0;
+    WinTouchpadTransform gesture;
+    Vec<PlatformInput> events;
+
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID id, void** out) override {
+        if (!out) {
+            return E_POINTER;
+        }
+        *out = nullptr;
+        if (id != __uuidof(IUnknown) &&
+            id != __uuidof(IDirectManipulationViewportEventHandler)) {
+            return E_NOINTERFACE;
+        }
+        *out = static_cast<IDirectManipulationViewportEventHandler*>(this);
+        AddRef();
+        return S_OK;
+    }
+
+    ULONG STDMETHODCALLTYPE AddRef() override {
+        return (ULONG)InterlockedIncrement(&references);
+    }
+
+    ULONG STDMETHODCALLTYPE Release() override {
+        ULONG left = (ULONG)InterlockedDecrement(&references);
+        if (!left) {
+            delete this;
+        }
+        return left;
+    }
+
+    Point Position(float dpi) const {
+        POINT point = {};
+        GetCursorPos(&point);
+        ScreenToClient(hwnd, &point);
+        return {(float)point.x / dpi, (float)point.y / dpi};
+    }
+
+    HRESULT STDMETHODCALLTYPE OnViewportStatusChanged(
+        IDirectManipulationViewport* sender, DIRECTMANIPULATION_STATUS now,
+        DIRECTMANIPULATION_STATUS before) override {
+        if (now == before) {
+            return S_OK;
+        }
+        if (now == DIRECTMANIPULATION_RUNNING ||
+            now == DIRECTMANIPULATION_INERTIA) {
+            SetTimer(hwnd, kWinTouchpadTimer, 16, nullptr);
+        }
+        if (now == DIRECTMANIPULATION_READY ||
+            (now == DIRECTMANIPULATION_RUNNING &&
+             before == DIRECTMANIPULATION_INERTIA)) {
+            gesture.End(Position(HostDpi(hwnd) / 96.f), ModsNow(), &events);
+        }
+        if (now == DIRECTMANIPULATION_READY) {
+            bool reset = gesture.scale != 1.f || gesture.offset.x != 0.f ||
+                         gesture.offset.y != 0.f;
+            gesture = {};
+            if (reset) {
+                return sender->ZoomToRect(0.f, 0.f, kWinTouchpadViewport,
+                                          kWinTouchpadViewport, FALSE);
+            }
+        }
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE
+    OnViewportUpdated(IDirectManipulationViewport*) override {
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE
+    OnContentUpdated(IDirectManipulationViewport*,
+                     IDirectManipulationContent* content) override {
+        if (!content) {
+            return E_POINTER;
+        }
+        float transform[6] = {};
+        HRESULT hr = content->GetContentTransform(transform, 6);
+        if (FAILED(hr)) {
+            return hr;
+        }
+        float dpi = HostDpi(hwnd) / 96.f;
+        gesture.Apply(transform[0], {transform[4] / dpi, transform[5] / dpi},
+                      Position(dpi), ModsNow(), &events);
+        return S_OK;
+    }
+
+    bool Init(HWND window) {
+        hwnd = window;
+        RECT bounds = {0, 0, kWinTouchpadViewport, kWinTouchpadViewport};
+        auto config =
+            (DIRECTMANIPULATION_CONFIGURATION)(DIRECTMANIPULATION_CONFIGURATION_INTERACTION |
+                                               DIRECTMANIPULATION_CONFIGURATION_TRANSLATION_X |
+                                               DIRECTMANIPULATION_CONFIGURATION_TRANSLATION_Y |
+                                               DIRECTMANIPULATION_CONFIGURATION_TRANSLATION_INERTIA |
+                                               DIRECTMANIPULATION_CONFIGURATION_RAILS_X |
+                                               DIRECTMANIPULATION_CONFIGURATION_RAILS_Y |
+                                               DIRECTMANIPULATION_CONFIGURATION_SCALING);
+        auto options =
+            (DIRECTMANIPULATION_VIEWPORT_OPTIONS)(DIRECTMANIPULATION_VIEWPORT_OPTIONS_MANUALUPDATE |
+                                                  DIRECTMANIPULATION_VIEWPORT_OPTIONS_DISABLEPIXELSNAPPING);
+        if (FAILED(CoCreateInstance(__uuidof(DirectManipulationManager),
+                                    nullptr, CLSCTX_INPROC_SERVER,
+                                    IID_PPV_ARGS(&manager))) ||
+            FAILED(manager->GetUpdateManager(IID_PPV_ARGS(&updater))) ||
+            FAILED(manager->CreateViewport(nullptr, hwnd,
+                                           IID_PPV_ARGS(&viewport))) ||
+            FAILED(viewport->ActivateConfiguration(config)) ||
+            FAILED(viewport->SetViewportOptions(options)) ||
+            FAILED(viewport->SetViewportRect(&bounds)) ||
+            FAILED(manager->Activate(hwnd))) {
+            return false;
+        }
+        activated = true;
+        if (FAILED(viewport->Enable()) ||
+            FAILED(viewport->AddEventHandler(hwnd, this, &cookie))) {
+            return false;
+        }
+        attached = true;
+        return SUCCEEDED(updater->Update(nullptr));
+    }
+
+    void Close() {
+        if (attached) {
+            viewport->RemoveEventHandler(cookie);
+        }
+        if (viewport) {
+            viewport->Stop();
+            viewport->Abandon();
+        }
+        if (activated) {
+            manager->Deactivate(hwnd);
+        }
+        if (viewport) {
+            viewport->Release();
+        }
+        if (updater) {
+            updater->Release();
+        }
+        if (manager) {
+            manager->Release();
+        }
+        KillTimer(hwnd, kWinTouchpadTimer);
+        Release();
+    }
+
+    void Hit(WPARAM wParam) {
+        UINT32 id = LOWORD(wParam);
+        POINTER_INPUT_TYPE type;
+        if (GetPointerType(id, &type) && type == PT_TOUCHPAD &&
+            SUCCEEDED(viewport->SetContact(id))) {
+            contact = id;
+            SetTimer(hwnd, kWinTouchpadTimer, 16, nullptr);
+        }
+    }
+
+    void Update() {
+        DIRECTMANIPULATION_STATUS status;
+        bool live = SUCCEEDED(updater->Update(nullptr)) &&
+                    SUCCEEDED(viewport->GetStatus(&status)) &&
+                    (status == DIRECTMANIPULATION_RUNNING ||
+                     status == DIRECTMANIPULATION_INERTIA);
+        POINTER_INFO pointer;
+        if (!live && (!contact || !GetPointerInfo(contact, &pointer) ||
+                      !(pointer.pointerFlags & POINTER_FLAG_INCONTACT))) {
+            contact = 0;
+            KillTimer(hwnd, kWinTouchpadTimer);
+        }
+    }
+};
+
+static void UpdateWinTouchpad(Window* win, HWND hwnd) {
+    WinTouchpad* touchpad = win->plat->touchpad;
+    if (!touchpad) {
+        return;
+    }
+    touchpad->Update();
+    Vec<PlatformInput> pending = touchpad->events;
+    VecClear(touchpad->events);
+    for (int i = 0; i < len(pending); i++) {
+        if (!IsWindow(hwnd) ||
+            (Window*)GetWindowLongPtrW(hwnd, GWLP_USERDATA) != win) {
+            break;
+        }
+        WindowDispatchInput(win, &pending[i]);
+    }
 }
 
 static void MouseExited(Window* win) {
@@ -1717,8 +1969,19 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
         case WM_CREATE: {
             PlatSetTimer(win, WindowTimerMs(win));
             RegisterFileDrop(win, hwnd);
+            auto* touchpad = new WinTouchpad;
+            if (touchpad->Init(hwnd)) {
+                win->plat->touchpad = touchpad;
+            } else {
+                touchpad->Close();
+            }
             return 0;
         }
+        case DM_POINTERHITTEST:
+            if (win->plat->touchpad) {
+                win->plat->touchpad->Hit(wParam);
+            }
+            break;
         case WM_GETOBJECT:
             if ((LONG)lParam == UiaRootObjectId) {
                 if (!win->plat->accessibilityAsked) {
@@ -1969,7 +2232,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
             return 0;
         }
         case WM_TIMER:
-            WindowTimerTick(win);
+            if (wParam == kWinTouchpadTimer) {
+                UpdateWinTouchpad(win, hwnd);
+            } else {
+                WindowTimerTick(win);
+            }
             return 0;
         case WM_PAINT: {
             // BeginPaint/EndPaint only to clear the update region — the
@@ -2133,6 +2400,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
             KillTimer(hwnd, 1);
             App* app = win->app;
             PlatWindow* plat = win->plat;
+            if (plat->touchpad) {
+                plat->touchpad->Close();
+                plat->touchpad = nullptr;
+            }
             AccessibilityWinClose(plat->accessibility);
             plat->accessibility = nullptr;
             WindowClosed(win);

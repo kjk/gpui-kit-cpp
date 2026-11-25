@@ -250,6 +250,24 @@ PlatformInput InputTextDrop(FileDropPhase phase, float x, float y, Str text,
                             Str url);
 PlatformInput InputPinch(float x, float y, float delta, Modifiers modifiers,
                          TouchPhase phase);
+#if GPUI_OS_WINDOWS
+// Transform updates from the Windows precision-touchpad viewport, in DIPs.
+struct WinTouchpadTransform {
+    enum class Kind {
+        None,
+        Scroll,
+        Pinch
+    };
+
+    Kind kind = Kind::None;
+    float scale = 1.f;
+    Point offset = {};
+
+    void End(Point at, Modifiers mods, Vec<PlatformInput>* events);
+    void Apply(float nextScale, Point nextOffset, Point at, Modifiers mods,
+               Vec<PlatformInput>* events);
+};
+#endif
 PlatformInput InputGesture(const GestureEvent& ev);
 PlatformInput InputTouch(const TouchEvent& ev);
 // Whether a handler kept the live contact `pointerId` (TouchEvent).

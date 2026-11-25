@@ -450,7 +450,7 @@ struct KeyedSlot {
 //     event's position is read a component at a time, and flattening it
 //     spares every handler a `.position`.
 // What is missing outright: pressure, which none of these three windows
-// report. Pinch comes from macOS and from Windows touch screens (PinchEvent
+// report. Pinch comes from macOS and Windows (PinchEvent
 // below); the other touch gestures only from Windows (GestureEvent).
 
 enum class MouseButton : uint8_t {
@@ -633,10 +633,9 @@ struct DropEvent {
 
 // GPUI's PinchEvent: a pinch-to-zoom gesture, typically on a trackpad, with
 // (x, y) its center. `delta` is this event's zoom change: positive zooms in,
-// 0.1 is 10% bigger. The deltas of one gesture add up: 1 + their sum is the
-// scale since it started. The macOS window reports a trackpad pinch, the
-// Windows one a touch-screen pinch (WM_GESTURE); Rust's Windows
-// DirectManipulation (touchpad) source is not ported. `propagate` is
+// 0.1 is 10% bigger. Precision touchpads on Windows report a change relative
+// to the previous scale. macOS and Windows touch screens report additive
+// deltas from the initial scale. `propagate` is
 // cx.propagate(), as for ScrollWheelEvent: an `El::OnPinch` handler that
 // clears it keeps the gesture from the elements behind.
 struct PinchEvent {

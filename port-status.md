@@ -36,13 +36,10 @@ The current update target is
   line with differently styled text or an object still measure in separate
   elements (`src/base/text.cpp`).
 
-- **Pinch comes from macOS and Windows touch screens.** macOS reports
-  `magnifyWithEvent:`; Windows reports a touch-screen zoom (`WM_GESTURE`
-  `GID_ZOOM`), with deltas that add up to the scale since the pinch began.
-  Rust's Windows source is DirectManipulation, for precision touchpads only
-  (pinch and two-finger scroll with inertia); it is not ported, so a touchpad
-  pinch stays Windows' Ctrl+wheel and its scroll the wheel. Linux and wasm
-  report none (`src/gpui/window_mac.cpp`, `src/gpui/window_win.cpp`).
+- **Windows additionally handles touch-screen pinch.** DirectManipulation
+  supplies precision-touchpad pinch and two-finger scroll with inertia as in
+  Rust. Windows also reports touch-screen zoom through `WM_GESTURE`.
+  Linux and wasm do not report pinch (`src/gpui/window_win.cpp`).
 - **`GestureEvent` / `El::OnGesture` have no Rust twin.** The Windows window
   reports touch-screen gestures from `WM_GESTURE`: Pan (with the system's
   inertia), Rotate, TwoFingerTap, PressAndTap. A touch on an element with

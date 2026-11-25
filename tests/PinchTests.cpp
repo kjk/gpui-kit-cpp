@@ -32,9 +32,40 @@ struct PinchView {
     }
 };
 
+#if GPUI_OS_WINDOWS
+// Windows direct_manipulation.rs permits scroll-to-pinch promotion and keeps
+// pinch classification even if the scale returns to 1.
+static void PrecisionTouchpadTransformPhases() {
+    WinTouchpadTransform gesture;
+    Vec<PlatformInput> events;
+    gesture.Apply(1, {0, 12}, {40, 50}, {}, &events);
+    gesture.Apply(1, {0, 17}, {40, 50}, {}, &events);
+    gesture.Apply(1, {0, 17}, {40, 50}, {}, &events);
+    gesture.Apply(1.25f, {6, 10}, {40, 50}, {}, &events);
+    gesture.Apply(1, {0, 3}, {40, 50}, {}, &events);
+    gesture.End({40, 50}, {}, &events);
+    utassert(len(events) == 7);
+    utassert(events[0].kind == PlatformInputKind::ScrollWheel &&
+             events[0].scrollWheel.phase == TouchPhase::Started &&
+             events[0].scrollWheel.precise &&
+             events[0].scrollWheel.deltaY == 12.f);
+    utassert(events[1].scrollWheel.phase == TouchPhase::Moved &&
+             events[1].scrollWheel.deltaY == 5.f);
+    utassert(events[2].scrollWheel.phase == TouchPhase::Ended);
+    utassert(events[3].kind == PlatformInputKind::Pinch &&
+             events[3].pinch.phase == TouchPhase::Started);
+    utassertnear(events[4].pinch.delta, 0.25f);
+    utassertnear(events[5].pinch.delta, -0.2f);
+    utassert(events[6].pinch.phase == TouchPhase::Ended);
+}
+#endif
+
 void TestPinch() {
     TestSuite("pinch");
 
+#if GPUI_OS_WINDOWS
+    PrecisionTouchpadTransformPhases();
+#endif
     App* app = TestAppNew();
     auto view = EntityNew<PinchView>(app);
     Window* win = TestWindowOpen(app, view, 400, 300, 1);
