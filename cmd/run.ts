@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "dc765f8867554f456d7587ecb877d90b9aaa7334",
-  date: "2026-11-25",
-  subject: "kbd: Add `Kbd::label` to show a hint that is not one keystroke (#4124)",
+  sha: "e8992dca8ff74be459a8dc00fba65176781fdd13",
+  date: "2026-11-26",
+  subject: "editor: Add hit_test to tell what a point in the editor is over (#4128)",
   crates: {
     "gpui-kit": "0.11.0",
     "gpui-base": "0.11.0",

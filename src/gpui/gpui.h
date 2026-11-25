@@ -49,6 +49,22 @@ inline constexpr GutterColumn kDefaultGutterOrder[] = {
 inline constexpr int kGutterColumnCount =
     sizeof(kDefaultGutterOrder) / sizeof(kDefaultGutterOrder[0]);
 
+enum class InputHitArea : uint8_t {
+    Text,
+    Gutter
+};
+
+// A point in the last painted input. Gutter margins have no column, and
+// gutter hits on ghost lines or past the document have no buffer row.
+struct InputHit {
+    InputHitArea area = InputHitArea::Text;
+    int row = -1;
+    bool spacer = false;
+    int offset = -1;
+    GutterColumn column = GutterColumn::LineNumbers;
+    bool hasColumn = false;
+};
+
 // gpui::ClipboardItem, flattened for the port's POD boundary. Every field is
 // borrowed from the Arena passed to ClipboardGetItem: text is UTF-8, image is
 // an encoded image stream accepted by ImageSource::FromImage, and external
@@ -6931,6 +6947,8 @@ void InputBlur(InputState* s, App* app, Window* win);
 int InputIndexForPosition(const InputState* s, PaintCtx* ctx, float x, float y,
                           bool* lineEndAffinity = nullptr,
                           int* columnsPastLineEnd = nullptr);
+bool InputHitTest(const InputState* s, Window* win, Point position,
+                  InputHit* out);
 // The fold chevron a press at (x, y) landed on, or -1. The boxes are the ones
 // the last frame's gutter left behind.
 int InputFoldIconAt(const InputState* s, float x, float y);

@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `dc765f8867554f456d7587ecb877d90b9aaa7334` (2026-11-25,
-kbd: Add `Kbd::label` to show a hint that is not one keystroke (#4124)).
-Keyboard hints can display literal text. The story shows key ranges and alternatives.
+Processed through `e8992dca8ff74be459a8dc00fba65176781fdd13` (2026-11-26,
+editor: Add hit_test to tell what a point in the editor is over (#4128)).
+Editor hit testing reports text offsets, gutter lanes, buffer rows and spacers, including around completion previews.
 The current update target is
 `9d70dc57d7152442855e0d4064e518d9dc238554`.
 

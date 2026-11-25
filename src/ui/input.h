@@ -22,6 +22,8 @@ struct Tree {};
 // input/mod.rs re-exports Base's caret policy.
 using CursorBlink = ::gpui::CursorBlink;
 using gpui::GutterColumn;
+using gpui::InputHit;
+using gpui::InputHitArea;
 using gpui::LineDecoration;
 using gpui::LineDecorationCollection;
 using gpui::LineDecorationProvider;

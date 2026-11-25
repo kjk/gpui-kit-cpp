@@ -12113,6 +12113,11 @@ static void GutterColumnOrderNormalizesAndMirrorsTheLanes() {
         utassert(len(s->foldIcons) == 1);
         if (len(s->foldIcons) == 1) {
             Bounds icon = s->foldIcons[0].bounds;
+            InputHit hit;
+            utassert(
+                InputHitTest(s, d.win, {icon.CenterX(), icon.CenterY()}, &hit));
+            utassert(hit.area == InputHitArea::Gutter && hit.hasColumn &&
+                     hit.column == GutterColumn::FoldIcons && hit.row == 0);
             if (side == Side::Left) {
                 utassertnear(icon.x, s->gutterBox.x);
             } else {
@@ -12175,7 +12180,12 @@ static void EditorSpacersProjectAboveAndBelowTheText() {
     utassert(InputRangeToBounds(s, d.win, {6, 7}, &moved));
     utassertnear(moved.y - second.y, s->lastLineH * 4);
     Point blank = {moved.x + 2, moved.y - s->lastLineH * 2.f};
-    utassert(InputIndexForPosition(s, &d.win->paint, blank.x, blank.y) == 5);
+    InputHit hit;
+    utassert(InputHitTest(s, d.win, blank, &hit));
+    utassert(hit.area == InputHitArea::Text && hit.spacer && hit.row == 0);
+    utassert(hit.offset >= 0 && hit.offset < 5);
+    utassert(InputHitTest(s, d.win, {s->gutterBox.CenterX(), blank.y}, &hit));
+    utassert(hit.area == InputHitArea::Gutter && hit.spacer && hit.row == 0);
     utassert(InputCharacterIndexForPoint(s, d.win, blank) == -1);
 
     uint64_t stable = InputDisplayMapVersion(map);
@@ -12965,8 +12975,16 @@ static void InlineCompletionMovesDocumentRowsAndGutterMarks() {
     utassert(InputRangeToBounds(s, d.win, {6, 7}, &after));
     utassertnear(after.y, before.y + 2 * lineH);
     utassert(InputDisplayRowCount(InputDisplayMap(s)) == rows);
-    utassert(InputIndexForPosition(s, &d.win->paint, before.x,
-                                   before.y + lineH / 2) == 5);
+    Point ghost = {before.x, before.y + lineH / 2};
+    InputHit hit;
+    utassert(InputHitTest(s, d.win, ghost, &hit));
+    utassert(hit.area == InputHitArea::Text && !hit.spacer && hit.row == 0 &&
+             hit.offset == 0);
+    utassert(InputHitTest(s, d.win, {s->gutterBox.CenterX(), ghost.y}, &hit));
+    utassert(hit.area == InputHitArea::Gutter && !hit.spacer && hit.row == -1);
+    utassert(InputHitTest(s, d.win, {after.x, after.y + lineH / 2}, &hit));
+    utassert(hit.area == InputHitArea::Text && hit.row == 1 && hit.offset == 6);
+    utassert(!InputHitTest(s, d.win, {-1, -1}, &hit));
     GutterMark gutterAfter;
     utassert(InputLayoutGutterMarks(s, 0, 0, lineH, 0, -1, &gutterAfter, 1) ==
              1);

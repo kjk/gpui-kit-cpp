@@ -3287,6 +3287,12 @@ struct EditorUnderlay {
     float iconTop = 0;
     bool mirrorMarks = false;
     float leftGutterInset = 0;
+    float gutterGap = 0;
+    float laneX[kGutterColumnCount] = {};
+    float laneWidths[kGutterColumnCount] = {};
+    float gutterOriginX = 0;
+    Bounds gutterHit = {};
+    double paintedScrollY = 0;
     Bounds textMask = {};
     El** lineBands = nullptr;
     Selection bandRows = {};
@@ -3414,6 +3420,16 @@ static void PaintEditorUnderlay(PaintCtx* ctx, El* e, void* user) {
         }
         right -= s->gutterLaneW;
         gutterX = right;
+    }
+    u->paintedScrollY = s->scrollY;
+    u->gutterOriginX = gutterX;
+    if (s->gutterLaneW > 0 || u->gutterGap > 0) {
+        float x = gutterX - (rightGutter ? u->gutterGap : 0);
+        float visibleLeft = std::max(x, viewport.x);
+        float visibleRight =
+            std::min(x + s->gutterLaneW + u->gutterGap, viewport.Right());
+        u->gutterHit = {visibleLeft, viewport.y,
+                        std::max(0.f, visibleRight - visibleLeft), viewport.h};
     }
     for (int i = 0; i < len(u->gutters); i++) {
         El* gutter = u->gutters[i];
@@ -4390,6 +4406,9 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                                 laneIndex[(int)GutterColumn::LineNumbers];
         underlay->leftGutterInset =
             rightGutter ? 0 : textOriginOffset - gutterWidth;
+        underlay->gutterGap = numberGap;
+        memcpy(underlay->laneX, laneX, sizeof(laneX));
+        memcpy(underlay->laneWidths, laneWidths, sizeof(laneWidths));
         if (InputHasLineDecorationProviders(state)) {
             TrackLineDecorationBands(underlay, a, {firstRow, endRow});
         }
@@ -12418,9 +12437,11 @@ int InputIndexForPosition(const InputState* s, PaintCtx* ctx, float x, float y,
     double blankTop = (double)preview.layoutBoundary * lineH;
     if (preview.layoutRows > 0 && docY >= blankTop &&
         docY < blankTop + (double)preview.layoutRows * lineH) {
-        return preview.at;
+        // The ghost lines hit the last visual row of the line above them.
+        docY = blankTop - lineH * 0.5;
+    } else {
+        docY = EditorYWithoutCompletion(s, docY, lineH);
     }
-    docY = EditorYWithoutCompletion(s, docY, lineH);
     int row = FoldMapNearestVisibleLine(&s->folds, rows - 1);
     // How far down its own line the press landed, which is which of a
     // wrapped line's visual rows it wanted.
@@ -12431,13 +12452,9 @@ int InputIndexForPosition(const InputState* s, PaintCtx* ctx, float x, float y,
         int last = InputDisplayRowCount(display) - 1;
         int displayRow =
             (int)std::min(std::max(0., docY) / lineH, (double)last);
-        if (const auto* run = SpacerRunAtRow(s, displayRow)) {
-            int line = run->spacer.line;
-            int start = InputLineStartOffset(s, line);
-            return run->spacer.above ? start
-                                     : start + len(InputSliceLine(s, line));
-        }
-        row = InputDisplayRowBufferLine(display, displayRow);
+        const auto* spacer = SpacerRunAtRow(s, displayRow);
+        row = spacer ? spacer->spacer.line
+                     : InputDisplayRowBufferLine(display, displayRow);
         Selection range = {};
         InputBufferLineDisplayRows(display, row, &range);
         relY = std::max(0., docY - (double)range.start * lineH);
@@ -12523,6 +12540,68 @@ int InputIndexForPosition(const InputState* s, PaintCtx* ctx, float x, float y,
         }
     }
     return start + local;
+}
+
+bool InputHitTest(const InputState* s, Window* win, Point position,
+                  InputHit* out) {
+    if (!s || !win || !out || s->lastLineH <= 0 ||
+        !s->inputBounds.Contains(position)) {
+        return false;
+    }
+    const InputPaintedRows* painted = LastPaintedRows(s, win);
+    if (painted && painted->docVersion != s->docVersion) return false;
+    if (!painted && !InputIsSingleLine(s) &&
+        (len(InputValue(s)) > 0 || s->contentBox.h <= 0)) {
+        return false;
+    }
+    const EditorUnderlay* underlay = painted ? painted->underlay : nullptr;
+    double scroll = underlay ? underlay->paintedScrollY : s->scrollY;
+    float lineH = s->lastLineH;
+    double y = position.y - s->inputBounds.y + scroll;
+    const InlineCompletion& preview = s->inlineCompletion;
+    double ghostTop = (double)preview.layoutBoundary * lineH;
+    bool ghost = preview.layoutRows > 0 && y >= ghostTop &&
+                 y < ghostTop + (double)preview.layoutRows * lineH;
+    InputHit hit;
+    if (!ghost && SpacerRowsTotal(s) > 0 && y >= 0) {
+        double display = EditorYWithoutCompletion(s, y, lineH) / lineH;
+        if (display < InputDisplayRowCount(InputDisplayMap(s))) {
+            if (const auto* run = SpacerRunAtRow(s, (int)display)) {
+                hit.row = run->spacer.line;
+                hit.spacer = true;
+            }
+        }
+    }
+    if (underlay && underlay->gutterHit.w > 0 &&
+        underlay->gutterHit.Contains(position)) {
+        hit.area = InputHitArea::Gutter;
+        float x = position.x - underlay->gutterOriginX;
+        for (int i = 0; i < kGutterColumnCount; i++) {
+            float left = underlay->laneX[i];
+            if (x >= left && x < left + underlay->laneWidths[i]) {
+                hit.column = (GutterColumn)i;
+                hit.hasColumn = true;
+                break;
+            }
+        }
+        if (!ghost && !hit.spacer) {
+            for (int i = 0; i < painted->geometry.nRows; i++) {
+                const RangeDecorationRow& row = painted->geometry.rows[i];
+                if (row.text && position.y >= row.text->y &&
+                    position.y < row.text->y + lineH) {
+                    hit.row = InputOffsetToPoint(s, row.lineStart).row;
+                    break;
+                }
+            }
+        }
+    } else {
+        float adjustedY = position.y + (float)(scroll - s->scrollY);
+        hit.offset =
+            InputIndexForPosition(s, &win->paint, position.x, adjustedY);
+        hit.row = InputOffsetToPoint(s, hit.offset).row;
+    }
+    *out = hit;
+    return true;
 }
 
 /* Port of crates/base/src/input/editor/search.rs — the matcher behind the
