@@ -4634,7 +4634,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
         if (!n->hasEditorKey || !EditorHostOn()) {
             return Div(a);
         }
-        El* t = TextEl(a, StrL(""))->Font(font)->Wrap()->W(kFill);
+        El* t = TextEl(a, StrL(""))->Font(font)->Wrap();
         t->MinH(FontLen(cx, font * kLineHeight));
         EditorHostWatch(a, t, n);
         return t;
@@ -4664,8 +4664,6 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
         // wraps is capped at the cell, and those lines start at the left.
         if (align == MdAlignCenter || align == MdAlignRight) {
             t->MaxWFrac(1.f);
-        } else {
-            t->W(kFill);
         }
         t->ReportLineSpan(FontLen(cx, font * kLineHeight));
         EditorHostWatch(a, t, n);
@@ -4682,9 +4680,11 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
     // Pictures share an inline flow with words and with one another. A
     // standalone picture outside the editor keeps the block image sizing.
     bool inFlow = InlineImageFlow(n);
-    El* col = Div(a)->FlexCol()->W(kFill);
+    // The column's automatic cross size stretches in a definite container
+    // and contributes its glyphs when an ancestor measures intrinsic width.
+    El* col = Div(a)->FlexCol();
     col->selectionParagraph = selectable;
-    El* row = AlignRow(Div(a)->FlexRow()->FlexWrap()->W(kFill), align);
+    El* row = AlignRow(Div(a)->FlexRow()->FlexWrap(), align);
     HostFlow* hostFlow = nullptr;
     if (n->hasEditorKey && EditorHostOn()) {
         hostFlow = ArenaNew<HostFlow>(a);
@@ -4925,7 +4925,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
                 appendPending();
                 SrcBreak();
                 col->Child(row);
-                row = AlignRow(Div(a)->FlexRow()->FlexWrap()->W(kFill), align);
+                row = AlignRow(Div(a)->FlexRow()->FlexWrap(), align);
                 continue;
             }
             if (wordLen == 0) {
@@ -6047,7 +6047,7 @@ El* TextView::Item(MdNode* n, Str marker, int depth) {
     if (n->checked) {
         content->Fg(textViewStyle.mutedForeground);
     }
-    El* row = Div(a)->FlexRow()->W(kFill)->ItemsStart();
+    El* row = Div(a)->FlexRow()->ItemsStart();
     if (n->hasCheck) {
         El* box = TaskBox(cx, a, textViewStyle,
                           FontLen(cx, baseFont * kLineHeight), n->checked);
@@ -7980,8 +7980,7 @@ El* TextView::Block(MdNode* n, int depth, bool inList, bool isLast) {
                 font = quoteStyle.fontSize;
             }
             SrcOpen({}, {});
-            return Div(a)->W(kFill)->PadB(mb)->Child(
-                Inline(n, font, BlockFg(), 0));
+            return Div(a)->PadB(mb)->Child(Inline(n, font, BlockFg(), 0));
         }
         case MdKind::Heading: {
             float scale = 1.f;
@@ -8177,7 +8176,7 @@ El* TextView::Block(MdNode* n, int depth, bool inList, bool isLast) {
             return Div(a)->W(kFill)->PadB(mb)->Child(inner);
         }
         case MdKind::List: {
-            El* list = Div(a)->FlexCol()->W(kFill)->MinW(0)->PadB(mb);
+            El* list = Div(a)->FlexCol()->MinW(0)->PadB(mb);
             if (depth > 0) {
                 list->PadL(baseFont * 1.4f);
             }
@@ -8481,7 +8480,7 @@ El* TextView::IntoEl() {
     }
     // `.text_color(text_view_style.foreground())` on the root: every block
     // below names no colour of its own, so this is what they inherit.
-    El* root = Div(a)->FlexCol()->W(kFill);
+    El* root = Div(a)->FlexCol();
     tooltipRendering = root;
     if (inheritedBuilder) inheritedBuilder->tooltipRendering = root;
     if (LayoutIsRtl(cx->app)) root->TextRight();

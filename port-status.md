@@ -265,12 +265,6 @@ The current update target is
   `RangeFromChild`, so the part range is unused there. macOS does not expose
   them yet (`src/gpui/accessibility_win.cpp`,
   `src/gpui/accessibility_linux.cpp`).
-- **Fitted text does not contribute its max-content width.** A
-  shrink-to-fit bubble around a TextView sizes to its padding and list
-  markers. A run is width 100%, and that percentage does not fall back
-  to the text's max-content while the parent is being measured
-  (`src/base/text.cpp`). Upstream's fitted-list checks are wider than
-  the same words as a paragraph and wrap inside the container.
 - **Painted text is not observed for tests.** Rust records each label,
   shortcut, text run and avatar name while painting when `test-support`
   is on, and `test_support::texts` returns that log (`observe.rs`,

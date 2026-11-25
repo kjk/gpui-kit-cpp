@@ -3057,18 +3057,16 @@ static bool ListBodyIsFlexAuto(El* e) {
 }
 
 // text_view.rs fitted_lists_include_their_body_width and
-// fitted_lists_wrap_their_body_within_the_available_width. Those measure
-// a shrink-to-fit bubble. A run here is width 100%, and that percentage
-// does not fall back to the text's max-content while the parent is being
-// measured, so the bubble sizes to its padding and the marker. The change
-// those tests cover is the body's flex_auto.
+// fitted_lists_wrap_their_body_within_the_available_width.
 static void FittedListsKeepTheirBodyWidth() {
     App app;
     ThemeSet(&app, ThemeMode::Light);
+    app.paint = PaintAppNew();
     Window* win = new Window();
     win->app = &app;
     win->paint.app = &app;
     win->paint.window = win;
+    win->paint.pa = app.paint;
     Arena* a = ArenaNew();
     Ctx cx = {&app, win, a, {}};
     const char* sources[] = {
@@ -3080,18 +3078,29 @@ static void FittedListsKeepTheirBodyWidth() {
         "Intro\n\n- Hello world",
         "- Outer\n  - Hello world",
     };
-    for (const char* source : sources) {
-        El* view = TextView::New(&cx, Str(source))->IntoEl();
-        // Inherited color defers the blocks until layout.
-        LayoutEl(&win->paint, view, 0, 0, 600, 400, 16, Rgba{});
+    auto measure = [&](const char* source, float width) {
+        El* view = TextView::New(&cx, Str(source))->Font(16)->IntoEl();
+        El* bubble = Div(a)->FlexCol()->MaxW(width)->Pad(8)->Child(view);
+        El* row = Div(a)->FlexRow()->ItemsStart()->Child(bubble);
+        LayoutEl(&win->paint, row, 0, 0, 600, 400, 16, Rgba{});
         bool list = source[0] == '-' || source[0] == '3' || source[0] == 'I';
         utassert(ListBodyIsFlexAuto(view) == list);
+        return Size{bubble->w, bubble->h};
+    };
+    Size plain = measure(sources[0], 600);
+    utassert(plain.w > 50 && plain.w < 200);
+    for (int i = 1; i < (int)(sizeof(sources) / sizeof(sources[0])); i++) {
+        Size wide = measure(sources[i], 600);
+        Size narrow = measure(sources[i], 72);
+        utassert(wide.w > plain.w && wide.w < 260);
+        utassert(narrow.w <= 72 && narrow.h > wide.h);
     }
     WindowKeyedFree(win);
     ArenaDelete(a);
     delete win;
     EntityDropAll(&app);
     AppGlobalClear(&app);
+    PaintAppFree(app.paint);
 }
 
 // text_view.rs inline_code_line_is_as_tall_as_a_plain_line and
