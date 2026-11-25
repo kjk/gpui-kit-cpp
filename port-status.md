@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `82f1c1dc1f2970d93f1adfe10cbd772516c21ce7` (2026-11-25,
-webview: Switch from lb-wry to upstream Wry 0.57.3 (#4104)).
-The webview facade now targets upstream Wry 0.57.3. C++ uses the updated native adapters through its existing API.
+Processed through `bef3db38071628e4e5bdb999d8a4e15c1b1d1752` (2026-11-25,
+menu: Hand a right-click to the enclosing menu when the inner one is empty (#4113)).
+An empty inner context menu lets an enclosing trigger handle the same right-click. Tables resolve the clicked row during the press.
 The current update target is
 `832cfdc0baef92855191dfdbbbcacd75f59d3df0`.
 

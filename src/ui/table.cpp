@@ -903,7 +903,44 @@ static El* LastEmptyColEl(Ctx* cx, El* (*fn)(Ctx*, void*), void* data) {
 // so it has to be there before there is a row, which is why the menu is
 // built empty when nothing is marked. A menu with no items renders nothing,
 // which is the trait default answering the menu back untouched.
-static El* WrapContextMenu(Ctx* cx, Str id, El* box, const TableState* s,
+struct TableContextMenu {
+    Entity<TableState> table;
+    EntityId owner;
+    PopupMenu* (*build)(Ctx*, void*, int, PopupMenu*);
+    void* data;
+};
+
+static bool TableContextMenuHasItems(Ctx* cx, void* data,
+                                     Entity<PopupMenuState> state) {
+    auto* context = (TableContextMenu*)data;
+    TableState* table = context->table.Get(cx);
+    if (!table) return false;
+    if (table->rightClickedRow < 0) {
+        if (table->rightClickedCellRow < 0) {
+            TableState::OnRightClickOutside(table, cx, nullptr);
+        }
+        return false;
+    }
+    // The row's bubble handler just recorded the new row. Evaluate its
+    // builder before the outer trigger receives this same right click.
+    Ctx buildCx = *cx;
+    buildCx.self = context->owner;
+    auto* menu = PopupMenu::New(&buildCx, StrL("ctx-menu"), state);
+    menu = context
+               ->build(&buildCx, context->data, table->rightClickedRow, menu);
+    return menu && len(menu->items) > 0;
+}
+
+static void TableCaptureContextPress(TableState* state, Ctx*,
+                                     const MouseDownEvent* ev) {
+    if (ev->button == MouseButton::Right) {
+        state->rightClickedRow = -1;
+        state->rightClickedCellRow = -1;
+        state->rightClickedCellCol = -1;
+    }
+}
+
+static El* WrapContextMenu(Ctx* cx, Str id, El* box, Entity<TableState> table,
                            PopupMenu* (*build)(Ctx*, void*, int, PopupMenu*),
                            void* data) {
     Arena* a = cx->a;
@@ -916,17 +953,26 @@ static El* WrapContextMenu(Ctx* cx, Str id, El* box, const TableState* s,
     // over it to fold under.
     IdScope scope(cx, id);
     PopupMenu* menu = PopupMenu::New(cx, StrL("ctx-menu"));
-    if (s && s->rightClickedRow >= 0) {
+    const TableState* s = table.Get(cx);
+    const PopupMenuState* menuState = menu->state.Get(cx);
+    if (s && s->rightClickedRow >= 0 && menuState && menuState->open) {
         menu = build(cx, data, s->rightClickedRow, menu);
     }
     if (!menu) {
         return box;
     }
+    box->OnMouseDown(ListenTo(table, &TableCaptureContextPress),
+                     DispatchPhase::Capture);
     El* wrap = Div(a)->FlexCol()->W(kFill)->Child(box);
-    return ContextMenu::New(cx, StrDup(a, fmt("%s-ctx", id)))
-        ->Child(wrap)
-        ->Menu(menu)
-        ->IntoEl();
+    auto* trigger = ContextMenu::New(cx, StrDup(a, fmt("%s-ctx", id)))
+                        ->Child(wrap)
+                        ->Menu(menu);
+    if (auto* state = trigger->state.Get(cx)) {
+        state->canOpen = &TableContextMenuHasItems;
+        state->openData = ArenaNew<TableContextMenu>(
+            a, TableContextMenu{table, cx->self, build, data});
+    }
+    return trigger->IntoEl();
 }
 
 // The table's uniform_list virtualizes at prepaint from the bounds layout
@@ -950,7 +996,7 @@ El* DataTable::IntoEl() {
     if (!contextMenu) {
         return box;
     }
-    return WrapContextMenu(cx, id, box, state.Get(cx), contextMenu, data);
+    return WrapContextMenu(cx, id, box, state, contextMenu, data);
 }
 
 // render_row_header_cell: `w_3`, a rule down its right edge and the head's

@@ -2401,7 +2401,72 @@ static void ProgrammaticSelectionKeepsTheViewportButKeyboardReveals() {
     utassert(s.scrollY > 128 && TableSelectedRow(&s) == 51);
 }
 
+struct RecordsInContextMenu {
+    Entity<TableState> table;
+    Entity<PopupMenuState> outer;
+    bool rowMenu = false;
+    int invokedRow = -1;
+
+    static El* Cell(Ctx* cx, void*, int row, int col) {
+        return TextEl(cx->a, fmt("%d:%d", row, col));
+    }
+
+    static component::PopupMenu* RowMenu(Ctx*, void* data, int row,
+                                         component::PopupMenu* menu) {
+        auto* self = (RecordsInContextMenu*)data;
+        self->invokedRow = row;
+        return self->rowMenu ? menu->Menu(fmt("Open row %d", row)) : menu;
+    }
+
+    static El* Render(RecordsInContextMenu* self, Ctx* cx) {
+        component::TableColumn columns[] = {
+            component::TableColumn::New(StrL("a"), StrL("Column 0")).Width(180),
+            component::TableColumn::New(StrL("b"), StrL("Column 1")).Width(180),
+        };
+        auto* enclosing = component::PopupMenu::New(cx, StrL("enclosing"));
+        enclosing->Menu(StrL("Refresh"));
+        self->outer = enclosing->state;
+        El* table = component::DataTable::New(cx, StrL("records"), self->table)
+                        ->Columns(columns, 2)
+                        ->Rows(3, self, &Cell)
+                        ->ContextMenu(&RowMenu)
+                        ->RowHeight(32)
+                        ->HeaderRowHeight(32)
+                        ->H(260)
+                        ->IntoEl();
+        return component::ContextMenu::New(cx, StrL("list"))
+            ->Child(Div(cx->a)->SizeFull()->Child(table))
+            ->Menu(enclosing)
+            ->IntoEl();
+    }
+};
+
+// kit/tests/integration/collections.rs: an enclosing menu handles a header,
+// blank space, and a row whose own builder supplies nothing.
+static void TableContextMenuLetsTheEnclosingMenuHandleEmptySpace() {
+    for (bool rowMenu : {false, true}) {
+        for (Point point : {Point{100, 69}, Point{100, 22}, Point{100, 189}}) {
+            App* app = TestAppNew();
+            component::Init(app);
+            auto entity = EntityNew<RecordsInContextMenu>(app);
+            auto* view = entity.Get(app);
+            view->table = EntityNewState<TableState>(app);
+            view->rowMenu = rowMenu;
+            Window* win = TestWindowOpen(app, entity, 640, 320);
+            TestDraw(win);
+            TestSimulateMouseDown(win, point, MouseButton::Right);
+            TestSimulateMouseUp(win, point, MouseButton::Right);
+            TestRunUntilParked(app);
+            bool onRow = point.y == 69;
+            utassert(view->outer.Get(app)->open == !(rowMenu && onRow));
+            utassert(view->invokedRow == (onRow ? 1 : -1));
+            TestAppFree(app);
+        }
+    }
+}
+
 void TestDataTable() {
+    TableContextMenuLetsTheEnclosingMenuHandleEmptySpace();
     ProgrammaticSelectionKeepsTheViewportButKeyboardReveals();
     AThemedTableRowKeepsItsOptionalHoverStyle();
     AThemedTableRowKeepsItsIdentityWhenRowsMove();

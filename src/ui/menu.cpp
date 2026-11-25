@@ -902,15 +902,16 @@ ContextMenu* ContextMenu::Menu(PopupMenu* m) {
     return this;
 }
 
-static void ContextMenuOpenAt(ContextMenuState* self, Ctx* cx, float x, float y,
+static bool ContextMenuOpenAt(ContextMenuState* self, Ctx* cx, float x, float y,
                               Bounds el) {
     PopupMenuState* menu = self->menu.Get(cx);
-    if (!menu || self->empty) {
+    if (!menu || (self->canOpen ? !self->canOpen(cx, self->openData, self->menu)
+                                : self->empty)) {
         self->open = false;
         if (menu && menu->open) {
             PopupMenuDismiss(menu, cx);
         }
-        return;
+        return false;
     }
     self->position = {x - el.x, y - el.y};
     self->windowPosition = {x, y};
@@ -934,6 +935,7 @@ static void ContextMenuOpenAt(ContextMenuState* self, Ctx* cx, float x, float y,
     // Doing this on every frame used to pull focus back whenever the
     // application moved it off the open menu.
     FocusHandleFocus(cx->win, menu->focus);
+    return true;
 }
 
 void ContextMenuState::OnMouseDown(ContextMenuState* self, Ctx* cx,
@@ -942,11 +944,11 @@ void ContextMenuState::OnMouseDown(ContextMenuState* self, Ctx* cx,
         ev->phase != DispatchPhase::Bubble) {
         return;
     }
-    // The hit chain walks inside-out, which is what registering the listener
-    // before child paint does in context_menu.rs. Stopping the bubble is what
-    // keeps an ancestor menu from opening on the same right click.
-    WindowStopPropagation(cx);
-    ContextMenuOpenAt(self, cx, ev->x, ev->y, ev->el);
+    // The bubble sees the innermost trigger first. An empty trigger lets
+    // the enclosing trigger see the same press.
+    if (ContextMenuOpenAt(self, cx, ev->x, ev->y, ev->el)) {
+        WindowStopPropagation(cx);
+    }
 }
 
 void ContextMenuState::OnLongPress(ContextMenuState* self, Ctx* cx,
@@ -963,9 +965,10 @@ void ContextMenuState::OnLongPress(ContextMenuState* self, Ctx* cx,
         return;
     }
     // prevent_default, so the window does not also select a nearby word.
-    WindowPreventDefault(cx);
-    ContextMenuOpenAt(self, cx, ev->startPosition.x, ev->startPosition.y,
-                      ev->el);
+    if (ContextMenuOpenAt(self, cx, ev->startPosition.x, ev->startPosition.y,
+                          ev->el)) {
+        WindowPreventDefault(cx);
+    }
 }
 
 void ContextMenuState::OnMouseUpOut(ContextMenuState* self, Ctx* cx,

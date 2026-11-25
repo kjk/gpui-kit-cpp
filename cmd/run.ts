@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "82f1c1dc1f2970d93f1adfe10cbd772516c21ce7",
+  sha: "bef3db38071628e4e5bdb999d8a4e15c1b1d1752",
   date: "2026-11-25",
-  subject: "webview: Switch from lb-wry to upstream Wry 0.57.3 (#4104)",
+  subject: "menu: Hand a right-click to the enclosing menu when the inner one is empty (#4113)",
   crates: {
     "gpui-kit": "0.11.0",
     "gpui-base": "0.11.0",
