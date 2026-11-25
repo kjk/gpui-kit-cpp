@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `9ef02b1f6d9aaf44e0522eeec1448609d69f1554` (2026-11-23,
-skills: Add Claude Code plugin (#4089)).
-Refreshed the Introduction page with the pinned upstream README.
+Processed through `48e53b11762a7ac37835acca889a924c569ff681` (2026-11-23,
+input: Reduce accessibility text run memory on large documents (#4090)).
+Accessibility snapshots copy the field value once. Native text ranges navigate the live document on demand.
 The current update target is
 `832cfdc0baef92855191dfdbbbcacd75f59d3df0`.
 

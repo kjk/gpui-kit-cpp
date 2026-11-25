@@ -11094,6 +11094,7 @@ static bool AccessibilityNameFromContents(AccessibilityRole role) {
 // reads them in between, but an element's strings may belong to its state
 // (an input's placeholder), which the app can replace before then.
 static void AccessibilityInfoOwnStrings(Arena* a, AccessibilityInfo* info) {
+    // One frame-owned copy keeps the accessible value valid across edits.
     info->authorId = StrDup(a, info->authorId);
     info->label = StrDup(a, info->label);
     info->description = StrDup(a, info->description);
@@ -11160,11 +11161,6 @@ static void AccessibilityCollectNode(El* e, Vec<AccessibilityNode>* out,
         }
         if (!node.input && node.info.role != AccessibilityRole::Document) {
             node.input = AccessibilityInput(e);
-        }
-        if (node.input && node.info.value.s) {
-            // The input can change before this accessibility snapshot is
-            // replaced. Keep the value from the same frame as the bounds.
-            node.info.value = StrDup(e->arena, node.info.value);
         }
         if (!node.focusId && AccessibilityRoleCanFocus(node.info.role)) {
             node.focusId =

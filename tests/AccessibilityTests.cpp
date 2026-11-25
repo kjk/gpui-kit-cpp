@@ -687,6 +687,53 @@ static void MultilineAccessibilityKeepsLineBreaksAndSelection() {
     FreeAccessibilityFrame(&f);
 }
 
+// input/base/a11y_text.rs a_large_document_is_navigable_from_start_to_end.
+static void ALargeDocumentIsNavigableFromStartToEnd() {
+    AccessibilityFrame f = NewAccessibilityFrame();
+    component::Init(&f.app);
+    InputState input;
+    input.kind = InputKind::Textarea;
+    StrBuilder text(f.cx.a);
+    int middle = 0;
+    int last = 0;
+    for (int row = 0; row < 20000; row++) {
+        if (row == 10000) {
+            middle = len(text);
+        }
+        if (row == 19999) {
+            last = len(text);
+        }
+        text.Append(fmt("line %d\n", row));
+    }
+    Str source = text.TakeStr();
+    InputSetValue(&input, source);
+    InputSetSelectedRangeWithDirection(&input, &f.app, f.win, middle, middle,
+                                       false);
+    El* field = component::Textarea::New(&f.cx, StrL("multiline"), &input)
+                    ->Rows(3)
+                    ->IntoEl();
+    AccessibilityCollect(field, &f.win->accessibility);
+    const AccessibilityNode* node =
+        RoleNode(f.win->accessibility, AccessibilityRole::MultilineTextInput);
+    utassert(node != nullptr);
+    if (node) {
+        Str value = WindowAccessibilityTextValue(*node);
+        utassert(StrEq(value, source));
+        utassert(WindowAccessibilityTextCaret(*node) == middle);
+        Selection first = AccessibilityTextLineAt(value, 0);
+        Selection focus = AccessibilityTextLineAt(value, middle);
+        Selection end = AccessibilityTextLineAt(value, last);
+        Selection tail = AccessibilityTextLineAt(value, len(value));
+        utassert(first.start == 0 && first.end == 7);
+        utassert(focus.start == middle && focus.end == middle + 11);
+        utassert(end.start == last && end.end == len(value));
+        utassert(tail.start == len(value) && tail.end == len(value));
+        InputSetValue(&input, StrL("replacement"));
+        utassert(StrEq(node->info.value, source));
+    }
+    FreeAccessibilityFrame(&f);
+}
+
 // crates/base/src/a11y_disabled.rs
 // a_disabled_control_marks_its_node_disabled. The wrapper there only sets
 // the flag GPUI's element had no setter for. El::AriaDisabled is that
@@ -1483,6 +1530,7 @@ void TestAccessibility() {
     InputContentTypesAndSecretsProjectSafely();
     SingleLineRangesUseTheCurrentFrameGeometry();
     MultilineAccessibilityKeepsLineBreaksAndSelection();
+    ALargeDocumentIsNavigableFromStartToEnd();
     ADocumentSourceIsReadOnDemand();
     ADocumentSourceEnumeratesItsPartsOnDemand();
 }
