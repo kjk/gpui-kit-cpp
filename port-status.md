@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `184dd8717d4bce81e3e513f56364b956e4596374` (2026-11-23,
-chore(deps): update Cargo.lock for 8 RustSec advisories (#4080)).
-Reviewed the Rust-only Cargo.lock updates. The watched crate and runtime pins are unchanged.
+Processed through `35bbb8cf80e3fa05be05e7a78c90acba645e33ef` (2026-11-23,
+chore: Remove unused anyhow dependencies (#4081)).
+Reviewed the example package cleanup. The C++ examples do not use anyhow.
 The current update target is
 `832cfdc0baef92855191dfdbbbcacd75f59d3df0`.
 
