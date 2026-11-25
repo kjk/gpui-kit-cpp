@@ -1355,6 +1355,7 @@ struct LeafPiece {
     bool atom;
     bool wrap = false;
     float maxW = 0;
+    TextLayout* layout = nullptr;
 };
 
 } // namespace editor_host

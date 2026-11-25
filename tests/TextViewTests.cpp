@@ -6825,18 +6825,58 @@ static void InlineObjectsShareRowsWithShapedProse() {
     TswClose(&v);
 }
 
+static void MixedObjectProseSharesFontsLinksAndSourceRanges() {
+    TswView v = TswOpen(
+        "[linked](https://example.test) **heavier** *slanted* plain "
+        "![icon](assets/icons/heart.svg)",
+        TswContainer::Window);
+    v.Root()->listenForLinks = true;
+    TestDraw(v.win);
+    const TextHit* hit = HitContaining(v.win, "linked heavier slanted plain");
+    utassert(hit && hit->highlightedElement);
+    if (hit && hit->highlightedElement) {
+        const auto* element = hit->highlightedElement;
+        TextFontRanges fonts = element->lifecycle->fontRanges;
+        utassert(fonts.count == 2);
+        if (fonts.count == 2) {
+            utassert(fonts.ranges[0].lo == 7 && fonts.ranges[0].hi == 14 &&
+                     fonts.ranges[0].weight == kFontWeightSemibold);
+            utassert(fonts.ranges[1].lo == 15 && fonts.ranges[1].hi == 22 &&
+                     fonts.ranges[1].style == HighlightFontStyle::Italic);
+        }
+        char output[96];
+        int copied = CopyTextHitsIn(
+            &v.win->paint, hit->docOff, hit->docOff + 28, hit->scope, output,
+            (int)sizeof(output), SelectionFormat::SourceAcrossStyles);
+        utassert(StrEq(
+            Str(output, copied),
+            "[linked](https://example.test) **heavier** *slanted* plain"));
+        Bounds linked;
+        Bounds plain;
+        utassert(ElTextRangeRects(&v.win->paint, element, 1, 2, &linked, 1) ==
+                 1);
+        utassert(ElTextRangeRects(&v.win->paint, element, 24, 25, &plain, 1) ==
+                 1);
+        TestSimulateClick(v.win, {linked.CenterX(), linked.CenterY()});
+        TestSimulateClick(v.win, {plain.CenterX(), plain.CenterY()});
+        utassert(v.Root()->linkClicks == 1);
+    }
+    TswClose(&v);
+}
+
 static void InlineObjectsKeepBidiRunsTogether() {
+    Str phrase = StrL("abc אבג דהו xyz");
     TswView v = TswOpen("**abc אבג דהו xyz** ![icon](assets/icons/heart.svg)",
                         TswContainer::Window);
     TestDraw(v.win);
-    const TextHit* hit = HitContaining(v.win, "abc אבג דהו xyz");
+    const TextHit* hit = HitContaining(v.win, phrase.s);
     utassert(hit != nullptr);
     if (hit) {
         char output[64];
         int count = CopyTextHitsIn(
-            &v.win->paint, hit->docOff, hit->docOff + len(hit->text),
-            hit->scope, output, (int)sizeof(output), SelectionFormat::Plain);
-        utassert(StrEq(Str(output, count), "abc אבג דהו xyz"));
+            &v.win->paint, hit->docOff, hit->docOff + len(phrase), hit->scope,
+            output, (int)sizeof(output), SelectionFormat::Plain);
+        utassert(StrEq(Str(output, count), phrase));
     }
     TswClose(&v);
 }
@@ -8947,6 +8987,7 @@ static void TestTextStateWindow() {
     ShapedTextCopiesAcrossMarkdownStyleBoundaries();
     WrappedLinksUseSharedTextGeometry();
     InlineObjectsShareRowsWithShapedProse();
+    MixedObjectProseSharesFontsLinksAndSourceRanges();
     InlineObjectsKeepBidiRunsTogether();
     RevealingProseBesideAnInlineObjectKeepsTheShapedRun();
     ParserPluginsKeepTheirConfigurationAcrossAsyncUpdates();
@@ -9436,6 +9477,43 @@ static void EmptyHardLinesInMixedEditorTextHaveCaretGeometry() {
         }
         utassert(leaf->PositionForCaret(editor_host::Caret::Upstream(13))
                      .y == leaf->PositionForIndex(13).y);
+    }
+    EditorHostEnd();
+    ArenaDelete(a);
+    TestAppFree(app);
+}
+
+static void MixedEditorFontsUseTheSharedLayoutForCarets() {
+    App* app = TestAppNew();
+    Arena* a = ArenaNew();
+    MdNode* doc = HostNode(a, MdKind::Doc);
+    MdNode* paragraph = HostPara(a, "plain ", true, 1);
+    MdRun* marked = HostRun(a, "marked");
+    marked->marks = MdBold | MdItalic;
+    paragraph->runLast->next = marked;
+    MdRun* atom = HostRun(a, "");
+    atom->hasCustom = true;
+    atom->custom.text = StrL("atom");
+    marked->next = atom;
+    paragraph->runLast = atom;
+    HostAdd(doc, paragraph);
+    Window* win = nullptr;
+    OpenEditorHost(app, doc, 250, &win);
+    const LeafGeometry* leaf = EditorHostLeaf(1);
+    utassert(leaf && leaf->mixed && leaf->pieceCount == 2);
+    if (leaf && leaf->pieceCount == 2) {
+        const auto& prose = leaf->pieces[0];
+        utassert(prose.start == 0 && prose.end == 12 && prose.layout);
+        if (prose.layout) {
+            Vec<TextGlyphBox> boxes;
+            TextGlyphBoxes(prose.layout, StrL("plain marked"), &boxes);
+            for (const auto& box : boxes) {
+                Point at = leaf->PositionForIndex(box.lo);
+                utassertnear(at.x, prose.bounds.x + box.left);
+                at.y += box.h / 2;
+                utassert(leaf->IndexForPosition(at) == box.lo);
+            }
+        }
     }
     EditorHostEnd();
     ArenaDelete(a);
@@ -11150,6 +11228,7 @@ void TestTextView() {
     WrappedWholeLeafCaretsKeepTheirLine();
     WrappedMixedLeafCaretsKeepTheirLine();
     EmptyHardLinesInMixedEditorTextHaveCaretGeometry();
+    MixedEditorFontsUseTheSharedLayoutForCarets();
     LinkTooltipFollowsThePointerAndClearsOnExit();
     ALinkTooltipTracksOneRenderingOfASharedDocument();
 #if GPUI_MARKDOWN_FULL

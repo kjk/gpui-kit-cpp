@@ -31,12 +31,11 @@ The current update target is
   hosts.
 
 - **Inline objects are atomic.** A paragraph can shape its links and retain
-  Markdown copy boundaries in one layout. Around inline objects, styled
-  runs use shaped advances through the wrap pass. Contiguous fragments
-  of each run share their paint and editor hit geometry, including range
-  decorations and streaming fades. Bidi runs shape in visual order after
-  wrapping with isolated word widths. Style boundaries are still shaped
-  separately (`src/base/text.cpp`).
+  Markdown copy boundaries in one layout. Prose beside inline objects shares
+  shaped advances and paint geometry across font, link and source-style
+  ranges. Inline code, mark backgrounds, strikethrough and runs containing
+  hard line breaks keep separate shaping. Bidi runs shape in visual order
+  after wrapping with isolated word widths (`src/base/text.cpp`).
 
 - **Windows additionally handles touch-screen pinch.** DirectManipulation
   supplies precision-touchpad pinch and two-finger scroll with inertia as in

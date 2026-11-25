@@ -3488,14 +3488,17 @@ bool TextPointAt(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
     if (!tl) {
         return false;
     }
+    bool ok =
+        TextLayoutPointAt(tl, s, wrap, off, outX, outY, outH, lineEndAffinity);
+    TextLayoutRelease(tl);
+    return ok;
+}
+
+bool TextLayoutPointAt(TextLayout* tl, Str s, bool wrap, int off, float* outX,
+                       float* outY, float* outH, bool lineEndAffinity) {
     Bounds r[32] = {};
     bool ok = false;
-    if (len(s) == 0) {
-        *outX = 0;
-        *outY = 0;
-        *outH = fontSize;
-        ok = true;
-    } else if (off > 0 && (lineEndAffinity || off == len(s))) {
+    if (off > 0 && (lineEndAffinity || off == len(s))) {
         // The trailing edge of everything before it, the way the caret is
         // placed.
         // Limit a wrapped run's query to its final character so the caret
@@ -3523,7 +3526,6 @@ bool TextPointAt(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
             ok = true;
         }
     }
-    TextLayoutRelease(tl);
     return ok;
 }
 
@@ -3578,13 +3580,14 @@ static void PaintWavyRun(PaintCtx* ctx, float x, float y, float w, Rgba color,
 void PaintTextUnderline(PaintCtx* ctx, Str s, float fontSize, float maxW,
                         bool wrap, uint16_t weight, float lineH, float x,
                         float y, int u8a, int u8b, Rgba color, bool wavy,
-                        TextAlign align, float thickness) {
+                        TextAlign align, float thickness,
+                        TextFontRanges fonts) {
     // A zero thickness is no line, as GPUI's snap_stroke keeps zero at zero.
     if (!ctx || !ctx->rt || color.a == 0 || u8a >= u8b || thickness <= 0) {
         return;
     }
     TextLayout* layout = TextMeasLayout(ctx, s, fontSize, maxW, wrap, weight,
-                                        lineH, nullptr, nullptr, align);
+                                        lineH, nullptr, nullptr, align, fonts);
     if (!layout) {
         return;
     }
@@ -4756,9 +4759,10 @@ static void PrepareInlineTextFragment(PaintCtx* ctx, El* element) {
     InlineTextAdvances& advances = *fragment.advances;
     if (!advances.prepared) {
         advances.prepared = true;
-        TextLayout* layout = TextMeasLayout(
-            ctx, advances.text, element->laidFont, 0, false,
-            ElTextWeight(element), element->style.lineHeight, nullptr);
+        TextLayout* layout =
+            TextMeasLayout(ctx, advances.text, element->laidFont, 0, false,
+                           ElTextWeight(element), element->style.lineHeight,
+                           nullptr, nullptr, TextAlign::Left, advances.fonts);
         if (!layout) return;
         Vec<TextGlyphBox> glyphs;
         TextGlyphBoxes(layout, advances.text, &glyphs);
@@ -4798,10 +4802,13 @@ static void PrepareInlineTextFragment(PaintCtx* ctx, El* element) {
             return;
         }
     }
-    float width = MeasureText(ctx, element->text, element->laidFont, 0, false,
-                              ElTextWeight(element), element->style.lineHeight)
-                      .w;
-    if (width > 0) element->style.width = width;
+    Size size;
+    TextLayout* layout =
+        TextMeasLayout(ctx, element->text, element->laidFont, 0, false,
+                       ElTextWeight(element), element->style.lineHeight, &size,
+                       nullptr, TextAlign::Left, ElTextFontRanges(element));
+    if (layout) TextLayoutRelease(layout);
+    if (size.w > 0) element->style.width = size.w;
 }
 
 static void PrepareEl(PaintCtx* ctx, El* e, float inheritFont, Rgba inheritFg,
@@ -6975,7 +6982,8 @@ static void PaintTextSpans(PaintCtx* ctx, El* e, float font, Rgba base) {
     float maxW = e->laidMaxW > 0 ? e->laidMaxW : e->w;
     TextLayout* layout =
         TextMeasLayout(ctx, e->text, font, maxW, e->style.wrap, ElTextWeight(e),
-                       e->style.lineHeight, nullptr, nullptr, ElTextAlign(e));
+                       e->style.lineHeight, nullptr, nullptr, ElTextAlign(e),
+                       ElTextFontRanges(e));
     if (!layout) {
         DrawTextAt(ctx, e->text, e->x, e->y, e->w, e->h, font, base,
                    e->style.truncate, e->style.wrap, e->laidMaxW,
@@ -9190,7 +9198,8 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         Rgba c = e->style.hasColor ? e->style.color
                                    : RuntimeStyleNow(ctx->app).foreground;
         TextLayout* highlightLayout = nullptr;
-        if (e->lifecycle && e->lifecycle->highlightCount > 0) {
+        bool hasHighlights = e->lifecycle && e->lifecycle->highlightCount > 0;
+        if (hasHighlights || ElTextFontRanges(e).count) {
             highlightLayout = ElTextLayout(ctx, e);
         }
         int lo = e->selLo;
@@ -9327,11 +9336,13 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
                 e->style.wrap, ElTextWeight(e), e->style.lineHeight, e->x, e->y,
                 e->markLo, e->markHi, c, false, ElTextAlign(e));
         }
-        if (highlightLayout) {
+        if (hasHighlights && highlightLayout) {
             PaintHighlightedText(ctx, e, highlightLayout, c);
-            TextLayoutRelease(highlightLayout);
         } else if ((e->nSpans > 0 || nFades > 0) && e->text.s) {
             PaintTextSpans(ctx, e, font, c);
+        } else if (highlightLayout) {
+            TextLayoutDraw(ctx, highlightLayout, e->x, e->y, c,
+                           e->style.truncate, e->laidMaxW);
         } else if (e->laidLayout) {
             TextLayoutDraw(ctx, e->laidLayout, e->x, e->y, c, e->style.truncate,
                            e->laidMaxW);
@@ -9378,7 +9389,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
                 ctx, e->text, font, e->laidMaxW > 0 ? e->laidMaxW : e->w,
                 e->style.wrap, ElTextWeight(e), e->style.lineHeight, e->x, e->y,
                 0, len(e->text), c, e->style.underlineWavy, ElTextAlign(e),
-                (float)e->style.underlineThickness);
+                (float)e->style.underlineThickness, ElTextFontRanges(e));
         }
         // The rules a diagnostic asked for, over whatever drew the glyphs.
         for (int i = 0; i < e->nUnderlines; i++) {
@@ -9401,13 +9412,15 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
                     ctx, e->text, font, e->laidMaxW > 0 ? e->laidMaxW : e->w,
                     e->style.wrap, ElTextWeight(e), e->style.lineHeight, e->x,
                     e->y, std::max(parts[p].lo, u.lo), parts[p].hi,
-                    parts[p].color, u.wavy, ElTextAlign(e));
+                    parts[p].color, u.wavy, ElTextAlign(e), 1.f,
+                    ElTextFontRanges(e));
             }
         }
         if (clipText) {
             CanvasPopClip(ctx);
         }
         PaintCaret(ctx, e, font);
+        if (highlightLayout) TextLayoutRelease(highlightLayout);
         e->x = outerTextBox.x;
         e->y = outerTextBox.y;
         e->w = outerTextBox.w;

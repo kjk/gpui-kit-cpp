@@ -4095,6 +4095,10 @@ static void EditorHostFreeRange(int begin, int end) {
     for (int i = begin; i < end; i++) {
         StrFree(gEditorLeaves[i].text);
         gEditorLeaves[i].text = {};
+        for (int j = 0; j < gEditorLeaves[i].pieceCount; j++) {
+            if (auto* layout = gEditorLeaves[i].pieces[j].layout)
+                TextLayoutRelease(layout);
+        }
         Free(nullptr, gEditorLeaves[i].pieces);
         gEditorLeaves[i].pieces = nullptr;
     }
@@ -4177,9 +4181,13 @@ static Point LeafPositionInPiece(const LeafGeometry& leaf,
     float x = 0;
     float y = 0;
     float h = 0;
-    TextPointAt(leaf.paint, LeafPieceText(leaf, piece), piece.font, piece.maxW,
-                piece.wrap, index - piece.start, &x, &y, &h, piece.weight,
-                piece.lineH);
+    Str text = LeafPieceText(leaf, piece);
+    if (piece.layout)
+        TextLayoutPointAt(piece.layout, text, piece.wrap, index - piece.start,
+                          &x, &y, &h, true);
+    else
+        TextPointAt(leaf.paint, text, piece.font, piece.maxW, piece.wrap,
+                    index - piece.start, &x, &y, &h, piece.weight, piece.lineH);
     return {bounds.x + x, bounds.y + y};
 }
 
@@ -4207,9 +4215,13 @@ static int LeafIndexInPiece(const LeafGeometry& leaf, const LeafPiece& piece,
     if (piece.atom) {
         return at.x < piece.bounds.CenterX() ? piece.start : piece.end;
     }
-    int off = TextIndexAt(leaf.paint, LeafPieceText(leaf, piece), piece.font,
-                          piece.maxW, piece.wrap, at.x - piece.bounds.x,
-                          at.y - piece.bounds.y, piece.weight, piece.lineH);
+    Str text = LeafPieceText(leaf, piece);
+    float x = at.x - piece.bounds.x;
+    float y = at.y - piece.bounds.y;
+    int off = piece.layout
+                  ? TextLayoutHitPoint(piece.layout, text, x, y)
+                  : TextIndexAt(leaf.paint, text, piece.font, piece.maxW,
+                                piece.wrap, x, y, piece.weight, piece.lineH);
     return ClampI(piece.start + off, piece.start, piece.end);
 }
 
@@ -4466,15 +4478,19 @@ static void EditorHostFlowPrepaint(PaintCtx* ctx, El* e, void* user) {
         if ((entry.start < end || emptyLine) && end <= leaf.textLen) {
             Bounds bounds = ElTextContentBounds(piece);
             if (emptyLine) bounds.w = 0;
-            leaf.pieces[leaf.pieceCount++] = {bounds,
-                                              entry.start,
-                                              end,
-                                              piece->laidFont,
-                                              piece->style.lineHeight,
-                                              ElTextWeight(piece),
-                                              entry.atom,
-                                              piece->style.wrap != 0,
-                                              piece->laidMaxW};
+            leaf.pieces[leaf.pieceCount++] = {
+                bounds,
+                entry.start,
+                end,
+                piece->laidFont,
+                piece->style.lineHeight,
+                ElTextWeight(piece),
+                entry.atom,
+                piece->style.wrap != 0,
+                piece->laidMaxW,
+                piece->lifecycle && piece->lifecycle->fontRanges.count
+                    ? ElTextLayout(ctx, piece)
+                    : nullptr};
         }
     }
     EditorHostStore(leaf);
@@ -4745,6 +4761,68 @@ static const InlineTextFragment* InlineFragment(const El* element) {
                : nullptr;
 }
 
+static TextFontRanges SliceInlineFonts(Arena* arena, TextFontRanges fonts,
+                                       int start, int end) {
+    ArenaVec<TextFontRange> slice;
+    int lo = 0;
+    int hi = fonts.count;
+    while (lo < hi) {
+        int mid = lo + (hi - lo) / 2;
+        if (fonts.ranges[mid].hi <= start)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    for (int i = lo; i < fonts.count; i++) {
+        auto range = fonts.ranges[i];
+        if (range.lo >= end) break;
+        range.lo = std::max(range.lo, start) - start;
+        range.hi = std::min(range.hi, end) - start;
+        slice.Append(arena, range);
+    }
+    return {slice.Flatten(arena), len(slice)};
+}
+
+static bool CanShareObjectProse(const MdRun* run) {
+    return !run->hasCustom && !len(run->imgSrc) &&
+           !(run->marks & (MdCode | MdHighlight | MdDel)) &&
+           StrFind(run->text, StrL("\n")) < 0;
+}
+
+static InlineTextAdvances* ObjectProseAdvances(Arena* arena, const MdRun* run,
+                                               Str flow, int start,
+                                               int weight) {
+    ArenaVec<TextFontRange> fonts;
+    int end = 0;
+    for (auto* next = run; next && CanShareObjectProse(next);
+         next = next->next) {
+        int at = end;
+        end += len(next->text);
+        uint16_t face =
+            (weight < 2 && (next->marks & MdBold)) ? kFontWeightSemibold : 0;
+        auto italic = next->marks & MdItalic ? HighlightFontStyle::Italic
+                                             : HighlightFontStyle::Inherit;
+        if (at < end && (face || italic != HighlightFontStyle::Inherit))
+            fonts.Append(arena, {at, end, face, italic});
+    }
+    auto* advances = ArenaNew<InlineTextAdvances>(arena);
+    advances->text = Str(flow.s + start, end);
+    advances->fonts = {fonts.Flatten(arena), len(fonts)};
+    return advances;
+}
+
+struct ObjectProsePaint {
+    ArenaVec<ShapedTextLink> links;
+    void (*afterPaint)(PaintCtx*, El*, void*) = nullptr;
+    void* user = nullptr;
+};
+
+static void PaintObjectProse(PaintCtx* paint, El* element, void* data) {
+    auto* state = static_cast<ObjectProsePaint*>(data);
+    if (state->afterPaint) state->afterPaint(paint, element, state->user);
+    PaintShapedTextLinks(paint, element, &state->links);
+}
+
 // The flex pass used the shaped advances to place words and atomic objects.
 // Each contiguous visual text span becomes one run for paint and editor
 // geometry. Keep the first fragment's source offset for source selection.
@@ -4784,8 +4862,18 @@ static void ShapeInlineObjectRows(PaintCtx*, El* row, void*) {
         ArenaVec<TextSpan> washes;
         ArenaVec<TextSpan> underlines;
         ArenaVec<TextFade> fades;
+        ArenaVec<SourceSegment> mapped;
+        ArenaVec<SelSourceSpan> sourceStyles;
+        ObjectProsePaint* sharedPaint = nullptr;
+        ShapedTextLink link = {};
+        Str linkHref;
+        auto finishLink = [&]() {
+            if (link.target) sharedPaint->links.Append(first->arena, link);
+            link = {};
+        };
         for (El* part = first;; part = part->next) {
-            int offset = InlineFragment(part)->start - start->start;
+            auto* fragment = InlineFragment(part);
+            int offset = fragment->start - start->start;
             auto append = [&](auto& output, const auto* ranges, int count) {
                 for (int i = 0; i < count; i++) {
                     auto range = ranges[i];
@@ -4794,7 +4882,86 @@ static void ShapeInlineObjectRows(PaintCtx*, El* row, void*) {
                     output.Append(first->arena, range);
                 }
             };
-            append(spans, part->spans, part->nSpans);
+            int partLen = len(part->text);
+            if (RgbaEq(part->style.color, first->style.color)) {
+                append(spans, part->spans, part->nSpans);
+            } else {
+                int at = 0;
+                for (int i = 0; i < part->nSpans; i++) {
+                    auto span = part->spans[i];
+                    if (at < span.lo)
+                        spans.Append(
+                            first->arena,
+                            {offset + at, offset + span.lo, part->style.color});
+                    at = span.hi;
+                    span.lo += offset;
+                    span.hi += offset;
+                    if (!span.color.a) span.color = part->style.color;
+                    spans.Append(first->arena, span);
+                }
+                if (at < partLen)
+                    spans.Append(first->arena, {offset + at, offset + partLen,
+                                                part->style.color});
+            }
+            if (part->selectable) {
+                sourceStyles.Append(first->arena,
+                                    {offset, offset + partLen, part->selSrc});
+                if (auto* map = part->selMap) {
+                    int firstSegment = 0;
+                    int segmentEnd = map->count;
+                    while (firstSegment < segmentEnd) {
+                        int mid =
+                            firstSegment + (segmentEnd - firstSegment) / 2;
+                        if (map->segments[mid].renderedEnd <= map->offset)
+                            firstSegment = mid + 1;
+                        else
+                            segmentEnd = mid;
+                    }
+                    for (int i = firstSegment; i < map->count; i++) {
+                        auto segment = map->segments[i];
+                        if (segment.renderedStart >= map->offset + partLen)
+                            break;
+                        int lo = std::max(segment.renderedStart, map->offset);
+                        int hi = std::min(segment.renderedEnd,
+                                          map->offset + partLen);
+                        if (lo >= hi) continue;
+                        segment.sourceStart = MappedSourceStart(segment, lo);
+                        // Use the original source bounds when mapping the end.
+                        segment
+                            .sourceEnd = MappedSourceEnd(map->segments[i], hi);
+                        segment.renderedStart = offset + lo - map->offset;
+                        segment.renderedEnd = offset + hi - map->offset;
+                        mapped.Append(first->arena, segment);
+                    }
+                }
+            }
+            if (fragment->href.s != linkHref.s) {
+                finishLink();
+                linkHref = fragment->href;
+            }
+            if (len(linkHref)) {
+                if (!link.target) {
+                    if (!sharedPaint)
+                        sharedPaint = ArenaNew<ObjectProsePaint>(first->arena);
+                    auto* target = Div(first->arena);
+                    target->cursor = part->cursor;
+                    target->onClick = part->onClick;
+                    target->listener = part->listener;
+                    if (part->lifecycle->linkTooltip) {
+                        target->lifecycle = ArenaNew<ElLifecycle>(first->arena);
+                        target->lifecycle->linkTooltip = part->lifecycle
+                                                             ->linkTooltip;
+                    }
+                    link = {target, offset, offset, len(sharedPaint->links)};
+                }
+                link.end = offset + partLen;
+                if (part == first) {
+                    first->onClick = {};
+                    first->listener = {};
+                    first->cursor = CursorKind::Arrow;
+                    first->lifecycle->linkTooltip = nullptr;
+                }
+            }
             append(washes, part->washes, part->nWashes);
             first->glyphWashes |= part->glyphWashes;
             append(underlines, part->underlines, part->nUnderlines);
@@ -4811,8 +4978,25 @@ static void ShapeInlineObjectRows(PaintCtx*, El* row, void*) {
             if (part != first) part->text = {};
             if (part == last) break;
         }
+        finishLink();
         first->text =
             Str(start->advances->text.s + start->start, end - start->start);
+        first->lifecycle->fontRanges = SliceInlineFonts(
+            first->arena, start->advances->fonts, start->start, end);
+        if (len(sourceStyles)) {
+            auto* map = ArenaNew<SelSourceMap>(first->arena);
+            map->segments = mapped.Flatten(first->arena);
+            map->count = len(mapped);
+            map->spans = sourceStyles.Flatten(first->arena);
+            map->spanCount = len(sourceStyles);
+            first->SelMap(map);
+        }
+        if (sharedPaint) {
+            sharedPaint->afterPaint = first->lifecycle->afterPaint;
+            sharedPaint->user = first->lifecycle->user;
+            first->lifecycle->afterPaint = &PaintObjectProse;
+            first->lifecycle->user = sharedPaint;
+        }
         first->Spans(spans.Flatten(first->arena), len(spans))
             ->Washes(washes.Flatten(first->arena), len(washes))
             ->Underlines(underlines.Flatten(first->arena), len(underlines))
@@ -5025,6 +5209,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
     bool hasReveal = RevealIn(n, &revealOffset);
     bool shapeAroundObjects = hasObject;
     InlineTextAdvances* advances = nullptr;
+    int advanceStart = 0;
     if (shapeAroundObjects) row->prePaint = &ShapeInlineObjectRows;
     El* lastWord = nullptr;
     int lastWordLo = 0;
@@ -5049,8 +5234,10 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
         if (wordLen <= 0) {
             return;
         }
-        El* w = Word(StrDup(a, Str(word, wordLen)), font, color, marks, weight,
-                     href, highlight, hasHighlight);
+        uint8_t wordMarks =
+            advances ? (uint8_t)(marks & ~(MdBold | MdItalic)) : marks;
+        El* w = Word(StrDup(a, Str(word, wordLen)), font, color, wordMarks,
+                     weight, href, highlight, hasHighlight);
         if (shapeLine || (marks & MdCode)) {
             // The text shaper wraps the span inside a single inset budget.
             w->Wrap()->MaxWFrac(1.f)->MinW(0);
@@ -5078,8 +5265,11 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
         if (advances && !shapeLine) {
             if (!w->lifecycle) w->lifecycle = ArenaNew<ElLifecycle>(a);
             auto* fragment = ArenaNew<InlineTextFragment>(a);
-            *fragment = {advances, wordStart, wordStart + wordLen};
+            int start = wordLeaf - advanceStart;
+            *fragment = {advances, start, start + wordLen, href};
             w->lifecycle->inlineTextFragment = fragment;
+            w->lifecycle->fontRanges =
+                SliceInlineFonts(a, advances->fonts, start, start + wordLen);
         }
         reportPiece(w, wordLeaf, wordLeaf + wordLen, false);
         while (hasBreak && nextBreak.offset < wordLeaf) {
@@ -5106,7 +5296,8 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
     };
     for (MdRun* r = n->runFirst; r; r = r->next) {
         flush();
-        advances = nullptr;
+        if (advances && leafAt >= advanceStart + len(advances->text))
+            advances = nullptr;
         marks = r->marks;
         href = (marks & MdLink) ? r->href : Str{};
         if ((marks & MdLink) && linkHook) {
@@ -5227,11 +5418,11 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             continue;
         }
         wordRun = r;
-        if (shapeAroundObjects && !(marks & (MdCode | MdHighlight)) &&
-            StrFind(r->text, StrL(" ")) >= 0 &&
-            StrFind(r->text, StrL("\n")) < 0) {
-            advances = ArenaNew<InlineTextAdvances>(a);
-            advances->text = r->text;
+        if (shapeAroundObjects && !advances && len(r->text) &&
+            CanShareObjectProse(r)) {
+            advanceStart = leafAt;
+            advances =
+                ObjectProseAdvances(a, r, flowSource, advanceStart, weight);
         }
         int hanging = 0;
         if (pending && len(pending->text) > 0 &&

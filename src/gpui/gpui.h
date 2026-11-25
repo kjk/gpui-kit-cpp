@@ -2881,6 +2881,7 @@ struct AccessibilityDocumentSource {
 // advances. Its fragments may land on separate rows or alongside an object.
 struct InlineTextAdvances {
     Str text;
+    TextFontRanges fonts;
     float* positions = nullptr;
     bool prepared = false;
 };
@@ -2889,6 +2890,7 @@ struct InlineTextFragment {
     InlineTextAdvances* advances;
     int start;
     int end;
+    Str href;
 };
 
 struct ElLifecycle {
@@ -7198,6 +7200,8 @@ bool TextPointAt(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
                  int off, float* outX, float* outY, float* outH,
                  uint16_t font = 0, float lineHeight = 0,
                  bool lineEndAffinity = true);
+bool TextLayoutPointAt(TextLayout* layout, Str text, bool wrap, int offset,
+                       float* x, float* y, float* height, bool lineEndAffinity);
 int TextIndexAt(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
                 float relX, float relY, uint16_t font = 0, float lineHeight = 0,
                 TextAlign align = TextAlign::Left);
@@ -7250,7 +7254,7 @@ void PaintTextUnderline(PaintCtx* ctx, Str s, float fontSize, float maxW,
                         bool wrap, uint16_t weight, float lineH, float x,
                         float y, int u8a, int u8b, Rgba color,
                         bool wavy = false, TextAlign align = TextAlign::Left,
-                        float thickness = 1.f);
+                        float thickness = 1.f, TextFontRanges fonts = {});
 // The taffy tree a window lays out in, kept between frames so taffy's own
 // per-node caches are. It is reconciled against the element tree rather than
 // rebuilt: an element whose style and content are the ones its node already
