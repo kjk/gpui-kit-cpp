@@ -4758,13 +4758,13 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
         row->Child(pending);
         pending = nullptr;
     };
-    auto flush = [&](bool hanging = false) {
+    auto flush = [&](bool hanging = false, bool shapeLine = false) {
         if (wordLen <= 0) {
             return;
         }
         El* w = Word(StrDup(a, Str(word, wordLen)), font, color, marks, weight,
                      href, highlight, hasHighlight);
-        if (marks & MdCode) {
+        if (shapeLine || (marks & MdCode)) {
             // The text shaper wraps the span inside a single inset budget.
             w->Wrap()->MaxWFrac(1.f)->MinW(0);
         }
@@ -4936,6 +4936,23 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             if (wordLen == 0) {
                 wordStart = i;
                 wordLeaf = leafAt + i;
+                if (marks == 0 && !pending && !row->first) {
+                    const char* start = r->text.s + i;
+                    const char* breakAt = (const char*)memchr(
+                        start, '\n', (size_t)(len(r->text) - i));
+                    bool nextIsBreak = r->next && len(r->next->text) > 0 &&
+                                       r->next->text.s[0] == '\n';
+                    if (breakAt || !r->next || nextIsBreak) {
+                        // Shape a plain hard-line segment as one run. Word
+                        // boxes lose the kerning across their boundaries.
+                        wordLen =
+                            breakAt ? (int)(breakAt - start) : len(r->text) - i;
+                        memcpy(word, start, (size_t)wordLen);
+                        i += wordLen - 1;
+                        flush(false, true);
+                        continue;
+                    }
+                }
             }
             word[wordLen++] = c;
             if (i + 1 == hanging) {

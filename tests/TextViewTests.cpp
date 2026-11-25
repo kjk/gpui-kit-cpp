@@ -9888,6 +9888,49 @@ static El* FindTextEl(El* e, const char* text) {
     return nullptr;
 }
 
+// inline_flow.rs a_word_that_fits_once_kerned_stays_on_the_line and
+// a_paragraph_with_an_object_wraps_like_plain_text_when_kerned.
+static void HardLineKeepsNativeWrappingBesideAnInlineObject() {
+    InlineImageHost host;
+    if (!InlineImageOpen(&host)) {
+        InlineImageClose(&host);
+        utassert(false);
+        return;
+    }
+    host.photo = TestMakeSizedImage(host.app.paint, 16, 16);
+    const char* texts[] = {"aa bb. cc", "aa (bb) cc",
+                           "The quick brown fox jumps over the lazy dog."};
+    for (const char* words : texts) {
+        MdRun image;
+        image.imgSrc = StrL("inline.png");
+        MdRun paragraph;
+        paragraph.text = StrDup(host.a, fmt("%s\n", Str(words)));
+        paragraph.next = &image;
+        MdNode block;
+        block.kind = MdKind::Paragraph;
+        block.runFirst = &paragraph;
+        MdNode doc;
+        doc.kind = MdKind::Doc;
+        doc.first = &block;
+        for (float width : {27.f, 48.f, 110.f}) {
+            El* mixed = TextView::New(&host.cx, Str{})
+                            ->ImageSource(TestSizedImageSource, host.photo)
+                            ->RenderDocument(&doc)
+                            ->W(width);
+            El* plain = TextView::New(&host.cx, Str(words))->IntoEl()->W(width);
+            LayoutEl(&host.win->paint, mixed, 0, 0, width, 200, 14, Rgba{});
+            LayoutEl(&host.win->paint, plain, 0, 0, width, 200, 14, Rgba{});
+            const El* inFlow = FindTextEl(mixed, words);
+            const El* native = FindTextEl(plain, words);
+            utassert(inFlow && native && inFlow->style.wrap);
+            if (inFlow && native) {
+                utassertnear(inFlow->h, native->h);
+            }
+        }
+    }
+    InlineImageClose(&host);
+}
+
 static El* FindKind(El* e, ElKind kind) {
     if (!e) {
         return nullptr;
@@ -10900,6 +10943,7 @@ void TestTextView() {
     FlowPositionReportsThePreviousHeadingOrRule();
     AnUnchangedFlowIsNotLaidOutAgain();
     InlineFlowSharesCachedMarksAndLinks();
+    HardLineKeepsNativeWrappingBesideAnInlineObject();
     InlineCodeLineIsAsTallAsAPlainLine();
     OversizedInlineCodeWrapsWithOneInsetPerSide();
     ClosingMarkAndSpaceStayWithInlineCode();

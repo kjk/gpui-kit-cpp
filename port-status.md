@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `bef3db38071628e4e5bdb999d8a4e15c1b1d1752` (2026-11-25,
-menu: Hand a right-click to the enclosing menu when the inner one is empty (#4113)).
-An empty inner context menu lets an enclosing trigger handle the same right-click. Tables resolve the clicked row during the press.
+Processed through `4b74a30b96fa269b8ecc023433a84b32076d9af2` (2026-11-25,
+text: Keep a word on its line when it fits once kerned in an inline flow (#4114)).
+Plain hard-line segments in a mixed inline flow shape together, so a separate object on the next line does not change their wrapping.
 The current update target is
 `832cfdc0baef92855191dfdbbbcacd75f59d3df0`.
 
@@ -27,7 +27,9 @@ The current update target is
 - **Mixed inline layout uses element widths.** Closing marks and spaces
   across style boundaries share a flex item with the preceding word.
   Trailing spaces still contribute to that item's width when it fits, and
-  line breaks inside one element use the platform text shaper (`src/base/text.cpp`).
+  whole plain hard lines use the platform text shaper. Runs that share a
+  line with differently styled text or an object still measure in separate
+  elements (`src/base/text.cpp`).
 
 - **Pinch comes from macOS and Windows touch screens.** macOS reports
   `magnifyWithEvent:`; Windows reports a touch-screen zoom (`WM_GESTURE`

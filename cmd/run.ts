@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "bef3db38071628e4e5bdb999d8a4e15c1b1d1752",
+  sha: "4b74a30b96fa269b8ecc023433a84b32076d9af2",
   date: "2026-11-25",
-  subject: "menu: Hand a right-click to the enclosing menu when the inner one is empty (#4113)",
+  subject: "text: Keep a word on its line when it fits once kerned in an inline flow (#4114)",
   crates: {
     "gpui-kit": "0.11.0",
     "gpui-base": "0.11.0",
