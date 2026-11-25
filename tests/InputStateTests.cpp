@@ -12886,6 +12886,23 @@ static void InlineCompletionMovesDocumentRowsAndGutterMarks() {
     utassert(InputRangeToBounds(s, d.win, {6, 7}, &after));
     utassertnear(after.y, before.y);
     TestAppFree(d.app);
+
+    DecorationEditor empty = DecorationEditorOpen("", false);
+    s = empty.editor;
+    s->scrollBeyondLastLine = 0;
+    InputFocus(s, empty.app, empty.win);
+    TestDraw(empty.win);
+    float emptyHeight = (float)s->contentH;
+    s->inlineCompletion.text = StrL("\n\nnext");
+    s->inlineCompletion.at = 0;
+    s->inlineCompletion.asked = true;
+    TestDraw(empty.win);
+    utassert(s->inlineCompletion.layoutRows == 2);
+    utassertnear((float)s->contentH, emptyHeight + 2 * s->lastLineH);
+    InputClearInlineCompletion(s);
+    TestDraw(empty.win);
+    utassertnear((float)s->contentH, emptyHeight);
+    TestAppFree(empty.app);
 }
 
 // element.rs gutter_decorations_starting_in_a_fold_mark_its_row_and_the_rest.

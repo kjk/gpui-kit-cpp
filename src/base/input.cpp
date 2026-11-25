@@ -3691,9 +3691,17 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     El* col = Div(a)->FlexCol()->W(kFill)->BindInput(state);
     col->BoundsOut(&state->contentBox);
     ApplyEditorAccessibility(col, state, style.mask || state->masked, text);
+    // The debounce in front of an inline suggestion is driven by frames.
+    if (!InputIsEditable(state)) {
+        InputHideContextMenu(state);
+        InputClearInlineCompletion(state);
+    } else if (InputUpdateInlineCompletion(state, state->completion.open)) {
+        WindowRequestAnimationFrame(cx->win);
+    }
+    bool showPreview = state->focused && InputHasInlineCompletion(state);
     bool layoutSpacers = state->spacers && (state->spacers->provider.query ||
                                             state->spacers->total > 0);
-    if (len(text) == 0 && !layoutSpacers) {
+    if (len(text) == 0 && !layoutSpacers && !showPreview) {
         state->inlineCompletion.layoutRows = 0;
         if (UpdateAutoGrowRows(state) && cx->win && !LayoutInScratchPass()) {
             AppInvalidate(cx->win);
@@ -3911,15 +3919,8 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     // yet on the first frame of a file; either would build every line.
     // Cap at the window so a mistaken content height still virtualizes.
     float vh = InputViewportHeight(cx, state);
-    // The debounce in front of an inline suggestion is driven by frames.
-    if (!InputIsEditable(state)) {
-        InputHideContextMenu(state);
-        InputClearInlineCompletion(state);
-    } else if (InputUpdateInlineCompletion(state, state->completion.open)) {
-        WindowRequestAnimationFrame(cx->win);
-    }
     InlineCompletion& preview = state->inlineCompletion;
-    if (state->focused && InputHasInlineCompletion(state)) {
+    if (showPreview) {
         int line = InputOffsetToPoint(state, cursor).row;
         double top = DisplayRowDocY(state, line, lineH) +
                      (double)SpacerRowsAboveLine(state, line) * lineH;
@@ -4313,6 +4314,39 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             painted->underlay = underlay;
         }
     }
+    Str previewFirstLine;
+    Str previewContinuation;
+    if (preview.layoutLine >= 0) {
+        int newline = StrFind(preview.text, StrL("\n"));
+        previewFirstLine =
+            newline < 0 ? preview.text : Str(preview.text.s, newline);
+        if (newline >= 0) {
+            previewContinuation = Str(preview.text.s + newline + 1,
+                                      len(preview.text) - newline - 1);
+        }
+    }
+    Rgba ghostFg = RgbaOpacity(style.mutedForeground, 0.5f);
+    auto appendPreviewRows = [&](int row) {
+        if (row != preview.layoutLine || preview.layoutRows == 0) return;
+        Str rest = previewContinuation;
+        // Continuation rows are real layout children. Blank lines still
+        // occupy height, and the next buffer row stays below the preview.
+        for (int i = 0; i < preview.layoutRows; i++) {
+            int newline = StrFind(rest, StrL("\n"));
+            Str one = newline < 0 ? rest : Str(rest.s, newline);
+            El* band = Div(a)->H(lineH)->Shrink0()->PadL(textOriginOffset);
+            if (len(one) > 0) {
+                El* run = TextEl(a, one)->Font(font)->LineHeight(lineMult)->Fg(
+                    ghostFg);
+                InputFace(run, style);
+                MaskEditorText(run, underlay);
+                band->Child(run);
+            }
+            col->Child(band);
+            if (newline >= 0)
+                rest = Str(rest.s + newline + 1, len(rest) - newline - 1);
+        }
+    };
     for (int row = firstRow; row < endRow; row++) {
         int lineStart = lineStarts[row];
         int lineEnd =
@@ -4391,7 +4425,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             } else {
                 shown = ShowTabs(a, cx->win ? &cx->win->paint : nullptr, state,
                                  line);
-                bool placeholder = len(text) == 0;
+                bool placeholder = len(text) == 0 && !showPreview;
                 el = TextEl(a, placeholder ? state->placeholder : shown.text)
                          ->Font(font)
                          ->LineHeight(lineMult)
@@ -4723,8 +4757,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                 underlay->foldColor = state->foldBackground;
             }
             col->Child(el);
-            if (ghostHeight > 0 && row == preview.layoutLine)
-                col->Child(Div(a)->H(ghostHeight)->Shrink0());
+            appendPreviewRows(row);
             AppendEditorSpacers(cx, col, state, row, false, lineH);
             continue;
         }
@@ -4808,8 +4841,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             underlay->lineBands[row - firstRow] = band;
         }
         col->Child(band);
-        if (ghostHeight > 0 && row == preview.layoutLine)
-            col->Child(Div(a)->H(ghostHeight)->Shrink0());
+        appendPreviewRows(row);
         AppendEditorSpacers(cx, col, state, row, false, lineH);
     }
     if (rangePaint && painted) {
@@ -4836,49 +4868,21 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         }
     }
 
-    // layout_inline_completion: the suggestion in front of the caret, in the
-    // muted foreground at half opacity. Rust shapes the first line to sit
-    // after the cursor and reserves rows below for the rest.
-    if (state->focused && InputHasInlineCompletion(state) &&
-        preview.layoutLine >= firstRow && preview.layoutLine < endRow) {
-        Rgba ghostFg = RgbaOpacity(style.mutedForeground, 0.5f);
-        // Where the text column starts, for the lines after the first: the
-        // gutter and the fold strip are not part of it.
-        // Where the caret was last painted, in the column's own coordinates.
-        float gx = state->caretWinX - state->contentBox.x;
+    // The first line starts at the caret on the existing visual row.
+    if (len(previewFirstLine) > 0 && preview.layoutLine >= firstRow &&
+        preview.layoutLine < endRow) {
+        float gx = len(text) == 0 ? textOriginOffset
+                                  : state->caretWinX - state->contentBox.x;
         float gy = (float)(InputOffsetDisplayY(state, cursor, lineH) -
                            state->layoutOriginY);
-        float nextY = (float)((double)preview.layoutBoundary * lineH -
-                              state->layoutOriginY);
-        Str rest = state->inlineCompletion.text;
-        for (int line = 0; line <= preview.layoutRows; line++) {
-            int nl = -1;
-            for (int i = 0; i < len(rest); i++) {
-                if (rest.s[i] == '\n') {
-                    nl = i;
-                    break;
-                }
-            }
-            Str one = nl >= 0 ? Str(rest.s, nl) : rest;
-            rest = nl >= 0 ? Str(rest.s + nl + 1, len(rest) - nl - 1) : Str{};
-            if (len(one) > 0) {
-                El* ghost =
-                    Div(a)
-                        ->Absolute()
-                        ->Left(line == 0 ? gx : textOriginOffset)
-                        ->Top(line == 0 ? gy : nextY + (line - 1) * lineH)
-                        ->H(lineH)
-                        ->Bg(style.background);
-                El* run = TextEl(a, one)->Font(font)->LineHeight(lineMult)->Fg(
-                    ghostFg);
-                InputFace(run, style);
-                MaskEditorText(ghost, underlay);
-                col->Child(ghost->Child(run));
-            }
-            if (nl < 0) {
-                break;
-            }
-        }
+        El* ghost = Div(a)->Absolute()->Left(gx)->Top(gy)->H(lineH);
+        El* run = TextEl(a, previewFirstLine)
+                      ->Font(font)
+                      ->LineHeight(lineMult)
+                      ->Fg(ghostFg);
+        InputFace(run, style);
+        MaskEditorText(ghost, underlay);
+        col->Child(ghost->Child(run));
     }
     // Bars and boundary pills use the same preview displacement as the rows.
     if (InputGutterStripWidth(state) > 0.f && lineH > 0.f) {
