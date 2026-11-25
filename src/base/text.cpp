@@ -4785,25 +4785,30 @@ static TextFontRanges SliceInlineFonts(Arena* arena, TextFontRanges fonts,
 
 static bool CanShareObjectProse(const MdRun* run) {
     return !run->hasCustom && !len(run->imgSrc) &&
-           !(run->marks & (MdCode | MdHighlight)) &&
-           StrFind(run->text, StrL("\n")) < 0;
+           !(run->marks & (MdCode | MdHighlight));
 }
 
 static InlineTextAdvances* ObjectProseAdvances(Arena* arena, const MdRun* run,
-                                               Str flow, int start,
-                                               int weight) {
+                                               int runStart, Str flow,
+                                               int start, int weight) {
     ArenaVec<TextFontRange> fonts;
     int end = 0;
     for (auto* next = run; next && CanShareObjectProse(next);
          next = next->next) {
         int at = end;
-        end += len(next->text);
+        int size = len(next->text) - runStart;
+        const char* text = size > 0 ? next->text.s + runStart : nullptr;
+        const char* hardBreak =
+            text ? (const char*)memchr(text, '\n', (size_t)size) : nullptr;
+        end += hardBreak ? (int)(hardBreak - text) : size;
         uint16_t face =
             (weight < 2 && (next->marks & MdBold)) ? kFontWeightSemibold : 0;
         auto italic = next->marks & MdItalic ? HighlightFontStyle::Italic
                                              : HighlightFontStyle::Inherit;
         if (at < end && (face || italic != HighlightFontStyle::Inherit))
             fonts.Append(arena, {at, end, face, italic});
+        if (hardBreak) break;
+        runStart = 0;
     }
     auto* advances = ArenaNew<InlineTextAdvances>(arena);
     advances->text = Str(flow.s + start, end);
@@ -5451,12 +5456,6 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             continue;
         }
         wordRun = r;
-        if (shapeAroundObjects && !advances && len(r->text) &&
-            CanShareObjectProse(r)) {
-            advanceStart = leafAt;
-            advances =
-                ObjectProseAdvances(a, r, flowSource, advanceStart, weight);
-        }
         int hanging = 0;
         if (pending && len(pending->text) > 0 &&
             pending->text.s[len(pending->text) - 1] != ' ') {
@@ -5466,6 +5465,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             char c = r->text.s[i];
             if (c == '\n') {
                 flush();
+                advances = nullptr;
                 appendPending();
                 reportEmptyLine(leafAt + i);
                 SrcBreak();
@@ -5477,6 +5477,11 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             if (wordLen == 0) {
                 wordStart = i;
                 wordLeaf = leafAt + i;
+                if (shapeAroundObjects && !advances && CanShareObjectProse(r)) {
+                    advanceStart = wordLeaf;
+                    advances = ObjectProseAdvances(a, r, i, flowSource,
+                                                   advanceStart, weight);
+                }
                 if (marks == 0 && !pending && !row->first) {
                     const char* start = r->text.s + i;
                     const char* breakAt = (const char*)memchr(

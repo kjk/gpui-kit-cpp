@@ -9546,6 +9546,37 @@ static void MixedEditorFontsUseTheSharedLayoutForCarets() {
     TestAppFree(app);
 }
 
+static void MixedProseResumesSharedShapingAtAHardBreak() {
+    App* app = TestAppNew();
+    Arena* a = ArenaNew();
+    MdNode* doc = HostNode(a, MdKind::Doc);
+    MdNode* paragraph = HostPara(a, "lead\nagain ", true, 1);
+    MdRun* marked = HostRun(a, "marked");
+    marked->marks = MdBold;
+    paragraph->runLast->next = marked;
+    MdRun* atom = HostRun(a, "");
+    atom->hasCustom = true;
+    atom->custom.text = StrL("atom");
+    marked->next = atom;
+    paragraph->runLast = atom;
+    HostAdd(doc, paragraph);
+    Window* win = nullptr;
+    OpenEditorHost(app, doc, 250, &win);
+    const LeafGeometry* leaf = EditorHostLeaf(1);
+    utassert(leaf && leaf->mixed && leaf->pieceCount == 3);
+    if (leaf && leaf->pieceCount == 3) {
+        const auto& before = leaf->pieces[0];
+        const auto& after = leaf->pieces[1];
+        utassert(before.start == 0 && before.end == 4);
+        utassert(after.start == 5 && after.end == 17 && after.layout);
+        utassert(leaf->PositionForIndex(5).y > leaf->PositionForIndex(0).y);
+        utassertnear(leaf->PositionForIndex(5).y, leaf->PositionForIndex(11).y);
+    }
+    EditorHostEnd();
+    ArenaDelete(a);
+    TestAppFree(app);
+}
+
 static void RekeyingClonedLeavesPreservesEachIdentity() {
     App* app = TestAppNew();
     Arena* a = ArenaNew();
@@ -11255,6 +11286,7 @@ void TestTextView() {
     WrappedMixedLeafCaretsKeepTheirLine();
     EmptyHardLinesInMixedEditorTextHaveCaretGeometry();
     MixedEditorFontsUseTheSharedLayoutForCarets();
+    MixedProseResumesSharedShapingAtAHardBreak();
     LinkTooltipFollowsThePointerAndClearsOnExit();
     ALinkTooltipTracksOneRenderingOfASharedDocument();
 #if GPUI_MARKDOWN_FULL
