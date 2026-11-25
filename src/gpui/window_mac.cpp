@@ -26,6 +26,7 @@
 @class GpuiView;
 @class GpuiWindowDelegate;
 @class GpuiAccessibilityElement;
+@class GpuiAccessibilityPart;
 
 // WinOpts::frameless with ::activatable: AppKit lets a borderless window
 // become key only when its class says so. Never main: the parent stays the
@@ -99,6 +100,7 @@ void WindowMacFlagsChanged(Window* win, NSEvent* event);
   @public
     gpui::Window* gpuiWindow;
     uint32_t gpuiNodeId;
+    NSMapTable<NSNumber*, GpuiAccessibilityPart*>* parts;
 }
 @end
 
@@ -117,6 +119,130 @@ static NSString* GpuiAccessibilityString(gpui::Str value) {
     return [[NSString alloc] initWithBytes:value.s
                                     length:(NSUInteger)len(value)
                                   encoding:NSUTF8StringEncoding];
+}
+
+static NSRect GpuiAccessibilityScreenFrame(gpui::Window* win,
+                                           const gpui::Bounds& b) {
+    if (!win || !win->plat || !win->plat->view) return NSZeroRect;
+    NSView* view = (NSView*)win->plat->view;
+    NSRect local = NSMakeRect(b.x, b.y, b.w, b.h);
+    return
+        [[view window] convertRectToScreen:[view convertRect:local toView:nil]];
+}
+
+@interface GpuiAccessibilityPart : NSAccessibilityElement {
+  @public
+    GpuiAccessibilityElement* owner;
+    int partIndex;
+}
+@end
+
+@implementation GpuiAccessibilityPart
+- (BOOL)isAccessibilityElement {
+    const auto* node = GpuiAccessibilityNode(owner);
+    return node && partIndex < gpui::WindowAccessibilityPartCount(*node);
+}
+- (NSString*)accessibilityRole {
+    return NSAccessibilityPageRole;
+}
+- (id)accessibilityParent {
+    return [self isAccessibilityElement] ? owner : nil;
+}
+- (NSString*)accessibilityLabel {
+    const auto* node = GpuiAccessibilityNode(owner);
+    return node ? GpuiAccessibilityString(
+                      gpui::WindowAccessibilityPartName(*node, partIndex))
+                : nil;
+}
+- (id)accessibilityValue {
+    const auto* node = GpuiAccessibilityNode(owner);
+    return node ? GpuiAccessibilityString(
+                      gpui::WindowAccessibilityPartText(*node, partIndex))
+                : nil;
+}
+- (NSInteger)accessibilityNumberOfCharacters {
+    return [(NSString*)[self accessibilityValue] length];
+}
+- (NSString*)accessibilityStringForRange:(NSRange)range {
+    NSString* text = [self accessibilityValue];
+    NSUInteger length = [text length];
+    return range.location <= length && range.length <= length - range.location
+               ? [text substringWithRange:range]
+               : nil;
+}
+- (NSRect)accessibilityFrame {
+    gpui::Bounds bounds;
+    const auto* node = GpuiAccessibilityNode(owner);
+    return node && gpui::WindowAccessibilityPartBounds(*node, partIndex,
+                                                       &bounds)
+               ? GpuiAccessibilityScreenFrame(owner->gpuiWindow, bounds)
+               : NSZeroRect;
+}
+@end
+
+static GpuiAccessibilityPart* GpuiAccessibilityPartFor(
+    GpuiAccessibilityElement* owner, int partIndex) {
+    if (!owner->parts) owner->parts = [NSMapTable strongToWeakObjectsMapTable];
+    NSNumber* key = @(partIndex);
+    GpuiAccessibilityPart* part = [owner->parts objectForKey:key];
+    if (!part) {
+        part = [[GpuiAccessibilityPart alloc] init];
+        part->owner = owner;
+        part->partIndex = partIndex;
+        [owner->parts setObject:part forKey:key];
+    }
+    return part;
+}
+
+// AppKit can ask for the count or an indexed child without materializing
+// native elements for every page in a document.
+@interface GpuiAccessibilityChildrenWithParts : NSArray {
+    NSArray* elementChildren;
+    GpuiAccessibilityElement* owner;
+    NSUInteger partCount;
+}
+- (instancetype)initWithChildren:(NSArray*)children
+                           owner:(GpuiAccessibilityElement*)element
+                       partCount:(NSUInteger)count;
+@end
+
+@implementation GpuiAccessibilityChildrenWithParts
+- (instancetype)initWithChildren:(NSArray*)children
+                           owner:(GpuiAccessibilityElement*)element
+                       partCount:(NSUInteger)count {
+    self = [super init];
+    if (self) {
+        elementChildren = children;
+        owner = element;
+        partCount = count;
+    }
+    return self;
+}
+- (NSUInteger)count {
+    return [elementChildren count] + partCount;
+}
+- (id)objectAtIndex:(NSUInteger)index {
+    NSUInteger elementCount = [elementChildren count];
+    if (index >= elementCount && index - elementCount < partCount) {
+        return GpuiAccessibilityPartFor(owner, (int)(index - elementCount));
+    }
+    return [elementChildren objectAtIndex:index];
+}
+@end
+
+static id GpuiAccessibilityPartAtPoint(GpuiAccessibilityElement* owner,
+                                       const gpui::AccessibilityNode& node,
+                                       gpui::Point point) {
+    if (!node.document.partBounds) return nil;
+    for (int i = gpui::WindowAccessibilityPartCount(node); i > 0; i--) {
+        int index = i - 1;
+        gpui::Bounds bounds;
+        if (gpui::WindowAccessibilityPartBounds(node, index, &bounds) &&
+            bounds.Contains(point)) {
+            return GpuiAccessibilityPartFor(owner, index);
+        }
+    }
+    return nil;
 }
 
 static NSString* GpuiAccessibilityRole(gpui::AccessibilityRole role) {
@@ -338,14 +464,8 @@ static NSArray* GpuiAccessibilityChildren(gpui::Window* win, int parent) {
 }
 - (NSRect)accessibilityFrame {
     const gpui::AccessibilityNode* node = GpuiAccessibilityNode(self);
-    if (!node || !gpuiWindow->plat || !gpuiWindow->plat->view) {
-        return NSZeroRect;
-    }
-    const gpui::Bounds& b = node->bounds;
-    NSRect local = NSMakeRect(b.x, b.y, b.w, b.h);
-    NSView* view = (NSView*)gpuiWindow->plat->view;
-    NSRect inWindow = [view convertRect:local toView:nil];
-    return [[view window] convertRectToScreen:inWindow];
+    return node ? GpuiAccessibilityScreenFrame(gpuiWindow, node->bounds)
+                : NSZeroRect;
 }
 - (id)accessibilityParent {
     int index = gpui::WindowAccessibilityNodeIndex(gpuiWindow, gpuiNodeId);
@@ -359,7 +479,15 @@ static NSArray* GpuiAccessibilityChildren(gpui::Window* win, int parent) {
 }
 - (NSArray*)accessibilityChildren {
     int index = gpui::WindowAccessibilityNodeIndex(gpuiWindow, gpuiNodeId);
-    return GpuiAccessibilityChildren(gpuiWindow, index);
+    if (index < 0) return @[];
+    NSArray* children = GpuiAccessibilityChildren(gpuiWindow, index);
+    int count =
+        gpui::WindowAccessibilityPartCount(gpuiWindow->accessibility[index]);
+    return count > 0 ? [[GpuiAccessibilityChildrenWithParts alloc]
+                           initWithChildren:children
+                                      owner:self
+                                  partCount:(NSUInteger)count]
+                     : children;
 }
 - (NSArray<NSString*>*)accessibilityActionNames {
     const gpui::AccessibilityNode* node = GpuiAccessibilityNode(self);
@@ -650,9 +778,12 @@ static void GpuiAccessibilityActivate(gpui::Window* win) {
             found = i;
         }
     }
-    return found >= 0 ? (id)GpuiAccessibilityElementFor(
-                            win, win->accessibility[found].id)
-                      : (id)self;
+    if (found < 0) return self;
+    const auto& node = win->accessibility[found];
+    auto* element = GpuiAccessibilityElementFor(win, node.id);
+    id part = GpuiAccessibilityPartAtPoint(element, node,
+                                           {(float)local.x, (float)local.y});
+    return part ? part : element;
 }
 - (id)accessibilityFocusedUIElement {
     if (!win) {
@@ -2460,6 +2591,42 @@ void PlatInstallAccessibilityHitTest(Window* win) {
     // point of two doubles — the encoding Rust builds from the same pieces.
     class_addMethod(cls, @selector(accessibilityHitTest:),
                     (IMP)GpuiAccessibilityHitTest, "@@:{CGPoint=dd}");
+}
+
+// Exercises the AppKit objects from a headless test window.
+bool AccessibilityMacPartsSmokeTest(Window* win, uint32_t nodeId) {
+    @autoreleasepool {
+        if (win->plat) return false;
+        PlatWindow platform;
+        win->plat = &platform;
+        auto* owner = GpuiAccessibilityElementFor(win, nodeId);
+        NSArray* children = [owner accessibilityChildren];
+        bool ok = [children count] == 4 && !owner->parts;
+        if (ok) {
+            auto* page = (GpuiAccessibilityPart*)[children objectAtIndex:2];
+            ok = [[children objectAtIndex:0]
+                     isKindOfClass:[GpuiAccessibilityElement class]] &&
+                 [page isAccessibilityElement] &&
+                 [page accessibilityParent] == owner &&
+                 [[page accessibilityRole]
+                     isEqualToString:NSAccessibilityPageRole] &&
+                 [[page accessibilityLabel] isEqualToString:@"Page 2"] &&
+                 [[page accessibilityValue] isEqualToString:@"two"] &&
+                 [[page accessibilityStringForRange:NSMakeRange(1, 2)]
+                     isEqualToString:@"wo"] &&
+                 ![page accessibilityStringForRange:NSMakeRange(2, 2)] &&
+                 GpuiAccessibilityPartAtPoint(
+                     owner, *GpuiAccessibilityNode(owner), {20, 120}) == page &&
+                 [owner->parts count] == 1;
+            owner->gpuiWindow = nullptr;
+            ok = ok && ![page isAccessibilityElement] &&
+                 ![page accessibilityParent] &&
+                 [[owner accessibilityChildren] count] == 0;
+        }
+        owner->gpuiWindow = nullptr;
+        win->plat = nullptr;
+        return ok;
+    }
 }
 
 void PlatAccessibilityTreeChanged(Window* win) {

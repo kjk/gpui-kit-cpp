@@ -18,6 +18,11 @@ namespace gpui {
 bool AccessibilityLinuxPartsSmokeTest(Window* win, uint32_t nodeId);
 } // namespace gpui
 #endif
+#if GPUI_OS_MAC
+namespace gpui {
+bool AccessibilityMacPartsSmokeTest(Window* win, uint32_t nodeId);
+} // namespace gpui
+#endif
 
 struct AccessibilityFrame {
     App app;
@@ -1601,6 +1606,9 @@ static void ADocumentSourceEnumeratesItsPartsOnDemand() {
 #endif
 #if GPUI_OS_LINUX
     utassert(AccessibilityLinuxPartsSmokeTest(f.win, node->id));
+#endif
+#if GPUI_OS_MAC
+    utassert(AccessibilityMacPartsSmokeTest(f.win, node->id));
 #endif
     FreeAccessibilityFrame(&f);
 }

@@ -255,9 +255,9 @@ The current update target is
   Value, hit testing, `RangeFromChild`). Linux exposes them as AT-SPI
   children at `.../n<id>/p<part>` (page role, read-only Text of the part's
   own text, Component extents, hit testing); AT-SPI has no
-  `RangeFromChild`, so the part range is unused there. macOS does not expose
-  them yet (`src/gpui/accessibility_win.cpp`,
-  `src/gpui/accessibility_linux.cpp`).
+  `RangeFromChild`, so the part range is unused there. macOS exposes them as
+  AppKit page children with read-only text, bounds and hit testing
+  (`src/gpui/window_mac.cpp`).
 - **Painted text is not observed for tests.** Rust records each label,
   shortcut, text run and avatar name while painting when `test-support`
   is on, and `test_support::texts` returns that log (`observe.rs`,
