@@ -1468,6 +1468,57 @@ static void ADocumentSourceIsReadOnDemand() {
     FreeAccessibilityFrame(&f);
 }
 
+static void DocumentRevisionsTrackTextAndSelectionWithoutReadingTheSource() {
+    struct View {
+        SourcedDocument doc;
+        uint64_t textRevision = 0;
+        uint64_t selectionRevision = 0;
+        bool hasSource = true;
+        static El* Render(View* self, Ctx* cx) {
+            AccessibilityDocumentSource source;
+            source.text = self->hasSource ? &SourcedDocumentText : nullptr;
+            source.selection = &SourcedDocumentSelection;
+            source.data = &self->doc;
+            source.textRevision = self->textRevision;
+            source.selectionRevision = self->selectionRevision;
+            return Div(cx->a)
+                ->Role(AccessibilityRole::Document)
+                ->AccessibilityDocument(source);
+        }
+    };
+    App* app = TestAppNew();
+    auto view = EntityNew<View>(app);
+    View* self = view.Get(app);
+    Window* win = TestWindowOpen(app, view, 240, 140);
+    auto checkFlags = [&](bool text, bool selection) {
+        const auto* node =
+            RoleNode(win->accessibility, AccessibilityRole::Document);
+        utassert(node && node->documentTextChanged == text &&
+                 node->documentSelectionChanged == selection);
+        utassert(self->doc.reads == 0);
+    };
+    checkFlags(false, false);
+    self->textRevision++;
+    TestDraw(win);
+    checkFlags(true, false);
+    self->selectionRevision++;
+    TestDraw(win);
+    checkFlags(false, true);
+    TestDraw(win);
+    checkFlags(false, false);
+    self->textRevision++;
+    self->selectionRevision++;
+    TestDraw(win);
+    checkFlags(true, true);
+    self->hasSource = false;
+    TestDraw(win);
+    self->hasSource = true;
+    self->textRevision++;
+    TestDraw(win);
+    checkFlags(false, false);
+    TestAppFree(app);
+}
+
 // Local, no Rust counterpart: a document's pages are parts enumerated on
 // demand, not elements collected each frame.
 struct PagedDocument {
@@ -1649,6 +1700,7 @@ void TestAccessibility() {
     ALargeDocumentIsNavigableFromStartToEnd();
     ALongDocumentExposesOnlyTheCaretExcerpt();
     ADocumentSourceIsReadOnDemand();
+    DocumentRevisionsTrackTextAndSelectionWithoutReadingTheSource();
     ADocumentSourceEnumeratesItsPartsOnDemand();
     LiveRegionAnnouncesChangesAndKeepsTheSameNodeIdentity();
 }

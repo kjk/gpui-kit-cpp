@@ -244,9 +244,9 @@ The current update target is
   read-only documents (a PDF viewer's pages): `El::AccessibilityDocument`
   gives a Document node text and selection callbacks that the bridge calls
   only when a client reads them, plus revisions that enter the tree hash.
-  Windows raises UIA TextChanged / TextSelectionChanged on a revision change;
-  macOS and Linux read the same text but announce only the tree change
-  (`src/gpui/accessibility_win.cpp`).
+  Windows and macOS post text/value and selection events on the document.
+  Linux posts TextSelectionChanged for selection revisions and
+  VisibleDataChanged for text revisions, since the source has no edit span.
 - **A document's parts are enumerated on demand.** Local addition: an
   `AccessibilityDocumentSource` may list parts (a PDF's pages) with a name,
   text, bounds and text range each, read only when asked, so a large

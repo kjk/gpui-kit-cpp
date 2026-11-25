@@ -3993,6 +3993,8 @@ struct AccessibilityNode {
     int textSelectionStart = -1;
     int textSelectionEnd = -1;
     AccessibilityDocumentSource document = {};
+    bool documentTextChanged = false;
+    bool documentSelectionChanged = false;
     Str textExcerpt = {};
     int textExcerptStart = 0;
 };
@@ -4000,6 +4002,12 @@ struct AccessibilityNode {
 struct AccessibilityLiveSnapshot {
     uint32_t path = 0;
     uint64_t textHash = 0;
+};
+
+struct AccessibilityDocumentRevision {
+    uint32_t id;
+    uint64_t text;
+    uint64_t selection;
 };
 
 // A scrolled box the frame painted, and the scrollbar drawn down its right
@@ -7849,6 +7857,8 @@ struct Window {
     Vec<AccessibilityNode> accessibility;
     Vec<AccessibilityLiveSnapshot> accessibilityLive[2];
     int accessibilityLiveFrame = 0;
+    Vec<AccessibilityDocumentRevision> accessibilityDocuments[2];
+    int accessibilityDocumentFrame = 0;
     bool hasLiveRegions = false;
     // Semantic-content hash from the last frame. Native adapters receive one
     // children-invalidated event only when it changes, not on every animation

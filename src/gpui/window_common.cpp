@@ -344,6 +344,31 @@ static bool AccessibilityTrackLiveRegions(Window* win) {
     return announce;
 }
 
+static void AccessibilityTrackDocuments(Window* win) {
+    int previous = win->accessibilityDocumentFrame;
+    win->accessibilityDocumentFrame = 1 - previous;
+    const auto& last = win->accessibilityDocuments[previous];
+    auto& current =
+        win->accessibilityDocuments[win->accessibilityDocumentFrame];
+    VecClear(current);
+    for (int i = 0; i < len(win->accessibility); i++) {
+        auto& node = win->accessibility[i];
+        if (!node.document.text) continue;
+        AccessibilityDocumentRevision revision{node.id,
+                                               node.document.textRevision,
+                                               node.document.selectionRevision};
+        for (int j = 0; j < len(last); j++) {
+            const auto& prior = last[j];
+            if (prior.id != node.id) continue;
+            node.documentTextChanged = prior.text != revision.text;
+            node.documentSelectionChanged = prior.selection != revision
+                                                                   .selection;
+            break;
+        }
+        VecAppend(current, revision);
+    }
+}
+
 static uint64_t AccessibilityTreeHash(const Vec<AccessibilityNode>& nodes) {
     uint64_t hash = 0xcbf29ce484222325ull;
     hash = AccessibilityHashBytes(hash, &nodes.len, (int)sizeof(len(nodes)));
@@ -362,6 +387,7 @@ static uint64_t AccessibilityTreeHash(const Vec<AccessibilityNode>& nodes) {
         GPUI_A11Y_HASH(node.focusId);
         GPUI_A11Y_HASH(node.textSelectionStart);
         GPUI_A11Y_HASH(node.textSelectionEnd);
+        GPUI_A11Y_HASH(node.document.text != nullptr);
         GPUI_A11Y_HASH(node.document.textRevision);
         GPUI_A11Y_HASH(node.document.selectionRevision);
         GPUI_A11Y_HASH(info.role);
@@ -708,12 +734,15 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
                 AccessibilityTreeHash(win->accessibility);
             bool announce = AccessibilityTrackLiveRegions(win);
             if (announce || accessibilityHash != win->accessibilityHash) {
+                AccessibilityTrackDocuments(win);
                 win->accessibilityHash = accessibilityHash;
                 PlatAccessibilityTreeChanged(win);
             }
         } else {
             win->accessibilityHash = 0;
             VecClear(win->accessibilityLive[win->accessibilityLiveFrame]);
+            VecClear(
+                win->accessibilityDocuments[win->accessibilityDocumentFrame]);
         }
         // A dialog that has just opened takes focus into itself, which is what
         // Rust gets from tracking focus on the trap container.

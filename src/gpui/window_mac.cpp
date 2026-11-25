@@ -291,7 +291,9 @@ static NSArray* GpuiAccessibilityChildren(gpui::Window* win, int parent) {
                               ? 2
                               : 0];
     }
-    return GpuiAccessibilityString(node->info.value);
+    return GpuiAccessibilityString(
+        node->document.text ? gpui::WindowAccessibilityTextValue(*node)
+                            : node->info.value);
 }
 - (id)accessibilityMinValue {
     const gpui::AccessibilityNode* node = GpuiAccessibilityNode(self);
@@ -2478,6 +2480,17 @@ void PlatAccessibilityTreeChanged(Window* win) {
                                     NSAccessibilityLayoutChangedNotification);
     for (int i = 0; i < len(win->accessibility); i++) {
         const auto& node = win->accessibility[i];
+        if (node.documentTextChanged || node.documentSelectionChanged) {
+            auto* element = GpuiAccessibilityElementFor(win, node.id);
+            if (node.documentTextChanged) {
+                NSAccessibilityPostNotification(
+                    element, NSAccessibilityValueChangedNotification);
+            }
+            if (node.documentSelectionChanged) {
+                NSAccessibilityPostNotification(
+                    element, NSAccessibilitySelectedTextChangedNotification);
+            }
+        }
         if (!node.liveChanged) continue;
         NSString* announcement = GpuiAccessibilityString(node.info.value);
         if (!announcement) continue;

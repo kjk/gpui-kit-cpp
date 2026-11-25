@@ -2222,6 +2222,13 @@ void AccessibilityLinuxTreeChanged(Window* win) {
     if (!win) return;
     for (int i = 0; i < len(win->accessibility); i++) {
         const auto& node = win->accessibility[i];
+        // A revision invalidates the source without specifying an edit span.
+        if (node.documentTextChanged) {
+            SendEvent(win, node.id, "VisibleDataChanged", "", 0);
+        }
+        if (node.documentSelectionChanged) {
+            SendEvent(win, node.id, "TextSelectionChanged", "", 0);
+        }
         if (node.liveChanged) {
             SendEvent(win, node.id, "Announcement", "", (int)node.info.live,
                       node.info.label);
