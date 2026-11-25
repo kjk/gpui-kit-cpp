@@ -9095,6 +9095,8 @@ void IdsCollect(El* root);
 // prepaint, from its laid-out box — under the path it already has.
 void IdsCollectChildren(El* e);
 void AccessibilityCollect(El* root, Vec<AccessibilityNode>* out);
+// Whether controls should compute their accessibility-only labels this frame.
+bool WindowAccessibilityActive(Window* win);
 const AccessibilityNode* WindowAccessibilityNode(const Window* win,
                                                  uint32_t nodeId);
 // Where node `nodeId` sits in `win->accessibility`; -1 when it is not

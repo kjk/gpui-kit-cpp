@@ -2055,6 +2055,11 @@ static void HandleReply(const Incoming& in) {
         }
     } else if (in.replySerial == gA11y.embedSerial) {
         gA11y.ready = true;
+        if (gA11y.app) {
+            for (int i = 0; i < len(gA11y.app->windows); i++) {
+                AppInvalidate(gA11y.app->windows[i]);
+            }
+        }
     }
 }
 
@@ -2160,6 +2165,10 @@ void AccessibilityLinuxShutdown() {
 
 int AccessibilityLinuxFd() {
     return gA11y.fd;
+}
+
+bool AccessibilityLinuxReady() {
+    return gA11y.ready;
 }
 
 void AccessibilityLinuxPump() {

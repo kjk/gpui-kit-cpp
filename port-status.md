@@ -296,10 +296,6 @@ The current update target is
   where GPUI Fast reuses the previous frame.
   Callers pass `WithDocumentOrder`. `begin_selection_frame` is a no-op
   and does not assign that order.
-- **Data table cell labels are built whenever a hook is set.** Rust
-  calls `cell_label` only while assistive technology is connected
-  (`window.is_a11y_active`). This tree has no such query, so the hook
-  runs every frame (`table.cpp`).
 - **Inline code uses platform font fallbacks.** The refinement supports
   family, weight, italics, decorations and the runtime's font-feature
   flag. The platform supplies fallbacks for that family. Rust's

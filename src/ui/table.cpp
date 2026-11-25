@@ -548,9 +548,7 @@ DataTable* DataTable::FitColumn(bool (*fn)(Ctx*, void*, int, float*)) {
 }
 
 // row_label's default: the row's cell_label values, joined with ", ",
-// skipping empty ones. None when nothing remains. There is no
-// window.is_a11y_active, so this runs every frame a cell_label is set,
-// the same way those cell names do.
+// skipping empty ones. None when nothing remains.
 static Str JoinedCellLabels(Arena* a, Ctx* cx, void* data,
                             Str (*cellLabel)(Ctx*, void*, int, int), int row,
                             int nCols) {
@@ -1596,6 +1594,7 @@ El* DataTable::BuildEl() {
                                s->visibleRange.colEnd);
         }
     }
+    bool a11yActive = WindowAccessibilityActive(cx->win);
     for (int r = range.first; r < range.end; r++) {
         El* rowFixed =
             gpui::TableRow::New(cx, StrDup(a, fmt("row-fixed-%d", r)), r + 1)
@@ -1625,14 +1624,16 @@ El* DataTable::BuildEl() {
             ->BorderB(1, th.tableRowBorder);
         // A name from row_label replaces an aria label set in render_tr.
         // The default joins cell_label in column order, not visual order.
-        Str rowName =
-            rowLabel ? rowLabel(cx, data, r)
-                     : JoinedCellLabels(a, cx, data, cellLabel, r, nColumns);
-        if (rowName.s && len(rowName) > 0) {
-            rowScroll->AriaLabel(rowName);
-            rowFixed->AriaLabel(rowName);
-            if (rowRight) {
-                rowRight->AriaLabel(rowName);
+        if (a11yActive) {
+            Str rowName = rowLabel ? rowLabel(cx, data, r)
+                                   : JoinedCellLabels(a, cx, data, cellLabel, r,
+                                                      nColumns);
+            if (rowName.s && len(rowName) > 0) {
+                rowScroll->AriaLabel(rowName);
+                rowFixed->AriaLabel(rowName);
+                if (rowRight) {
+                    rowRight->AriaLabel(rowName);
+                }
             }
         }
         El* rows[3] = {rowFixed, rowScroll, rowRight};
@@ -1712,9 +1713,7 @@ El* DataTable::BuildEl() {
                 td->Bg(BackgroundOpacity(th.tokens.accent, 0.5f));
             }
             // a11y_cell: a selectable cell is a grid cell that reports its
-            // selection. Otherwise it is a plain cell. There is no
-            // window.is_a11y_active here, so a cell_label hook runs on every
-            // frame it is set.
+            // selection. Otherwise it is a plain cell.
             if (s && s->cellSelectable) {
                 int selRow = -1;
                 int selCol = -1;
@@ -1727,7 +1726,7 @@ El* DataTable::BuildEl() {
                     td->AriaActiveDescendant();
                 }
             }
-            if (cellLabel) {
+            if (a11yActive && cellLabel) {
                 Str label = cellLabel(cx, data, r, c);
                 if (label.s && len(label) > 0) {
                     td->AriaLabel(label);

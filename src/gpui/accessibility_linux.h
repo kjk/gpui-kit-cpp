@@ -12,6 +12,7 @@ void AccessibilityLinuxInit(App* app, Str busAddress);
 void AccessibilityLinuxShutdown();
 int AccessibilityLinuxFd();
 void AccessibilityLinuxPump();
+bool AccessibilityLinuxReady();
 void AccessibilityLinuxTreeChanged(Window* win);
 void AccessibilityLinuxFocusChanged(Window* win, int focusId);
 // The adapter keeps its geometry in window coordinates. X11 owns the one

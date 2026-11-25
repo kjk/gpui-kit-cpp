@@ -1652,6 +1652,10 @@ static void SliderEmitStep(Window* win, const SliderState* s) {
     ListenerCall(win->app, win, listener, &ev);
 }
 
+bool WindowAccessibilityActive(Window* win) {
+    return win && (win->paint.headless || PlatAccessibilityLabelsWanted(win));
+}
+
 const AccessibilityNode* WindowAccessibilityNode(const Window* win,
                                                  uint32_t nodeId) {
     if (!nodeId) {

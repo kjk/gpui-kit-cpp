@@ -574,9 +574,17 @@ void PlatAccessibilityFocusChanged(Window* win, int focusId);
 // Whether anything would read the portable tree: an automation client is
 // listening, or one has asked this window for it. While nothing would, a
 // frame does not collect or hash it — that walk is a cost of every frame
-// otherwise. Windows answers from UIA; macOS and Linux always collect, since
-// VoiceOver and AT-SPI query without announcing themselves; wasm never.
+// otherwise. Windows answers from UIA, Linux from AT-SPI, and the browser
+// only exposes live regions.
 bool PlatAccessibilityWanted(Window* win);
+// Keep the initial macOS tree available for AppKit's unannounced queries.
+#if GPUI_OS_MAC
+bool PlatAccessibilityLabelsWanted(Window* win);
+#else
+inline bool PlatAccessibilityLabelsWanted(Window* win) {
+    return PlatAccessibilityWanted(win);
+}
+#endif
 
 // ─── OS popup menus (crates/ui/src/native_menu) ──────────────────────────
 

@@ -1984,6 +1984,7 @@ static void TableExposesItsHeaderAndCellsToAssistiveTechnology() {
     App app;
     Window* win = new Window();
     win->app = &app;
+    win->paint.headless = true;
     Arena* a = ArenaNew();
     Entity<TableState> state = EntityNewState<TableState>(&app);
     Ctx cx = {&app, win, a, state.id};
@@ -2121,6 +2122,20 @@ static void TableRowsAreNamedAfterTheirCells() {
     Arena* a = ArenaNew();
     Entity<TableState> state = EntityNewState<TableState>(&app);
     Ctx cx = {&app, win, a, state.id};
+    int calls = 0;
+    auto cellLabel = [](Ctx* cx, void* data, int row, int col) -> Str {
+        ++*static_cast<int*>(data);
+        return A11yCellLabel(cx, data, row, col);
+    };
+    El* inactive = component::DataTable::New(&cx, StrL("inactive"), state)
+                       ->Columns(kA11yColumns, 2)
+                       ->Rows(4, &calls, nullptr)
+                       ->CellLabel(cellLabel)
+                       ->BuildEl();
+    El* inactiveRow = FindRowIndex(inactive, 4);
+    utassert(inactiveRow && len(inactiveRow->accessibility.label) == 0);
+    utassert(calls == 0);
+    win->paint.headless = true;
     El* labelled = component::DataTable::New(&cx, StrL("labelled"), state)
                        ->Columns(kA11yColumns, 2)
                        ->Rows(4, nullptr, nullptr)

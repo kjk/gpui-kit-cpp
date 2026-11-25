@@ -56,6 +56,7 @@ struct PlatWindow {
     // retaining an arena frame.
     NSMutableDictionary<NSNumber*, GpuiAccessibilityElement*>*
         accessibilityElements = nil;
+    bool accessibilityAsked = false;
     // Monotonic deadline for the next tick; 0 when the timer is off.
     double nextTick = 0;
     // Shown only after the first paint. Ordering front at creation puts an
@@ -616,16 +617,25 @@ static gpui::Str TextInputString(id string) {
 
 @implementation GpuiView
 
+static void GpuiAccessibilityActivate(gpui::Window* win) {
+    if (win && win->plat && !win->plat->accessibilityAsked) {
+        win->plat->accessibilityAsked = true;
+        gpui::AppInvalidate(win);
+    }
+}
+
 - (BOOL)isAccessibilityElement {
     return NO;
 }
 - (NSArray*)accessibilityChildren {
+    GpuiAccessibilityActivate(win);
     return GpuiAccessibilityChildren(win, -1);
 }
 - (id)accessibilityHitTest:(NSPoint)point {
     if (!win) {
         return self;
     }
+    GpuiAccessibilityActivate(win);
     NSPoint inWindow = [[self window] convertPointFromScreen:point];
     NSPoint local = [self convertPoint:inWindow fromView:nil];
     int found = -1;
@@ -646,6 +656,7 @@ static gpui::Str TextInputString(id string) {
     if (!win) {
         return self;
     }
+    GpuiAccessibilityActivate(win);
     for (int i = 0; i < win->accessibility.len; i++) {
         const gpui::AccessibilityNode& node = win->accessibility[i];
         if (node.focusId && node.focusId == win->focusId) {
@@ -2504,6 +2515,10 @@ void PlatAccessibilityFocusChanged(Window* win, int focusId) {
 // VoiceOver queries NSAccessibility without announcing itself first.
 bool PlatAccessibilityWanted(Window* win) {
     return win != nullptr;
+}
+
+bool PlatAccessibilityLabelsWanted(Window* win) {
+    return win && win->plat && win->plat->accessibilityAsked;
 }
 
 bool PlatHasMenu() {
