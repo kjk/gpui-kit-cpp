@@ -1728,16 +1728,12 @@ static void WordTokens(Str text, Vec<Tok>* out) {
     }
 }
 
-static void CharTokens(Str text, Vec<Tok>* out) {
+static void GraphemeTokens(Str text, Vec<Tok>* out) {
     int i = 0;
     while (i < len(text)) {
-        int step = ColumnStep((unsigned char)text.s[i]);
-        if (i + step > len(text)) step = 1;
-        Tok t;
-        t.start = i;
-        t.end = i + step;
-        VecAppend(*out, t);
-        i += step;
+        int next = TextNextGraphemeBoundary(text, i);
+        VecAppend(*out, Tok{i, next});
+        i = next;
     }
 }
 
@@ -1746,14 +1742,7 @@ static void PushRun(Vec<DiffRun>* runs, int start, int end, Str text,
     if (len(runs)) {
         DiffRun& last = (*runs)[len(runs) - 1];
         Str gap = Slice(text, last.end, start);
-        bool blank = len(gap) == 0;
-        if (!blank && mergeSpace) {
-            blank = true;
-            for (int i = 0; i < len(gap); i++) {
-                if (!IsSpace(gap.s[i])) blank = false;
-            }
-        }
-        if (blank) {
+        if (len(gap) == 0 || (mergeSpace && len(StrTrim(gap)) == 0)) {
             last.end = end;
             return;
         }
@@ -1768,20 +1757,19 @@ void DiffChangedRuns(Str oldText, Str newText, DiffInlineUnit unit,
                      Vec<DiffRun>* oldRuns, Vec<DiffRun>* newRuns) {
     VecClear(*oldRuns);
     VecClear(*newRuns);
+    if (StrEq(oldText, newText)) return;
     Vec<Tok> a;
     Vec<Tok> b;
     if (unit == DiffInlineUnit::Word) {
         WordTokens(oldText, &a);
         WordTokens(newText, &b);
     } else {
-        CharTokens(oldText, &a);
-        CharTokens(newText, &b);
+        GraphemeTokens(oldText, &a);
+        GraphemeTokens(newText, &b);
     }
     int n = len(a);
     int m = len(b);
-    // Short lines only. A longer line is left unemphasized, the same as the
-    // length cap one step above this.
-    if (n > 400 || m > 400) return;
+    int64_t total = (int64_t)n + m;
     // similar's Myers takes the common prefix and the common suffix before it
     // looks for a middle snake. A pure LCS backtrack can pair an earlier
     // space instead, and the whitespace merge then swallows the shared tail.
@@ -1793,12 +1781,12 @@ void DiffChangedRuns(Str oldText, Str newText, DiffInlineUnit unit,
     while (suffix < n - prefix && suffix < m - prefix &&
            TokSame(oldText, newText, a[n - 1 - suffix], b[m - 1 - suffix]))
         suffix++;
-    int equalBytes = 0;
-    for (int k = 0; k < prefix; k++) equalBytes += a[k].end - a[k].start;
-    for (int k = 0; k < suffix; k++)
-        equalBytes += a[n - suffix + k].end - a[n - suffix + k].start;
     int nn = n - prefix - suffix;
     int mm = m - prefix - suffix;
+    // Bound the unmatched LCS matrix. Long common prefixes and suffixes
+    // are cheap and do not count toward this limit.
+    constexpr int kMaxCells = 401 * 401;
+    if (((int64_t)nn + 1) * ((int64_t)mm + 1) > kMaxCells) return;
     for (int k = 0; k < nn; k++) a[k] = a[prefix + k];
     for (int k = 0; k < mm; k++) b[k] = b[prefix + k];
     VecResize(a, nn);
@@ -1806,7 +1794,7 @@ void DiffChangedRuns(Str oldText, Str newText, DiffInlineUnit unit,
     n = nn;
     m = mm;
     Vec<int> dp;
-    VecResize(dp, (n + 1) * (m + 1));
+    if (!VecResize(dp, (n + 1) * (m + 1))) return;
     for (int i = n - 1; i >= 0; i--) {
         for (int j = m - 1; j >= 0; j--) {
             bool eq = a[i].end - a[i].start == b[j].end - b[j].start &&
@@ -1822,6 +1810,9 @@ void DiffChangedRuns(Str oldText, Str newText, DiffInlineUnit unit,
             dp[i * (m + 1) + j] = best;
         }
     }
+    // similar's ratio counts equal tokens, regardless of their byte lengths.
+    // 2 * equal / total >= 0.25, expressed without rounding.
+    if (8 * ((int64_t)prefix + suffix + dp[0]) < total) return;
     int i = 0;
     int j = 0;
     struct Op {
@@ -1836,7 +1827,6 @@ void DiffChangedRuns(Str oldText, Str newText, DiffInlineUnit unit,
                          (size_t)(a[i].end - a[i].start)) == 0;
         if (eq && dp[i * (m + 1) + j] == dp[(i + 1) * (m + 1) + (j + 1)] + 1) {
             VecAppend(ops, Op{0, a[i].start, a[i].end});
-            equalBytes += a[i].end - a[i].start;
             i++;
             j++;
         } else if (dp[i * (m + 1) + j] == dp[(i + 1) * (m + 1) + j]) {
@@ -1855,9 +1845,6 @@ void DiffChangedRuns(Str oldText, Str newText, DiffInlineUnit unit,
         VecAppend(ops, Op{2, b[j].start, b[j].end});
         j++;
     }
-    int total = len(oldText) + len(newText);
-    float ratio = total == 0 ? 1.f : (2.f * (float)equalBytes) / (float)total;
-    if (ratio < 0.25f) return;
     bool merge = unit == DiffInlineUnit::Word;
     for (int k = 0; k < len(ops); k++) {
         if (ops[k].kind == 1)

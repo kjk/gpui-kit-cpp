@@ -534,6 +534,34 @@ static void TestInlineAndRows() {
                     &oldRuns, &newRuns);
     utassert(len(oldRuns) == 0 && len(newRuns) == 0);
 
+    DiffChangedRuns(StrL("a verylongchangedword"),
+                    StrL("a completelydifferentword"), DiffInlineUnit::Word,
+                    &oldRuns, &newRuns);
+    utassert(len(oldRuns) == 1 && oldRuns[0].start == 2);
+    utassert(len(newRuns) == 1 && newRuns[0].start == 2);
+    DiffChangedRuns(StrL("xe\xcc\x81y"), StrL("xe\xcc\x80y"),
+                    DiffInlineUnit::Character, &oldRuns, &newRuns);
+    const int wholeGrapheme[] = {1, 4};
+    utassert(RunsEq(oldRuns, 1, wholeGrapheme));
+    utassert(RunsEq(newRuns, 1, wholeGrapheme));
+    DiffChangedRuns(StrL("\xf0\x9f\x91\xa9\xe2\x80\x8d\xf0\x9f\x92\xbb"
+                         "ABCDEFGH"),
+                    StrL("\xf0\x9f\x91\xa9\xe2\x80\x8d\xf0\x9f\x92\xbb"
+                         "12345678"),
+                    DiffInlineUnit::Character, &oldRuns, &newRuns);
+    utassert(len(oldRuns) == 0 && len(newRuns) == 0);
+    char longOld[512];
+    char longNew[sizeof(longOld)];
+    memset(longOld, 'a', sizeof(longOld));
+    memcpy(longNew, longOld, sizeof(longOld));
+    longNew[450] = 'b';
+    DiffChangedRuns(Str(longOld, dimofi(longOld)),
+                    Str(longNew, dimofi(longNew)), DiffInlineUnit::Character,
+                    &oldRuns, &newRuns);
+    const int afterLongPrefix[] = {450, 451};
+    utassert(RunsEq(oldRuns, 1, afterLongPrefix));
+    utassert(RunsEq(newRuns, 1, afterLongPrefix));
+
     Vec<DiffChunk> chunks;
     DiffDisplayChunks(StrL(""), &chunks);
     utassert(len(chunks) == 0);

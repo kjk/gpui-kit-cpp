@@ -652,7 +652,7 @@ struct DiffState {
 };
 
 // Byte ranges that differ, on each side. Empty when the lines share less
-// than a quarter of their bytes.
+// than a quarter of their comparison tokens.
 void DiffChangedRuns(Str oldText, Str newText, DiffInlineUnit unit,
                      Vec<DiffRun>* oldRuns, Vec<DiffRun>* newRuns);
 
