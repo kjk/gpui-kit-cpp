@@ -1568,7 +1568,7 @@ El* Textarea::IntoEl() {
             !disabled && !readonly && !state->disabled && !state->readonly;
         ApplyFieldHooks(state, *this, editable, false);
         state->softWrap = softWrap;
-        if (rows > 0) {
+        if (rows > 0 && state->mode.kind != LayoutModeKind::AutoGrow) {
             LayoutModeSetRows(&state->mode, rows);
         }
     }

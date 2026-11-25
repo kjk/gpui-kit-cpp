@@ -6812,6 +6812,59 @@ struct NestedViews {
     }
 };
 
+// shell/src/tests/render.rs delivers a native pinch through a script handler.
+static void ScriptPinchReceivesGeometryAndCanStopPropagation() {
+    NestedViews world;
+    bool opened = world.Open(StrL(R"JS(
+import { View, div } from "gpui-kit";
+export default class Map extends View {
+  init() {
+    globalThis.pinches = [];
+    globalThis.parentPinches = 0;
+  }
+  render() {
+    return div().w(200).h(140).p(20)
+      .on_pinch(() => { globalThis.parentPinches++; })
+      .child(div().w(110).h(80)
+        .on_pinch((event, cx) => {
+          globalThis.pinches.push(event);
+          cx.stop_propagation();
+        }));
+  }
+}
+)JS"));
+    utassert(opened);
+    if (opened) {
+        Modifiers modifiers;
+        modifiers.shift = true;
+        TestSimulatePinch(world.win, {38, 42}, 0, TouchPhase::Started);
+        TestSimulatePinch(world.win, {38, 42}, 0.5f, TouchPhase::Moved,
+                          modifiers);
+        TestSimulatePinch(world.win, {38, 42}, 0, TouchPhase::Cancelled);
+        TestSimulatePinch(world.win, {350, 250}, 0.5f);
+        bool delivered = world.runtime
+                             ->Eval(StrL(R"JS(
+const [start, move, cancel] = globalThis.pinches;
+if (globalThis.pinches.length !== 3 || globalThis.parentPinches !== 0 ||
+    start.phase !== "started" || move.phase !== "moved" ||
+    cancel.phase !== "cancelled" || move.delta !== 0.5 ||
+    !move.modifiers.shift || move.position.x !== 38 ||
+    move.position.y !== 42 || move.local_position.x !== 18 ||
+    move.local_position.y !== 22 || move.bounds.width !== 110 ||
+    move.bounds.height !== 80) {
+  throw new Error(JSON.stringify([globalThis.pinches, globalThis.parentPinches]));
+}
+)JS"),
+                                    StrL("pinch-check.js"), &world.error);
+        if (!delivered && world.error.IsSet()) {
+            fprintf(stderr, "pinch payload: %.*s\n", len(world.error.message),
+                    world.error.message.s);
+        }
+        utassert(delivered);
+    }
+    world.Close();
+}
+
 static Entity<ScriptView> MountedChild(App* app, Entity<ScriptView> view) {
     Entity<ScriptView> none = {};
     ScriptView* self = view.Get(app);
@@ -7062,6 +7115,7 @@ void TestShellCore() {
     ScopeGenerationsExpireAdoptAndRefuseReentry();
     SpecElementsAreSingleUseValues();
     SpecDescriptionDepthIsBounded();
+    ScriptPinchReceivesGeometryAndCanStopPropagation();
     ViewsMountedInsideEachOtherDrawNothing();
     AViewMountedInsideItselfDrawsNothing();
     APanelThatMountsItsOwnDockDrawsNothing();

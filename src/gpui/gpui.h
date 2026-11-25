@@ -238,6 +238,7 @@ inline bool BackgroundIsSolid(const Background& b) {
 // The text-field engine, in the input section below. El and HitRect name one
 // before it is defined, the way they name SliderState.
 struct InputState;
+struct InputContextMenuJob;
 // Boundary displacement for a scrolling field. base/scroll_bounce.h defines it.
 struct ScrollOverscroll;
 // An editor's range decoration store, which base/input_editor.cpp defines.
@@ -5880,6 +5881,7 @@ struct InputState {
     // themed field installs its menu here; handle_right_click_menu runs it
     // after the press is over.
     InputContextMenuFn contextMenuHandler = nullptr;
+    InputContextMenuJob* contextMenuJobs = nullptr;
     void* contextMenuData = nullptr;
     // Frees contextMenuData when the handler is replaced or the state goes:
     // what the handler captured is the state's, as Rust's closure is.

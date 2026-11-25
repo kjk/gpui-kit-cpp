@@ -377,16 +377,9 @@ The current update target is
   are measured and painted at the editor column's current visual rows, but
   collection methods require the owning view to re-render
   (`src/base/input.cpp` PaintEditorUnderlay).
-- **A scrollable menu's default height cap ignores half the window.**
-  Rust uses the smaller of half the window and 28.125rem. This tree
-  uses 28.125rem, or the caller's DIP max (`src/ui/menu.cpp`).
-- **A context menu builder is not cancelled when its field is dropped.**
-  The handler is posted with `ExecPost` and keeps the `InputState` pointer.
-  Rust skips the call when the input entity is gone
-  (`src/base/input.cpp` `RunContextMenuJob`).
-- **Auto-grow row counts are logical lines.** `update_auto_grow` and the
-  edit path count `RopeLinesLen`, not `display_map.wrap_row_count()`, so a
-  soft-wrapped line does not add a row (`src/base/input.cpp`).
+- **Replacing an owned context menu handler cancels its queued requests.**
+  Rust retains a clone of the old handler through dispatch. C++ releases
+  the handler's data when it is replaced (`src/base/input.cpp`).
 - **Scroll bounce builders do not panic.** `WithTracking` and
   `WithMaxStretch` leave a non-positive or NaN value unchanged. Rust
   panics (`src/base/scroll_bounce.h`).
@@ -401,9 +394,6 @@ The current update target is
   to the platform-specific quickjs-jit runtime in `88a1bdc8`; the C++ shell
   keeps the repository's sole vendored-source exception and identical host API
   on every target, including wasm (`src/quickjs`, `src/shell/runtime.cpp`).
-- **`on_pinch` is accepted and never delivered.** The callback name is
-  recognized so a script can pass a handler. gpui has `PinchEvent` and
-  `El::OnPinch`, but materialize does not bind one (`src/shell/runtime.cpp`).
 - **`fs.stat` does not follow a symlink.** Rust follows a link that stays
   inside the grant. Here `stat` refuses a symlink and a Windows junction,
   and `lstat` describes the link. POSIX `atime` and `birthtime` stay 0;

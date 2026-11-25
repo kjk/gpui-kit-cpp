@@ -3618,6 +3618,22 @@ El* InputRenderLineNumber(Ctx* cx, int number, Rgba color,
     return label;
 }
 
+// Before wrapping is prepared, logical lines give the initial height.
+// Once the editor column has its width, use its cached visual row count.
+static bool UpdateAutoGrowRows(InputState* s) {
+    if (!InputIsMultiLine(s) || s->mode.kind != LayoutModeKind::AutoGrow) {
+        return false;
+    }
+    const InputWrapMap& wrap = s->wrap;
+    int rows = s->softWrap && wrap.valid && wrap.width > 0 &&
+                       wrap.docVersion == s->docVersion
+                   ? wrap.totalRows
+                   : InputLinesLen(s);
+    int before = s->mode.rows;
+    LayoutModeSetRows(&s->mode, rows);
+    return s->mode.rows != before;
+}
+
 // The multi-line editor. Rust lays every visible row out through the display
 // map; without one, each logical line is its own run and the selection is
 // clipped to it — which is the same picture as long as nothing soft-wraps.
@@ -3644,6 +3660,9 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     bool layoutSpacers = state->spacers && (state->spacers->provider.query ||
                                             state->spacers->total > 0);
     if (len(text) == 0 && !layoutSpacers) {
+        if (UpdateAutoGrowRows(state) && cx->win && !LayoutInScratchPass()) {
+            AppInvalidate(cx->win);
+        }
         state->scrollY = 0;
         state->layoutOriginY = 0;
         state->gutterLaneW = 0;
@@ -3779,6 +3798,9 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                 state->contentH = DisplayRowDocY(state, rows, lineH);
             }
         }
+    }
+    if (UpdateAutoGrowRows(state) && cx->win && !LayoutInScratchPass()) {
+        AppInvalidate(cx->win);
     }
     // The chevrons are only on screen while the gutter is hovered, on the
     // caret's own row, or over a fold that is closed — a column of them on
@@ -4974,7 +4996,10 @@ static struct {
     InputPasteTarget target;
 } gPendingPaste;
 
+static void CancelInputContextMenuJobs(InputState* s);
+
 InputState::~InputState() {
+    CancelInputContextMenuJobs(this);
     // A Paste still waiting on the clipboard must not land in freed memory;
     // Rust's weak handle simply fails to upgrade.
     if (gPendingPaste.state == this) {
@@ -5221,13 +5246,7 @@ void TextareaSetAutoGrow(InputState* s, int minRows, int maxRows) {
     s->mode.rows = minRows;
     s->mode.minRows = minRows;
     s->mode.maxRows = maxRows > minRows ? maxRows : minRows;
-    // update_auto_grow: fit the rows now. A fresh mode starts at min_rows,
-    // and the next edit was otherwise the only recount. Rust counts
-    // display_map.wrap_row_count(); the edit path here counts logical
-    // lines, and a limit change uses that same count.
-    if (InputIsMultiLine(s)) {
-        LayoutModeSetRows(&s->mode, RopeLinesLen(InputValue(s)));
-    }
+    UpdateAutoGrowRows(s);
 }
 
 void TextareaSetRows(InputState* s, int rows) {
@@ -8140,9 +8159,7 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
     // follows what is typed.
     InputUpdateSearch(s);
     InputDismissTouchSelection(s, app, win);
-    if (InputIsMultiLine(s) && s->mode.kind == LayoutModeKind::AutoGrow) {
-        LayoutModeSetRows(&s->mode, RopeLinesLen(InputValue(s)));
-    }
+    UpdateAutoGrowRows(s);
     // The colours the document names may have moved or changed, and so may
     // what a language server said about it, so the row builder asks both
     // again next frame — `Lsp::update`, which is the pair together.
@@ -8503,9 +8520,7 @@ void InputReplaceAndMarkText(InputState* s, App* app, Window* win,
     }
     free(pairsBefore);
     UpdatePreferredColumn(s);
-    if (InputIsMultiLine(s) && s->mode.kind == LayoutModeKind::AutoGrow) {
-        LayoutModeSetRows(&s->mode, RopeLinesLen(InputValue(s)));
-    }
+    UpdateAutoGrowRows(s);
     if (len(text) == 0) {
         UndoCommitTransaction(&s->undo);
     }
@@ -8602,6 +8617,7 @@ void InputDefaultValue(InputState* s, Str value) {
     // pending update that has the highlighter read it on the next render —
     // which TextSet's whole-document edit is here.
     TextSet(s, NormalizeInput(GetTempArena(), s, value));
+    UpdateAutoGrowRows(s);
 }
 
 void InputSetValue(InputState* s, const InputContent& content) {
@@ -9609,6 +9625,7 @@ void InputOnContextMenu(InputState* state, InputContextMenuFn handler,
     }
     if (state->contextMenuDrop && state->contextMenuData &&
         state->contextMenuData != data) {
+        CancelInputContextMenuJobs(state);
         state->contextMenuDrop(state->contextMenuData);
     }
     state->contextMenuHandler = handler;
@@ -9618,9 +9635,10 @@ void InputOnContextMenu(InputState* state, InputContextMenuFn handler,
 
 // window.defer: the handler runs once this call returns, with the field
 // released, so a builder can read the cursor, the selection and the text.
-// ExecPost is that release. Rust also drops the call when the input entity
-// is gone; the state here belongs to its view, so the job keeps the pointer.
-struct ContextMenuJob {
+// The queued job is owned by the executor until it runs. The field tracks
+// it across the callback so dropping the field during that call is safe too.
+struct InputContextMenuJob {
+    InputContextMenuJob* next = nullptr;
     InputContextMenuFn handler = nullptr;
     void* data = nullptr;
     InputContextMenuCapabilities caps = {};
@@ -9631,7 +9649,18 @@ struct ContextMenuJob {
     FocusHandle previousFocus = {};
 };
 
-static void RunContextMenuJob(ContextMenuJob* job) {
+static void CancelInputContextMenuJobs(InputState* s) {
+    for (auto* job = s->contextMenuJobs; job; job = job->next) {
+        job->state = nullptr;
+    }
+    s->contextMenuJobs = nullptr;
+}
+
+static void RunContextMenuJob(InputContextMenuJob* job) {
+    if (!job->state) {
+        delete job;
+        return;
+    }
     NativeMenu menu;
     job->handler(job->data, &menu, job->caps, job->position, job->app,
                  job->win);
@@ -9639,6 +9668,13 @@ static void RunContextMenuJob(ContextMenuJob* job) {
     // on the field. Associate the new focus so the selection stays up, and
     // leave an already-associated popup alone when focus did not move.
     InputState* s = job->state;
+    if (s) {
+        auto** link = &s->contextMenuJobs;
+        while (*link != job) {
+            link = &(*link)->next;
+        }
+        *link = job->next;
+    }
     if (s && job->win) {
         FocusHandle now = WindowFocused(job->win);
         // Record a popup that took focus inside the handler. Leaving the
@@ -9666,7 +9702,7 @@ void InputHandleRightClickMenu(InputState* s, App* app, Window* win,
     if (!s->contextMenuHandler) {
         return;
     }
-    auto* job = new ContextMenuJob();
+    auto* job = new InputContextMenuJob();
     job->handler = s->contextMenuHandler;
     job->data = s->contextMenuData;
     job->caps = InputContextMenuCapabilities::Of(s);
@@ -9675,6 +9711,8 @@ void InputHandleRightClickMenu(InputState* s, App* app, Window* win,
     job->win = win;
     job->state = s;
     job->previousFocus = WindowFocused(win);
+    job->next = s->contextMenuJobs;
+    s->contextMenuJobs = job;
     ExecPost(MkFunc0(&RunContextMenuJob, job));
 }
 

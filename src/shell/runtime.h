@@ -186,6 +186,9 @@ class ShellRuntime {
                              const ScrollWheelEvent& event, Bounds bounds,
                              bool hasBounds, bool* propagate, Window* window,
                              App* app);
+    void DispatchPinch(shell::CallbackId callback, const PinchEvent& event,
+                       Bounds bounds, bool* propagate, Window* window,
+                       App* app);
     void DispatchAction(shell::CallbackId callback, Str action, bool* propagate,
                         Window* window, App* app);
     void DispatchCalendarEvent(shell::EntityHandle handle,

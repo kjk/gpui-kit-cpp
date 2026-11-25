@@ -2511,8 +2511,6 @@ static bool IsCallbackMethod(Str name) {
         "on_item_secondary_click\0on_visible_range_change\0on_change\0"
         "on_open_change\0on_confirm\0on_dismiss\0on_step\0on_resize\0"
         "on_key_down\0on_key_up\0on_mouse_down_out\0on_scroll_wheel\0"
-        // The name is accepted so a script can pass the handler. There is
-        // no PinchEvent, and materialize does not bind one, so it never runs.
         "on_pinch\0"
         "on_link_click\0token\0on_token_click\0on_token_hover\0"
         // A dock's chrome handlers. They are callbacks like any other; what
@@ -13928,6 +13926,37 @@ void ShellRuntime::DispatchScrollWheel(shell::CallbackId callback,
         JsModifiers(impl->context, event.modifiers.shift,
                     event.modifiers.control, event.modifiers.alt,
                     event.modifiers.platform, event.modifiers.function));
+    ShellPropagationGuard guard(propagate);
+    Dispatch(this, callback, payload, window, app);
+}
+
+void ShellRuntime::DispatchPinch(shell::CallbackId callback,
+                                 const PinchEvent& event, Bounds bounds,
+                                 bool* propagate, Window* window, App* app) {
+    JSContext* ctx = impl->context;
+    JSValue payload = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, payload, "delta", JS_NewFloat64(ctx, event.delta));
+    const char* phase = "moved";
+    switch (event.phase) {
+        case TouchPhase::Started:
+            phase = "started";
+            break;
+        case TouchPhase::Moved:
+            break;
+        case TouchPhase::Ended:
+            phase = "ended";
+            break;
+        case TouchPhase::Cancelled:
+            phase = "cancelled";
+            break;
+    }
+    JS_SetPropertyStr(ctx, payload, "phase", JS_NewString(ctx, phase));
+    SetPointerGeometry(ctx, payload, event.x, event.y, bounds, true);
+    JS_SetPropertyStr(
+        ctx, payload, "modifiers",
+        JsModifiers(ctx, event.modifiers.shift, event.modifiers.control,
+                    event.modifiers.alt, event.modifiers.platform,
+                    event.modifiers.function));
     ShellPropagationGuard guard(propagate);
     Dispatch(this, callback, payload, window, app);
 }

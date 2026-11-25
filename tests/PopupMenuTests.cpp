@@ -1538,11 +1538,12 @@ static void ALongLabelWrapsAtTheMaxWidth() {
 struct ScrollableOptionsMenu {
     int checked = -1;
     int count = 48;
+    float maxH = 160;
     Entity<PopupMenuState> menu = {};
 
     static El* Render(ScrollableOptionsMenu* self, Ctx* cx) {
-        PopupMenu* menu =
-            PopupMenu::New(cx, StrL("options"))->Scrollable(true)->MaxH(160);
+        PopupMenu* menu = PopupMenu::New(cx, StrL("options"))->Scrollable(true);
+        if (self->maxH > 0) menu->MaxH(self->maxH);
         self->menu = menu->state;
         for (int ix = 0; ix < self->count; ix++) {
             menu->MenuWithCheck(fmt("Option %d", ix), ix == self->checked);
@@ -1550,6 +1551,26 @@ struct ScrollableOptionsMenu {
         return Div(cx->a)->SizeFull()->Pad(16)->Child(menu->IntoEl());
     }
 };
+
+static void AScrollableMenuFitsHalfTheWindowByDefault() {
+    for (float height : {240.f, 1000.f}) {
+        App* app = TestAppNew();
+        auto root = EntityNew<ScrollableOptionsMenu>(app);
+        auto* host = root.Get(app);
+        host->maxH = 0;
+        Window* win = TestWindowOpen(app, root, 640, height);
+        TestDraw(win);
+        auto* menu = host->menu.Get(app);
+        utassert(menu);
+        if (menu) {
+            utassertnear(menu->scrollBounds.h, std::min(height * 0.5f, 450.f));
+            host->maxH = 160;
+            TestDraw(win);
+            utassertnear(menu->scrollBounds.h, 160.f);
+        }
+        TestAppFree(app);
+    }
+}
 
 static float MenuItemTop(PopupMenuState* s, int ix) {
     return s->itemBounds.els[ix].y - s->scrollBounds.y;
@@ -1672,6 +1693,7 @@ static void AnEmptyContextMenuLeavesFocusWhereItWas() {
 void TestPopupMenu() {
     TheBindingsAreTheOnesRustBinds();
     AScrollableMenuOpensOnItsCheckedItem();
+    AScrollableMenuFitsHalfTheWindowByDefault();
     AShortScrollableMenuHasNoScrollRange();
     ACheckedMenuItemReportsItsCheck();
     AnEmptyContextMenuLeavesFocusWhereItWas();

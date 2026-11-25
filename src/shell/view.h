@@ -79,6 +79,11 @@ struct ShellNumberBinding {
 // listener per button; the port's element carries one listener per event, so
 // the filtering moves here. Arena-allocated with the frame that built the
 // element, which is the frame the press is dispatched against.
+struct ShellPinchBinding {
+    shell::CallbackId callback = 0;
+    const El* target = nullptr; // The hit listener and target share a frame.
+};
+
 struct ShellMouseButtonBinding {
     shell::CallbackId left = 0;
     shell::CallbackId right = 0;
@@ -216,6 +221,8 @@ struct ScriptView {
     static void OnScriptScrollWheel(ScriptView* self, Ctx* cx,
                                     const ScrollWheelEvent* event,
                                     int64_t callback);
+    static void OnScriptPinch(ScriptView* self, Ctx* cx,
+                              const PinchEvent* event, int64_t binding);
     static void OnScriptAction(ScriptView* self, Ctx* cx,
                                const ActionEvent* event, int64_t binding);
     // A registered component's native event: `binding` is a

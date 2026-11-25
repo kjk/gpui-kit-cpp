@@ -545,6 +545,17 @@ void ScriptView::OnScriptScrollWheel(ScriptView* self, Ctx* cx,
     const_cast<ScrollWheelEvent*>(event)->propagate = propagate;
 }
 
+void ScriptView::OnScriptPinch(ScriptView* self, Ctx* cx,
+                               const PinchEvent* event, int64_t binding) {
+    if (!self || !self->runtime || !event || !binding) return;
+    const auto* pinch = (const ShellPinchBinding*)binding;
+    bool propagate = event->propagate;
+    self->runtime
+        ->DispatchPinch(pinch->callback, *event, pinch->target->Bounds(),
+                        &propagate, cx->win, cx->app);
+    const_cast<PinchEvent*>(event)->propagate = propagate;
+}
+
 void ScriptView::OnScriptAction(ScriptView* self, Ctx* cx,
                                 const ActionEvent* event, int64_t binding) {
     auto* bound = (const ShellActionBinding*)binding;

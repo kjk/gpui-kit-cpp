@@ -537,10 +537,10 @@ El* PopupMenu::IntoEl() {
                    ->Pad(Rems(cx, 0.25f))
                    ->Gap(Rems(cx, 0.125f));
     if (scrollable) {
-        // Default cap is 28.125rem. Rust also mins that with half the
-        // window; this tree's unset cap is the rem alone, as the old
-        // 450px cap was.
         float heightCap = maxH > 0 ? maxH : Rems(cx, 28.125f);
+        if (maxH <= 0 && cx->win && cx->win->paint.viewH > 0) {
+            heightCap = std::min(heightCap, cx->win->paint.viewH * 0.5f);
+        }
         PopupMenuScrollToChecked(s, cx, items);
         int nRendered = 0;
         for (int k = 0; k < len(items); k++) {

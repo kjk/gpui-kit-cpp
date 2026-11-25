@@ -6890,6 +6890,37 @@ static void ContextMenuHandlerIsDeferredAndRespectsDisabled() {
     InputViewFree(&view);
 }
 
+// state.rs defers the request through the live input entity.
+static void DeferredContextMenusExpireWithTheirFieldOrOwnedHandler() {
+    struct Handler {
+        int calls = 0;
+        int drops = 0;
+        static void Run(void* data, NativeMenu*,
+                        const InputContextMenuCapabilities&, Point, App*,
+                        Window*) {
+            ((Handler*)data)->calls++;
+        }
+        static void Drop(void* data) { ((Handler*)data)->drops++; }
+    };
+    App* app = TestAppNew();
+    Handler first;
+    Handler replacement;
+    auto* input = new InputState();
+    InputOnContextMenu(input, &Handler::Run, &first, &Handler::Drop);
+    InputHandleRightClickMenu(input, app, nullptr, {}, 0);
+    InputOnContextMenu(input, &Handler::Run, &replacement, &Handler::Drop);
+    InputHandleRightClickMenu(input, app, nullptr, {}, 0);
+    TestRunUntilParked(app);
+    utassert(first.calls == 0 && first.drops == 1);
+    utassert(replacement.calls == 1 && replacement.drops == 0);
+    InputHandleRightClickMenu(input, app, nullptr, {}, 0);
+    InputHandleRightClickMenu(input, app, nullptr, {}, 0);
+    delete input;
+    TestRunUntilParked(app);
+    utassert(replacement.calls == 1 && replacement.drops == 1);
+    TestAppFree(app);
+}
+
 // state.rs context_menu_handler_can_read_its_input: the builder reads the
 // caret. Rust used to run it inside the input's update, which panicked on
 // the entity lease. The handler here is already posted, so the read works.
@@ -6964,6 +6995,62 @@ static void SetAutoGrowKeepsRowsFitted() {
     TestRunUntilParked(view.app);
     utassert(view.input->mode.rows == 4);
     InputViewFree(&view);
+}
+
+// mode.rs update_auto_grow counts the wrapped rows.
+static void AutoGrowTextareaFollowsWrappedRowsOnResizeAndEdit() {
+    struct Host {
+        InputState input;
+        float width = 160;
+        static El* Render(Host* self, Ctx* cx) {
+            return Div(cx->a)
+                ->W(self->width)
+                ->FlexCol()
+                ->Child(
+                    component::Textarea::New(cx, StrL("textarea"), &self->input)
+                        ->IntoEl());
+        }
+    };
+    App* app = TestAppNew();
+    component::Init(app);
+    auto view = EntityNew<Host>(app);
+    Host* host = view.Get(app);
+    InputState* s = &host->input;
+    s->kind = InputKind::Textarea;
+    TextareaSetAutoGrow(s, 1, 6);
+    InputDefaultValue(s, StrL("One logical line can grow to several rows."));
+    Window* win = TestWindowOpen(app, view, 560, 360);
+    auto draw = [&] {
+        TestDraw(win);
+        TestDraw(win);
+    };
+    draw();
+    int wrapped = InputWrapRowCount(InputDisplayMap(s));
+    utassert(wrapped > 1 && wrapped < 6);
+    utassert(LayoutModeRows(s->mode) == wrapped);
+    float narrow = s->viewH;
+
+    TextareaSetAutoGrow(s, 1, 2);
+    draw();
+    utassert(LayoutModeRows(s->mode) == 2);
+    utassert(s->viewH <= narrow);
+
+    host->width = 500;
+    draw();
+    utassert(InputWrapRowCount(InputDisplayMap(s)) == 1);
+    utassert(LayoutModeRows(s->mode) == 1);
+    utassert(s->viewH < narrow);
+
+    host->width = 160;
+    draw();
+    utassert(LayoutModeRows(s->mode) == 2);
+    InputSetValue(s, StrL("Short"));
+    draw();
+    utassert(LayoutModeRows(s->mode) == 1);
+    InputSetValue(s, {});
+    draw();
+    utassert(LayoutModeRows(s->mode) == 1);
+    TestAppFree(app);
 }
 
 // element.rs ceil_to_device_pixel and fit_content_height.
@@ -10122,9 +10209,11 @@ static void RunWindowTestsC() {
     BlurKeepsDecorations();
     TextareaHasNoDecorationExtras();
     ContextMenuHandlerIsDeferredAndRespectsDisabled();
+    DeferredContextMenusExpireWithTheirFieldOrOwnedHandler();
     ContextMenuHandlerCanReadItsInput();
     ContextMenuReadsThePointerOffsetInsideASelection();
     SetAutoGrowKeepsRowsFitted();
+    AutoGrowTextareaFollowsWrappedRowsOnResizeAndEdit();
     TextareaDevicePixelHeights();
     AutoGrowTextareaScrollsOnlyPastItsCapAtFractionalScale();
     EditorDecorationsFollowTyping();

@@ -157,6 +157,7 @@ struct MaterialBehavior {
     bool hasMouseUp = false;
     shell::CallbackId onMouseDownOut = 0;
     shell::CallbackId onScrollWheel = 0;
+    shell::CallbackId onPinch = 0;
     // The key-binding context this element and its subtree sit in, and the
     // handlers for the actions it claims.
     Str keyContext;
@@ -289,6 +290,8 @@ static void ResolveBehavior(const shell::SpecNode* node,
                 out->onMouseDownOut = op.callback;
             } else if (StrEq(op.name, StrL("on_scroll_wheel"))) {
                 out->onScrollWheel = op.callback;
+            } else if (StrEq(op.name, StrL("on_pinch"))) {
+                out->onPinch = op.callback;
             } else if (StrEq(op.name, StrL("tab_bar"))) {
                 out->dockChrome.tabBar = op.callback;
             } else if (StrEq(op.name, StrL("empty_group"))) {
@@ -3252,6 +3255,12 @@ static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
     if (behavior.onScrollWheel)
         element->OnScrollWheel(Listen(cx, &ScriptView::OnScriptScrollWheel,
                                       (int64_t)behavior.onScrollWheel));
+    if (behavior.onPinch) {
+        auto* binding = ArenaNew<ShellPinchBinding>(cx->a);
+        *binding = {behavior.onPinch, element};
+        element
+            ->OnPinch(Listen(cx, &ScriptView::OnScriptPinch, (int64_t)binding));
+    }
     for (int i = 0; i < behavior.actionCount; i++) {
         // One listener per action rather than one per element. GPUI matches by
         // the action's type and stops at the first listener that claims it,
