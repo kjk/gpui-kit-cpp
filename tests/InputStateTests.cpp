@@ -7047,7 +7047,7 @@ static void AutoGrowTextareaFollowsWrappedRowsOnResizeAndEdit() {
     InputSetValue(s, StrL("Short"));
     draw();
     utassert(LayoutModeRows(s->mode) == 1);
-    InputSetValue(s, {});
+    InputSetValue(s, Str{});
     draw();
     utassert(LayoutModeRows(s->mode) == 1);
     TestAppFree(app);

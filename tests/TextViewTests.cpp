@@ -4505,6 +4505,42 @@ static void TestSourceRangeSelectAllAndHtml() {
 
 // The tree's parser is always the full one; a dist built with the mini
 // parser has no tables to highlight.
+struct InlineImageHost {
+    App app;
+    Window* win = nullptr;
+    Arena* a = nullptr;
+    Ctx cx = {};
+    RenderImage* photo = nullptr;
+};
+
+static bool InlineImageOpen(InlineImageHost* host) {
+    host->app.paint = PaintAppNew();
+    host->win = new Window();
+    host->win->app = &host->app;
+    host->win->paint.app = &host->app;
+    host->win->paint.window = host->win;
+    host->win->paint.pa = host->app.paint;
+    host->a = ArenaNew();
+    host->cx = Ctx{&host->app, host->win, host->a, {}};
+    return host->app.paint != nullptr;
+}
+
+static void InlineImageClose(InlineImageHost* host) {
+    if (host->photo) {
+        RenderImageRelease(host->photo);
+    }
+    WindowKeyedFree(host->win);
+    ArenaDelete(host->a);
+    delete host->win;
+    EntityDropAll(&host->app);
+    AppGlobalClear(&host->app);
+    ImageCacheClear(&host->app);
+    ImageCacheClear();
+    if (host->app.paint) {
+        PaintAppFree(host->app.paint);
+    }
+}
+
 #if !GPUI_MARKDOWN_MINI
 // ─── range highlights ─────────────────────────────────────────────────────
 //
@@ -4739,42 +4775,6 @@ static El* FindImageEl(El* e) {
         }
     }
     return nullptr;
-}
-
-struct InlineImageHost {
-    App app;
-    Window* win = nullptr;
-    Arena* a = nullptr;
-    Ctx cx = {};
-    RenderImage* photo = nullptr;
-};
-
-static bool InlineImageOpen(InlineImageHost* host) {
-    host->app.paint = PaintAppNew();
-    host->win = new Window();
-    host->win->app = &host->app;
-    host->win->paint.app = &host->app;
-    host->win->paint.window = host->win;
-    host->win->paint.pa = host->app.paint;
-    host->a = ArenaNew();
-    host->cx = Ctx{&host->app, host->win, host->a, {}};
-    return host->app.paint != nullptr;
-}
-
-static void InlineImageClose(InlineImageHost* host) {
-    if (host->photo) {
-        RenderImageRelease(host->photo);
-    }
-    WindowKeyedFree(host->win);
-    ArenaDelete(host->a);
-    delete host->win;
-    EntityDropAll(&host->app);
-    AppGlobalClear(&host->app);
-    ImageCacheClear(&host->app);
-    ImageCacheClear();
-    if (host->app.paint) {
-        PaintAppFree(host->app.paint);
-    }
 }
 
 // inline_flow.rs
