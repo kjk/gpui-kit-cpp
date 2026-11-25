@@ -18,8 +18,15 @@ enum {
 
 struct CalendarStory {
     CalMonthState cal[CalCount] = {};
+    float wideScrollX = 0;
     static El* Render(CalendarStory* self, Ctx* cx);
 };
+
+static void ScrollWideCalendar(CalendarStory* self, Ctx* cx,
+                               const ScrollEvent* ev) {
+    self->wideScrollX = ev->offsetX;
+    Notify(cx);
+}
 
 // gpui_base::CalendarState carries the month a calendar is looking at, and
 // stepping off either end of the year carries into the next one — which is
@@ -101,9 +108,20 @@ El* CalendarStory::Render(CalendarStory* self, Ctx* cx) {
     // calendars each with their own header.
     El* multi =
         StorySection(cx, "Multiple months", "Three months shown together.");
-    StorySectionBody(multi)->W(512);
-    StorySectionAdd(multi,
-                    CalFor(self, cx, CalWide)->NumberOfMonths(3)->IntoEl());
+    El* wide = CalFor(self, cx, CalWide)->NumberOfMonths(3)->IntoEl();
+    El* content = Div(a)
+                      ->W(kFill)
+                      ->MinW(wide->style.width)
+                      ->FlexRow()
+                      ->JustifyCenter()
+                      ->Child(wide->Shrink0());
+    El* viewport = Div(a)->W(kFill)->MinW(0)->Child(content);
+    StorySectionAdd(
+        multi, component::ScrollableElement::OverflowXScrollbar(cx, viewport)
+                   ->Id(StrL("calendar-multiple-months"))
+                   ->ScrollX(self->wideScrollX)
+                   ->OnScroll(Listen(cx, &ScrollWideCalendar))
+                   ->IntoEl());
     page->Child(multi);
 
     // disabled_matcher(vec![0, 3, 6]): Sunday, Wednesday and Saturday are

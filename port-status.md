@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `9d90e5a9b612c53c158d682c5ea44af27c9e118b` (2026-11-24,
-highlighter: Hide a fold's last line unless it closes a bracket (#4097)).
-Scanner fold ranges hide the final line unless it closes a bracket opened at the end of the first line or contains following code.
+Processed through `0c6eb6a50d7f6b7efa9c9e84e7fafac096de66c4` (2026-11-24,
+story: Let the multi-month `Calendar` demo scroll in a narrow docs embed (#4102)).
+The three-month calendar demonstration scrolls horizontally in narrow story embeds.
 The current update target is
 `832cfdc0baef92855191dfdbbbcacd75f59d3df0`.
 

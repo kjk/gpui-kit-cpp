@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "9d90e5a9b612c53c158d682c5ea44af27c9e118b",
+  sha: "0c6eb6a50d7f6b7efa9c9e84e7fafac096de66c4",
   date: "2026-11-24",
-  subject: "highlighter: Hide a fold's last line unless it closes a bracket (#4097)",
+  subject: "story: Let the multi-month `Calendar` demo scroll in a narrow docs embed (#4102)",
   crates: {
     "gpui-kit": "0.11.0",
     "gpui-base": "0.11.0",
