@@ -2,7 +2,10 @@
 #include "ui/diff.h"
 
 #include "base/input_keys.h"
+#include "base/text_boundary.h"
+#include "base/text_selection.h"
 #include "gpui/keymap.h"
+#include "gpui/paint.h"
 #include "ui/button.h"
 #include "ui/i18n.h"
 #include "ui/icon.h"
@@ -55,7 +58,15 @@ DiffFile::~DiffFile() {
     if (arena) ArenaDelete(arena);
 }
 
+static void ClearDiffCodeRuns(DiffState* state) {
+    for (const DiffCodeRunGeometry& run : state->codeRuns) {
+        if (run.layout) TextLayoutRelease(run.layout);
+    }
+    VecClear(state->codeRuns);
+}
+
 DiffState::~DiffState() {
+    ClearDiffCodeRuns(this);
     for (int i = 0; i < len(files); i++) delete files[i];
     for (int i = 0; i < len(collapsed); i++) StrFree(collapsed[i]);
     for (int i = 0; i < len(resolutions); i++) StrFree(resolutions[i].path);
@@ -2441,6 +2452,7 @@ static int FileIx(const DiffState* state, Str path) {
 }
 
 void DiffState::SetFiles(DiffFile** next, int count, Ctx* cx) {
+    ClearDiffCodeRuns(this);
     for (int i = 0; i < len(files); i++) delete files[i];
     VecClear(files);
     for (int i = 0; i < count; i++) VecAppend(files, next[i]);
@@ -2463,6 +2475,7 @@ void DiffState::SetFiles(DiffFile** next, int count, Ctx* cx) {
     hasAnchor = false;
     hasCursor = false;
     selecting = false;
+    textSelection = {};
     syntaxPrepared = false;
     Rebuild(this, true);
     EnsurePresentation();
@@ -2783,6 +2796,10 @@ static bool ClipRange(const DiffState* state, DiffLineRange in,
 }
 
 void DiffState::SetSelectedLines(bool has, DiffLineRange range, Ctx* cx) {
+    if (textSelection.file >= 0) {
+        textSelection = {};
+        if (cx) Notify(cx);
+    }
     DiffLineRange clipped;
     bool ok = has && ClipRange(this, range, &clipped);
     if (!ok) {
@@ -2808,6 +2825,14 @@ void DiffState::SetSelectedLines(bool has, DiffLineRange range, Ctx* cx) {
 }
 
 Str DiffState::SelectedText(Arena* a) const {
+    if (textSelection.hitText && textSelection.file >= 0 &&
+        textSelection.file < len(files) &&
+        textSelection.anchor != textSelection.cursor) {
+        Str source = files[textSelection.file]->Source(textSelection.side);
+        return Own(
+            a, Slice(source, IMin(textSelection.anchor, textSelection.cursor),
+                     IMax(textSelection.anchor, textSelection.cursor)));
+    }
     if (!hasSelection) return {};
     int fileIx = FileIx(this, selected.path);
     if (fileIx < 0) return {};
@@ -3018,6 +3043,7 @@ void DiffState::BeginLineSelection(DiffLinePosition position, bool extend,
     int file = FileIx(this, position.path);
     if (file < 0 || files[file]->LineIndex(position.side, position.line) < 0)
         return;
+    textSelection = {};
     DiffLinePosition use = position;
     if (extend && hasAnchor && CanExtend(this, anchor, position)) use = anchor;
     selecting = true;
@@ -3304,6 +3330,30 @@ static void UnderlineDiffRuns(Ctx* cx, El* row, Str display,
     }
 }
 
+static void RecordDiffCodeRun(PaintCtx* paint, El* el, void* data) {
+    auto* frame = static_cast<DiffCodeRunGeometry*>(data);
+    DiffState* state =
+        static_cast<DiffState*>(EntityGet(paint->app, el->selectionOwner));
+    if (!state) return;
+    Bounds b = el->Bounds();
+    Bounds visible = b;
+    if (paint->hasHitMask) {
+        Bounds mask = paint->hitMask;
+        float x = std::max(b.x, mask.x);
+        float y = std::max(b.y, mask.y);
+        visible = {x, y, std::min(b.Right(), mask.Right()) - x,
+                   std::min(b.Bottom(), mask.Bottom()) - y};
+    }
+    if (visible.w <= 0.f || visible.h <= 0.f) return;
+    DiffCodeRunGeometry run = *frame;
+    run.bounds = b;
+    run.visible = visible;
+    run.text = el->text;
+    run.layout = el->laidLayout;
+    if (run.layout) TextLayoutAddRef(run.layout);
+    VecAppend(state->codeRuns, run);
+}
+
 static El* CodeTextRuns(Ctx* cx, const DiffState* state, int fileIx,
                         const DiffFile* file, DiffSide side, int ix,
                         bool syntax, const DiffHighlightRuns& runs);
@@ -3324,10 +3374,40 @@ static El* CodeTextRuns(Ctx* cx, const DiffState* state, int fileIx,
                         const DiffFile* file, DiffSide side, int ix,
                         bool syntax, const DiffHighlightRuns& runs) {
     const DiffSourceLine& line = SideOf(file, side)->lines[ix];
+    const DiffFileSide* source = SideOf(file, side);
+    const DiffTextSelection& selection = state->textSelection;
+    int selectionLo = 0;
+    int selectionHi = 0;
+    if (selection.hitText && selection.anchor != selection.cursor &&
+        selection.file == fileIx && selection.side == side) {
+        int start =
+            IMax(line.sourceStart, IMin(selection.anchor, selection.cursor));
+        int end =
+            IMin(line.contentEnd, IMax(selection.anchor, selection.cursor));
+        if (start < end) {
+            selectionLo = DisplayOff(source, line, start - line.sourceStart);
+            selectionHi = DisplayOff(source, line, end - line.sourceStart);
+        }
+    }
     El* row = Div(cx->a)->FlexRow();
     auto textRun = [&](Str text, int lo) {
         El* bit = TextEl(cx->a, text)->Mono();
         int hi = lo + len(text);
+        auto* geometry = ArenaNew<DiffCodeRunGeometry>(cx->a);
+        geometry->file = fileIx;
+        geometry->side = side;
+        geometry->line = ix;
+        geometry->displayStart = lo;
+        bit->SelectionOwner(state->self.id);
+        bit->lifecycle = ArenaNew<ElLifecycle>(cx->a);
+        bit->lifecycle->afterPaint = &RecordDiffCodeRun;
+        bit->lifecycle->user = geometry;
+        int start = IMax(lo, selectionLo);
+        int end = IMin(hi, selectionHi);
+        if (start < end) {
+            bit->GlyphSelection()->SelRange(start - lo, end - lo,
+                                            ActiveTheme(cx->app).selection);
+        }
         int count;
         if (runs.washCount) {
             const TextSpan* spans = DiffHighlightSlice(
@@ -3342,6 +3422,10 @@ static El* CodeTextRuns(Ctx* cx, const DiffState* state, int fileIx,
         row->Child(bit);
         return bit;
     };
+    if (!len(line.display)) {
+        textRun(StrL(""), 0)->W(1)->H(ThemeFontSize(cx->app));
+        return row;
+    }
     if (syntax && state && state->syntaxFn) {
         int at = 0;
         for (int i = 0; i < len(state->syntaxSpans); i++) {
@@ -3415,6 +3499,220 @@ struct DiffTextRun {
     float font = 0;
 };
 
+// Find the nearest visible source run on the anchor side. Compare row
+// distance first so a long or heavily indented line cannot steal the hit
+// from a shorter line placed directly under the pointer.
+static const DiffCodeRunGeometry* DiffSelectionRun(const DiffState* self,
+                                                   Point at, int file,
+                                                   DiffSide side) {
+    const DiffCodeRunGeometry* best = nullptr;
+    float bestY = 0;
+    float bestX = 0;
+    bool bestRow = false;
+    for (const DiffCodeRunGeometry& run : self->codeRuns) {
+        if (run.file != file || run.side != side) continue;
+        Bounds b = run.visible;
+        bool inRow = at.y >= b.y && at.y < b.Bottom();
+        float y = std::max(0.f, std::max(b.y - at.y, at.y - b.Bottom()));
+        float x = std::max(0.f, std::max(b.x - at.x, at.x - b.Right()));
+        if (!best || (inRow && !bestRow) ||
+            (inRow == bestRow && (y < bestY || (y == bestY && x < bestX)))) {
+            best = &run;
+            bestY = y;
+            bestX = x;
+            bestRow = inRow;
+        }
+    }
+    return best;
+}
+
+static Selection DiffSelectionAt(const DiffState* self, PaintCtx* paint,
+                                 const DiffCodeRunGeometry& run, Point at,
+                                 int clicks) {
+    const DiffFileSide* source = SideOf(self->files[run.file], run.side);
+    const DiffSourceLine& line = source->lines[run.line];
+    if (clicks >= 3) return {line.sourceStart, line.contentEnd};
+    TextLayout* layout = run.layout;
+    if (!layout && len(run.text)) {
+        layout = TextLayoutNew(paint, run.text, ThemeFontSize(paint->app), 0,
+                               false, kFontMono, 0, nullptr);
+    }
+    float x = std::max(run.visible.x, std::min(at.x, run.visible.Right()));
+    int start = 0;
+    int end = 0;
+    if (layout) {
+        float relX = x - run.bounds.x;
+        start = end =
+            TextLayoutHitPoint(layout, run.text, relX, at.y - run.bounds.y);
+        if (clicks == 2) {
+            Vec<TextGlyphBox> glyphs;
+            TextGlyphBoxes(layout, run.text, &glyphs);
+            for (const TextGlyphBox& glyph : glyphs) {
+                if (relX >= glyph.left && relX < glyph.right) {
+                    start = end = glyph.lo;
+                    break;
+                }
+            }
+        }
+        if (layout != run.layout) TextLayoutRelease(layout);
+    }
+    start += run.displayStart;
+    end += run.displayStart;
+    if (clicks == 2) {
+        TextWordRangeAt(line.display, start, &start, &end);
+    }
+    return {line.sourceStart + SourceOff(source, line, start),
+            line.sourceStart + SourceOff(source, line, end)};
+}
+
+static void ClearDiffReviewSelection(DiffState* self, Ctx* cx) {
+    bool changed = self->hasSelection;
+    self->hasSelection = false;
+    self->selecting = false;
+    if (changed) {
+        DiffEvent event;
+        event.kind = DiffEventKind::SelectionChanged;
+        Emit(self, cx, event);
+    }
+}
+
+static void OnDiffCodeDown(DiffState* self, Ctx* cx, const MouseDownEvent* ev,
+                           int64_t arg) {
+    if (!ev->IsFocusing()) return;
+    const auto* cell = reinterpret_cast<const DiffTextRun*>((intptr_t)arg);
+    Point at = {ev->x, ev->y};
+    const auto* run = DiffSelectionRun(self, at, cell->file, cell->side);
+    if (!run) return;
+    TextSelection::Clear(cx->win, cx->app);
+    FocusHandleFocus(cx->win, self->focus);
+    ClearDiffReviewSelection(self, cx);
+    self->hasAnchor = self->hasCursor = false;
+    DiffTextSelection& sel = self->textSelection;
+    bool extend = ev->modifiers.shift && sel.file == run->file &&
+                  sel.side == run->side && sel.hitText;
+    if (!extend) {
+        sel = {};
+        sel.file = run->file;
+        sel.side = run->side;
+        sel.clicks = ev->clickCount;
+        sel.hitText = len(run->text) > 0 && run->visible.Contains(at);
+        int clicks = sel.hitText ? sel.clicks : 1;
+        sel.unit = DiffSelectionAt(self, &cx->win->paint, *run, at, clicks);
+        sel.anchor = sel.unit.start;
+        sel.cursor = sel.unit.end;
+    } else {
+        sel.clicks = 1;
+        sel.cursor = DiffSelectionAt(self, &cx->win->paint, *run, at, 1).end;
+    }
+    sel.dragging = true;
+    Notify(cx);
+}
+
+static void ExtendDiffTextSelection(DiffState* self, Ctx* cx, Point at) {
+    DiffTextSelection& sel = self->textSelection;
+    if (!sel.dragging) return;
+    const auto* run = DiffSelectionRun(self, at, sel.file, sel.side);
+    if (!run) return;
+    bool hit = sel.hitText || (len(run->text) > 0 && run->visible.Contains(at));
+    Selection unit =
+        DiffSelectionAt(self, &cx->win->paint, *run, at, sel.clicks);
+    int anchor = sel.anchor;
+    int cursor = unit.end;
+    if (sel.clicks > 1) {
+        bool backwards = unit.start < sel.unit.start;
+        anchor = backwards ? sel.unit.end : sel.unit.start;
+        cursor = backwards ? unit.start : unit.end;
+    }
+    if (hit != sel.hitText || anchor != sel.anchor || cursor != sel.cursor) {
+        sel.hitText = hit;
+        sel.anchor = anchor;
+        sel.cursor = cursor;
+        Notify(cx);
+    }
+}
+
+static void StopDiffSelectionScroll(DiffState* self, Window* win) {
+    WindowCancelTimer(win, self->selectionTimer);
+    self->selectionTimer = 0;
+}
+
+static void DiffSelectionScrollTick(DiffState* self, Ctx* cx, const void*) {
+    float delta = 0;
+    if (!cx->win->mouseDown || !self->textSelection.dragging ||
+        !AutoScrollComputeDelta(self->selectionPointer.y,
+                                self->selectionViewport, &delta)) {
+        StopDiffSelectionScroll(self, cx->win);
+        return;
+    }
+    ExtendDiffTextSelection(self, cx, self->selectionPointer);
+    VirtualListScrollHandle& scroll = self->listScroll;
+    float limit = std::max(0.f, scroll.contentSize - scroll.viewport);
+    float next = std::max(0.f, std::min(scroll.offset + delta, limit));
+    if (next != scroll.offset) {
+        scroll.offset = next;
+        scroll.pending = false;
+        Notify(cx);
+    } else {
+        StopDiffSelectionScroll(self, cx->win);
+    }
+}
+
+static void OnDiffSelectionMove(DiffState* self, Ctx* cx,
+                                const MouseMoveEvent* ev) {
+    if (!ev->Dragging() || !self->textSelection.dragging) return;
+    self->selectionPointer = {ev->x, ev->y};
+    ExtendDiffTextSelection(self, cx, self->selectionPointer);
+    float delta = 0;
+    if (self->selectionViewport.h > 0 &&
+        AutoScrollComputeDelta(ev->y, self->selectionViewport, &delta)) {
+        if (!self->selectionTimer) {
+            self->selectionTimer = WindowSetInterval(
+                cx->win, 16, ListenTo(self->self, &DiffSelectionScrollTick));
+        }
+    } else {
+        StopDiffSelectionScroll(self, cx->win);
+    }
+}
+
+static void OnDiffSelectionDrag(DiffState* self, Ctx* cx,
+                                const DragMoveEvent* ev) {
+    OnDiffSelectionMove(self, cx, &ev->event);
+}
+
+static void OnDiffSelectionUp(DiffState* self, Ctx* cx,
+                              const MouseUpEvent* ev) {
+    if (ev->button != MouseButton::Left) return;
+    self->textSelection.dragging = false;
+    StopDiffSelectionScroll(self, cx->win);
+    self->EndLineSelection(cx);
+}
+
+static void OnDiffSelectionOutside(DiffState* self, Ctx* cx,
+                                   const MouseDownEvent* ev) {
+    if (!ev->IsFocusing()) return;
+    ClearDiffReviewSelection(self, cx);
+    if (self->textSelection.file >= 0) {
+        self->textSelection = {};
+        Notify(cx);
+    }
+}
+
+static void OnDiffGutterDown(DiffState* self, Ctx* cx, const MouseDownEvent* ev,
+                             int64_t arg) {
+    if (!ev->IsFocusing()) return;
+    TextSelection::Clear(cx->win, cx->app);
+    FocusHandleFocus(cx->win, self->focus);
+    auto* position = reinterpret_cast<const DiffLinePosition*>((intptr_t)arg);
+    self->BeginLineSelection(*position, ev->modifiers.shift, cx);
+}
+
+static void OnDiffGutterMove(DiffState* self, Ctx* cx, const MouseMoveEvent* ev,
+                             int64_t arg) {
+    if (!ev->Dragging() || !self->selecting) return;
+    auto* position = reinterpret_cast<const DiffLinePosition*>((intptr_t)arg);
+    self->DragLineSelection(*position, cx);
+}
+
 // SelectionGeometry::text_at: the character painted at window x, given
 // the box the event landed in. That box is the source or the clip around
 // it, masked to what is visible, so its left edge less the horizontal
@@ -3481,6 +3779,8 @@ static void OnDiffTextMove(DiffState* self, Ctx* cx, const MouseMoveEvent* ev,
                            int64_t arg) {
     const auto* run = (const DiffTextRun*)(intptr_t)arg;
     if (!cx->win || !run) return;
+    OnDiffSelectionMove(self, cx, ev);
+    if (!run->diff->onTextHover) return;
     DiffTextPosition hit;
     bool has = DiffTextAt(self, &cx->win->paint, run, ev->x, ev->el, &hit);
     const DiffTextPosition* now = has ? &hit : nullptr;
@@ -3548,6 +3848,10 @@ static void OnDiffModifiersChanged(DiffState* self, Ctx* cx,
 
 static void OnDiffTextClick(DiffState* self, Ctx* cx, const ClickEvent* ev,
                             int64_t arg) {
+    const DiffTextSelection& selection = self->textSelection;
+    if (ev->clickCount == 1 && selection.hitText &&
+        selection.anchor != selection.cursor)
+        return;
     const auto* run = (const DiffTextRun*)(intptr_t)arg;
     if (!run || run->file < 0 || run->file >= len(self->files)) return;
     const DiffFile* file = self->files[run->file];
@@ -3825,11 +4129,24 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
         }
         if (diff->lineNumber) {
             int width = file->lineNumberDigits * 8 + 12;
-            box->Child(Div(cx->a)
-                           ->W((float)width)
-                           ->Shrink(0)
-                           ->Child(TextEl(cx->a, fmt("%d", number))
-                                       ->Fg(theme.mutedFg)));
+            auto* pos = ArenaNew<DiffLinePosition>(cx->a);
+            *pos = DiffLinePosition::New(file->path, side, number);
+            auto arg = (int64_t)(intptr_t)pos;
+            box->Child(
+                Div(cx->a)
+                    ->PathClick(side == DiffSide::Original
+                                    ? StrL("original-line-number")
+                                    : StrL("modified-line-number"))
+                    ->W((float)width)
+                    ->H(24)
+                    ->Shrink(0)
+                    ->FlexCol()
+                    ->JustifyCenter()
+                    ->SuppressTextSelection()
+                    ->OnMouseDown(ListenTo(diff->state, &OnDiffGutterDown, arg))
+                    ->OnMouseMove(ListenTo(diff->state, &OnDiffGutterMove, arg))
+                    ->Child(TextEl(cx->a, fmt("%d", number))
+                                ->Fg(theme.mutedFg)));
         }
         if (markerLane) {
             El* lane = Div(cx->a)
@@ -3867,41 +4184,47 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
                                       state->syntaxMaxLineLength);
         bool hover = diff->onTextHover != nullptr;
         bool click = diff->onLineClick || diff->onTextClick;
-        DiffTextRun* run = nullptr;
-        if (hover || click) {
-            run = ArenaNew<DiffTextRun>(cx->a);
-            run->diff = diff;
-            run->file = row.file;
-            run->side = side;
-            run->ix = line;
-            run->scrollX = diff->softWrap ? 0 : state->horizontalScrollX;
-            run->font = ThemeFontSize(cx->app);
-        }
+        DiffTextRun* run = ArenaNew<DiffTextRun>(cx->a);
+        run->diff = diff;
+        run->file = row.file;
+        run->side = side;
+        run->ix = line;
+        run->scrollX = diff->softWrap ? 0 : state->horizontalScrollX;
+        run->font = ThemeFontSize(cx->app);
         if (diff->hasTextCursor) source->Cursor(diff->textCursor);
         if (click) {
             source->OnClick(ListenTo(diff->state, &OnDiffTextClick,
                                      (int64_t)(intptr_t)run));
         }
-        if (hover) source->OnMouseMove(DiffTextMoveListener(diff->state, run));
+        source->OnMouseMove(DiffTextMoveListener(diff->state, run));
+        if (!diff->hasTextCursor) source->Cursor(CursorKind::IBeam);
         El* hoverBox = source;
         if (!diff->softWrap) {
             // The gutters stay inside their columns as the code moves.
-            source->Shrink(0)->PaintOffset(-state->horizontalScrollX, 0);
-            El* clip =
-                Div(cx->a)->FlexRow()->Flex1()->MinW(0)->ClipX()->Child(source);
-            if (hover) {
-                // The whole row height, as Rust's run is a row tall, so the
-                // pointer crossing between lines stays over text. A move
-                // past the line's end lands here and is over no character.
-                clip->H(kFill)
-                    ->ItemsCenter()
-                    ->OnMouseMove(DiffTextMoveListener(diff->state, run));
-                hoverBox = clip;
-            }
+            source->PathClick(StrL("text"))
+                ->Shrink(0)
+                ->PaintOffset(-state->horizontalScrollX, 0);
+            El* clip = Div(cx->a)
+                           ->FlexRow()
+                           ->Flex1()
+                           ->MinW(0)
+                           ->H(kFill)
+                           ->ItemsCenter()
+                           ->ClipX()
+                           ->Child(source);
+            // A move past the line's end stays inside the code column.
+            clip->OnMouseMove(DiffTextMoveListener(diff->state, run));
+            hoverBox = clip;
             box->Child(clip);
         } else {
             box->Child(source);
         }
+        hoverBox
+            ->PathClick(side == DiffSide::Original ? StrL("original-code")
+                                                   : StrL("modified-code"))
+            ->SuppressTextSelection()
+            ->OnMouseDown(
+                ListenTo(diff->state, &OnDiffCodeDown, (int64_t)(intptr_t)run));
         if (hover) {
             hoverBox->OnHover(ListenTo(diff->state, &OnDiffTextLeave,
                                        (int64_t)(intptr_t)run));
@@ -3979,8 +4302,10 @@ static void OnDiffAction(DiffState* self, Ctx* cx, const ActionEvent* ev) {
     }
     if (ev->action == input::Copy()) {
         Str text = self->SelectedText(cx->a);
-        if (cx->win && len(text)) ClipboardSetText(cx->win, text);
-        return;
+        if (cx->win && len(text)) {
+            ClipboardSetText(cx->win, text);
+            return;
+        }
     }
     const_cast<ActionEvent*>(ev)->propagate = true;
 }
@@ -4211,6 +4536,7 @@ static void MeasureDiffCode(Ctx* cx, DiffState* state, float font) {
 
 static void RecordDiffScrollRange(PaintCtx* paint, El* box, void* data) {
     auto* state = (DiffState*)data;
+    state->selectionViewport = box->Bounds();
     float max = std::max(0.f, box->contentW - box->w);
     if (state->horizontalScrollX > max) {
         state->horizontalScrollX = max;
@@ -4229,6 +4555,7 @@ El* Diff::IntoEl() {
     DiffInitKeys();
     DiffState* st = state.Get(cx);
     if (!st) return Div(a);
+    ClearDiffCodeRuns(st);
     st->EnsureSyntax();
     st->listScroll.itemsCount = len(st->rows);
     // A column so the caller's height (the story's 32rem) reaches the list.
@@ -4238,7 +4565,14 @@ El* Diff::IntoEl() {
                    ->FlexCol()
                    ->SizeFull()
                    ->KeyContext(StrL("Diff"))
-                   ->TrackFocus(st->focus);
+                   ->TrackFocus(st->focus)
+                   ->OnMouseMove(ListenTo(state, &OnDiffSelectionMove))
+                   ->OnDragMove(ListenTo(state, &OnDiffSelectionDrag))
+                   ->OnMouseUp(ListenTo(state, &OnDiffSelectionUp))
+                   ->OnMouseUpOut(ListenTo(state, &OnDiffSelectionUp))
+                   ->OnMouseDownOut(ListenTo(state, &OnDiffSelectionOutside));
+    root->prePaint = &RecordDiffScrollRange;
+    root->customUser = st;
     root->OnAction(Act("diff::ScrollUp"), ListenTo(state, &OnDiffAction));
     root->OnAction(Act("diff::ScrollDown"), ListenTo(state, &OnDiffAction));
     root->OnAction(Act("diff::ExtendUp"), ListenTo(state, &OnDiffAction));
@@ -4276,8 +4610,6 @@ El* Diff::IntoEl() {
         Scrollbar::Apply(
             cx, root, StrL("diff-horizontal"), 0, st->horizontalScrollX,
             ListenTo(state, &OnDiffHorizontalScroll), ScrollAxis::Horizontal);
-        root->prePaint = &RecordDiffScrollRange;
-        root->customUser = st;
         // The widest code line overflows the narrower column in split
         // mode and the full viewport in unified mode.
         float base = st->mode == DiffMode::Split

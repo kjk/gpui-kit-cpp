@@ -1,6 +1,5 @@
-/* crates/component/src/diff — parser, conflicts, inline runs, and the
-   viewer's row projection. Hit-tested text selection stays a known gap
-   (port-status.md). */
+/* crates/component/src/diff - parser, conflicts, inline runs, row projection,
+   and pointer selection. */
 
 #include "Test.h"
 
@@ -1611,7 +1610,8 @@ struct PointerStage {
     PointerHost* host = nullptr;
 };
 
-static PointerStage StagePointer(bool claim) {
+static PointerStage StagePointer(bool claim, Str patch = {},
+                                 DiffMode mode = DiffMode::Unified) {
     PointerStage stage;
     stage.app = TestAppNew();
     Init(stage.app);
@@ -1623,11 +1623,15 @@ static PointerStage StagePointer(bool claim) {
     state->Bind(stage.app, host->state);
     Vec<DiffFile*> files;
     DiffParseError error;
-    utassert(DiffFile::Parse(StrL("--- a/file.rs\n+++ b/file.rs\n"
-                                  "@@ -1 +1,2 @@\n"
-                                  " fn place() {}\n"
-                                  "+fn other() {}\n"),
-                             &files, &error));
+    if (!patch.s) {
+        patch = StrL(
+            "--- a/file.rs\n+++ b/file.rs\n"
+            "@@ -1 +1,2 @@\n"
+            " fn place() {}\n"
+            "+fn other() {}\n");
+    }
+    utassert(DiffFile::Parse(patch, &files, &error));
+    state->WithMode(mode);
     state->SetFiles(files.els, len(files), nullptr);
     host->span =
         DiffSpanHighlight::New(
@@ -1651,6 +1655,65 @@ static bool PointerPoints(Window* win, int lineIx, float inset, Point* onText,
     *onText = Point{bounds.x + inset, y};
     *pastEnd = Point{bounds.Right() + 40, y};
     return true;
+}
+
+// selection_tests.rs: code copy uses the source bytes, and a double click
+// takes the word under the shaped glyph instead of its entire review line.
+static void CodeSelectionCopiesCharactersAndWords() {
+    PointerStage stage = StagePointer(false);
+    DiffState* state = stage.host->state.Get(stage.app);
+    Bounds row;
+    utassert(DiffRunBounds(stage.win, DiffSide::Modified, 1, &row));
+    float cell = MeasureText(&stage.win->paint, StrL("f"),
+                             ThemeFontSize(stage.app), 0, false, kFontMono)
+                     .w;
+    auto at = [&](float column) {
+        return Point{row.x + column * cell, row.CenterY()};
+    };
+    TestSimulateMouseDown(stage.win, at(3.1f));
+    TestSimulateMouseMove(stage.win, at(6.1f), true);
+    TestSimulateMouseUp(stage.win, at(6.1f));
+    Arena* a = ArenaNew();
+    utassert(StrEq(state->SelectedText(a), "oth"));
+    utassert(!state->hasSelection);
+    TestSimulateKeystrokes(stage.win, "secondary-c");
+    utassert(StrEq(TestReadFromClipboard(a), "oth"));
+
+    TestSimulateMouseDown(stage.win, at(4.2f), MouseButton::Left, {}, 2);
+    TestSimulateMouseUp(stage.win, at(4.2f), MouseButton::Left, {}, 2);
+    utassert(StrEq(state->SelectedText(a), "other"));
+    TestSimulateMouseDown(stage.win, at(4.2f), MouseButton::Left, {}, 3);
+    TestSimulateMouseUp(stage.win, at(4.2f), MouseButton::Left, {}, 3);
+    utassert(StrEq(state->SelectedText(a), "fn other() {}"));
+
+    TestSimulateClick(stage.win, {row.x - 20.f, row.CenterY()});
+    utassert(state->hasSelection);
+    utassert(StrEq(state->SelectedText(a), "fn other() {}\n"));
+    ArenaDelete(a);
+    TestAppFree(stage.app);
+}
+
+static void SplitCodeSelectionKeepsTheSourceSideAndTabs() {
+    PointerStage stage = StagePointer(false,
+                                      StrL("--- a/file.txt\n+++ b/file.txt\n"
+                                           "@@ -1,2 +1,2 @@\n"
+                                           "-before\n"
+                                           "+\t\xcf\x80 new\n"
+                                           " tail\n"),
+                                      DiffMode::Split);
+    DiffState* state = stage.host->state.Get(stage.app);
+    Bounds oldLine, newLine;
+    utassert(DiffRunBounds(stage.win, DiffSide::Original, 0, &oldLine));
+    utassert(DiffRunBounds(stage.win, DiffSide::Modified, 0, &newLine));
+    Point at = {newLine.Right() - 2.f, newLine.CenterY()};
+    Point otherSide = {oldLine.CenterX(), oldLine.CenterY()};
+    TestSimulateMouseDown(stage.win, at, MouseButton::Left, {}, 3);
+    TestSimulateMouseMove(stage.win, otherSide, true);
+    TestSimulateMouseUp(stage.win, otherSide, MouseButton::Left, {}, 3);
+    Arena* a = ArenaNew();
+    utassert(StrEq(state->SelectedText(a), "\t\xcf\x80 new"));
+    ArenaDelete(a);
+    TestAppFree(stage.app);
 }
 
 static bool HeardHit(const PointerHost::Heard& heard, int line, int offset,
@@ -1780,6 +1843,8 @@ void TestDiff() {
     TextHoverReportsTheCharacterAndOnlyChanges();
     AModifierAloneReportsTheCharacterAgain();
     AClaimedTextClickKeepsTheLineHandlerQuiet();
+    CodeSelectionCopiesCharactersAndWords();
+    SplitCodeSelectionKeepsTheSourceSideAndTabs();
     AnUnclaimedTextClickFallsThroughToTheLine();
     HasLineCountsFoldedLinesButNotAbsentOnes();
 }

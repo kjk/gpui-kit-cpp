@@ -481,6 +481,30 @@ struct DiffSyntaxSpan : DiffSyntaxStyle {
     int line = 0;
 };
 
+struct DiffCodeRunGeometry {
+    int file = 0;
+    DiffSide side = DiffSide::Original;
+    int line = 0;
+    int displayStart = 0;
+    Str text = {};
+    Bounds bounds = {};
+    Bounds visible = {};
+    TextLayout* layout = nullptr;
+};
+
+// Endpoints are source bytes, so the selection survives virtual row reuse,
+// horizontal scrolling, syntax boundaries, and display-only tab expansion.
+struct DiffTextSelection {
+    int file = -1;
+    DiffSide side = DiffSide::Original;
+    int anchor = 0;
+    int cursor = 0;
+    Selection unit = {};
+    int clicks = 1;
+    bool dragging = false;
+    bool hitText = false;
+};
+
 struct DiffState {
     App* app = nullptr;
     Vec<DiffFile*> files;
@@ -512,6 +536,11 @@ struct DiffState {
     bool hasCursor = false;
     DiffLinePosition cursor = {};
     bool selecting = false;
+    DiffTextSelection textSelection = {};
+    Vec<DiffCodeRunGeometry> codeRuns;
+    Bounds selectionViewport = {};
+    Point selectionPointer = {};
+    int selectionTimer = 0;
     bool inlineOn = true;
     DiffInlineUnit inlineUnit = DiffInlineUnit::Word;
     int inlineMaxLineLength = 1000;

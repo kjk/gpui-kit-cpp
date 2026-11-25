@@ -579,11 +579,12 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   `start + max(count, 1)` span does not fit in `int` is an invalid
   header (`diff.cpp`). Rust keeps those as `usize`, so a start of
   `usize::MAX - 1` parses there and does not here.
-- **Diff review text is line ranges, not a text selection.** `src/ui/diff.cpp`
-  selects source lines and copies them. It does not drive GPUI's
-  `TextSelection`, so the hit-tested caret, word sweeps and chunk clipping
-  in `selection_tests.rs` and `header_tests.rs` are not ported. Inline
-  emphasis is computed on the frame that asks. Character hover and click
+- **Diff owns its selection and painted geometry.** `src/ui/diff.cpp`
+  uses source-byte endpoints for text and a separate line range for review.
+  The focused diff handles copy and its paint runs provide glyph bounds.
+  Rust registers a participant with the window's `TextSelection`, which also
+  supports the window's touch-selection controls. Inline emphasis is computed
+  on the frame that asks. Character hover and click
   (`OnTextHover`, `OnTextClick`) find the character from the line's glyph
   boxes and the hit box rather than from TextSelection's painted runs, and
   the hover box spans the row height. An application syntax
@@ -599,9 +600,9 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   button inset is not
   applied because that button is not painted. Annotation content is
   painted inside the uniform row, which does not grow with the comment.
-  Gutter `TextSelection::Cleared` is not a separate path: clearing goes
-  through `SetSelectedLines`, which drops the shift anchor and does not
-  emit. The story page shows every example patch from `diff_story.rs`
+  An outside press clears the gutter range and reports the change.
+  `SetSelectedLines` updates the range programmatically. The story page
+  shows every example patch from `diff_story.rs`
   (the pull request is the review, added, deleted, and mode files
   together), previous/next, and the options menu (example, mode,
   context, inline, separator, indicator, tint, hover, and wrap). The
