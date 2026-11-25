@@ -2189,12 +2189,58 @@ static bool Collapsed(const DiffState* state, Str path) {
     return false;
 }
 
+static int SourceRow(const DiffState* state, DiffLinePosition position);
+
+static bool DiffScrollSource(const DiffState* state, int top,
+                             DiffLinePosition* out) {
+    if (top < 0 || top >= len(state->rows)) return false;
+    int fileIx = state->rows[top].file;
+    if (fileIx < 0 || fileIx >= len(state->files)) return false;
+    const DiffFile* file = state->files[fileIx];
+    for (int i = top; i < len(state->rows); i++) {
+        const DiffRow& row = state->rows[i];
+        if (row.file != fileIx) break;
+        int original = row.original;
+        int modified = row.modified;
+        if (row.kind == DiffRowKind::Fold &&
+            row.pairsStart < file->PairCount()) {
+            const DiffLinePair& pair = file->Pairs()[row.pairsStart];
+            original = pair.original;
+            modified = pair.modified;
+        }
+        DiffSide side = modified >= 0 ? DiffSide::Modified : DiffSide::Original;
+        int line = modified >= 0 ? modified : original;
+        if (line >= 0) {
+            *out = DiffLinePosition::New(file->Path(), side,
+                                         file->LineNumber(side, line));
+            return true;
+        }
+    }
+    return false;
+}
+
 static void Rebuild(DiffState* state, bool reset) {
-    int anchor = state->scrollItem;
-    DiffLinePosition kept;
+    VirtualListScrollHandle& scroll = state->listScroll;
+    DiffLinePosition kept = {};
+    int anchorFile = -1;
     bool hasKept = false;
-    if (!reset && anchor >= 0 && anchor < len(state->rows)) {
-        // Best-effort: keep the scroll index. Rust restores the source line.
+    int before = len(state->rows);
+    if (!reset && before) {
+        int top = 0;
+        if (scroll.pending) {
+            top = scroll.pendingIx;
+        } else {
+            const float* sizes = len(state->rowHeights) == before
+                                     ? state->rowHeights.els
+                                     : nullptr;
+            float offsetInRow = 0.f;
+            VirtualListLogicalFromPixel(sizes, before, 24.f, scroll.offset,
+                                        &top, &offsetInRow);
+        }
+        if (top > 0 && top < before) {
+            anchorFile = state->rows[top].file;
+            hasKept = DiffScrollSource(state, top, &kept);
+        }
     }
     VecClear(state->rows);
     VecClear(state->rowHeights);
@@ -2278,11 +2324,19 @@ static void Rebuild(DiffState* state, bool reset) {
              state->rows[r - 1].file != state->rows[r].file))
             VecAppend(state->changeRows, r);
     }
-    if (reset) state->scrollItem = 0;
-    state->listScroll.itemsCount = len(state->rows);
-    (void)hasKept;
-    (void)kept;
-    (void)anchor;
+    int next = hasKept ? SourceRow(state, kept) : -1;
+    if (next < 0 && anchorFile >= 0 && anchorFile < len(state->headerRows)) {
+        next = state->headerRows[anchorFile];
+    }
+    scroll.itemsCount = len(state->rows);
+    state->scrollItem = next >= 0 ? next : 0;
+    if (!reset && before && scroll.itemsCount) {
+        VirtualListScrollToItemDeferred(&scroll, state->scrollItem,
+                                        ScrollStrategy::Start);
+    } else {
+        scroll.offset = 0.f;
+        scroll.pending = false;
+    }
 }
 
 static int DisplayOff(const DiffFileSide* side, const DiffSourceLine& line,
@@ -2564,6 +2618,7 @@ void DiffState::SetMode(DiffMode next, Ctx* cx) {
     if (mode == next) return;
     mode = next;
     Rebuild(this, false);
+    horizontalScrollX = 0.f;
     if (cx) Notify(cx);
 }
 

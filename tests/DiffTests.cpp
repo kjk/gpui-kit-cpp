@@ -1889,12 +1889,39 @@ static void HasLineCountsFoldedLinesButNotAbsentOnes() {
         DiffLinePosition::New(StrL("other.txt"), DiffSide::Modified, 1)));
 }
 
+static void ExpandingContextKeepsTheTopSourceLine() {
+    DiffFix fix;
+    StrBuilder patch;
+    patch
+        .Append(StrL("--- a/anchor.txt\n+++ b/anchor.txt\n"
+                     "@@ -1,30 +1,30 @@\n-before\n+after\n"));
+    for (int i = 0; i < 28; i++) patch.Append(StrL(" context\n"));
+    patch.Append(StrL("-old end\n+new end\n"));
+    utassert(fix.LoadStr(Str(patch.els, len(patch))));
+    DiffState* state = fix.state;
+    int top = len(state->rows) - 1;
+    if (top < 0) return;
+    const DiffRow& before = state->rows[top];
+    utassert(before.kind == DiffRowKind::Code && before.modified == 29);
+    state->listScroll.offset = top * 24.f + 1.f;
+    state->listScroll.pending = false;
+    state->SetContextLines(false, 0, &fix.cx);
+    int after = state->listScroll.pendingIx;
+    utassert(state->listScroll.pending && after > top &&
+             after < len(state->rows));
+    if (after >= 0 && after < len(state->rows)) {
+        utassert(state->rows[after].modified == 29);
+        utassert(state->listScroll.pendingStrategy == ScrollStrategy::Start);
+    }
+}
+
 void TestDiff() {
     TestParser();
     TestTruncatedHunks();
     TestConflictsAndLanguage();
     ExcerptsKeepEachPartsLineNumbers();
     TestInlineAndRows();
+    ExpandingContextKeepsTheTopSourceLine();
     AllFilesCollapseAndExpandTogether();
     AnApplicationHighlighterStylesEachHunkSide();
     NextChangeWrapsOnceTheListIsScrolledToItsEnd();

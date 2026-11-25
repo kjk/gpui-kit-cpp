@@ -574,8 +574,7 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   boxes and the hit box rather than from TextSelection's painted runs, and
   the hover box spans the row height. An application syntax
   highlighter is prepared there too, once per hunk side, rather than on
-  the background executor. A rebuild keeps the
-  scroll index rather than the source line that was at the top.
+  the background executor.
   Without soft wrap, both modes use the runtime's horizontal scrollbar
   around the vertical list. The source scrolls inside fixed
   gutters and headers, and the scroll range is estimated from the widest
