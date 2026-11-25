@@ -6705,6 +6705,34 @@ static void SelectAllInSourceFormatReturnsSource() {
     TswClose(&v);
 }
 
+static void ShapedTextCopiesAcrossMarkdownStyleBoundaries() {
+    TswView v = TswOpen("Some words pre**fix**", TswContainer::Window);
+    v.State()
+        ->SetSelectionFormat(SelectionFormat::SourceAcrossStyles, v.app, v.win);
+    TswFlush(v);
+    TestDraw(v.win);
+    const TextHit* hit = HitContaining(v.win, "Some words prefix");
+    utassert(hit && hit->map && hit->map->spanCount == 2);
+    if (hit) {
+        char output[64];
+        int pre = hit->docOff + 11;
+        int fix = pre + 3;
+        int end = fix + 3;
+        auto copy = [&](int lo, int hi, SelectionFormat format) {
+            int count = CopyTextHitsIn(&v.win->paint, lo, hi, hit->scope,
+                                       output, (int)sizeof(output), format);
+            return Str(output, count);
+        };
+        utassert(StrEq(copy(pre, end, SelectionFormat::Plain), "prefix"));
+        utassert(StrEq(copy(pre, end, SelectionFormat::SourceAcrossStyles),
+                       "pre**fix**"));
+        utassert(
+            StrEq(copy(fix, end, SelectionFormat::SourceAcrossStyles), "fix"));
+        utassert(StrEq(copy(fix, fix + 2, SelectionFormat::Source), "**fi**"));
+    }
+    TswClose(&v);
+}
+
 struct TswMention {
     const char* label = nullptr;
 };
@@ -8781,6 +8809,7 @@ static void TestTextStateWindow() {
     ARegisteredMarkerDrawsItsBlockquoteInAPanel();
     SelectAllReturnsRenderedText();
     SelectAllInSourceFormatReturnsSource();
+    ShapedTextCopiesAcrossMarkdownStyleBoundaries();
     ParserPluginsKeepTheirConfigurationAcrossAsyncUpdates();
     SelectAllFollowsAnAppendedParse();
     ParserRevisionReparsesSameNameInlineConfiguration();

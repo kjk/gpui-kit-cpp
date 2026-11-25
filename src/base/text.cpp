@@ -3731,6 +3731,12 @@ El* TextView::SrcMark(El* t, uint8_t marks, Str href) {
         return t;
     }
     t->SelectionOwner(BaseTextViewStateCurrent(cx->app));
+    t->SelSrc(SrcMarkGroup(marks, href), !srcLineStart);
+    srcLineStart = false;
+    return t;
+}
+
+const SelSource* TextView::SrcMarkGroup(uint8_t marks, Str href) {
     // One record per mark group: an adjacent run with the same marks and the
     // same href reuses it, and the copier closes a group only when the record
     // changes — so a bold phrase split into word elements copies as
@@ -3742,7 +3748,7 @@ El* TextView::SrcMark(El* t, uint8_t marks, Str href) {
     if (!same) {
         SelSource* s = ArenaNew<SelSource>(a);
         if (!s) {
-            return t;
+            return nullptr;
         }
         s->pre = SrcMarkPre(a, marks);
         s->post = SrcMarkPost(a, marks, href);
@@ -3751,9 +3757,7 @@ El* TextView::SrcMark(El* t, uint8_t marks, Str href) {
         srcRunMarks = marks;
         srcRunHref = href;
     }
-    t->SelSrc(srcRunLast, !srcLineStart);
-    srcLineStart = false;
-    return t;
+    return srcRunLast;
 }
 
 void TextView::SrcBreak() {
@@ -3761,7 +3765,8 @@ void TextView::SrcBreak() {
 }
 
 El* TextView::SrcMap(El* t, const SourceSegment* segments, int count,
-                     int offset, bool atomic) {
+                     int offset, bool atomic, const SelSourceSpan* spans,
+                     int spanCount) {
     if (!selectable || !t) {
         return t;
     }
@@ -3773,6 +3778,8 @@ El* TextView::SrcMap(El* t, const SourceSegment* segments, int count,
     m->count = count;
     m->offset = offset;
     m->atomic = atomic;
+    m->spans = spans;
+    m->spanCount = spanCount;
     return t->SelMap(m);
 }
 
@@ -4627,8 +4634,7 @@ static int HangingPrefix(Str text) {
 }
 
 // A single shaped line keeps a word together through a weight or slant
-// change. Source-format copying, links and inline objects still need their
-// individual run elements.
+// change. Links and inline objects still need their own elements.
 static bool CanShapeInlineEmphasis(const MdNode* node) {
     const MdRun* previous = nullptr;
     bool splitWord = false;
@@ -4667,11 +4673,11 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
     }
     int leafRangeCount = 0;
     LeafRanges(this, n, &leafRangeCount);
-    if ((!selectable || selFormat == SelectionFormat::Plain) &&
-        !n->hasEditorKey && leafRangeCount == 0 && CanShapeInlineEmphasis(n)) {
+    if (!n->hasEditorKey && leafRangeCount == 0 && CanShapeInlineEmphasis(n)) {
         StrBuilder line(a);
         ArenaVec<TextHighlight> styles;
         ArenaVec<SourceSegment> mapped;
+        ArenaVec<SelSourceSpan> sourceStyles;
         for (const MdRun* run = n->runFirst; run; run = run->next) {
             int start = len(line);
             line.Append(run->text);
@@ -4688,6 +4694,10 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
                 styles.Append(a, {start, len(line), style});
             }
             if (selectable) {
+                if (start < len(line)) {
+                    sourceStyles.Append(
+                        a, {start, len(line), SrcMarkGroup(run->marks, {})});
+                }
                 for (int i = 0; i < run->segmentCount; ++i) {
                     SourceSegment segment = run->segments[i];
                     segment.renderedStart += start;
@@ -4701,9 +4711,14 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
         ApplyWeight(t, weight);
         t->Highlights(styles.Flatten(a), len(styles));
         if (selectable) {
-            t->Selectable()->GlyphSelection();
-            SrcMark(t, 0);
-            SrcMap(t, mapped.Flatten(a), len(mapped), 0);
+            const SelSourceSpan* spans = sourceStyles.Flatten(a);
+            t->Selectable()
+                ->GlyphSelection()
+                ->SelectionOwner(BaseTextViewStateCurrent(cx->app))
+                ->SelSrc(spans ? spans[0].source : nullptr, !srcLineStart);
+            srcLineStart = false;
+            SrcMap(t, mapped.Flatten(a), len(mapped), 0, false, spans,
+                   len(sourceStyles));
         }
         RangeWashes(t, n, 0, len(t->text));
         int reveal = 0;

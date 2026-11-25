@@ -10158,42 +10158,38 @@ static bool AtomReached(PaintCtx* ctx, int i, int a, int b, EntityId owner) {
 // where every block the selection covers has painted.
 static bool AcrossStylesUsesSource(PaintCtx* ctx, int a, int b, int scope,
                                    EntityId owner) {
-    const SelBlock* blk = nullptr;
     const SelSource* grp = nullptr;
     bool saw = false;
+    auto anotherGroup = [&](const SelSource* mark) {
+        bool different = saw && mark != grp;
+        saw = true;
+        grp = mark;
+        return different;
+    };
     for (int i = 0; i < len(ctx->texts); i++) {
         const TextHit& t = ctx->texts[i];
         if ((scope >= 0 && t.scope != scope) ||
             !TextHitOwnerMatches(t, owner)) {
             continue;
         }
-        bool take = false;
-        bool object = false;
         if (t.blockPlugin) {
-            take = BlockPluginHitSelected(ctx, t, a, b);
-            object = take;
-        } else {
-            int pos = t.docOff;
-            int plen = len(t.text);
-            int lo = a > pos ? a : pos;
-            int hi = b < pos + plen ? b : pos + plen;
-            bool atom = t.atom && t.src && AtomReached(ctx, i, a, b, owner);
-            take = (lo < hi && t.text.s) || atom;
-            object = atom || (take && t.inlinePlugin);
-        }
-        if (!take) {
+            if (BlockPluginHitSelected(ctx, t, a, b)) return true;
             continue;
         }
-        const SelBlock* want = t.src ? t.src->block : nullptr;
-        const SelSource* mark = t.src;
-        if (!saw) {
-            saw = true;
-            blk = want;
-            grp = mark;
-        } else if (want != blk || mark != grp) {
-            return true;
-        }
-        if (object) {
+        if (t.atom && t.src && AtomReached(ctx, i, a, b, owner)) return true;
+        int lo = std::max(0, a - t.docOff);
+        int hi = std::min(len(t.text), b - t.docOff);
+        if (lo >= hi || !t.text.s) continue;
+        if (t.inlinePlugin) return true;
+        if (t.map && t.map->spans) {
+            for (int j = 0; j < t.map->spanCount; j++) {
+                const SelSourceSpan& span = t.map->spans[j];
+                if (lo < span.end && hi > span.start &&
+                    anotherGroup(span.source)) {
+                    return true;
+                }
+            }
+        } else if (anotherGroup(t.src)) {
             return true;
         }
     }
@@ -10233,6 +10229,46 @@ static int CopyTextHitsFiltered(PaintCtx* ctx, int a, int b, int scope,
     // been emitted yet" is what keeps a drag that ends exactly at the start of
     // the next run reaching into it.
     bool sep = false;
+    auto emit = [&](Str piece, const SelSource* s, bool join) {
+        // A selection confined to one table cell only copies that cell's
+        // source. The pipes and the delimiter row stay on the block.
+        const SelBlock* want = (cell || !s) ? nullptr : s->block;
+        if (!(src && s && s == grp && join)) {
+            if (src && grp) {
+                CopyPut(&o, grp->post);
+                grp = nullptr;
+            }
+            if (want != blk) {
+                if (src && blk) CopyPut(&o, blk->post);
+                if (sep) {
+                    bool cont = want && want->join;
+                    CopyPut(&o,
+                            cont ? (src ? Str{} : Str(" ", 1)) : Str("\n", 1));
+                    sep = false;
+                }
+                if (src && want) {
+                    Str prevSurface = blk ? blk->surfacePre : Str{};
+                    if (len(want->surfacePre) > 0 &&
+                        (want->surfacePre.s != prevSurface.s ||
+                         len(want->surfacePre) != len(prevSurface))) {
+                        CopyPut(&o, want->surfacePre);
+                    }
+                    CopyPut(&o, want->pre);
+                }
+                blk = want;
+            } else if (!join && sep) {
+                CopyPut(&o, Str("\n", 1));
+                if (src && blk) CopyPut(&o, blk->linePre);
+                sep = false;
+            }
+            if (src && s) {
+                CopyPut(&o, s->pre);
+                grp = s;
+            }
+        }
+        CopyPutLines(&o, piece, (src && blk) ? blk->linePre : Str{});
+        any = true;
+    };
     for (int i = 0; i < len(ctx->texts) && o.n < cap - 1; i++) {
         const TextHit& t = ctx->texts[i];
         if ((scope >= 0 && t.scope != scope) ||
@@ -10290,59 +10326,19 @@ static int CopyTextHitsFiltered(PaintCtx* ctx, int a, int b, int scope,
         if (t.inlinePlugin) {
             piece = src && s && s->inlineSource.s ? s->inlineSource : t.text;
         }
-        // A selection confined to one table cell is that cell's source, not
-        // a one-cell table. The pipes and the delimiter row stay on the block.
-        const SelBlock* want = (cell || !s) ? nullptr : s->block;
-        // The same record still open, continued: one mark group split over
-        // several word elements, which closes once and not per word.
-        if (!(src && s && s == grp && t.join)) {
-            if (src && grp) {
-                CopyPut(&o, grp->post);
-                grp = nullptr;
+        if (src && t.map && t.map->spans) {
+            bool join = t.join;
+            for (int j = 0; j < t.map->spanCount && o.n < cap - 1; j++) {
+                const SelSourceSpan& span = t.map->spans[j];
+                int start = std::max(lo - pos, span.start);
+                int end = std::min(hi - pos, span.end);
+                if (start >= end) continue;
+                emit(Str(t.text.s + start, end - start), span.source, join);
+                join = true;
             }
-            if (want != blk) {
-                if (src && blk) {
-                    CopyPut(&o, blk->post);
-                }
-                if (sep) {
-                    // A block that continues the row before it — a table
-                    // cell — is a space in the rendered text, and in the
-                    // source is whatever its `pre` says.
-                    bool cont = want && want->join;
-                    CopyPut(&o,
-                            cont ? (src ? Str{} : Str(" ", 1)) : Str("\n", 1));
-                    sep = false;
-                }
-                if (src && want) {
-                    // A block surface's marker is one line for the whole
-                    // container. Later blocks of the same surface share the
-                    // string, so a selection that starts below the first
-                    // block still opens with `> [!name]`.
-                    Str prevSurface = blk ? blk->surfacePre : Str{};
-                    if (len(want->surfacePre) > 0 &&
-                        (want->surfacePre.s != prevSurface.s ||
-                         len(want->surfacePre) != len(prevSurface))) {
-                        CopyPut(&o, want->surfacePre);
-                    }
-                    CopyPut(&o, want->pre);
-                }
-                blk = want;
-            } else if (!t.join && sep) {
-                // A new line inside the same block — or, with no block at
-                // all, the run-per-line the copier has always produced.
-                CopyPut(&o, Str("\n", 1));
-                if (src && blk) {
-                    CopyPut(&o, blk->linePre);
-                }
-                sep = false;
-            }
-            if (src && s) {
-                CopyPut(&o, s->pre);
-                grp = s;
-            }
+        } else {
+            emit(piece, s, t.join);
         }
-        CopyPutLines(&o, piece, (src && blk) ? blk->linePre : Str{});
-        any = true;
         sep = spansGap;
     }
     if (src && grp) {

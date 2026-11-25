@@ -2454,6 +2454,14 @@ struct SourceSegment {
     bool linear = false;
 };
 
+// The Markdown mark groups within one shaped text element, in its UTF-8
+// byte offsets. Adjacent spans can share the same mark group.
+struct SelSourceSpan {
+    int start;
+    int end;
+    const SelSource* source;
+};
+
 // Where one selectable element's text sits in the source, for
 // TextViewState::selected_source_range. `segments` are the rendered run's, in
 // the run's own byte offsets, and `offset` is where this element's text
@@ -2465,6 +2473,8 @@ struct SelSourceMap {
     int count = 0;
     int offset = 0;
     bool atomic = false;
+    const SelSourceSpan* spans = nullptr;
+    int spanCount = 0;
 };
 
 struct FocusHandle {

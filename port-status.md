@@ -29,10 +29,10 @@ The current update target is
   announcement delivery is implemented by the Windows, macOS, Linux and web
   hosts.
 
-- **Inline objects and source-format selection use element widths.** Plain
-  paragraphs with a style change within a word can shape their emphasis in a
-  single text layout. Links, inline objects, and source-format copying keep
-  separate elements. Unicode no-break boundaries keep adjoining fragments
+- **Links and inline objects use element widths.** Paragraphs with a style
+  change within a word can share a single text layout and retain their
+  Markdown copy boundaries. Links and inline objects keep separate
+  elements. Unicode no-break boundaries keep adjoining fragments
   together, and trailing spaces still contribute to element width
   (`src/base/text.cpp`).
 

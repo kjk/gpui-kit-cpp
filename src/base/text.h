@@ -1706,6 +1706,7 @@ struct TextView {
     // Hand `t` the Markdown around it — wrap_with_mark's affixes — and
     // whether it continues the run before it. Answers `t`.
     El* SrcMark(El* t, uint8_t marks, Str href = {});
+    const SelSource* SrcMarkGroup(uint8_t marks, Str href);
     // The next run starts a line of its own: a hard break, a new code line.
     void SrcBreak();
     // Hand an inline image element its `![alt](url)` — node.rs
@@ -1714,7 +1715,8 @@ struct TextView {
     // Hangs the run's source segments on `t`, whose text starts `offset`
     // bytes into the run.
     El* SrcMap(El* t, const SourceSegment* segments, int count, int offset,
-               bool atomic = false);
+               bool atomic = false, const SelSourceSpan* spans = nullptr,
+               int spanCount = 0);
     Listener LinkListener(Str href);
     void BindViewLink(El* element, Str href);
     void BindLinkedImage(El* image, Str href);
