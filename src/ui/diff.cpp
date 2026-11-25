@@ -7,6 +7,7 @@
 #include "gpui/keymap.h"
 #include "gpui/paint.h"
 #include "ui/button.h"
+#include "ui/diff_width_data.h"
 #include "ui/i18n.h"
 #include "ui/icon.h"
 #include "ui/syntax.h"
@@ -4969,11 +4970,44 @@ Diff* Diff::TextCursor(CursorKind cursor) {
     return this;
 }
 
+int DiffDisplayCells(Str text) {
+    int cells = 0;
+    uint8_t state = 0;
+    for (int end = len(text); end > 0;) {
+        int start = Utf8Prev(text, end);
+        uint32_t scalar = 0;
+        if (Utf8At(text, start, &scalar) != end - start) scalar = 0xFFFD;
+        end = start;
+        // Ordinary ASCII is common in the diff. A pending state can still
+        // affect an ASCII character, for example an emoji keycap digit.
+        if (state == 0 && scalar >= 0x20 && scalar <= 0x7E) {
+            cells++;
+            continue;
+        }
+        int lo = 0;
+        int hi = dimofi(kDiffWidthClassRanges);
+        while (lo < hi) {
+            int mid = lo + (hi - lo) / 2;
+            if (kDiffWidthClassRanges[mid].hi < scalar)
+                lo = mid + 1;
+            else
+                hi = mid;
+        }
+        uint8_t id = lo < dimofi(kDiffWidthClassRanges) &&
+                             kDiffWidthClassRanges[lo].lo <= scalar
+                         ? kDiffWidthClassRanges[lo].id
+                         : 0;
+        uint16_t transition = kDiffWidthTransitions[id][state];
+        cells += (int8_t)(transition >> 8);
+        state = (uint8_t)transition;
+    }
+    return cells;
+}
+
 static void MeasureDiffCode(Ctx* cx, DiffState* state, float font) {
-    // Shape the widest candidates once per file set and font size, as the
-    // Rust viewer does. Rank by decoded character count for our mono font.
+    // Shape the widest display-cell candidates once per file set and font.
     struct Candidate {
-        int characters;
+        int cells;
         Str text;
     };
     Candidate candidates[8] = {};
@@ -4983,9 +5017,10 @@ static void MeasureDiffCode(Ctx* cx, DiffState* state, float font) {
             IMax(state->horizontalNumberDigits, file->lineNumberDigits);
         for (const DiffFileSide* side : {&file->original, &file->modified}) {
             for (const DiffSourceLine& line : side->lines) {
-                int count = Utf8CharCount(line.display);
+                int count = DiffDisplayCells(line.display);
                 for (int i = 0; i < 8; i++) {
-                    if (count <= candidates[i].characters) continue;
+                    if (candidates[i].text.s && count <= candidates[i].cells)
+                        continue;
                     for (int j = 7; j > i; j--)
                         candidates[j] = candidates[j - 1];
                     candidates[i] = {count, line.display};
@@ -4996,7 +5031,7 @@ static void MeasureDiffCode(Ctx* cx, DiffState* state, float font) {
     }
     state->horizontalCodeWidth = 0;
     for (const auto& candidate : candidates) {
-        if (!candidate.characters) break;
+        if (!candidate.text.s) break;
         float width = MeasureText(&cx->win->paint, candidate.text, font, 0,
                                   false, kFontMono)
                           .w;

@@ -575,9 +575,9 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   the background executor.
   Without soft wrap, both modes use the runtime's horizontal scrollbar
   around the vertical list. The source scrolls inside fixed
-  gutters and headers. The initial scroll range ranks lines by UTF-8
-  scalar count. Wider painted lines extend the range using their actual
-  shaped width.
+  gutters and headers. The initial scroll range ranks lines by Unicode
+  display-cell width, and wider painted lines extend the range using
+  their actual shaped width.
   The gutter marker lane is one row square inside the fill-width row.
   An outside press clears the gutter range and reports the change.
   `SetSelectedLines` updates the range programmatically. The story page

@@ -908,6 +908,15 @@ static Entity<WideSplitView> LongLineDiff(App* app, DiffMode mode) {
     return view;
 }
 
+static void DiffWidthCandidatesUseDisplayCells() {
+    utassert(DiffDisplayCells(StrL("abc\r\ndef")) == 7);
+    utassert(DiffDisplayCells(StrL("漢字とｅ")) == 8);
+    utassert(DiffDisplayCells(StrL("Cafe\xCC\x81")) == 4);
+    utassert(DiffDisplayCells(StrL("ｶﾀｶﾅ")) == 4);
+    utassert(DiffDisplayCells(StrL("👩‍💻 🇵🇱 ❤️")) == 8);
+    utassert(DiffDisplayCells(StrL("لا")) == 1);
+}
+
 static void PaintedDiffLineGrowsTheHorizontalRange() {
     for (DiffMode mode : {DiffMode::Unified, DiffMode::Split}) {
         App* app = TestAppNew();
@@ -2060,6 +2069,7 @@ void TestDiff() {
     TheWheelScrollsPastTheRowsRenderedSoFar();
     SplitColumnsKeepTheirGuttersWhileCodeScrolls();
     PaintedDiffLineGrowsTheHorizontalRange();
+    DiffWidthCandidatesUseDisplayCells();
     TheFileHeaderStaysInsideTheScrollingViewport();
     UnifiedAnnotationsStayInTheViewportWhileCodeScrolls();
     DecorationsCoverTheirRangeAndTheLastSuppliedWins();

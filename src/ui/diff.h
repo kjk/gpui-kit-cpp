@@ -779,6 +779,8 @@ void DiffInitKeys();
 // visible: SelectionGeometry::run_bounds, which Rust keeps for tests.
 // False when no such line is on screen.
 bool DiffRunBounds(Window* win, DiffSide side, int lineIx, Bounds* out);
+// unicode-width's non-CJK width, used to rank initial scroll candidates.
+int DiffDisplayCells(Str text);
 
 // True when the paired line's text matches and only the ending differs.
 bool DiffHasLineEndingChange(const DiffFile* file, DiffSide side, int ix,
