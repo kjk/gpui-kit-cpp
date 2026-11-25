@@ -509,6 +509,7 @@ struct DiffTextSelection {
 };
 
 struct DiffPresentationJob;
+struct DiffOwnedSyntaxHighlighter;
 
 struct DiffState {
     App* app = nullptr;
@@ -563,6 +564,7 @@ struct DiffState {
     Entity<DiffState> self = {};
     DiffSyntaxHighlighter syntaxFn = nullptr;
     void* syntaxData = nullptr;
+    DiffOwnedSyntaxHighlighter* ownedSyntax = nullptr;
     bool syntaxPrepared = false;
     Vec<DiffSyntaxSpan> syntaxSpans;
     // What the text hover handler heard last, so it only hears changes:
@@ -616,6 +618,14 @@ struct DiffState {
     // UTF-8 sequence is dropped.
     DiffState* WithSyntaxHighlighter(DiffSyntaxHighlighter fn, void* data);
     void SetSyntaxHighlighter(DiffSyntaxHighlighter fn, void* data, Ctx* cx);
+    // Transfer data ownership. The callback and its disposer must be safe
+    // on worker threads, including during replacement or window teardown.
+    // The disposer runs after the last in-flight call has released the data.
+    DiffState* WithBackgroundSyntaxHighlighter(DiffSyntaxHighlighter fn,
+                                               void* data,
+                                               void (*dispose)(void*));
+    void SetBackgroundSyntaxHighlighter(DiffSyntaxHighlighter fn, void* data,
+                                        void (*dispose)(void*), Ctx* cx);
     void ClearSyntaxHighlighter(Ctx* cx);
     int SyntaxStyleCount(int file, DiffSide side, int line) const;
     DiffSyntaxStyle SyntaxStyleAt(int file, DiffSide side, int line,
@@ -652,8 +662,8 @@ struct DiffState {
     void DragLineSelection(DiffLinePosition position, Ctx* cx);
     void EndLineSelection(Ctx* cx);
     // Synchronously prepare the files for callers that inspect spans without
-    // rendering a view. Normal rendering prepares inline runs and built-in
-    // syntax asynchronously.
+    // rendering a view. Normal rendering prepares inline runs, built-in
+    // syntax and owned application highlighters asynchronously.
     void EnsurePresentation();
     void EnsureSyntax();
     void EnsureFilePresentation(bool background);

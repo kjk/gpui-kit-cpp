@@ -69,9 +69,11 @@ static void ClearDiffCodeRuns(DiffState* state) {
 }
 
 static void CancelDiffPresentationJob(DiffState* state);
+static void ReleaseDiffSyntaxHighlighter(DiffOwnedSyntaxHighlighter* provider);
 
 DiffState::~DiffState() {
     CancelDiffPresentationJob(this);
+    ReleaseDiffSyntaxHighlighter(ownedSyntax);
     ClearDiffCodeRuns(this);
     for (int i = 0; i < len(files); i++) delete files[i];
     for (int i = 0; i < len(collapsed); i++) StrFree(collapsed[i]);
@@ -2479,10 +2481,9 @@ static void CollectSyntaxSide(const DiffFile* file, int fileIx, DiffSide side,
 }
 
 void DiffState::EnsureSyntax() {
-    if (syntaxPrepared) return;
+    if (syntaxPrepared || !syntaxFn || ownedSyntax) return;
     VecClear(syntaxSpans);
     syntaxPrepared = true;
-    if (!syntaxFn) return;
     // The legacy application callback borrows caller-owned data and may
     // access the UI. Keep that callback on the calling thread.
     for (int i = 0; i < len(files); i++) {
@@ -2518,6 +2519,24 @@ DiffSyntaxStyle DiffState::SyntaxStyleAt(int file, DiffSide side, int line,
     return {};
 }
 
+struct DiffOwnedSyntaxHighlighter {
+    DiffSyntaxHighlighter fn;
+    void* data;
+    void (*dispose)(void*);
+    Mutex lifetime;
+    int refs = 1;
+};
+
+static void ReleaseDiffSyntaxHighlighter(DiffOwnedSyntaxHighlighter* provider) {
+    if (!provider) return;
+    provider->lifetime.Lock();
+    bool last = --provider->refs == 0;
+    provider->lifetime.Unlock();
+    if (!last) return;
+    if (provider->dispose) provider->dispose(provider->data);
+    delete provider;
+}
+
 struct DiffPresentationJob {
     DiffState* owner = nullptr; // Main thread only.
     TaskId task = 0;
@@ -2526,6 +2545,7 @@ struct DiffPresentationJob {
     DiffInlineInput input;
     int fileIndex = 0;
     int syntaxLimit = 0;
+    DiffOwnedSyntaxHighlighter* highlighter = nullptr;
     DiffFile syntaxInput;
     Vec<DiffSyntaxSpan> syntax;
     Vec<DiffRun> runs[2];
@@ -2535,7 +2555,10 @@ struct DiffPresentationJob {
     int refs = 2;
     bool discarded = false;
 
-    ~DiffPresentationJob() { ArenaDelete(snapshot); }
+    ~DiffPresentationJob() {
+        ArenaDelete(snapshot);
+        ReleaseDiffSyntaxHighlighter(highlighter);
+    }
 };
 
 static void ReleaseDiffPresentationJob(DiffPresentationJob* job) {
@@ -2557,7 +2580,7 @@ static void CancelDiffPresentationJob(DiffState* state) {
 static void InvalidateDiffPresentation(DiffState* state) {
     CancelDiffPresentationJob(state);
     state->presentationPreparedFiles = 0;
-    if (!state->syntaxFn) VecClear(state->syntaxSpans);
+    if (!state->syntaxFn || state->ownedSyntax) VecClear(state->syntaxSpans);
     for (auto* file : state->files) {
         for (int side = 0; side < 2; side++) {
             VecClear(file->inlineRuns[side]);
@@ -2568,9 +2591,10 @@ static void InvalidateDiffPresentation(DiffState* state) {
 
 static bool SnapshotDiffSyntaxSide(Arena* arena, const DiffFile& file,
                                    const DiffFileSide& source,
-                                   DiffFileSide* out) {
+                                   DiffFileSide* out, bool custom) {
     Str language = SyntaxLanguage(&file, &source);
-    if (!len(source.lines) || SyntaxLangFor(language) == SyntaxLangNone)
+    if (!len(source.lines) || !len(language) || StrEq(language, "text") ||
+        (!custom && SyntaxLangFor(language) == SyntaxLangNone))
         return true;
     // The job owns the source and pathname used for language detection.
     out->hasPath = source.hasPath;
@@ -2596,9 +2620,9 @@ static bool SnapshotDiffSyntax(DiffPresentationJob* job, const DiffFile& file) {
     if (len(copy.path) != len(file.path) ||
         len(copy.language) != len(file.language) ||
         !SnapshotDiffSyntaxSide(job->snapshot, file, file.original,
-                                &copy.original) ||
+                                &copy.original, job->highlighter != nullptr) ||
         !SnapshotDiffSyntaxSide(job->snapshot, file, file.modified,
-                                &copy.modified))
+                                &copy.modified, job->highlighter != nullptr))
         return false;
     if (!len(copy.original.lines) && !len(copy.modified.lines)) return true;
     if (!VecAppendVec(copy.hunks, file.hunks)) return false;
@@ -2606,18 +2630,19 @@ static bool SnapshotDiffSyntax(DiffPresentationJob* job, const DiffFile& file) {
     return true;
 }
 
-static void CollectScannedFile(const DiffFile* file, int fileIx, int limit,
-                               Vec<DiffSyntaxSpan>* out) {
-    CollectSyntaxSide(file, fileIx, DiffSide::Original, limit, nullptr, nullptr,
-                      out);
-    CollectSyntaxSide(file, fileIx, DiffSide::Modified, limit, nullptr, nullptr,
-                      out);
+static void CollectPreparedSyntax(const DiffFile* file, int fileIx, int limit,
+                                  DiffOwnedSyntaxHighlighter* highlighter,
+                                  Vec<DiffSyntaxSpan>* out) {
+    auto fn = highlighter ? highlighter->fn : nullptr;
+    void* data = highlighter ? highlighter->data : nullptr;
+    CollectSyntaxSide(file, fileIx, DiffSide::Original, limit, fn, data, out);
+    CollectSyntaxSide(file, fileIx, DiffSide::Modified, limit, fn, data, out);
 }
 
 static void DiffPresentationWork(DiffPresentationJob* job) {
     PrepareDiffInline(job->input, job->unit, job->runs, job->starts);
-    CollectScannedFile(&job->syntaxInput, job->fileIndex, job->syntaxLimit,
-                       &job->syntax);
+    CollectPreparedSyntax(&job->syntaxInput, job->fileIndex, job->syntaxLimit,
+                          job->highlighter, &job->syntax);
 }
 
 static void DiffPresentationDiscard(DiffPresentationJob* job) {
@@ -2644,7 +2669,7 @@ static void DiffPresentationLanded(DiffPresentationJob* job) {
 }
 
 void DiffState::EnsureFilePresentation(bool background) {
-    bool scan = !syntaxFn && syntaxMaxLineLength > 0;
+    bool scan = ownedSyntax || (!syntaxFn && syntaxMaxLineLength > 0);
     if (!inlineOn && !scan) return;
     if (presentationJob && background) {
         presentationJob->lifetime.Lock();
@@ -2663,6 +2688,12 @@ void DiffState::EnsureFilePresentation(bool background) {
             job->unit = inlineUnit;
             job->fileIndex = presentationPreparedFiles;
             job->syntaxLimit = syntaxMaxLineLength;
+            if (scan && ownedSyntax) {
+                ownedSyntax->lifetime.Lock();
+                ++ownedSyntax->refs;
+                ownedSyntax->lifetime.Unlock();
+                job->highlighter = ownedSyntax;
+            }
             if ((!inlineOn ||
                  ReadDiffInlineInput(*file, inlineMaxLineLength, job->snapshot,
                                      &job->input)) &&
@@ -2686,8 +2717,9 @@ void DiffState::EnsureFilePresentation(bool background) {
         }
         if (inlineOn) file->PrepareInline(inlineUnit, inlineMaxLineLength);
         if (scan)
-            CollectScannedFile(file, presentationPreparedFiles,
-                               syntaxMaxLineLength, &syntaxSpans);
+            CollectPreparedSyntax(file, presentationPreparedFiles,
+                                  syntaxMaxLineLength, ownedSyntax,
+                                  &syntaxSpans);
         presentationPreparedFiles++;
     }
 }
@@ -2794,6 +2826,8 @@ DiffState* DiffState::WithSyntaxMaxLineLength(int length) {
 
 DiffState* DiffState::WithSyntaxHighlighter(DiffSyntaxHighlighter fn,
                                             void* data) {
+    ReleaseDiffSyntaxHighlighter(ownedSyntax);
+    ownedSyntax = nullptr;
     syntaxFn = fn;
     syntaxData = data;
     syntaxPrepared = false;
@@ -2810,6 +2844,30 @@ void DiffState::SetSyntaxHighlighter(DiffSyntaxHighlighter fn, void* data,
 
 void DiffState::ClearSyntaxHighlighter(Ctx* cx) {
     SetSyntaxHighlighter(nullptr, nullptr, cx);
+}
+
+DiffState* DiffState::WithBackgroundSyntaxHighlighter(DiffSyntaxHighlighter fn,
+                                                      void* data,
+                                                      void (*dispose)(void*)) {
+    WithSyntaxHighlighter(fn, fn ? data : nullptr);
+    if (!fn) {
+        if (dispose) dispose(data);
+        return this;
+    }
+    ownedSyntax = new DiffOwnedSyntaxHighlighter;
+    ownedSyntax->fn = fn;
+    ownedSyntax->data = data;
+    ownedSyntax->dispose = dispose;
+    VecClear(syntaxSpans);
+    return this;
+}
+
+void DiffState::SetBackgroundSyntaxHighlighter(DiffSyntaxHighlighter fn,
+                                               void* data,
+                                               void (*dispose)(void*),
+                                               Ctx* cx) {
+    WithBackgroundSyntaxHighlighter(fn, data, dispose);
+    if (cx) Notify(cx);
 }
 
 DiffFile** DiffState::Files(int* count) const {

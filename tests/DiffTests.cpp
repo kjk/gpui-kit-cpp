@@ -1389,6 +1389,91 @@ static El* FindDiffCodeRun(El* root, Str text) {
     return nullptr;
 }
 
+struct DiffWorkerHighlightProbe {
+    Mutex lock;
+    int calls = 0;
+    int disposed = 0;
+    bool onMainThread = false;
+    bool correctLanguage = true;
+};
+
+struct DiffWorkerHighlightData {
+    DiffWorkerHighlightProbe* probe;
+    FontWeight weight;
+};
+
+static void HighlightOwnedWord(void* data, Str language, Str text,
+                               Vec<DiffSyntaxStyle>* out) {
+    auto* payload = static_cast<DiffWorkerHighlightData*>(data);
+    auto& probe = *payload->probe;
+    probe.lock.Lock();
+    probe.calls++;
+    probe.onMainThread |= ExecOnMainThread();
+    probe.correctLanguage &= StrEq(language, "app-language");
+    probe.lock.Unlock();
+    if (len(text) < 3) return;
+    DiffSyntaxStyle style;
+    style.end = 3;
+    style.weight = (uint16_t)payload->weight;
+    VecAppend(*out, style);
+}
+
+static void DisposeOwnedDiffHighlighter(void* data) {
+    auto* payload = static_cast<DiffWorkerHighlightData*>(data);
+    auto& probe = *payload->probe;
+    probe.lock.Lock();
+    probe.disposed++;
+    probe.lock.Unlock();
+    delete payload;
+}
+
+// Rust retains its Send + Sync callback through presentation replacement.
+static void OwnedDiffHighlighterPreparesOnTheExecutorAndDisposesOnce() {
+    DiffWorkerHighlightProbe first;
+    DiffWorkerHighlightProbe second;
+    App* app = TestAppNew();
+    Init(app);
+    auto view = EntityNew<DiffHighlightView>(app);
+    auto* self = view.Get(app);
+    self->syntax = true;
+    self->state = EntityNew<DiffState>(app);
+    auto* state = self->state.Get(app);
+    state->Bind(app, self->state);
+    state->WithInlineUnit(false, DiffInlineUnit::Word);
+    state->WithBackgroundSyntaxHighlighter(
+        &HighlightOwnedWord,
+        new DiffWorkerHighlightData{&first, FontWeight::Bold},
+        &DisposeOwnedDiffHighlighter);
+    Vec<DiffFile*> files;
+    utassert(
+        Parse("--- a/custom.txt\n+++ b/custom.txt\n@@ -1 +1 @@\n"
+              "-key old\n+key new\n",
+              &files));
+    files[0]->WithLanguage(StrL("app-language"));
+    state->SetFiles(files.els, len(files), nullptr);
+    Window* win = TestWindowOpen(app, view, 400, 320);
+    utassert(state->presentationJob && !len(state->syntaxSpans));
+
+    Ctx cx{app, win, win->frameArena, self->state.id};
+    state->SetBackgroundSyntaxHighlighter(
+        &HighlightOwnedWord,
+        new DiffWorkerHighlightData{&second, FontWeight::Light},
+        &DisposeOwnedDiffHighlighter, &cx);
+    TestRunUntilParked(app);
+    utassert(first.disposed == 1);
+    utassert(second.calls == 2 && second.correctLanguage);
+    utassert(second.onMainThread == !ExecHasThreads());
+    utassert(second.disposed == 0);
+    utassert(state->SyntaxStyleCount(0, DiffSide::Modified, 0) == 1);
+    utassert(state->SyntaxStyleAt(0, DiffSide::Modified, 0, 0)
+                 .weight == (uint16_t)FontWeight::Light);
+    state->SetSyntaxMaxLineLength(0, &cx);
+    TestRunUntilParked(app);
+    utassert(second.calls == 4 && !len(state->syntaxSpans));
+    TestAppFree(app);
+    utassert(second.disposed == 1);
+}
+
 // presentation.rs syntax_spans scans each hunk side independently.
 static void BuiltInDiffSyntaxLandsFromTheExecutorAndResetsAtHunks() {
     App* app = TestAppNew();
@@ -2283,6 +2368,7 @@ void TestDiff() {
     InlineChangesPaintBothSidesAndRespectExplicitSpanPriority();
     InlinePresentationLandsProgressivelyAndDropsReplacedPatches();
     BuiltInDiffSyntaxLandsFromTheExecutorAndResetsAtHunks();
+    OwnedDiffHighlighterPreparesOnTheExecutorAndDisposesOnce();
     GutterMarkersActivateWithoutSelectingLines();
     TextHoverReportsTheCharacterAndOnlyChanges();
     TextHitsUsePaintedSyntaxRunsAndSourceOffsets();
