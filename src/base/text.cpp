@@ -4633,29 +4633,67 @@ static int HangingPrefix(Str text) {
     return at;
 }
 
-// A single shaped line keeps a word together through a weight or slant
-// change. Links and inline objects still need their own elements.
-static bool CanShapeInlineEmphasis(const MdNode* node) {
+// A shared text layout can span an emphasis boundary or a link. Atomic
+// objects and spans with their own padding still go through inline flow.
+static bool CanShapeStyledLine(const MdNode* node) {
+    if (node->runFirst && !node->runFirst->next &&
+        StrFind(node->runFirst->text, StrL(" ")) < 0) {
+        return false;
+    }
     const MdRun* previous = nullptr;
-    bool splitWord = false;
+    bool needsSharedLayout = false;
     for (const MdRun* run = node->runFirst; run; run = run->next) {
         if (run->hasCustom || len(run->imgSrc) ||
-            (run->marks & ~(MdBold | MdItalic | MdDel | MdUnderline)) ||
+            (run->marks &
+             ~(MdBold | MdItalic | MdDel | MdUnderline | MdLink)) ||
             StrFind(run->text, StrL("\n")) >= 0)
             return false;
         if (!len(run->text)) continue;
+        needsSharedLayout |= (run->marks & MdLink) != 0;
         if (previous && previous->marks != run->marks) {
             uint32_t before = 0;
             uint32_t after = 0;
             Utf8At(previous->text,
                    Utf8Prev(previous->text, len(previous->text)), &before);
             Utf8At(run->text, 0, &after);
-            splitWord |= CharKindOf(before) == CharKind::Word &&
-                         CharKindOf(after) == CharKind::Word;
+            needsSharedLayout |= CharKindOf(before) == CharKind::Word &&
+                                 CharKindOf(after) == CharKind::Word;
         }
         previous = run;
     }
-    return splitWord;
+    return needsSharedLayout;
+}
+
+struct ShapedTextLink {
+    const El* target;
+    int start;
+    int end;
+    int index;
+};
+
+static void PaintShapedTextLinks(PaintCtx* paint, El* element, void* data) {
+    auto* links = static_cast<const ArenaVec<ShapedTextLink>*>(data);
+    for (const ShapedTextLink& link : *links) {
+        Bounds localRects[16];
+        Bounds* rects = localRects;
+        int capacity = 16;
+        int count = ElTextRangeRects(paint, element, link.start, link.end,
+                                     rects, capacity);
+        while (count == capacity && capacity < link.end - link.start) {
+            capacity = std::min(capacity * 2, link.end - link.start);
+            auto* more =
+                (Bounds*)Alloc(element->arena, capacity * (int)sizeof(Bounds));
+            if (!more) break;
+            rects = more;
+            count = ElTextRangeRects(paint, element, link.start, link.end,
+                                     rects, capacity);
+        }
+        uint32_t path =
+            IdFoldName(element->pathId, fmt("inline-link-%d", link.index));
+        for (int i = 0; i < count; i++) {
+            PaintInlineLinkHit(paint, link.target, rects[i], path);
+        }
+    }
 }
 
 El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
@@ -4673,30 +4711,58 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
     }
     int leafRangeCount = 0;
     LeafRanges(this, n, &leafRangeCount);
-    if (!n->hasEditorKey && leafRangeCount == 0 && CanShapeInlineEmphasis(n)) {
+    if (!n->hasEditorKey && leafRangeCount == 0 && CanShapeStyledLine(n)) {
         StrBuilder line(a);
         ArenaVec<TextHighlight> styles;
         ArenaVec<SourceSegment> mapped;
         ArenaVec<SelSourceSpan> sourceStyles;
+        ArenaVec<ShapedTextLink>* links = nullptr;
         for (const MdRun* run = n->runFirst; run; run = run->next) {
             int start = len(line);
             line.Append(run->text);
-            if (run->marks && start < len(line)) {
+            uint8_t marks = run->marks;
+            Str href = (marks & MdLink) ? run->href : Str{};
+            if ((marks & MdLink) && linkHook) {
+                TextViewLink link = {href, run->linkTitle};
+                if (linkHook(&link, cx->app, linkHookData)) {
+                    href = StrDup(a, link.url);
+                } else {
+                    marks = (uint8_t)(marks & ~MdLink);
+                    href = {};
+                }
+            }
+            if (marks && start < len(line)) {
                 HighlightStyle style;
-                if ((run->marks & MdBold) && weight < 2) {
+                if ((marks & MdBold) && weight < 2) {
                     style.weight = FontWeight::Semibold;
                 }
-                if (run->marks & MdItalic) {
+                if (marks & MdItalic) {
                     style.fontStyle = HighlightFontStyle::Italic;
                 }
-                if (run->marks & MdUnderline) style.underline.thickness = 1;
-                if (run->marks & MdDel) style.strike.thickness = 1;
+                if (marks & (MdUnderline | MdLink))
+                    style.underline.thickness = 1;
+                if (marks & MdDel) style.strike.thickness = 1;
+                if (marks & MdLink) {
+                    style.hasColor = true;
+                    style.color = textViewStyle.link;
+                    style.underline.hasColor = true;
+                    style.underline.color = style.color;
+                    style.underline.color
+                        .a = (uint8_t)((float)style.color.a * 0.4f + 0.5f);
+                }
                 styles.Append(a, {start, len(line), style});
+            }
+            if (len(href) && start < len(line)) {
+                if (!links) links = ArenaNew<ArenaVec<ShapedTextLink>>(a);
+                El* target = Div(a);
+                BindViewLink(target, href);
+                links->Append(a, {target, start, len(line), nextShapedLink++});
             }
             if (selectable) {
                 if (start < len(line)) {
-                    sourceStyles.Append(
-                        a, {start, len(line), SrcMarkGroup(run->marks, {})});
+                    sourceStyles
+                        .Append(a, {start, len(line),
+                                    SrcMarkGroup(run->marks, run->href)});
                 }
                 for (int i = 0; i < run->segmentCount; ++i) {
                     SourceSegment segment = run->segments[i];
@@ -4710,6 +4776,11 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
         if (color.a) t->Fg(color);
         ApplyWeight(t, weight);
         t->Highlights(styles.Flatten(a), len(styles));
+        if (links) {
+            if (!t->lifecycle) t->lifecycle = ArenaNew<ElLifecycle>(a);
+            t->lifecycle->afterPaint = &PaintShapedTextLinks;
+            t->lifecycle->user = links;
+        }
         if (selectable) {
             const SelSourceSpan* spans = sourceStyles.Flatten(a);
             t->Selectable()

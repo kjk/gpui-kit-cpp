@@ -7301,6 +7301,9 @@ void PaintEl(PaintCtx* ctx, El* e);
 // written.
 int ElTextRangeRects(PaintCtx* ctx, const El* e, int lo, int hi, Bounds* out,
                      int cap);
+// A link inside a shaped text run uses its painted glyph ranges for input.
+void PaintInlineLinkHit(PaintCtx* ctx, const El* link, Bounds bounds,
+                        uint32_t path);
 // The advance of a space in the run's font: the cell a selected newline gets.
 float ElTextSpaceWidth(PaintCtx* ctx, const El* e);
 int HitTest(PaintCtx* ctx, float x, float y);

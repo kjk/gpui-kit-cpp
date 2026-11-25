@@ -5881,6 +5881,14 @@ struct TswRoot {
     // Last frame's scroll box of a scrollable view and the document inside it,
     // for scroll_top. Frame-arena memory, read only between frames.
     El* scroller = nullptr;
+    bool listenForLinks = false;
+    int linkClicks = 0;
+
+    static void OnLink(TswRoot* self, Ctx*, const ClickEvent*, int64_t href) {
+        if (StrEq(Str((const char*)(intptr_t)href), "https://example.test")) {
+            self->linkClicks++;
+        }
+    }
 
     // Container::Div's on_reveal: the scroll handle moved the least that
     // shows the line.
@@ -5933,6 +5941,7 @@ struct TswRoot {
         if (self->extensions) {
             view->MarkdownExtensionsSet(*self->extensions);
         }
+        if (self->listenForLinks) view->OnLink(Listen(cx, &TswRoot::OnLink));
         if (self->container == TswContainer::Window) {
             return Div(a)->SizeFull()->Child(view->IntoEl());
         }
@@ -6730,6 +6739,31 @@ static void ShapedTextCopiesAcrossMarkdownStyleBoundaries() {
             StrEq(copy(fix, end, SelectionFormat::SourceAcrossStyles), "fix"));
         utassert(StrEq(copy(fix, fix + 2, SelectionFormat::Source), "**fi**"));
     }
+    TswClose(&v);
+}
+
+static void WrappedLinksUseSharedTextGeometry() {
+    TswView v = TswOpen(
+        "start [the linked words span several rows in this example]"
+        "(https://example.test) end",
+        TswContainer::Narrow);
+    v.Root()->listenForLinks = true;
+    TestDraw(v.win);
+    const TextHit* shaped = HitContaining(v.win, "start the linked words");
+    utassert(shaped && StrEq(shaped->text,
+                             "start the linked words span several rows in "
+                             "this example end"));
+    int regions = 0;
+    Point last = {};
+    for (const HitRect& hit : v.win->paint.hits) {
+        if (hit.cursor == CursorKind::Pointer && hit.listener.IsValid()) {
+            regions++;
+            last = {hit.bounds.CenterX(), hit.bounds.CenterY()};
+        }
+    }
+    utassert(regions > 1);
+    if (regions) TestSimulateClick(v.win, last);
+    utassert(v.Root()->linkClicks == 1);
     TswClose(&v);
 }
 
@@ -8751,9 +8785,12 @@ static void ATextViewMayReplaceTheHoverCursor() {
     Window* win = TestWindowOpen(app, view, 300, 160, 1);
     Point alpha = {}, link = {};
     for (const TextHit& hit : win->paint.texts) {
-        if (StrEq(StrTrim(hit.text), StrL("Alpha"))) {
-            alpha = {hit.bounds.CenterX(), hit.bounds.CenterY()};
-        } else if (StrEq(StrTrim(hit.text), StrL("link"))) {
+        if (StrEq(hit.text, StrL("Alpha link beta"))) {
+            alpha = {hit.bounds.x + 2.f, hit.bounds.CenterY()};
+        }
+    }
+    for (const HitRect& hit : win->paint.hits) {
+        if (hit.cursor == CursorKind::Pointer && hit.onClick.IsValid()) {
             link = {hit.bounds.CenterX(), hit.bounds.CenterY()};
         }
     }
@@ -8810,6 +8847,7 @@ static void TestTextStateWindow() {
     SelectAllReturnsRenderedText();
     SelectAllInSourceFormatReturnsSource();
     ShapedTextCopiesAcrossMarkdownStyleBoundaries();
+    WrappedLinksUseSharedTextGeometry();
     ParserPluginsKeepTheirConfigurationAcrossAsyncUpdates();
     SelectAllFollowsAnAppendedParse();
     ParserRevisionReparsesSameNameInlineConfiguration();
@@ -10765,10 +10803,19 @@ static void TextViewRewritesLinksOnEachFrame() {
         utassert(StrEq(Str(probe->activated), "https://moved.example"));
     }
     El* root = EntityRender(app, win, win->frameArena, view.id);
-    El* dead = FindTextEl(root, "dead");
-    utassert(dead && dead->nUnderlines == 0);
-    El* cited = FindTextEl(root, "cited");
-    utassert(cited && cited->nUnderlines > 0);
+    El* shaped = FindTextEl(root, "live dead cited");
+    utassert(shaped && shaped->lifecycle);
+    if (shaped && shaped->lifecycle) {
+        bool dead = false;
+        bool cited = false;
+        for (int i = 0; i < shaped->lifecycle->highlightCount; i++) {
+            const TextHighlight& run = shaped->lifecycle->highlights[i];
+            if (run.style.underline.thickness <= 0) continue;
+            dead |= run.lo < 9 && run.hi > 5;
+            cited |= run.lo == 10 && run.hi == 15;
+        }
+        utassert(!dead && cited);
+    }
     utassert(StrEq(probe->state.Get(app)->Source(), source));
 
     probe->keepRemoved = true;

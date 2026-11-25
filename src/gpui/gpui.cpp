@@ -7942,6 +7942,27 @@ static Bounds HitMaskedBounds(PaintCtx* ctx, Bounds bounds) {
     return ctx->hasHitMask ? BoundsIntersect(bounds, ctx->hitMask) : bounds;
 }
 
+void PaintInlineLinkHit(PaintCtx* ctx, const El* link, Bounds bounds,
+                        uint32_t path) {
+    Bounds visible = HitMaskedBounds(ctx, bounds);
+    if (visible.w <= 0 || visible.h <= 0) return;
+    HitRect hit;
+    hit.pathId = path;
+    hit.id = (int)(path & 0x3fffffff);
+    if (!hit.id) hit.id = 1;
+    hit.bounds = visible;
+    hit.parent = ctx->hitParent;
+    hit.popupDismissScope = ctx->popupDismissScope;
+    hit.paintLayer = ctx->paintLayer;
+    hit.sceneContext = scene::CurrentContext(ctx);
+    hit.cursor = link->cursor;
+    hit.onClick = link->onClick;
+    hit.listener = link->listener;
+    hit.linkTooltip = link->lifecycle ? link->lifecycle->linkTooltip : nullptr;
+    ctx->hasLinkTooltipHits |= hit.linkTooltip != nullptr;
+    VecAppend(ctx->hits, hit);
+}
+
 static void LineClampCollect(El* e, Vec<LineSpan>* spans,
                              float* contentBottom) {
     if (!e) {
