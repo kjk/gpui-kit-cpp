@@ -277,6 +277,15 @@ static const float kEditorRightMargin = 10.f;
 
 static double DisplayLineH(const InputState* s, int row, float lineH);
 static double DisplayRowDocY(const InputState* s, int row, float lineH);
+static double InputOffsetDisplayY(const InputState* s, int offset, float lineH);
+
+static double EditorYWithoutCompletion(const InputState* s, double y,
+                                       float lineH) {
+    const InlineCompletion& preview = s->inlineCompletion;
+    double start = (double)preview.layoutBoundary * lineH;
+    return y - std::max(
+                   0., std::min(y - start, (double)preview.layoutRows * lineH));
+}
 static double InputClampVerticalScrollOffsetF64(double scroll,
                                                 double scrollHeight,
                                                 float viewportH);
@@ -3660,6 +3669,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     bool layoutSpacers = state->spacers && (state->spacers->provider.query ||
                                             state->spacers->total > 0);
     if (len(text) == 0 && !layoutSpacers) {
+        state->inlineCompletion.layoutRows = 0;
         if (UpdateAutoGrowRows(state) && cx->win && !LayoutInScratchPass()) {
             AppInvalidate(cx->win);
         }
@@ -3766,6 +3776,8 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         return col->Child(Div(a)->H((float)height));
     }
 
+    state->inlineCompletion.layoutRows = 0;
+    state->inlineCompletion.layoutLine = -1;
     // The scrolled height, which is what scroll_to clamps against: one line
     // height per display row.
     state->contentH = (double)rows * lineH;
@@ -3869,6 +3881,28 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     // yet on the first frame of a file; either would build every line.
     // Cap at the window so a mistaken content height still virtualizes.
     float vh = InputViewportHeight(cx, state);
+    // The debounce in front of an inline suggestion is driven by frames.
+    if (!InputIsEditable(state)) {
+        InputHideContextMenu(state);
+        InputClearInlineCompletion(state);
+    } else if (InputUpdateInlineCompletion(state, state->completion.open)) {
+        WindowRequestAnimationFrame(cx->win);
+    }
+    InlineCompletion& preview = state->inlineCompletion;
+    if (state->focused && InputHasInlineCompletion(state)) {
+        int line = InputOffsetToPoint(state, cursor).row;
+        double top = DisplayRowDocY(state, line, lineH) +
+                     (double)SpacerRowsAboveLine(state, line) * lineH;
+        int textRows = InputWrapRows(state, line, nullptr, nullptr);
+        double bottom = top + (double)textRows * lineH;
+        if ((!folding || !FoldMapLineHidden(&state->folds, line)) &&
+            bottom > state->scrollY && top < state->scrollY + vh) {
+            preview.layoutLine = line;
+            preview.layoutBoundary = (int)round(bottom / lineH);
+            preview.layoutRows = RopeLinesLen(preview.text) - 1;
+        }
+    }
+    float ghostHeight = preview.layoutRows * lineH;
     // calculate_visible_range clamps before it picks rows, in every mode.
     // The room a code editor keeps below its last line is part of that
     // range. A target past the end used to paint an empty frame.
@@ -3876,7 +3910,8 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         InputEmptyBottomHeight(state->mode.kind == LayoutModeKind::CodeEditor,
                                state->scrollBeyondLastLine, vh, lineH);
     float dpi = cx->win ? cx->win->paint.dpi : 0.f;
-    state->contentH += emptyBottom;
+    emptyBottom = std::max(0.f, emptyBottom - ghostHeight);
+    state->contentH += ghostHeight + emptyBottom;
     double scrollHeight = InputFitContentHeightF64(state->contentH, vh, dpi);
     double requested =
         state->hasDeferredScrollY ? state->deferredScrollY : state->scrollY;
@@ -3891,8 +3926,9 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         // Two rows of slack at each end, so a scroll of a few pixels does not
         // uncover an empty band before the next frame fills it.
         const int kSlack = 2;
-        double top = state->scrollY;
-        double bottom = top + vh;
+        double top = EditorYWithoutCompletion(state, state->scrollY, lineH);
+        double bottom =
+            EditorYWithoutCompletion(state, state->scrollY + vh, lineH);
         bool folded = len(state->folds.folded) != 0;
         if (SpacerRowsTotal(state) > 0) {
             InputDisplayMapRef display = InputDisplayMap(state);
@@ -3912,8 +3948,9 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             int end = (int)std::min(bottom / lineH + 1 + kSlack, (double)rows);
             firstRow = first < 0 ? 0 : (first > rows ? rows : first);
             endRow = end < firstRow ? firstRow : (end > rows ? rows : end);
-            padTop = (double)firstRow * lineH;
-            padBottom = (double)(rows - endRow) * lineH;
+            padTop = DisplayRowDocY(state, firstRow, lineH);
+            padBottom = DisplayRowDocY(state, rows, lineH) -
+                        DisplayRowDocY(state, endRow, lineH);
         } else {
             // Heights only: a box's window y is last-painted and goes stale
             // the moment that row leaves the viewport. Subtracting it from
@@ -3972,9 +4009,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             }
         }
     }
-    // empty_bottom_height was added to the scroll range above, before the
-    // rows were chosen. Ghost lines are overlaid here rather than stacked,
-    // so they do not share the row walk; the spacer still holds their room.
+    // The unoccupied part of empty_bottom_height follows document rows.
     padBottom += emptyBottom;
     // Keep large document coordinates out of the float layout tree. The
     // viewport scrolls within the overscanned band by the remaining offset.
@@ -3990,20 +4025,6 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     // boxes to answer against.
     // What the document names in colour, asked for again when it changed.
     InputLspUpdate(state);
-    // set_disabled / set_readonly put the menus and any suggestion away. The
-    // flags are plain fields here, so the frame that first sees the field
-    // uneditable does it.
-    if (!InputIsEditable(state)) {
-        InputHideContextMenu(state);
-        if (InputHasInlineCompletion(state) || !state->inlineCompletion.asked) {
-            InputClearInlineCompletion(state);
-        }
-    }
-    // The debounce in front of an inline suggestion. A frame is the clock, so
-    // one has to keep coming while it runs.
-    if (InputUpdateInlineCompletion(state, state->completion.open)) {
-        WindowRequestAnimationFrame(cx->win);
-    }
     if ((len(state->diagnostics) > 0 || state->hoverProvider ||
          state->definitionProvider) &&
         cx->win) {
@@ -4601,8 +4622,6 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         // row's text and is not part of the line's width, so it is absolute.
         // A left-aligned row's offset is 0; center and right add the slack
         // alignment_offset would, from the text column measured last frame.
-        // Ghost completion rows are overlaid on the document rows, so this
-        // does not add the ghost height Rust adds under the caret.
         bool foldedLine = folding && FoldMapIsFolded(&state->folds, row);
         if (foldedLine && state->foldPlaceholder.render && nVis > 0) {
             int segLo = wrapStarts[nVis - 1];
@@ -4667,6 +4686,8 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                 underlay->foldColor = state->foldBackground;
             }
             col->Child(el);
+            if (ghostHeight > 0 && row == preview.layoutLine)
+                col->Child(Div(a)->H(ghostHeight)->Shrink0());
             AppendEditorSpacers(cx, col, state, row, false, lineH);
             continue;
         }
@@ -4748,6 +4769,8 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             underlay->lineBands[row - firstRow] = band;
         }
         col->Child(band);
+        if (ghostHeight > 0 && row == preview.layoutLine)
+            col->Child(Div(a)->H(ghostHeight)->Shrink0());
         AppendEditorSpacers(cx, col, state, row, false, lineH);
     }
     if (rangePaint && painted) {
@@ -4776,21 +4799,20 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
 
     // layout_inline_completion: the suggestion in front of the caret, in the
     // muted foreground at half opacity. Rust shapes the first line to sit
-    // after the cursor and shifts the rows below down to make room for the
-    // rest; the rows here are a virtualized flex column whose heights the
-    // layout owns, so every line is drawn *over* what is under it — each on
-    // its own background, which is what Rust paints under its first line for
-    // the same reason.
+    // after the cursor and reserves rows below for the rest.
     if (state->focused && InputHasInlineCompletion(state) &&
-        state->contentBox.h > 0) {
+        preview.layoutLine >= firstRow && preview.layoutLine < endRow) {
         Rgba ghostFg = RgbaOpacity(style.mutedForeground, 0.5f);
         // Where the text column starts, for the lines after the first: the
         // gutter and the fold strip are not part of it.
         // Where the caret was last painted, in the column's own coordinates.
         float gx = state->caretWinX - state->contentBox.x;
-        float gy = state->caretWinY - state->contentBox.y - lineH;
+        float gy = (float)(InputOffsetDisplayY(state, cursor, lineH) -
+                           state->layoutOriginY);
+        float nextY = (float)((double)preview.layoutBoundary * lineH -
+                              state->layoutOriginY);
         Str rest = state->inlineCompletion.text;
-        for (int line = 0; len(rest) > 0 || line == 0; line++) {
+        for (int line = 0; line <= preview.layoutRows; line++) {
             int nl = -1;
             for (int i = 0; i < len(rest); i++) {
                 if (rest.s[i] == '\n') {
@@ -4801,12 +4823,13 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             Str one = nl >= 0 ? Str(rest.s, nl) : rest;
             rest = nl >= 0 ? Str(rest.s + nl + 1, len(rest) - nl - 1) : Str{};
             if (len(one) > 0) {
-                El* ghost = Div(a)
-                                ->Absolute()
-                                ->Left(line == 0 ? gx : textOriginOffset)
-                                ->Top(gy + (float)line * lineH)
-                                ->H(lineH)
-                                ->Bg(style.background);
+                El* ghost =
+                    Div(a)
+                        ->Absolute()
+                        ->Left(line == 0 ? gx : textOriginOffset)
+                        ->Top(line == 0 ? gy : nextY + (line - 1) * lineH)
+                        ->H(lineH)
+                        ->Bg(style.background);
                 El* run = TextEl(a, one)->Font(font)->LineHeight(lineMult)->Fg(
                     ghostFg);
                 InputFace(run, style);
@@ -4818,9 +4841,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             }
         }
     }
-    // Bars and boundary pills in the strip before the line numbers. Ghost
-    // lines are not shifted: an inline completion that inserts rows under
-    // the caret leaves these marks on the document rows.
+    // Bars and boundary pills use the same preview displacement as the rows.
     if (InputGutterStripWidth(state) > 0.f && lineH > 0.f) {
         double viewTop = state->scrollY - state->layoutOriginY;
         // The component says how tall the rows are before the first paint.
@@ -9311,6 +9332,8 @@ void InputClearInlineCompletion(InputState* s) {
     }
     s->inlineCompletion.text = Str{};
     s->inlineCompletion.at = -1;
+    s->inlineCompletion.layoutLine = -1;
+    s->inlineCompletion.layoutRows = 0;
     s->inlineCompletion.asked = true;
     if (s->inlineCompletion.arena) {
         ArenaDelete(s->inlineCompletion.arena);
@@ -10066,7 +10089,8 @@ static double DisplayLineH(const InputState* s, int row, float lineH) {
 }
 
 // Document y of `row`: the visual rows above it, less the ones a fold hides.
-static double DisplayRowDocY(const InputState* s, int row, float lineH) {
+static double DocumentRowYWithoutCompletion(const InputState* s, int row,
+                                            float lineH) {
     if (!s || row <= 0) {
         return 0;
     }
@@ -10087,6 +10111,14 @@ static double DisplayRowDocY(const InputState* s, int row, float lineH) {
     double y = 0;
     for (int i = 0; i < row; i++) {
         y += DisplayLineH(s, i, lineH);
+    }
+    return y;
+}
+
+static double DisplayRowDocY(const InputState* s, int row, float lineH) {
+    double y = DocumentRowYWithoutCompletion(s, row, lineH);
+    if (s && row > s->inlineCompletion.layoutLine) {
+        y += (double)s->inlineCompletion.layoutRows * lineH;
     }
     return y;
 }
@@ -11860,6 +11892,7 @@ static int FirstVisibleOffset(const InputState* s) {
         return 0;
     }
     float lineH = s->lastLineH > 0 ? s->lastLineH : kInputLineH;
+    double scroll = EditorYWithoutCompletion(s, s->scrollY, lineH);
     int rows = InputLinesLen(s);
     int row = rows - 1;
     const InputWrapMap* map = WrapMapOf(s, nullptr);
@@ -11867,16 +11900,16 @@ static int FirstVisibleOffset(const InputState* s) {
         InputDisplayMapRef display = InputDisplayMap(s);
         int last = InputDisplayRowCount(display) - 1;
         row = InputDisplayRowBufferLine(
-            display, (int)std::min(s->scrollY / lineH, (double)last));
+            display, (int)std::min(scroll / lineH, (double)last));
     } else if (len(s->folds.folded) == 0) {
-        row = map ? map->tree.LineAtRow((int)std::min(s->scrollY / lineH,
-                                                      (double)map->totalRows))
-                  : (int)std::min(s->scrollY / lineH, (double)(rows - 1));
+        row = map ? map->tree.LineAtRow(
+                        (int)std::min(scroll / lineH, (double)map->totalRows))
+                  : (int)std::min(scroll / lineH, (double)(rows - 1));
     } else {
         double at = 0;
         for (int i = 0; i < rows; i++) {
             double h = DisplayLineH(s, i, lineH);
-            if (at + h > s->scrollY) {
+            if (at + h > scroll) {
                 row = i;
                 break;
             }
@@ -12245,6 +12278,13 @@ int InputIndexForPosition(const InputState* s, PaintCtx* ctx, float x, float y,
         originY = s->inputBounds.y - s->scrollY;
     }
     double docY = y - originY;
+    const InlineCompletion& preview = s->inlineCompletion;
+    double blankTop = (double)preview.layoutBoundary * lineH;
+    if (preview.layoutRows > 0 && docY >= blankTop &&
+        docY < blankTop + (double)preview.layoutRows * lineH) {
+        return preview.at;
+    }
+    docY = EditorYWithoutCompletion(s, docY, lineH);
     int row = FoldMapNearestVisibleLine(&s->folds, rows - 1);
     // How far down its own line the press landed, which is which of a
     // wrapped line's visual rows it wanted.

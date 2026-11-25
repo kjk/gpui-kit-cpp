@@ -12795,6 +12795,46 @@ static void GutterDecorationsReserveAStripAndMarkLinesAndBoundaries() {
     TestAppFree(d.app);
 }
 
+// element.rs lays out completion rows before subsequent document decorations.
+static void InlineCompletionMovesDocumentRowsAndGutterMarks() {
+    DecorationEditor d = DecorationEditorOpen("alpha\nnext\nend", false);
+    InputState* s = d.editor;
+    GutterDecoration mark = GutterDecoration::New({6, 10});
+    InputCreateGutterDecorationsCollection(s, &mark, 1);
+    InputFocus(s, d.app, d.win);
+    InputMoveTo(s, d.app, d.win, 5);
+    TestDraw(d.win);
+
+    Bounds before;
+    utassert(InputRangeToBounds(s, d.win, {6, 7}, &before));
+    float lineH = s->lastLineH;
+    GutterMark gutterBefore;
+    utassert(InputLayoutGutterMarks(s, 0, 0, lineH, 0, -1, &gutterBefore, 1) ==
+             1);
+    int rows = InputDisplayRowCount(InputDisplayMap(s));
+    s->inlineCompletion.text = StrL(" preview\none\n");
+    s->inlineCompletion.at = 5;
+    s->inlineCompletion.asked = true;
+    TestDraw(d.win);
+
+    Bounds after;
+    utassert(InputRangeToBounds(s, d.win, {6, 7}, &after));
+    utassertnear(after.y, before.y + 2 * lineH);
+    utassert(InputDisplayRowCount(InputDisplayMap(s)) == rows);
+    utassert(InputIndexForPosition(s, &d.win->paint, before.x,
+                                   before.y + lineH / 2) == 5);
+    GutterMark gutterAfter;
+    utassert(InputLayoutGutterMarks(s, 0, 0, lineH, 0, -1, &gutterAfter, 1) ==
+             1);
+    utassertnear(gutterAfter.y, gutterBefore.y + 2 * lineH);
+
+    InputClearInlineCompletion(s);
+    TestDraw(d.win);
+    utassert(InputRangeToBounds(s, d.win, {6, 7}, &after));
+    utassertnear(after.y, before.y);
+    TestAppFree(d.app);
+}
+
 // element.rs gutter_decorations_starting_in_a_fold_mark_its_row_and_the_rest.
 static void GutterDecorationsStartingInAFoldMarkItsRowAndTheRest() {
     const char* text = "top\nhidden one\nhidden two\nend\nlast";
@@ -13067,6 +13107,7 @@ static void RunElementWindowTests() {
     GutterQueryKeepsIndexOrderAfterInsertingAtMixedRanges();
     DefaultDecorationCollectionsAddressNoEditor();
     GutterDecorationsReserveAStripAndMarkLinesAndBoundaries();
+    InlineCompletionMovesDocumentRowsAndGutterMarks();
     EditorTextOriginOffsetFollowsTheLaidOutGutter();
     LineDecorationCollectionsRoundTripInCreationOrder();
     EditorLineBackgroundsCoverTheVisibleRows();

@@ -280,13 +280,6 @@ The current update target is
   `test_support.rs`). The C++ test platform reads the element tree
   directly and does not keep a paint-order text log
   (`src/gpui/test_app.h`).
-- **Gutter marks and line backgrounds stay on document rows when ghost lines appear.** An
-  inline completion that inserts rows under the caret does not push
-  gutter bars, boundary pills and line backgrounds down (`input.cpp`).
-  Rust shifts the marks with the ghost text. The decorations story has
-  no inline completion. Fold placeholders and fold backgrounds follow
-  those same laid-out rows: Rust's `layout_folded_lines` moves rows
-  below the ghost text down by its height, and this tree does not.
 - **A folded line's placeholder is an element, not a prepaint root.**
   It is absolutely positioned on the last visual row and hit-tested
   from the box that row recorded (`input.cpp`). Rust prepaints it at

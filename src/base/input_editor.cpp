@@ -2440,12 +2440,18 @@ int InputLayoutGutterMarks(const InputState* s, float originX, double originY,
     Str text = InputValue(s);
     Selection span = {0, len(text)};
     bool clip = viewBottom >= viewTop;
+    const InlineCompletion& preview = s->inlineCompletion;
     if (clip) {
         int rows = DisplayRowCountOf(s);
-        int first = (int)std::min((viewTop - originY) / lineH, (double)rows);
-        int last =
-            (int)std::min((viewBottom - originY) / lineH, (double)rows) + 1;
-        if (s->spacers) {
+        auto documentRow = [&](double y) {
+            double row = (y - originY) / lineH;
+            row -= std::max(0., std::min(row - preview.layoutBoundary,
+                                         (double)preview.layoutRows));
+            return (int)std::min(row, (double)rows);
+        };
+        int first = documentRow(viewTop);
+        int last = documentRow(viewBottom) + 1;
+        if (s->spacers || preview.layoutRows > 0) {
             first = BufferLineAtDisplay(s, first);
             last = BufferLineAtDisplay(s, last) + 1;
         }
@@ -2485,7 +2491,11 @@ int InputLayoutGutterMarks(const InputState* s, float originX, double originY,
         const GutterDecoration* d = found[i];
         Rgba color = MarkColor(s, d->hasColor, d->color);
         DecorationRows rows = InputDecorationRows(s, d->range);
-        auto top = [&](int row) { return originY + lineH * (double)row; };
+        auto top = [&](int row) {
+            double painted = row;
+            if (row >= preview.layoutBoundary) painted += preview.layoutRows;
+            return originY + lineH * painted;
+        };
         if (rows.boundary) {
             push(top(rows.start) - kGutterBoundaryMarkHeight * 0.5f,
                  kGutterBoundaryMarkHeight, color, true);

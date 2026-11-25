@@ -5477,6 +5477,10 @@ struct InlineCompletion {
     // caret that has moved since drops it.
     Str text = {};
     int at = -1;
+    // The preview contributes to painted y coordinates, outside DisplayMap.
+    int layoutLine = -1;
+    int layoutBoundary = 0;
+    int layoutRows = 0;
     // When the provider may be asked, and whether it has been. Rust spawns a
     // task with a timer; the frame is the clock here, the way every other
     // delay in this tree is.
