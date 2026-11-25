@@ -1,6 +1,8 @@
 #define GPUI_INCLUDE_PRIVATE_API 1
 #include "gpui.h"
 
+#include <errno.h>
+
 // longbridge/gpui-kit examples/tig/src/{repository,app,main}.rs.
 using namespace gpui;
 using component::DiffFile;
@@ -283,7 +285,7 @@ static void BindTigKeys() {
 
 struct Tig {
     Str path, head = StrL("HEAD"), initialFile;
-    int initialLine = 0;
+    size_t initialLine = 0;
     Str log, message, error;
     Vec<TigCommit> commits;
     // The selected slot is owned by diff; every other parsed file lives here.
@@ -973,9 +975,10 @@ El* Tig::Render(Tig* self, Ctx* cx) {
     const DiffState* state = self->diff.Get(cx);
     if (state && state->HasSelectedLines()) {
         DiffLineRange selected = state->SelectedLines();
+        size_t lo = std::min(selected.start, selected.end);
+        size_t hi = std::max(selected.start, selected.end);
         Str text = selected.IsSingleSide()
-                       ? fmt("%d lines selected",
-                             abs(selected.start - selected.end) + 1)
+                       ? fmt("%zu lines selected", hi - lo + 1)
                        : StrL("Source selected");
         status->Right(TextEl(cx->a, text)->Font(12)->Fg(th.mutedFg));
     }
@@ -1010,7 +1013,7 @@ int GpuiMain(int argc, char** argv) {
         "Usage: tig [--check] [--commit HASH] [--file PATH] [--line N] "
         "[repository]";
     Str path, file, head = StrL("HEAD");
-    int line = 0;
+    size_t line = 0;
     bool check = false;
     for (int i = 1; i < argc; i++) {
         Str option(argv[i]);
@@ -1043,13 +1046,17 @@ int GpuiMain(int argc, char** argv) {
             } else if (chooseFile) {
                 file = Str(argv[i]);
             } else {
+                const char* value = argv[i];
+                if (*value == '+') value++;
                 char* end = nullptr;
-                long long number = strtoll(argv[i], &end, 10);
-                if (number <= 0 || number > INT_MAX || *end) {
+                errno = 0;
+                unsigned long long number = strtoull(value, &end, 10);
+                if (*value < '0' || *value > '9' || number == 0 ||
+                    number > SIZE_MAX || *end || errno == ERANGE) {
                     fprintf(stderr, "Line must be a positive integer.\n");
                     return 2;
                 }
-                line = (int)number;
+                line = (size_t)number;
             }
         } else if (!path.s && option.s[0] != '-') {
             path = option;

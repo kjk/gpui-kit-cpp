@@ -284,11 +284,11 @@ void DiffStory::AddComment(Ctx* cx, const component::DiffLineRange* range,
     Comment comment;
     comment.annotation = component::DiffAnnotation::Line(
         StrDup(fmt("comment-%d", len(self->comments))), at);
-    int start = range->start < range->end ? range->start : range->end;
-    int end = range->start > range->end ? range->start : range->end;
+    size_t start = std::min(range->start, range->end);
+    size_t end = std::max(range->start, range->end);
     comment.body =
-        StrDup(start == end ? fmt("New comment on line %d.", end)
-                            : fmt("New comment on lines %d–%d.", start, end));
+        StrDup(start == end ? fmt("New comment on line %zu.", end)
+                            : fmt("New comment on lines %zu-%zu.", start, end));
     if (!VecAppend(self->comments, comment)) {
         StrFree(comment.annotation.id);
         StrFree(comment.annotation.path);

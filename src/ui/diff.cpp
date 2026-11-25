@@ -80,7 +80,7 @@ DiffState::~DiffState() {
     for (int i = 0; i < len(resolutions); i++) StrFree(resolutions[i].path);
 }
 
-DiffLinePosition DiffLinePosition::New(Str path, DiffSide side, int line) {
+DiffLinePosition DiffLinePosition::New(Str path, DiffSide side, size_t line) {
     DiffLinePosition p;
     p.path = path;
     p.side = side;
@@ -88,7 +88,8 @@ DiffLinePosition DiffLinePosition::New(Str path, DiffSide side, int line) {
     return p;
 }
 
-DiffLineRange DiffLineRange::New(Str path, DiffSide side, int start, int end) {
+DiffLineRange DiffLineRange::New(Str path, DiffSide side, size_t start,
+                                 size_t end) {
     DiffLineRange r;
     r.path = path;
     r.side = side;
@@ -168,7 +169,7 @@ DiffGutterMarker DiffGutterMarker::WithLabel(Str text) const {
 }
 
 static bool DecorationCovers(const DiffDecoration& decoration, DiffSide side,
-                             int line) {
+                             size_t line) {
     const DiffLineRange& range = decoration.range;
     if (range.IsSingleSide()) {
         if (side != range.side) return false;
@@ -286,10 +287,9 @@ DiffConflictPart DiffConflict::PartOf(int ix) const {
     return DiffConflictPart::Incoming;
 }
 
-int DiffHunk::HiddenLinesBefore(const DiffHunk* previous) const {
-    int after = previous ? previous->originalLinesEnd : 1;
-    int hidden = originalLinesStart - after;
-    return hidden > 0 ? hidden : 0;
+size_t DiffHunk::HiddenLinesBefore(const DiffHunk* previous) const {
+    size_t after = previous ? previous->originalLinesEnd : 1;
+    return originalLinesStart > after ? originalLinesStart - after : 0;
 }
 
 static const DiffFileSide* SideOf(const DiffFile* file, DiffSide side) {
@@ -308,19 +308,19 @@ const DiffSourceLine* DiffFile::Lines(DiffSide side) const {
     return SideOf(this, side)->lines.els;
 }
 
-int DiffFile::LineNumber(DiffSide side, int index) const {
+size_t DiffFile::LineNumber(DiffSide side, int index) const {
     return SideOf(this, side)->lines[index].lineNumber;
 }
 
 // How many of a side's lines (sorted by number) are numbered below `line`,
 // or at most `line` with `inclusive`: a lower or an upper bound.
-static int LinesBefore(const Vec<DiffSourceLine>& lines, int line,
+static int LinesBefore(const Vec<DiffSourceLine>& lines, size_t line,
                        bool inclusive) {
     int lo = 0;
     int hi = len(lines);
     while (lo < hi) {
         int mid = lo + (hi - lo) / 2;
-        int n = lines[mid].lineNumber;
+        size_t n = lines[mid].lineNumber;
         if (n < line || (inclusive && n == line))
             lo = mid + 1;
         else
@@ -329,7 +329,7 @@ static int LinesBefore(const Vec<DiffSourceLine>& lines, int line,
     return lo;
 }
 
-int DiffFile::LineIndex(DiffSide side, int line) const {
+int DiffFile::LineIndex(DiffSide side, size_t line) const {
     const Vec<DiffSourceLine>& lines = SideOf(this, side)->lines;
     int lo = LinesBefore(lines, line, false);
     if (lo < len(lines) && lines[lo].lineNumber == line) return lo;
@@ -340,7 +340,8 @@ int DiffFile::PatchIx(DiffSide side, int ix) const {
     return patchIxs[side == DiffSide::Original ? 0 : 1][ix];
 }
 
-Str DiffFile::TextForLines(Arena* a, DiffSide side, int start, int end) const {
+Str DiffFile::TextForLines(Arena* a, DiffSide side, size_t start,
+                           size_t end) const {
     const Vec<DiffSourceLine>& lines = SideOf(this, side)->lines;
     int first = LinesBefore(lines, start, false);
     int last = LinesBefore(lines, end, true);
@@ -426,7 +427,7 @@ static int ColumnStep(unsigned char c) {
 }
 
 static void FinishLine(DiffFile* file, DiffFileSide* side, Str source,
-                       int number, int rangeStart, int rangeEnd) {
+                       size_t number, int rangeStart, int rangeEnd) {
     Str raw = Slice(source, rangeStart, rangeEnd);
     Str content = raw;
     if (len(content) > 0 && content.s[len(content) - 1] == '\n')
@@ -528,8 +529,7 @@ static void PatchOrder(DiffFile* file) {
     file->patchLines = lines;
 }
 
-static int Digits(int n) {
-    if (n < 1) n = 1;
+static int Digits(size_t n) {
     int d = 1;
     while (n >= 10) {
         n /= 10;
@@ -550,8 +550,8 @@ static DiffFile* FinishParsedFile(DiffFile* file) {
 }
 
 static void Seal(DiffFile* file, DiffFileStatus status, StrBuilder* origSrc,
-                 Vec<int>* origNum, Vec<int>* origStart, Vec<int>* origEnd,
-                 StrBuilder* modSrc, Vec<int>* modNum, Vec<int>* modStart,
+                 Vec<size_t>* origNum, Vec<int>* origStart, Vec<int>* origEnd,
+                 StrBuilder* modSrc, Vec<size_t>* modNum, Vec<int>* modStart,
                  Vec<int>* modEnd) {
     file->status = status;
     file->original.source = Own(file->arena, Str(origSrc->els, len(origSrc)));
@@ -577,15 +577,15 @@ static void Seal(DiffFile* file, DiffFileStatus status, StrBuilder* origSrc,
             file->modified.lines[pair.modified].counterpart = pair.original;
         }
     }
-    int widest = 1;
+    size_t widest = 1;
     if (len(file->original.lines))
         widest =
-            IMax(widest, file->original.lines[len(file->original.lines) - 1]
-                             .lineNumber);
+            std::max(widest, file->original.lines[len(file->original.lines) - 1]
+                                 .lineNumber);
     if (len(file->modified.lines))
         widest =
-            IMax(widest, file->modified.lines[len(file->modified.lines) - 1]
-                             .lineNumber);
+            std::max(widest, file->modified.lines[len(file->modified.lines) - 1]
+                                 .lineNumber);
     file->lineNumberDigits = Digits(widest);
     if (file->modified.hasPath)
         file->path = file->modified.path;
@@ -596,11 +596,11 @@ static void Seal(DiffFile* file, DiffFileStatus status, StrBuilder* origSrc,
 
 struct SideBuild {
     StrBuilder source;
-    Vec<int> number;
+    Vec<size_t> number;
     Vec<int> start;
     Vec<int> end;
     bool noNewline = false;
-    int Push(int lineNumber, Str content) {
+    int Push(size_t lineNumber, Str content) {
         int at = len(source);
         source.Append(content);
         source.AppendChar('\n');
@@ -870,8 +870,8 @@ struct OpenFile {
     // An empty truncated hunk supplies no source line, and still orders
     // the next hunk on both sides.
     bool hasLastHunk = false;
-    int lastHunkOld = 0;
-    int lastHunkNew = 0;
+    size_t lastHunkOld = 0;
+    size_t lastHunkNew = 0;
     bool hasPrefixes = false;
     const char* oldPrefix = "";
     const char* newPrefix = "";
@@ -911,8 +911,9 @@ struct OpenFile {
     }
 };
 
-static bool HunkHeader(Str line, int number, int* oldStart, int* oldCount,
-                       int* newStart, int* newCount, DiffParseError* error) {
+static bool HunkHeader(Str line, int number, size_t* oldStart, size_t* oldCount,
+                       size_t* newStart, size_t* newCount,
+                       DiffParseError* error) {
     if (!Starts(line, "@@ ")) {
         *error = Err(number, "invalid hunk header");
         return false;
@@ -938,24 +939,20 @@ static bool HunkHeader(Str line, int number, int* oldStart, int* oldCount,
         *error = Err(number, "invalid hunk header");
         return false;
     }
-    auto range = [&](Str value, int* start, int* count) -> bool {
+    auto range = [&](Str value, size_t* start, size_t* count) -> bool {
         int comma = StrFind(value, ",");
         Str sPart = comma < 0 ? value : Slice(value, 0, comma);
         Str cPart = comma < 0 ? StrL("1") : Slice(value, comma + 1, len(value));
         uint64_t s = 0;
         uint64_t c = 0;
         if (!ParseU64(sPart, &s) || !ParseU64(cPart, &c)) return false;
-        // A zero-count side still names the line before the insertion,
-        // so the span is max(count, 1). A start or span that does not
-        // fit in int is an invalid header. Rust keeps those as usize
-        // (port-status.md).
+        // Rust checks the span in usize. A zero-count side still names
+        // the line before the insertion, so the span is max(count, 1).
         uint64_t span = c == 0 ? 1 : c;
-        if ((c > 0 && s == 0) || s > UINT64_MAX - span) return false;
-        if (s > (uint64_t)INT_MAX || c > (uint64_t)INT_MAX ||
-            s + span > (uint64_t)INT_MAX)
+        if ((c > 0 && s == 0) || span > SIZE_MAX || s > SIZE_MAX - span)
             return false;
-        *start = (int)s;
-        *count = (int)c;
+        *start = (size_t)s;
+        *count = (size_t)c;
         return true;
     };
     if (!range(Slice(fields[0], 1, len(fields[0])), oldStart, oldCount) ||
@@ -966,8 +963,8 @@ static bool HunkHeader(Str line, int number, int* oldStart, int* oldCount,
     return true;
 }
 
-static int LastNumber(const SideBuild& side) {
-    if (len(side.number) == 0) return -1;
+static size_t LastNumber(const SideBuild& side) {
+    if (len(side.number) == 0) return 0;
     return side.number[len(side.number) - 1];
 }
 
@@ -975,7 +972,8 @@ static int LastNumber(const SideBuild& side) {
 // complete reading wins, so this scan runs once and stops only when
 // that pair cannot finish the declared counts.
 static bool TruncatedFileHeader(Str* lines, int nLines, int start,
-                                int oldRemaining, int newRemaining, int* out) {
+                                size_t oldRemaining, size_t newRemaining,
+                                int* out) {
     bool header = false;
     int headerIx = 0;
     for (int ix = start; ix < nLines; ix++) {
@@ -1008,21 +1006,21 @@ static bool TruncatedFileHeader(Str* lines, int nLines, int start,
 
 static bool ParseHunk(OpenFile* open, Str* lines, int nLines, int* ix,
                       DiffParseOptions options, DiffParseError* error) {
-    int oldStart = 0, oldCount = 0, newStart = 0, newCount = 0;
+    size_t oldStart = 0, oldCount = 0, newStart = 0, newCount = 0;
     if (!HunkHeader(lines[*ix], *ix + 1, &oldStart, &oldCount, &newStart,
                     &newCount, error))
         return false;
     // A zero-count side names the line before its insertion point.
-    int firstOriginal = oldStart + (oldCount == 0 ? 1 : 0);
-    int firstModified = newStart + (newCount == 0 ? 1 : 0);
-    int lastOld = LastNumber(open->original);
-    int lastNew = LastNumber(open->modified);
+    size_t firstOriginal = oldStart + (oldCount == 0 ? 1 : 0);
+    size_t firstModified = newStart + (newCount == 0 ? 1 : 0);
+    size_t lastOld = LastNumber(open->original);
+    size_t lastNew = LastNumber(open->modified);
     // `&&` binds tighter than `||`, matching the Rust condition.
     bool backwards = options.truncatedHunks && open->hasLastHunk &&
                      (firstOriginal < open->lastHunkOld ||
                       firstModified < open->lastHunkNew);
-    if (backwards || (lastOld >= 0 && lastOld >= oldStart && oldCount > 0) ||
-        (lastNew >= 0 && lastNew >= newStart && newCount > 0)) {
+    if (backwards || (oldCount > 0 && lastOld >= oldStart) ||
+        (newCount > 0 && lastNew >= newStart)) {
         *error = Err(*ix + 1, "overlapping or unordered hunks");
         return false;
     }
@@ -1041,8 +1039,8 @@ static bool ParseHunk(OpenFile* open, Str* lines, int nLines, int* ix,
     if (options.truncatedHunks)
         stopAtFile = TruncatedFileHeader(lines, nLines, *ix, oldCount, newCount,
                                          &nextFile);
-    int oldUsed = 0;
-    int newUsed = 0;
+    size_t oldUsed = 0;
+    size_t newUsed = 0;
     Vec<int> deleted;
     Vec<int> added;
     int last = 0;
@@ -1434,7 +1432,7 @@ DiffFile* DiffFile::Excerpts(Str path, const DiffExcerpt* parts, int count) {
     file->original.path = file->modified.path;
     file->path = file->modified.path;
     StrBuilder source;
-    Vec<int> numbers;
+    Vec<size_t> numbers;
     Vec<int> starts;
     Vec<int> ends;
     // Parts come in file order without overlap; Rust debug-asserts it.
@@ -1443,12 +1441,12 @@ DiffFile* DiffFile::Excerpts(Str path, const DiffExcerpt* parts, int count) {
         if (len(source) && source.els[len(source) - 1] != '\n')
             source.AppendChar('\n');
         int offset = len(source);
-        int first = IMax(parts[p].first, 1);
+        size_t first = std::max(parts[p].first, (size_t)1);
         Vec<int> partStarts;
         Vec<int> partEnds;
         LineRanges(parts[p].text, &partStarts, &partEnds);
         for (int i = 0; i < len(partStarts); i++) {
-            VecAppend(numbers, first + i);
+            VecAppend(numbers, first + (size_t)i);
             VecAppend(starts, offset + partStarts[i]);
             VecAppend(ends, offset + partEnds[i]);
         }
@@ -3063,32 +3061,30 @@ static bool ClipRange(const DiffState* state, DiffLineRange in,
     int fileIx = FileIx(state, in.path);
     if (fileIx < 0) return false;
     const DiffFile* file = state->files[fileIx];
-    auto firstAt = [&](DiffSide side, int line) -> int {
+    auto firstAt = [&](DiffSide side, size_t line) -> size_t {
         const Vec<DiffSourceLine>& lines = SideOf(file, side)->lines;
         int lo = LinesBefore(lines, line, false);
-        if (lo >= len(lines)) return -1;
+        if (lo >= len(lines)) return 0;
         return lines[lo].lineNumber;
     };
-    auto lastAt = [&](DiffSide side, int line) -> int {
+    auto lastAt = [&](DiffSide side, size_t line) -> size_t {
         const Vec<DiffSourceLine>& lines = SideOf(file, side)->lines;
         int lo = LinesBefore(lines, line, true);
-        if (lo == 0) return -1;
+        if (lo == 0) return 0;
         return lines[lo - 1].lineNumber;
     };
     if (in.IsSingleSide()) {
-        int start = IMin(in.start, in.end);
-        int end = IMax(in.start, in.end);
-        start = firstAt(in.side, start);
-        end = lastAt(in.side, end);
-        if (start < 0 || end < 0 || start > end) return false;
+        size_t start = firstAt(in.side, std::min(in.start, in.end));
+        size_t end = lastAt(in.side, std::max(in.start, in.end));
+        if (!start || !end || start > end) return false;
         *out = DiffLineRange::New(file->path, in.side, start, end);
         return true;
     }
-    int start = firstAt(in.side, in.start);
-    if (start < 0) start = lastAt(in.side, in.start);
-    int end = lastAt(in.endSide, in.end);
-    if (end < 0) end = firstAt(in.endSide, in.end);
-    if (start < 0 || end < 0) return false;
+    size_t start = firstAt(in.side, in.start);
+    if (!start) start = lastAt(in.side, in.start);
+    size_t end = lastAt(in.endSide, in.end);
+    if (!end) end = firstAt(in.endSide, in.end);
+    if (!start || !end) return false;
     *out = DiffLineRange::New(file->path, in.side, start, end)
                .WithEndSide(in.endSide);
     return true;
@@ -3137,8 +3133,8 @@ Str DiffState::SelectedText(Arena* a) const {
     if (fileIx < 0) return {};
     const DiffFile* file = files[fileIx];
     if (selected.IsSingleSide()) {
-        int start = IMin(selected.start, selected.end);
-        int end = IMax(selected.start, selected.end);
+        size_t start = std::min(selected.start, selected.end);
+        size_t end = std::max(selected.start, selected.end);
         return file->TextForLines(a, selected.side, start, end);
     }
     int startIx = file->LineIndex(selected.side, selected.start);
@@ -3331,8 +3327,8 @@ static DiffLineRange Between(DiffLinePosition anchorPos,
                              DiffLinePosition cursorPos) {
     if (anchorPos.side == cursorPos.side) {
         return DiffLineRange::New(cursorPos.path, cursorPos.side,
-                                  IMin(anchorPos.line, cursorPos.line),
-                                  IMax(anchorPos.line, cursorPos.line));
+                                  std::min(anchorPos.line, cursorPos.line),
+                                  std::max(anchorPos.line, cursorPos.line));
     }
     return DiffLineRange::New(cursorPos.path, anchorPos.side, anchorPos.line,
                               cursorPos.line)
@@ -3434,8 +3430,8 @@ static Rgba Tint(Rgba c, uint8_t a) {
     return c;
 }
 
-static TempStr TrCountTemp(const char* key, int count) {
-    TrArg args[] = {{"count", fmt("%d", count)}};
+static TempStr TrCountTemp(const char* key, size_t count) {
+    TrArg args[] = {{"count", fmt("%zu", count)}};
     return TrFmtTemp(key, args, 1);
 }
 
@@ -4460,7 +4456,7 @@ static El* DiffAnnotationButton(Ctx* cx, const Diff* diff, const DiffFile* file,
                                 DiffSide side, int line, float left,
                                 const DiffLineRange* selected) {
     if (!diff->onAddAnnotation) return nullptr;
-    int number = file->LineNumber(side, line);
+    size_t number = file->LineNumber(side, line);
     auto* press = ArenaNew<DiffAnnotationPress>(cx->a);
     press->view = diff;
     press->range = selected
@@ -4469,7 +4465,7 @@ static El* DiffAnnotationButton(Ctx* cx, const Diff* diff, const DiffFile* file,
     bool selectionEnd = false;
     if (selected) {
         if (selected->IsSingleSide()) {
-            selectionEnd = number == IMax(selected->start, selected->end);
+            selectionEnd = number == std::max(selected->start, selected->end);
         } else {
             int first =
                 file->PatchIx(selected->side,
@@ -4481,7 +4477,7 @@ static El* DiffAnnotationButton(Ctx* cx, const Diff* diff, const DiffFile* file,
         }
     }
     const Theme& theme = ActiveTheme(cx->app);
-    const TrArg args[] = {{"line", fmt("%d", number)}};
+    const TrArg args[] = {{"line", fmt("%zu", number)}};
     El* button =
         Div(cx->a)
             ->PathClick(side == DiffSide::Original
@@ -4585,7 +4581,7 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
         if (diff->hunkSeparator == DiffHunkSeparator::LineInfo) {
             const DiffHunk* prev =
                 row.hunk > 0 ? &file->hunks[row.hunk - 1] : nullptr;
-            int hidden = file->hunks[row.hunk].HiddenLinesBefore(prev);
+            size_t hidden = file->hunks[row.hunk].HiddenLinesBefore(prev);
             if (hidden == 0) return Div(cx->a);
             return Div(cx->a)
                 ->H(24)
@@ -4681,13 +4677,13 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
     bool markerLane = diff->gutterMarkerContent && diff->gutterMarkerCount > 0;
     auto lineSelected = [&](DiffSide side, int line) {
         if (line < 0 || !state->hasSelection) return false;
-        int number = SideOf(file, side)->lines[line].lineNumber;
+        size_t number = SideOf(file, side)->lines[line].lineNumber;
         const DiffLineRange& range = state->selected;
         if (!StrEq(range.path, file->path)) return false;
         if (range.IsSingleSide()) {
             if (side != range.side) return false;
-            int lo = range.start < range.end ? range.start : range.end;
-            int hi = range.start > range.end ? range.start : range.end;
+            size_t lo = std::min(range.start, range.end);
+            size_t hi = std::max(range.start, range.end);
             return number >= lo && number <= hi;
         }
         if (side == range.side) return number >= range.start;
@@ -4696,13 +4692,13 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
     };
     auto decorationAt = [&](DiffSide side, int line) -> const DiffDecoration* {
         if (line < 0 || !diff->decorations) return nullptr;
-        int number = SideOf(file, side)->lines[line].lineNumber;
+        size_t number = SideOf(file, side)->lines[line].lineNumber;
         DiffLinePosition pos = DiffLinePosition::New(file->path, side, number);
         return DiffDecorationAt(diff->decorations, diff->decorationCount, pos);
     };
     auto markerAt = [&](DiffSide side, int line) -> const DiffGutterMarker* {
         if (line < 0 || !diff->gutterMarkers) return nullptr;
-        int number = SideOf(file, side)->lines[line].lineNumber;
+        size_t number = SideOf(file, side)->lines[line].lineNumber;
         DiffLinePosition pos = DiffLinePosition::New(file->path, side, number);
         return DiffGutterMarkerAt(diff->gutterMarkers, diff->gutterMarkerCount,
                                   pos);
@@ -4726,7 +4722,7 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
         box->PadX(8);
         float annotationLeft = 8.f;
         if (diff->onAddAnnotation) box->Group();
-        int number = SideOf(file, side)->lines[line].lineNumber;
+        size_t number = SideOf(file, side)->lines[line].lineNumber;
         bool selected = lineSelected(side, line);
         Rgba bg = changed ? (side == DiffSide::Original ? theme.danger
                                                         : theme.success)
@@ -4767,7 +4763,7 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
                     ->SuppressTextSelection()
                     ->OnMouseDown(ListenTo(diff->state, &OnDiffGutterDown, arg))
                     ->OnMouseMove(ListenTo(diff->state, &OnDiffGutterMove, arg))
-                    ->Child(TextEl(cx->a, fmt("%d", number))
+                    ->Child(TextEl(cx->a, fmt("%zu", number))
                                 ->Fg(theme.mutedFg)));
         }
         if (markerLane) {
@@ -4815,7 +4811,7 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
             const TrArg args[] = {
                 {"side", Tr(side == DiffSide::Original ? "Diff.Original"
                                                        : "Diff.Modified")},
-                {"line", fmt("%d", number)},
+                {"line", fmt("%zu", number)},
             };
             source->Role(AccessibilityRole::Label)
                 ->AriaValue(sourceLine.text)

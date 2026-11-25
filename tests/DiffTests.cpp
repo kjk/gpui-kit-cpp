@@ -258,6 +258,88 @@ static void TestParser() {
     FreeFiles(files);
 }
 
+// Sparse coordinates have the width of Rust's usize, even though the file
+// holds only the lines supplied by the patch.
+static void SparseHunksKeepPlatformSizedLineNumbers() {
+    DiffFix fix;
+    constexpr size_t first = SIZE_MAX - 2;
+    constexpr size_t last = SIZE_MAX - 1;
+    Str path = StrL("wide.txt");
+    bool loaded =
+        fix.LoadStr(fmt("--- a/wide.txt\n+++ b/wide.txt\n@@ -1 +1 @@\n top\n"
+                        "@@ -%zu,2 +%zu,2 @@\n keep\n-old\n+new\n"
+                        "@@ -%zu,0 +%zu,0 @@\n",
+                        first, first, last, last));
+    utassert(loaded && len(fix.state->files) == 1);
+    if (!loaded || len(fix.state->files) != 1) return;
+    DiffState* state = fix.state;
+    const DiffFile* file = state->FileAt(0);
+    utassert(file->LinesCount(DiffSide::Modified) == 3 &&
+             file->HunkCount() == 3);
+    if (file->LinesCount(DiffSide::Modified) != 3 || file->HunkCount() != 3)
+        return;
+    utassert(file->LineNumber(DiffSide::Modified, 2) == last);
+    utassert(file->LineIndex(DiffSide::Original, first) == 1);
+    utassert(file->LineIndex(DiffSide::Modified, SIZE_MAX) == -1);
+    utassert(file->LineNumberDigits() == len(fmt("%zu", last)));
+    utassert(file->Hunks()[1]
+                 .HiddenLinesBefore(&file->Hunks()[0]) == first - 2);
+    utassert(file->Hunks()[2].originalLinesEnd == SIZE_MAX);
+    auto target = DiffLinePosition::New(path, DiffSide::Modified, last);
+    utassert(state->HasLine(target));
+    state->SetFileCollapsed(path, true, &fix.cx);
+    state->ScrollToLine(target, &fix.cx);
+    utassert(!state->IsFileCollapsed(path) && state->ScrollItem() > 0);
+    state->SetSelectedLines(
+        true, DiffLineRange::New(path, DiffSide::Modified, SIZE_MAX, 2),
+        &fix.cx);
+    utassert(state->SelectedLines().start == first);
+    utassert(state->SelectedLines().end == last);
+    utassert(Same(state->SelectedText(fix.a), "keep\nnew\n"));
+    state->BeginLineSelection(target, false, &fix.cx);
+    state->EndLineSelection(&fix.cx);
+    utassert(len(state->emitted) > 0);
+    if (len(state->emitted)) {
+        const DiffEvent& event = state->emitted[len(state->emitted) - 1];
+        utassert(event.kind == DiffEventKind::SelectionEnded &&
+                 event.start == last && event.end == last);
+    }
+
+    auto truncated = DiffParseOptions::New().TruncatedHunks(true);
+    DiffParseError error;
+    Vec<DiffFile*> files;
+    Str shortPatch =
+        fmt("--- a/wide.txt\n+++ b/wide.txt\n"
+            "@@ -1,%zu +1,%zu @@\n only\n",
+            last, last);
+    utassert(!DiffFile::Parse(shortPatch, &files, &error));
+    FreeFiles(files);
+    utassert(DiffFile::ParseWith(shortPatch, truncated, &files, &error));
+    if (len(files)) {
+        utassert(files[0]->IsTruncated());
+        utassert(files[0]->LinesCount(DiffSide::Original) == 1);
+        utassert(files[0]->Hunks()[0].originalLinesEnd == 2);
+    }
+    FreeFiles(files);
+
+    Str overflow =
+        fmt("--- a/wide.txt\n+++ b/wide.txt\n@@ -%zu,2 +1 @@\n", last);
+    utassert(!DiffFile::ParseWith(overflow, truncated, &files, &error));
+    FreeFiles(files);
+    overflow =
+        fmt("--- a/wide.txt\n+++ b/wide.txt\n@@ -%zu,0 +1 @@\n", SIZE_MAX);
+    utassert(!DiffFile::ParseWith(overflow, truncated, &files, &error));
+    FreeFiles(files);
+
+    DiffExcerpt part{first, StrL("one\ntwo\nthree\n")};
+    DiffFile* excerpt = DiffFile::Excerpts(path, &part, 1);
+    utassert(excerpt->LineNumber(DiffSide::Modified, 2) == SIZE_MAX);
+    utassert(
+        Same(excerpt->TextForLines(fix.a, DiffSide::Modified, last, SIZE_MAX),
+             "two\nthree\n"));
+    delete excerpt;
+}
+
 // truncated_hunks_count_the_lines_present
 // truncated_hunks_keep_structural_errors
 // non_ascii_lines_after_a_short_hunk_do_not_panic
@@ -305,14 +387,9 @@ static void TestTruncatedHunks() {
         "--- a/a\n+++ b/a\n@@ -x +1 @@\n a\n",
         "--- \"a/\\q\"\n+++ b/a\n@@ -1,3 +1,3 @@\n a\n",
         "--- /dev/null\n+++ b/a\n@@ -1,2 +1,2 @@\n a\n",
-        // usize::MAX - 1 and usize::MAX - 2 do not fit in int.
-        "--- a/a\n+++ b/a\n@@ -18446744073709551614,1 "
-        "+18446744073709551614,1 @@\n",
-        "--- a/a\n+++ b/a\n@@ -18446744073709551613,2 "
-        "+18446744073709551613,2 @@\n same\n",
     };
-    for (int i = 0; i < 9; i++) {
-        utassert(!DiffFile::ParseWith(Str(bad[i]), truncated, &files, &error));
+    for (const char* invalid : bad) {
+        utassert(!DiffFile::ParseWith(Str(invalid), truncated, &files, &error));
         FreeFiles(files);
         utassert(error.Line() > 0 && len(error.Message()) > 0);
     }
@@ -1842,7 +1919,7 @@ static void ExcerptsKeepEachPartsLineNumbers() {
     utassert(file->Status() == DiffFileStatus::Unchanged);
     int count = file->LinesCount(DiffSide::Modified);
     utassert(count == 4);
-    int want[] = {40, 41, 90, 120};
+    const size_t want[] = {40, 41, 90, 120};
     for (int ix = 0; ix < count && ix < 4; ix++)
         utassert(file->LineNumber(DiffSide::Modified, ix) == want[ix]);
     utassert(file->LineIndex(DiffSide::Modified, 90) == 2);
@@ -1860,7 +1937,7 @@ static void ExcerptsKeepEachPartsLineNumbers() {
 struct PointerHost {
     struct Heard {
         bool has = false;
-        int line = 0;
+        size_t line = 0;
         int offset = 0;
         Str text = {};
         bool platform = false;
@@ -1871,9 +1948,9 @@ struct PointerHost {
     bool claim = true;
     Heard hovered[8] = {};
     int hoveredCount = 0;
-    int textClicks[8][2] = {};
+    Heard textClicks[8] = {};
     int textClickCount = 0;
-    int lineClicks[8] = {};
+    size_t lineClicks[8] = {};
     int lineClickCount = 0;
     bool softWrap = false;
     DiffAnnotation annotation = {};
@@ -1909,8 +1986,9 @@ struct PointerHost {
                             const ClickEvent*, void* user) {
         auto* self = (PointerHost*)user;
         if (self->textClickCount < 8) {
-            self->textClicks[self->textClickCount][0] = hit->Position().Line();
-            self->textClicks[self->textClickCount][1] = hit->Offset();
+            self->textClicks[self->textClickCount].line = hit->Position()
+                                                              .Line();
+            self->textClicks[self->textClickCount].offset = hit->Offset();
             self->textClickCount++;
         }
         return self->claim;
@@ -2181,7 +2259,7 @@ static void AnnotationButtonPassesTheSelectedRange() {
     TestAppFree(stage.app);
 }
 
-static bool HeardHit(const PointerHost::Heard& heard, int line, int offset,
+static bool HeardHit(const PointerHost::Heard& heard, size_t line, int offset,
                      const char* text, bool platform) {
     return heard.has && heard.line == line && heard.offset == offset &&
            StrEq(heard.text, text) && heard.platform == platform;
@@ -2231,8 +2309,8 @@ static void TextHitsUsePaintedSyntaxRunsAndSourceOffsets() {
         utassert(HeardHit(stage.host->hovered[0], 1, 14, "\tlet result = 44;",
                           false));
         TestSimulateClick(stage.win, point);
-        utassert(stage.host->textClickCount == 1 &&
-                 stage.host->textClicks[0][1] == 14);
+        utassert(stage.host->textClickCount == 1 && stage.host->textClicks[0]
+                                                            .offset == 14);
     }
     TestAppFree(stage.app);
 }
@@ -2266,8 +2344,8 @@ static void AClaimedTextClickKeepsTheLineHandlerQuiet() {
     command.platform = true;
     TestSimulateClick(stage.win, onText, command);
     PointerHost* host = stage.host;
-    utassert(host->textClickCount == 1 && host->textClicks[0][0] == 2 &&
-             host->textClicks[0][1] == 0);
+    utassert(host->textClickCount == 1 && host->textClicks[0].line == 2 &&
+             host->textClicks[0].offset == 0);
     utassert(host->lineClickCount == 0);
 
     // Off the text there is no character to claim: the line still hears it.
@@ -2283,9 +2361,24 @@ static void AnUnclaimedTextClickFallsThroughToTheLine() {
     utassert(PointerPoints(stage.win, 1, 1, &onText, &pastEnd));
     TestSimulateClick(stage.win, onText);
     PointerHost* host = stage.host;
-    utassert(host->textClickCount == 1 && host->textClicks[0][0] == 2 &&
-             host->textClicks[0][1] == 0);
+    utassert(host->textClickCount == 1 && host->textClicks[0].line == 2 &&
+             host->textClicks[0].offset == 0);
     utassert(host->lineClickCount == 1 && host->lineClicks[0] == 2);
+    TestAppFree(stage.app);
+}
+
+static void DiffPointerReportsLargeLineNumbers() {
+    constexpr size_t line = SIZE_MAX - 1;
+    PointerStage stage = StagePointer(
+        false,
+        fmt("--- a/file.rs\n+++ b/file.rs\n@@ -%zu +%zu @@\n-old\n+new\n", line,
+            line));
+    Point onText{}, pastEnd{};
+    utassert(PointerPoints(stage.win, 0, 1, &onText, &pastEnd));
+    TestSimulateClick(stage.win, onText);
+    PointerHost* host = stage.host;
+    utassert(host->textClickCount == 1 && host->textClicks[0].line == line);
+    utassert(host->lineClickCount == 1 && host->lineClicks[0] == line);
     TestAppFree(stage.app);
 }
 
@@ -2366,6 +2459,7 @@ static void ReplacingTheVisibleDiffFileKeepsTheReleasedFileAlive() {
 
 void TestDiff() {
     TestParser();
+    SparseHunksKeepPlatformSizedLineNumbers();
     TestTruncatedHunks();
     TestConflictsAndLanguage();
     ExcerptsKeepEachPartsLineNumbers();
@@ -2405,5 +2499,6 @@ void TestDiff() {
     AnnotationButtonPassesTheSelectedRange();
     TouchHandlesExtendAndCopyTheDiffSourceRange();
     AnUnclaimedTextClickFallsThroughToTheLine();
+    DiffPointerReportsLargeLineNumbers();
     HasLineCountsFoldedLinesButNotAbsentOnes();
 }

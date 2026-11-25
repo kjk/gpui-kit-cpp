@@ -78,8 +78,8 @@ struct DiffEvent {
     Str path = {};
     DiffSide side = DiffSide::Original;
     DiffSide endSide = DiffSide::Original;
-    int start = 1;
-    int end = 1;
+    size_t start = 1;
+    size_t end = 1;
     int conflict = 0;
 };
 
@@ -106,11 +106,11 @@ struct DiffParseOptions {
 struct DiffLinePosition {
     Str path = {};
     DiffSide side = DiffSide::Original;
-    int line = 1;
-    static DiffLinePosition New(Str path, DiffSide side, int line);
+    size_t line = 1;
+    static DiffLinePosition New(Str path, DiffSide side, size_t line);
     Str Path() const { return path; }
     DiffSide Side() const { return side; }
-    int Line() const { return line; }
+    size_t Line() const { return line; }
 };
 
 // One character of a source line, as the pointer finds it.
@@ -131,16 +131,16 @@ struct DiffTextPosition {
 struct DiffLineRange {
     Str path = {};
     DiffSide side = DiffSide::Original;
-    int start = 1;
+    size_t start = 1;
     DiffSide endSide = DiffSide::Original;
-    int end = 1;
-    static DiffLineRange New(Str path, DiffSide side, int start, int end);
+    size_t end = 1;
+    static DiffLineRange New(Str path, DiffSide side, size_t start, size_t end);
     DiffLineRange WithEndSide(DiffSide side) const;
     Str Path() const { return path; }
     DiffSide Side() const { return side; }
-    int Start() const { return start; }
+    size_t Start() const { return start; }
     DiffSide EndSide() const { return endSide; }
-    int End() const { return end; }
+    size_t End() const { return end; }
     bool IsSingleSide() const { return side == endSide; }
 };
 
@@ -263,7 +263,7 @@ struct DiffConflict {
 };
 
 struct DiffSourceLine {
-    int lineNumber = 0;
+    size_t lineNumber = 0;
     Str text = {};
     Str display = {};
     int sourceStart = 0;
@@ -306,10 +306,10 @@ struct DiffHunk {
     Str label = {};
     // One-based original lines this hunk supplies. A truncated hunk
     // covers the lines present, not the count written in `label`.
-    int originalLinesStart = 0;
-    int originalLinesEnd = 0;
+    size_t originalLinesStart = 0;
+    size_t originalLinesEnd = 0;
     bool truncated = false;
-    int HiddenLinesBefore(const DiffHunk* previous) const;
+    size_t HiddenLinesBefore(const DiffHunk* previous) const;
     Str Label() const { return label; }
 };
 
@@ -338,7 +338,7 @@ struct DiffRun {
 // One part for DiffFile::Excerpts: Rust's `(first line, text)` tuple. The
 // text's first line is file line `first`.
 struct DiffExcerpt {
-    int first = 1;
+    size_t first = 1;
     Str text = {};
 };
 
@@ -378,8 +378,8 @@ struct DiffFile {
     // single column in every display mode.
     static DiffFile* Unchanged(Str path, Str text);
     // Parts of a file shown for reference, without changes, each keeping
-    // its own line numbers, in file order without overlap. A first line
-    // below 1 is clamped to 1. Like Unchanged it is a single column in
+    // its own line numbers, in file order without overlap. Zero is
+    // clamped to 1. Like Unchanged it is a single column in
     // every display mode; the lines between the parts are simply not there.
     static DiffFile* Excerpts(Str path, const DiffExcerpt* parts, int count);
     static DiffFile* ParseConflicts(Str path, Str text, DiffParseError* error);
@@ -402,9 +402,9 @@ struct DiffFile {
     Str Source(DiffSide side) const;
     const DiffSourceLine* Lines(DiffSide side) const;
     // Inclusive one-based line numbers. Unavailable context is omitted.
-    Str TextForLines(Arena* a, DiffSide side, int start, int end) const;
-    int LineNumber(DiffSide side, int index) const;
-    int LineIndex(DiffSide side, int line) const;
+    Str TextForLines(Arena* a, DiffSide side, size_t start, size_t end) const;
+    size_t LineNumber(DiffSide side, int index) const;
+    int LineIndex(DiffSide side, size_t line) const;
     const DiffLinePair* Pairs() const { return pairs.els; }
     int PairCount() const { return len(pairs); }
     const DiffHunk* Hunks() const { return hunks.els; }

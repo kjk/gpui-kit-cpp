@@ -558,10 +558,6 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   clauses (`src/ui/highlighter.cpp`). Grammar-specific nodes such as Python
   suites still require the Rust parser. The optional `syntect` feature
   (syntect and two-face) is the same exclusion and is not vendored.
-- **Diff line numbers are `int`.** A hunk header whose start, count, or
-  `start + max(count, 1)` span does not fit in `int` is an invalid
-  header (`diff.cpp`). Rust keeps those as `usize`, so a start of
-  `usize::MAX - 1` parses there and does not here.
 - **Diff owns its selection and painted geometry.** `src/ui/diff.cpp`
   uses source-byte endpoints for text and a separate line range for review.
   The focused diff handles copy and its paint runs provide glyph bounds.
