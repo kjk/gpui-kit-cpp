@@ -6769,9 +6769,10 @@ static void WrappedLinksUseSharedTextGeometry() {
 
 static void InlineObjectsShareRowsWithShapedProse() {
     TswView v = TswOpen(
-        "Several words before ![icon](assets/icons/heart.svg)"
-        " and several after",
+        "**Several words before** ![icon](assets/icons/heart.svg)"
+        " [and several after](https://example.test)",
         TswContainer::Window);
+    v.Root()->listenForLinks = true;
     TestDraw(v.win);
     const TextHit* before = HitContaining(v.win, "Several words before");
     const TextHit* after = HitContaining(v.win, "and several after");
@@ -6784,7 +6785,10 @@ static void InlineObjectsShareRowsWithShapedProse() {
             CopyTextHitsIn(&v.win->paint, before->docOff + 8,
                            before->docOff + 20, before->scope, output,
                            (int)sizeof(output), SelectionFormat::Source);
-        utassert(StrEq(Str(output, copied), "words before"));
+        utassert(StrEq(Str(output, copied), "**words before**"));
+        Point inside = {after->bounds.CenterX(), after->bounds.CenterY()};
+        TestSimulateClick(v.win, inside);
+        utassert(v.Root()->linkClicks == 1);
     }
     TswClose(&v);
 }

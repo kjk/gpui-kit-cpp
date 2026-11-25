@@ -2881,6 +2881,7 @@ struct ElLifecycle {
     void* user = nullptr;
     const LinkTooltipTarget* linkTooltip = nullptr;
     const InlineTextFragment* inlineTextFragment = nullptr;
+    bool inlineTextGroup = false;
     // on_pinch: rare, so here rather than in El
     Listener onPinch;
     // El::OnGesture, the same way

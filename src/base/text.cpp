@@ -4424,10 +4424,11 @@ static void EditorHostFlowPrepaint(PaintCtx* ctx, El* e, void* user) {
     for (int i = 0; leaf.pieces && i < count; i++) {
         const HostFlowPiece& entry = flow->pieces[i];
         El* piece = entry.element;
-        if (entry.end <= leaf.textLen) {
+        int end = entry.atom ? entry.end : entry.start + len(piece->text);
+        if (entry.start < end && end <= leaf.textLen) {
             leaf.pieces[leaf.pieceCount++] = {piece->Bounds(),
                                               entry.start,
-                                              entry.end,
+                                              end,
                                               piece->laidFont,
                                               piece->style.lineHeight,
                                               ElTextWeight(piece),
@@ -4703,9 +4704,22 @@ static const InlineTextFragment* InlineFragment(const El* element) {
 }
 
 // The flex pass used the shaped advances to place words and atomic objects.
-// Paint each contiguous visual text span as one run, keeping the first
-// fragment's source offset so hit-testing and source copy see the same bytes.
+// Each contiguous visual text span becomes one run for paint and editor
+// geometry. Keep the first fragment's source offset for source selection.
 static void ShapeInlineObjectRows(PaintCtx*, El* row, void*) {
+    // Word groups enforce Unicode break opportunities during flex layout.
+    // Their children can share a shaped run with neighboring words.
+    for (El** link = &row->first; *link;) {
+        El* item = *link;
+        if (!item->lifecycle || !item->lifecycle->inlineTextGroup) {
+            link = &item->next;
+            continue;
+        }
+        *link = item->first;
+        item->last->next = item->next;
+        if (row->last == item) row->last = item->last;
+        link = &item->last->next;
+    }
     for (El* first = row->first; first; first = first->next) {
         const InlineTextFragment* start = InlineFragment(first);
         if (!start || !start->advances->positions ||
@@ -4725,8 +4739,36 @@ static void ShapeInlineObjectRows(PaintCtx*, El* row, void*) {
             end = part->end;
         }
         if (last == first) continue;
+        ArenaVec<TextSpan> spans;
+        ArenaVec<TextSpan> washes;
+        ArenaVec<TextSpan> underlines;
+        ArenaVec<TextFade> fades;
+        for (El* part = first;; part = part->next) {
+            int offset = InlineFragment(part)->start - start->start;
+            auto append = [&](auto& output, const auto* ranges, int count) {
+                for (int i = 0; i < count; i++) {
+                    auto range = ranges[i];
+                    range.lo += offset;
+                    range.hi += offset;
+                    output.Append(first->arena, range);
+                }
+            };
+            append(spans, part->spans, part->nSpans);
+            append(washes, part->washes, part->nWashes);
+            append(underlines, part->underlines, part->nUnderlines);
+            int fadeCount = 0;
+            const TextFade* partFades = part->FadesGet(&fadeCount);
+            append(fades, partFades, fadeCount);
+            // The editor may have retained the original fragment pointer.
+            if (part != first) part->text = {};
+            if (part == last) break;
+        }
         first->text =
             Str(start->advances->text.s + start->start, end - start->start);
+        first->Spans(spans.Flatten(first->arena), len(spans))
+            ->Washes(washes.Flatten(first->arena), len(washes))
+            ->Underlines(underlines.Flatten(first->arena), len(underlines))
+            ->Fades(fades.Flatten(first->arena), len(fades));
         first->w = last->Bounds().Right() - first->x;
         first->laidMaxW = first->w;
         first->laidLayout = nullptr;
@@ -4933,10 +4975,9 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
     int nextRunOffset = 0;
     int revealOffset = 0;
     bool hasReveal = RevealIn(n, &revealOffset);
-    bool shapeAroundObjects = hasObject && !n->hasEditorKey && !hasReveal &&
-                              !nStreamFades && !leafRangeCount;
+    bool shapeAroundObjects = hasObject && !hasReveal;
     InlineTextAdvances* advances = nullptr;
-    if (shapeAroundObjects) row->customPaint = &ShapeInlineObjectRows;
+    if (shapeAroundObjects) row->prePaint = &ShapeInlineObjectRows;
     El* lastWord = nullptr;
     int lastWordLo = 0;
     El* pending = nullptr;
@@ -4975,7 +5016,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             lastWordLo = runOffset + wordStart;
         }
         ApplyTextForeground(a, w, w->text, wordLeaf, ranges, nRanges);
-        if (advances && !shapeLine && !w->nWashes && !w->nSpans) {
+        if (advances && !shapeLine) {
             if (!w->lifecycle) w->lifecycle = ArenaNew<ElLifecycle>(a);
             auto* fragment = ArenaNew<InlineTextFragment>(a);
             *fragment = {advances, wordStart, wordStart + wordLen};
@@ -4991,6 +5032,10 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             // Keep the fragments separate for paint and source selection.
             if (!pendingGroup) {
                 pendingGroup = Div(a)->FlexRow()->MaxWFrac(1.f)->Child(pending);
+                if (shapeAroundObjects) {
+                    pendingGroup->lifecycle = ArenaNew<ElLifecycle>(a);
+                    pendingGroup->lifecycle->inlineTextGroup = true;
+                }
                 pending = pendingGroup;
             }
             pendingGroup->Child(hanging ? w->FlexNone() : w);
@@ -5123,7 +5168,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             continue;
         }
         wordRun = r;
-        if (shapeAroundObjects && marks == 0 &&
+        if (shapeAroundObjects && !(marks & (MdCode | MdHighlight)) &&
             StrFind(r->text, StrL(" ")) >= 0 &&
             StrFind(r->text, StrL("\n")) < 0) {
             advances = ArenaNew<InlineTextAdvances>(a);
@@ -5142,8 +5187,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
                 SrcBreak();
                 col->Child(row);
                 row = AlignRow(Div(a)->FlexRow()->FlexWrap(), align);
-                if (shapeAroundObjects)
-                    row->customPaint = &ShapeInlineObjectRows;
+                if (shapeAroundObjects) row->prePaint = &ShapeInlineObjectRows;
                 continue;
             }
             if (wordLen == 0) {

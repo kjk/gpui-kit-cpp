@@ -30,10 +30,11 @@ The current update target is
   hosts.
 
 - **Inline objects are atomic.** A paragraph can shape its links and retain
-  Markdown copy boundaries in one layout. Around inline objects, plain
-  text uses shaped advances through the wrap pass and contiguous text on
-  each row paints together. Object paragraphs with editor decorations, a
-  streaming fade or bidirectional text still use fragment boxes
+  Markdown copy boundaries in one layout. Around inline objects, styled
+  runs use shaped advances through the wrap pass. Contiguous fragments
+  of each run share their paint and editor hit geometry, including range
+  decorations and streaming fades. Style boundaries are still shaped
+  separately, and bidi text and active reveals use fragment boxes
   (`src/base/text.cpp`).
 
 - **Windows additionally handles touch-screen pinch.** DirectManipulation
