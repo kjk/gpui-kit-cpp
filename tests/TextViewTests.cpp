@@ -9922,18 +9922,28 @@ static void InlineStyleBoundariesKeepTheWordTogether() {
         return root;
     };
     El* wide = build(400);
-    El* prefix = FindTextEl(wide, "pre");
-    El* suffix = FindTextEl(wide, "fix");
-    utassert(prefix && suffix);
-    if (prefix && suffix) {
-        El* narrow = build(prefix->x + prefix->w + suffix->w * 0.5f);
-        prefix = FindTextEl(narrow, "pre");
-        suffix = FindTextEl(narrow, "fix");
-        El* before = FindTextEl(narrow, "words ");
-        utassert(prefix && suffix && before);
-        if (prefix && suffix && before) {
-            utassertnear(prefix->y, suffix->y);
-            utassert(prefix->y > before->y);
+    El* shaped = FindTextEl(wide, "Some words prefix");
+    utassert(shaped && shaped->laidLayout && shaped->lifecycle &&
+             shaped->lifecycle->highlightCount == 1);
+    if (shaped && shaped->laidLayout) {
+        Vec<TextGlyphBox> glyphs;
+        TextGlyphBoxes(shaped->laidLayout, shaped->text, &glyphs);
+        float width = 0.f;
+        for (const TextGlyphBox& glyph : glyphs) {
+            if (glyph.lo == 14) width = (glyph.left + glyph.right) * 0.5f;
+        }
+        El* narrow = FindTextEl(build(width), "Some words prefix");
+        utassert(width > 0 && narrow && narrow->laidLayout);
+        if (narrow && narrow->laidLayout) {
+            VecClear(glyphs);
+            TextGlyphBoxes(narrow->laidLayout, narrow->text, &glyphs);
+            int before = -1, prefix = -1, suffix = -1;
+            for (const TextGlyphBox& glyph : glyphs) {
+                if (glyph.lo == 5) before = glyph.row;
+                if (glyph.lo == 11) prefix = glyph.row;
+                if (glyph.lo == 14) suffix = glyph.row;
+            }
+            utassert(before >= 0 && prefix > before && suffix == prefix);
         }
     }
     InlineImageClose(&host);

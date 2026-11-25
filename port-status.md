@@ -29,12 +29,12 @@ The current update target is
   announcement delivery is implemented by the Windows, macOS, Linux and web
   hosts.
 
-- **Mixed inline layout uses element widths.** Unicode no-break boundaries
-  keep adjacent style fragments together, and closing marks can hang.
-  Trailing spaces still contribute to that item's width when it fits, and
-  whole plain hard lines use the platform text shaper. Runs that share a
-  line with differently styled text or an object still measure in separate
-  elements (`src/base/text.cpp`).
+- **Inline objects and source-format selection use element widths.** Plain
+  paragraphs with a style change within a word can shape their emphasis in a
+  single text layout. Links, inline objects, and source-format copying keep
+  separate elements. Unicode no-break boundaries keep adjoining fragments
+  together, and trailing spaces still contribute to element width
+  (`src/base/text.cpp`).
 
 - **Windows additionally handles touch-screen pinch.** DirectManipulation
   supplies precision-touchpad pinch and two-finger scroll with inertia as in

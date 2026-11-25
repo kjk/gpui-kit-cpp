@@ -4626,6 +4626,32 @@ static int HangingPrefix(Str text) {
     return at;
 }
 
+// A single shaped line keeps a word together through a weight or slant
+// change. Source-format copying, links and inline objects still need their
+// individual run elements.
+static bool CanShapeInlineEmphasis(const MdNode* node) {
+    const MdRun* previous = nullptr;
+    bool splitWord = false;
+    for (const MdRun* run = node->runFirst; run; run = run->next) {
+        if (run->hasCustom || len(run->imgSrc) ||
+            (run->marks & ~(MdBold | MdItalic | MdDel | MdUnderline)) ||
+            StrFind(run->text, StrL("\n")) >= 0)
+            return false;
+        if (!len(run->text)) continue;
+        if (previous && previous->marks != run->marks) {
+            uint32_t before = 0;
+            uint32_t after = 0;
+            Utf8At(previous->text,
+                   Utf8Prev(previous->text, len(previous->text)), &before);
+            Utf8At(run->text, 0, &after);
+            splitWord |= CharKindOf(before) == CharKind::Word &&
+                         CharKindOf(after) == CharKind::Word;
+        }
+        previous = run;
+    }
+    return splitWord;
+}
+
 El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
                      uint8_t align) {
     // An editor leaf is laid out even when empty, so the editor gets a
@@ -4638,6 +4664,52 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
         t->MinH(FontLen(cx, font * kLineHeight));
         EditorHostWatch(a, t, n);
         return t;
+    }
+    int leafRangeCount = 0;
+    LeafRanges(this, n, &leafRangeCount);
+    if ((!selectable || selFormat == SelectionFormat::Plain) &&
+        !n->hasEditorKey && leafRangeCount == 0 && CanShapeInlineEmphasis(n)) {
+        StrBuilder line(a);
+        ArenaVec<TextHighlight> styles;
+        ArenaVec<SourceSegment> mapped;
+        for (const MdRun* run = n->runFirst; run; run = run->next) {
+            int start = len(line);
+            line.Append(run->text);
+            if (run->marks && start < len(line)) {
+                HighlightStyle style;
+                if ((run->marks & MdBold) && weight < 2) {
+                    style.weight = FontWeight::Semibold;
+                }
+                if (run->marks & MdItalic) {
+                    style.fontStyle = HighlightFontStyle::Italic;
+                }
+                if (run->marks & MdUnderline) style.underline.thickness = 1;
+                if (run->marks & MdDel) style.strike.thickness = 1;
+                styles.Append(a, {start, len(line), style});
+            }
+            if (selectable) {
+                for (int i = 0; i < run->segmentCount; ++i) {
+                    SourceSegment segment = run->segments[i];
+                    segment.renderedStart += start;
+                    segment.renderedEnd += start;
+                    mapped.Append(a, segment);
+                }
+            }
+        }
+        El* t = TextEl(a, line.TakeStr())->Font(font)->Wrap();
+        if (color.a) t->Fg(color);
+        ApplyWeight(t, weight);
+        t->Highlights(styles.Flatten(a), len(styles));
+        if (selectable) {
+            t->Selectable()->GlyphSelection();
+            SrcMark(t, 0);
+            SrcMap(t, mapped.Flatten(a), len(mapped), 0);
+        }
+        RangeWashes(t, n, 0, len(t->text));
+        int reveal = 0;
+        if (RevealIn(n, &reveal)) RevealMark(t, 0, reveal);
+        if (align == MdAlignCenter || align == MdAlignRight) t->MaxWFrac(1.f);
+        return t->ReportLineSpan(FontLen(cx, font * kLineHeight));
     }
     // The common case is one unmarked stretch of source. Keeping it as a
     // single TextEl lets the text engine break the line on its own metrics,
