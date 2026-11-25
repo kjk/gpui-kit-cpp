@@ -61,6 +61,10 @@ static void SawCapturedArg(int* box) {
     *box = 42;
 }
 
+static void MarkDiscarded(int* count) {
+    ++*count;
+}
+
 static void PostBump() {
     ExecPost(MkFunc0Void(Bump));
 }
@@ -221,7 +225,9 @@ static void AJobThatHasNotStartedCanBeCalledOff() {
     for (int i = 0; i < kExecMaxWorkers; i++) {
         utassert(ExecSpawn(MkFunc0Void(HoldWorker)) != 0);
     }
-    TaskId victim = ExecSpawn(MkFunc0Void(Bump), MkFunc0Void(MarkDone));
+    int discarded = 0;
+    TaskId victim = ExecSpawn(MkFunc0Void(Bump), MkFunc0Void(MarkDone),
+                              MkFunc0(MarkDiscarded, &discarded));
     utassert(victim != 0);
     utassert(ExecCancel(victim));
     // Cancelled twice is not cancelled twice, and neither is a handle nobody
@@ -238,6 +244,7 @@ static void AJobThatHasNotStartedCanBeCalledOff() {
     // and neither did the completion it would have posted.
     utassert(gRan == kExecMaxWorkers);
     utassert(gDone == 0);
+    utassert(discarded == 1);
 }
 
 // A burst spawned while one worker sits idle runs side by side, not queued

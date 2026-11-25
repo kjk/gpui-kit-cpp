@@ -101,12 +101,17 @@ int ExecQueued();
 // then neither half runs. A platform with no threads to give is not one of
 // those: see ExecHasThreads.
 TaskId ExecSpawn(Func0 work, Func0 done = Func0{});
+// On a successful enqueue, exactly one of done or discard runs. Discard
+// releases captures if cancellation or shutdown prevents completion. It
+// may run on a worker and must not touch UI state.
+TaskId ExecSpawn(Func0 work, Func0 done, Func0 discard);
 
 // Dropping a `Task` in Rust cancels it. A job that has not started yet is
 // dropped here and neither half of it runs; one that a worker already picked
 // up is left to finish, and its `done` still posts — a thread cannot be
 // stopped in the middle and pretending otherwise would leak whatever the job
-// holds. True if the job was still in the queue.
+// holds. True if the job was still in the queue. Its discard (if any)
+// runs before returning.
 bool ExecCancel(TaskId id);
 
 // Jobs queued or running. Does not count a `done` that is waiting in the main

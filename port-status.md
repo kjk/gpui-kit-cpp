@@ -566,9 +566,10 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   uses source-byte endpoints for text and a separate line range for review.
   The focused diff handles copy and its paint runs provide glyph bounds.
   The window's touch handles extend the diff's retained source-byte selection.
-  Inline emphasis is prepared on the UI thread. Character comparisons use
-  grapheme boundaries. Word tokenization is simpler than Rust's Unicode
-  word segmentation, and the unmatched region has a bounded LCS matrix.
+  Inline emphasis is prepared one file at a time on the background executor.
+  Character comparisons use grapheme boundaries. Word tokenization uses a
+  simpler split than Rust's Unicode word segmentation, and the unmatched
+  region has a bounded LCS matrix.
   Character hover and click
   (`OnTextHover`, `OnTextClick`) find the character from the line's glyph
   boxes and the hit box rather than from TextSelection's painted runs, and

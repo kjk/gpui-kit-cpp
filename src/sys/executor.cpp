@@ -14,6 +14,8 @@
 #include "sys/executor.h"
 #include "sys/clock.h"
 
+#include <utility>
+
 namespace gpui {
 
 // ─── the main thread's queue ──────────────────────────────────────────────
@@ -22,6 +24,7 @@ namespace gpui {
 // uitask task record. It stays POD so the queue can remain a Vec.
 struct MainTask {
     Func0 f = {};
+    Func0 discard = {};
 };
 
 // how long one drain runs tasks before it lets the loop take its events
@@ -58,25 +61,25 @@ void ExecSetWake(Func0 wake) {
     gMainLock.Unlock();
 }
 
-void ExecPost(Func0 f) {
-    if (!f.IsValid()) {
+static void PostMainTask(MainTask task) {
+    if (!task.f.IsValid()) {
+        task.discard.Call();
         return;
     }
-    MainTask t = {f};
     gMainLock.Lock();
-    if (gStopping) {
-        // Past ExecShutdown there is nobody left to run it. Dropping it is
-        // the honest answer: the loop is gone and the process is on its way
-        // out, which is when the last worker reports in.
-        gMainLock.Unlock();
-        return;
-    }
-    VecAppend(gMainQueue, t);
+    bool queued = !gStopping && VecAppend(gMainQueue, task);
     Func0 wake = gWake;
     gMainLock.Unlock();
     // Outside the lock: waking is an OS call, and the loop it wakes takes the
     // same lock to drain.
-    wake.Call();
+    if (queued)
+        wake.Call();
+    else
+        task.discard.Call();
+}
+
+void ExecPost(Func0 f) {
+    PostMainTask({f, {}});
 }
 
 void ExecPostNow(Func0 f) {
@@ -130,6 +133,11 @@ int ExecDrain() {
     if (n < len(batch)) {
         gMainLock.Lock();
         Vec<MainTask> rest;
+        if (!VecReserve(rest, len(batch) - n + len(gMainQueue))) {
+            gMainLock.Unlock();
+            while (n < len(batch)) batch[n++].f.Call();
+            return n;
+        }
         for (int i = n; i < len(batch); i++) {
             VecAppend(rest, batch[i]);
         }
@@ -157,6 +165,7 @@ struct Job {
     TaskId id = 0;
     Func0 work = {};
     Func0 done = {};
+    Func0 discard = {};
 };
 
 static Mutex gPoolLock;
@@ -205,7 +214,7 @@ static void WorkerMain() {
         ResetTempArena();
         // Posted from here rather than by the caller, so that a job which
         // wants its result on the main thread cannot forget to.
-        ExecPost(job.done);
+        PostMainTask({job.done, job.discard});
 
         gPoolLock.Lock();
         gRunning--;
@@ -251,10 +260,17 @@ static void RunOnMainThread(void* arg) {
         return;
     }
     job.work.Call();
-    job.done.Call();
+    if (job.done.IsValid())
+        job.done.Call();
+    else
+        job.discard.Call();
 }
 
 TaskId ExecSpawn(Func0 work, Func0 done) {
+    return ExecSpawn(work, done, {});
+}
+
+TaskId ExecSpawn(Func0 work, Func0 done, Func0 discard) {
     if (!work.IsValid() && !done.IsValid()) {
         return 0;
     }
@@ -271,6 +287,7 @@ TaskId ExecSpawn(Func0 work, Func0 done) {
     job.id = gNextTaskId++;
     job.work = work;
     job.done = done;
+    job.discard = discard;
     if (!VecAppend(gJobs, job)) {
         gPoolLock.Unlock();
         return 0;
@@ -318,11 +335,13 @@ bool ExecCancel(TaskId id) {
         return false;
     }
     bool found = false;
+    Func0 discard;
     gPoolLock.Lock();
     for (int i = 0; i < len(gJobs); i++) {
         if (gJobs[i].id != id) {
             continue;
         }
+        discard = gJobs[i].discard;
         for (int j = i + 1; j < len(gJobs); j++) {
             gJobs[j - 1] = gJobs[j];
         }
@@ -331,6 +350,7 @@ bool ExecCancel(TaskId id) {
         break;
     }
     gPoolLock.Unlock();
+    discard.Call();
     return found;
 }
 
@@ -374,10 +394,12 @@ void ExecShutdown() {
     // closing a window to watch that.
     ExecWaitIdle(500);
 
+    Vec<Job> jobs;
     gPoolLock.Lock();
     gPoolStop = true;
-    VecReset(gJobs);
+    std::swap(*VecNT(jobs), *VecNT(gJobs));
     gPoolLock.Unlock();
+    for (const Job& job : jobs) job.discard.Call();
     gPoolWake.WakeAll();
 
     // Wait for the workers to leave their loop. Nothing joins them, so this
@@ -395,12 +417,14 @@ void ExecShutdown() {
     // worker still running posts after the main thread has left.
     ExecDrain();
 
+    Vec<MainTask> tasks;
     gMainLock.Lock();
     gStopping = true;
-    VecReset(gMainQueue);
+    std::swap(*VecNT(tasks), *VecNT(gMainQueue));
     gWake = Func0{};
     gMainThreadId = 0;
     gMainLock.Unlock();
+    for (const MainTask& task : tasks) task.discard.Call();
 }
 
 } // namespace gpui

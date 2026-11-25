@@ -505,6 +505,8 @@ struct DiffTextSelection {
     bool hitText = false;
 };
 
+struct DiffInlineJob;
+
 struct DiffState {
     App* app = nullptr;
     Vec<DiffFile*> files;
@@ -551,6 +553,8 @@ struct DiffState {
     bool inlineOn = true;
     DiffInlineUnit inlineUnit = DiffInlineUnit::Word;
     int inlineMaxLineLength = 1000;
+    int inlinePreparedFiles = 0;
+    DiffInlineJob* inlineJob = nullptr;
     int syntaxMaxLineLength = 1000;
     Vec<DiffEvent> emitted;
     Entity<DiffState> self = {};
@@ -644,8 +648,11 @@ struct DiffState {
     void BeginLineSelection(DiffLinePosition position, bool extend, Ctx* cx);
     void DragLineSelection(DiffLinePosition position, Ctx* cx);
     void EndLineSelection(Ctx* cx);
+    // Synchronously prepare the files for callers that inspect spans without
+    // rendering a view. Normal rendering prepares inline runs asynchronously.
     void EnsurePresentation();
     void EnsureSyntax();
+    void EnsureInlinePresentation(bool background);
     int RowCount() const { return len(rows); }
     const DiffRow* Rows() const { return rows.els; }
     int ScrollItem() const { return scrollItem; }

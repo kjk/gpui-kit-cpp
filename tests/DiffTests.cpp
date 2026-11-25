@@ -1388,6 +1388,49 @@ static El* FindDiffCodeRun(El* root, Str text) {
     return nullptr;
 }
 
+// state.rs ensure_presentation drops a preparation from a replaced patch.
+static void InlinePresentationLandsProgressivelyAndDropsReplacedPatches() {
+    App* app = TestAppNew();
+    Init(app);
+    auto view = EntityNew<DiffHighlightView>(app);
+    auto* self = view.Get(app);
+    self->state = EntityNew<DiffState>(app);
+    auto* state = self->state.Get(app);
+    state->Bind(app, self->state);
+    Vec<DiffFile*> files;
+    utassert(
+        Parse("--- a/old.txt\n+++ b/old.txt\n@@ -1 +1 @@\n"
+              "-word old\n+word new\n",
+              &files));
+    state->SetFiles(files.els, len(files), nullptr);
+    Window* win = TestWindowOpen(app, view, 400, 200, 1);
+    utassert(win && state->inlineJob && state->inlinePreparedFiles == 0);
+    utassert(state->FileAt(0)->InlineCount(DiffSide::Modified, 0) == 0);
+
+    VecClear(files);
+    utassert(
+        Parse("diff --git a/one.txt b/one.txt\n"
+              "--- a/one.txt\n+++ b/one.txt\n@@ -1 +1 @@\n"
+              "-word first\n+word second\n"
+              "diff --git a/two.txt b/two.txt\n"
+              "--- a/two.txt\n+++ b/two.txt\n@@ -1 +1 @@\n"
+              "-another bad\n+another good\n",
+              &files));
+    state->SetFiles(files.els, len(files), nullptr);
+    TestDraw(win);
+    utassert(state->inlineJob && state->inlinePreparedFiles == 0);
+    TestRunUntilParked(app);
+    utassert(!state->inlineJob && state->inlinePreparedFiles == 2);
+    for (int file = 0; file < 2; file++) {
+        const auto* source = state->FileAt(file);
+        int count = 0;
+        const auto* runs = source->InlineAt(DiffSide::Modified, 0, &count);
+        int expected = file == 0 ? 5 : 8;
+        utassert(runs && count == 1 && runs[0].start == expected);
+    }
+    TestAppFree(app);
+}
+
 // diff/mod.rs line_highlights layers explicit spans over the inline changes.
 static void InlineChangesPaintBothSidesAndRespectExplicitSpanPriority() {
     App* app = TestAppNew();
@@ -2155,6 +2198,7 @@ void TestDiff() {
     DecorationsCoverTheirRangeAndTheLastSuppliedWins();
     SpanHighlightsKeepLineAndOrderThroughTabExpansion();
     InlineChangesPaintBothSidesAndRespectExplicitSpanPriority();
+    InlinePresentationLandsProgressivelyAndDropsReplacedPatches();
     GutterMarkersActivateWithoutSelectingLines();
     TextHoverReportsTheCharacterAndOnlyChanges();
     AModifierAloneReportsTheCharacterAgain();

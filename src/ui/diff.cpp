@@ -6,6 +6,7 @@
 #include "base/text_selection.h"
 #include "gpui/keymap.h"
 #include "gpui/paint.h"
+#include "sys/executor.h"
 #include "ui/button.h"
 #include "ui/diff_width_data.h"
 #include "ui/i18n.h"
@@ -17,6 +18,7 @@
 
 #include <math.h>
 #include <stdlib.h>
+#include <utility>
 
 namespace gpui {
 namespace component {
@@ -66,7 +68,10 @@ static void ClearDiffCodeRuns(DiffState* state) {
     VecClear(state->codeRuns);
 }
 
+static void CancelDiffInlineJob(DiffState* state);
+
 DiffState::~DiffState() {
+    CancelDiffInlineJob(this);
     ClearDiffCodeRuns(this);
     for (int i = 0; i < len(files); i++) delete files[i];
     for (int i = 0; i < len(collapsed); i++) StrFree(collapsed[i]);
@@ -1854,26 +1859,66 @@ void DiffChangedRuns(Str oldText, Str newText, DiffInlineUnit unit,
     }
 }
 
-void DiffFile::PrepareInline(DiffInlineUnit unit, int maxLineLength) {
-    VecReset(inlineRuns[0]);
-    VecReset(inlineRuns[1]);
-    VecReset(inlineStarts[0]);
-    VecReset(inlineStarts[1]);
-    int nOld = len(original.lines);
-    int nNew = len(modified.lines);
-    VecResize(inlineStarts[0], nOld + 1);
-    VecResize(inlineStarts[1], nNew + 1);
+struct DiffInlinePair {
+    int original;
+    int modified;
+    Str oldText;
+    Str newText;
+};
+
+struct DiffInlineInput {
+    int lineCounts[2] = {};
+    Vec<DiffInlinePair> pairs;
+};
+
+static bool ReadDiffInlineInput(const DiffFile& file, int maxLineLength,
+                                Arena* snapshot, DiffInlineInput* out) {
+    out->lineCounts[0] = len(file.original.lines);
+    out->lineCounts[1] = len(file.modified.lines);
+    for (const DiffLinePair& pair : file.pairs) {
+        if (!pair.changed || pair.original < 0 || pair.modified < 0) continue;
+        Str oldText = file.original.lines[pair.original].text;
+        Str newText = file.modified.lines[pair.modified].text;
+        if (len(oldText) > maxLineLength || len(newText) > maxLineLength)
+            continue;
+        if (snapshot) {
+            int oldLength = len(oldText);
+            int newLength = len(newText);
+            oldText = StrDup(snapshot, oldText);
+            newText = StrDup(snapshot, newText);
+            if (len(oldText) != oldLength || len(newText) != newLength)
+                return false;
+        }
+        if (!VecAppend(out->pairs,
+                       {pair.original, pair.modified, oldText, newText}))
+            return false;
+    }
+    return true;
+}
+
+static void PrepareDiffInline(const DiffInlineInput& input, DiffInlineUnit unit,
+                              Vec<DiffRun> (&runs)[2], Vec<int> (&starts)[2]) {
+    for (int side = 0; side < 2; side++) {
+        VecClear(runs[side]);
+        VecClear(starts[side]);
+    }
+    if (!len(input.pairs)) return;
+    int nOld = input.lineCounts[0];
+    int nNew = input.lineCounts[1];
     // The first changed pair of each line, so runs go in line order without
     // looking through the pairs for every line.
     Vec<int> pairOfOld;
     Vec<int> pairOfNew;
-    VecResize(pairOfOld, nOld);
-    VecResize(pairOfNew, nNew);
+    if (!VecResize(pairOfOld, nOld) || !VecResize(pairOfNew, nNew)) return;
+    if (!VecResize(starts[0], nOld + 1) || !VecResize(starts[1], nNew + 1)) {
+        VecClear(starts[0]);
+        VecClear(starts[1]);
+        return;
+    }
     for (int i = 0; i < nOld; i++) pairOfOld[i] = -1;
     for (int i = 0; i < nNew; i++) pairOfNew[i] = -1;
-    for (int p = 0; p < len(pairs); p++) {
-        const DiffLinePair& pair = pairs[p];
-        if (!pair.changed || pair.original < 0 || pair.modified < 0) continue;
+    for (int p = 0; p < len(input.pairs); p++) {
+        const DiffInlinePair& pair = input.pairs[p];
         if (pairOfOld[pair.original] < 0) pairOfOld[pair.original] = p;
         if (pairOfNew[pair.modified] < 0) pairOfNew[pair.modified] = p;
     }
@@ -1882,24 +1927,20 @@ void DiffFile::PrepareInline(DiffInlineUnit unit, int maxLineLength) {
     for (int which = 0; which < 2; which++) {
         const Vec<int>& pairOf = which == 0 ? pairOfOld : pairOfNew;
         for (int line = 0; line < len(pairOf); line++) {
-            inlineStarts[which][line] = len(inlineRuns[which]);
+            starts[which][line] = len(runs[which]);
             if (pairOf[line] < 0) continue;
-            const DiffLinePair& pair = pairs[pairOf[line]];
-            Str oldText = original.lines[pair.original].text;
-            Str newText = modified.lines[pair.modified].text;
-            if (len(oldText) > maxLineLength || len(newText) > maxLineLength)
-                continue;
-            DiffChangedRuns(oldText, newText, unit, &perOld, &perNew);
-            const Vec<DiffRun>& runs = which == 0 ? perOld : perNew;
-            for (int i = 0; i < len(runs); i++)
-                VecAppend(inlineRuns[which], runs[i]);
+            const DiffInlinePair& pair = input.pairs[pairOf[line]];
+            DiffChangedRuns(pair.oldText, pair.newText, unit, &perOld, &perNew);
+            VecAppendVec(runs[which], which == 0 ? perOld : perNew);
         }
-        inlineStarts[which][len(pairOf)] = len(inlineRuns[which]);
+        starts[which][len(pairOf)] = len(runs[which]);
     }
-    VecReset(pairOfOld);
-    VecReset(pairOfNew);
-    VecReset(perOld);
-    VecReset(perNew);
+}
+
+void DiffFile::PrepareInline(DiffInlineUnit unit, int maxLineLength) {
+    DiffInlineInput input;
+    if (ReadDiffInlineInput(*this, maxLineLength, nullptr, &input))
+        PrepareDiffInline(input, unit, inlineRuns, inlineStarts);
 }
 
 int DiffFile::InlineCount(DiffSide side, int line) const {
@@ -2460,19 +2501,117 @@ DiffSyntaxStyle DiffState::SyntaxStyleAt(int file, DiffSide side, int line,
     return {};
 }
 
+struct DiffInlineJob {
+    DiffState* owner = nullptr; // Main thread only.
+    TaskId task = 0;
+    DiffInlineUnit unit = DiffInlineUnit::Word;
+    Arena* snapshot = ArenaNew();
+    DiffInlineInput input;
+    Vec<DiffRun> runs[2];
+    Vec<int> starts[2];
+    Mutex lifetime;
+    // One reference for the owner and one for the executor.
+    int refs = 2;
+    bool discarded = false;
+
+    ~DiffInlineJob() { ArenaDelete(snapshot); }
+};
+
+static void ReleaseDiffInlineJob(DiffInlineJob* job) {
+    job->lifetime.Lock();
+    bool last = --job->refs == 0;
+    job->lifetime.Unlock();
+    if (last) delete job;
+}
+
+static void CancelDiffInlineJob(DiffState* state) {
+    auto* job = state->inlineJob;
+    if (!job) return;
+    state->inlineJob = nullptr;
+    job->owner = nullptr;
+    ExecCancel(job->task);
+    ReleaseDiffInlineJob(job);
+}
+
+static void InvalidateDiffInline(DiffState* state) {
+    CancelDiffInlineJob(state);
+    state->inlinePreparedFiles = 0;
+    for (auto* file : state->files) {
+        for (int side = 0; side < 2; side++) {
+            VecClear(file->inlineRuns[side]);
+            VecClear(file->inlineStarts[side]);
+        }
+    }
+}
+
+static void DiffInlineWork(DiffInlineJob* job) {
+    PrepareDiffInline(job->input, job->unit, job->runs, job->starts);
+}
+
+static void DiffInlineDiscard(DiffInlineJob* job) {
+    job->lifetime.Lock();
+    job->discarded = true;
+    job->lifetime.Unlock();
+    ReleaseDiffInlineJob(job);
+}
+
+static void DiffInlineLanded(DiffInlineJob* job) {
+    if (auto* state = job->owner) {
+        auto* file = state->files[state->inlinePreparedFiles++];
+        for (int side = 0; side < 2; side++) {
+            std::swap(*VecNT(file->inlineRuns[side]), *VecNT(job->runs[side]));
+            std::swap(*VecNT(file->inlineStarts[side]),
+                      *VecNT(job->starts[side]));
+        }
+        state->inlineJob = nullptr;
+        ReleaseDiffInlineJob(job);
+        NotifyEntity(state->app, state->self.id, nullptr);
+    }
+    ReleaseDiffInlineJob(job);
+}
+
+void DiffState::EnsureInlinePresentation(bool background) {
+    if (!inlineOn) return;
+    if (inlineJob && background) {
+        inlineJob->lifetime.Lock();
+        bool discarded = inlineJob->discarded;
+        inlineJob->lifetime.Unlock();
+        if (!discarded) return;
+    }
+    CancelDiffInlineJob(this);
+    // Start one file at a time on render. Each completion repaints the
+    // landed file and lets that frame start the next one.
+    while (inlinePreparedFiles < len(files)) {
+        auto* file = files[inlinePreparedFiles];
+        if (background && self.IsValid() && ExecOnMainThread()) {
+            auto* job = new DiffInlineJob;
+            job->owner = this;
+            job->unit = inlineUnit;
+            if (ReadDiffInlineInput(*file, inlineMaxLineLength, job->snapshot,
+                                    &job->input)) {
+                if (!len(job->input.pairs)) {
+                    delete job;
+                    inlinePreparedFiles++;
+                    continue;
+                }
+                job->task = ExecSpawn(MkFunc0(&DiffInlineWork, job),
+                                      MkFunc0(&DiffInlineLanded, job),
+                                      MkFunc0(&DiffInlineDiscard, job));
+                if (job->task) {
+                    inlineJob = job;
+                    return;
+                }
+            }
+            delete job;
+        }
+        file->PrepareInline(inlineUnit, inlineMaxLineLength);
+        inlinePreparedFiles++;
+    }
+}
+
 void DiffState::EnsurePresentation() {
     EnsureSyntax();
-    if (!inlineOn) {
-        for (int i = 0; i < len(files); i++) {
-            VecClear(files[i]->inlineRuns[0]);
-            VecClear(files[i]->inlineRuns[1]);
-            VecClear(files[i]->inlineStarts[0]);
-            VecClear(files[i]->inlineStarts[1]);
-        }
-        return;
-    }
-    for (int i = 0; i < len(files); i++)
-        files[i]->PrepareInline(inlineUnit, inlineMaxLineLength);
+    EnsureInlinePresentation(false);
 }
 
 void DiffState::Bind(App* appIn, Entity<DiffState> handle) {
@@ -2496,6 +2635,7 @@ static int FileIx(const DiffState* state, Str path) {
 }
 
 void DiffState::SetFiles(DiffFile** next, int count, Ctx* cx) {
+    CancelDiffInlineJob(this);
     ClearDiffCodeRuns(this);
     for (int i = 0; i < len(files); i++) delete files[i];
     VecClear(files);
@@ -2521,8 +2661,9 @@ void DiffState::SetFiles(DiffFile** next, int count, Ctx* cx) {
     selecting = false;
     textSelection = {};
     syntaxPrepared = false;
+    InvalidateDiffInline(this);
     Rebuild(this, true);
-    EnsurePresentation();
+    if (cx && !cx->win) EnsurePresentation();
     if (cx) Notify(cx);
 }
 
@@ -2559,7 +2700,7 @@ DiffState* DiffState::WithMinCollapsedLines(int lines) {
 }
 
 DiffState* DiffState::WithInlineMaxLineLength(int length) {
-    inlineMaxLineLength = length < 0 ? 0 : length;
+    SetInlineMaxLineLength(length, nullptr);
     return this;
 }
 
@@ -2600,9 +2741,8 @@ DiffFile** DiffState::Files(int* count) const {
 }
 
 DiffState* DiffState::WithInlineUnit(bool on, DiffInlineUnit unit) {
-    inlineOn = on;
-    inlineUnit = unit;
-    EnsurePresentation();
+    if (!on) inlineUnit = unit;
+    SetInlineUnit(on, unit, nullptr);
     return this;
 }
 
@@ -2646,7 +2786,8 @@ void DiffState::SetInlineUnit(bool on, DiffInlineUnit unit, Ctx* cx) {
     if (inlineOn == on && (!on || inlineUnit == unit)) return;
     inlineOn = on;
     if (on) inlineUnit = unit;
-    EnsurePresentation();
+    InvalidateDiffInline(this);
+    if (cx && !cx->win) EnsureInlinePresentation(false);
     if (cx) Notify(cx);
 }
 
@@ -2654,7 +2795,8 @@ void DiffState::SetInlineMaxLineLength(int length, Ctx* cx) {
     if (length < 0) length = 0;
     if (inlineMaxLineLength == length) return;
     inlineMaxLineLength = length;
-    EnsurePresentation();
+    InvalidateDiffInline(this);
+    if (cx && !cx->win) EnsureInlinePresentation(false);
     if (cx) Notify(cx);
 }
 
@@ -5130,6 +5272,7 @@ El* Diff::IntoEl() {
     if (!st) return Div(a);
     ClearDiffCodeRuns(st);
     st->EnsureSyntax();
+    st->EnsureInlinePresentation(true);
     st->listScroll.itemsCount = len(st->rows);
     // A column so the caller's height (the story's 32rem) reaches the list.
     // The list is height 100%, which collapses when its parent is only as
