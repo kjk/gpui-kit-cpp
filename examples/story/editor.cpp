@@ -88,7 +88,26 @@ static const char* kDecorationText =
     "\n"
     "Fill: marks a tracked range.\n"
     "\n"
-    "Frame: outlines a tracked range.";
+    "Frame: outlines a tracked range.\n"
+    "\n"
+    "Added: a line background.\n"
+    "Removed: asked again on every frame.";
+
+static void StoryLineBackgrounds(const InputState* editor, Selection rows,
+                                 const App* app, Arena* a,
+                                 ArenaVec<LineDecoration>* out, void*) {
+    const Theme& theme = ThemeNow(app);
+    for (int row = rows.start; row < rows.end; row++) {
+        Str line = InputSliceLine(editor, row);
+        if (StrStartsWith(line, StrL("Added:"))) {
+            out->Append(a, LineDecoration::New(row).WithBackground(
+                               RgbaOpacity(theme.success, 0.12f)));
+        } else if (StrStartsWith(line, StrL("Removed:"))) {
+            out->Append(a, LineDecoration::New(row).WithBackground(
+                               RgbaOpacity(theme.danger, 0.12f)));
+        }
+    }
+}
 
 // EditorStory::FONT_FAMILIES and FONT_SIZES: what the Options menu offers.
 static const char* const kFontFamilies[] = {"Menlo", "Consolas", "Monaco"};
@@ -206,6 +225,7 @@ struct EditorStory {
     // from text styling. Both follow edits, including newlines inserted
     // before these ranges.
     RangeDecorationCollection rangeDecorations;
+    LineDecorationCollection lineDecorations;
     // create_gutter_decorations_collection and the overview ruler. Kept so
     // the handles outlive the frame that created them.
     GutterDecorationCollection gutterDecorations;
@@ -257,6 +277,8 @@ El* EditorStory::Render(EditorStory* self, Ctx* cx) {
         self->decorations.kind = InputKind::Editor;
         InputSetValue(&self->code, Str(kEditorCode));
         InputSetValue(&self->decorations, Str(kDecorationText));
+        self->lineDecorations = InputCreateLineDecorationsCollection(
+            &self->decorations, {&StoryLineBackgrounds});
         self->completions.kind = InputKind::Editor;
         self->completions.completionProvider = &StoryCompletions;
         self->completions.completionData = &self->completionHighlight;

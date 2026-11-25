@@ -265,6 +265,48 @@ struct RangeDecorationCollection {
 // within each style later collections and items paint over earlier ones.
 RangeDecorationCollection InputCreateRangeDecorationsCollection(
     InputState* s, const RangeDecoration* decorations, int n);
+
+// input/editor/line_decorations.rs. The row is a zero-based buffer line.
+struct LineDecoration {
+    int row = 0;
+    Rgba background = {};
+    bool hasBackground = false;
+
+    static LineDecoration New(int row) { return {row}; }
+    LineDecoration WithBackground(Rgba color) const {
+        return {row, color, true};
+    }
+};
+
+struct LineDecorationProvider {
+    // Append to out for the requested half-open row range. The caller owns
+    // data, which must live until the collection is cleared or disposed.
+    void (*query)(const InputState* input, Selection rows, const App* app,
+                  Arena* a, ArenaVec<LineDecoration>* out,
+                  void* data) = nullptr;
+    void* data = nullptr;
+};
+
+struct LineDecorationCollection {
+    RangeDecorationsState* state = nullptr;
+    uint64_t id = 0;
+
+    LineDecorationCollection() = default;
+    LineDecorationCollection(const LineDecorationCollection& other);
+    LineDecorationCollection& operator=(const LineDecorationCollection& other);
+    ~LineDecorationCollection();
+
+    void SetProvider(LineDecorationProvider provider, Ctx* cx = nullptr);
+    void Clear(Ctx* cx = nullptr);
+    void Dispose(Ctx* cx = nullptr);
+    bool HasProvider() const;
+};
+
+LineDecorationCollection InputCreateLineDecorationsCollection(
+    InputState* s, LineDecorationProvider provider, Ctx* cx = nullptr);
+bool InputHasLineDecorationProviders(const InputState* s);
+void InputLineDecorationsForRows(const InputState* s, Selection rows, Ctx* cx,
+                                 ArenaVec<LineDecoration>* out);
 // EditorState::create_decorations_collection: an independently owned
 // collection of text decorations, moved by every edit as the range
 // decorations are and drawn over the highlighter's runs. A textarea has

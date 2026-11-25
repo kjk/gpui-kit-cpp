@@ -271,6 +271,14 @@ int InputLastVisualRows(const InputState* s, Window* win,
 bool InputLastActiveLine(const InputState* s, const Window* win, Bounds* out);
 bool InputLastTextMask(const InputState* s, const Window* win, Bounds* out);
 
+struct LineDecorationBackground {
+    int row = 0;
+    Bounds bounds = {};
+    Rgba color = {};
+};
+int InputLastLineDecorationBackgrounds(const InputState* s, const Window* win,
+                                       LineDecorationBackground* out, int cap);
+
 // ─── soft wrap (display_map/text_wrapper.rs) ─────────────────────────────
 
 // TextWrapper::on_layout_changed and set_font: the rows every line wraps to

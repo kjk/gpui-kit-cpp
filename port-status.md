@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `59d2accb8d55555842071833ddec3c242a609cdd` (2026-11-24,
-text: Share a paragraph's cached highlights with its inline flow (#4093)).
-The parsed Markdown cache already shares run marks and links with the inline renderer. A regression test checks their identity across frames.
+Processed through `146eaf025d8bb4f0f20119b4d64c4917940bd9ad` (2026-11-24,
+editor: Add row backgrounds with line decorations (#4091)).
+Editors query per-row background providers for the visible rows and draw their bands behind the text and gutter.
 The current update target is
 `832cfdc0baef92855191dfdbbbcacd75f59d3df0`.
 
@@ -273,9 +273,9 @@ The current update target is
   `test_support.rs`). The C++ test platform reads the element tree
   directly and does not keep a paint-order text log
   (`src/gpui/test_app.h`).
-- **Gutter marks stay on document rows when ghost lines appear.** An
+- **Gutter marks and line backgrounds stay on document rows when ghost lines appear.** An
   inline completion that inserts rows under the caret does not push
-  gutter bars and boundary pills down with those rows (`input.cpp`).
+  gutter bars, boundary pills and line backgrounds down (`input.cpp`).
   Rust shifts the marks with the ghost text. The decorations story has
   no inline completion. Fold placeholders and fold backgrounds follow
   those same laid-out rows: Rust's `layout_folded_lines` moves rows

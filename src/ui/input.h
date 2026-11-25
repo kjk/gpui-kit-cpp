@@ -6,6 +6,7 @@
 #include "ui/button.h"
 #include "ui/icon.h"
 #include "base/input_tokens.h"
+#include "base/input_editor.h"
 
 namespace gpui {
 
@@ -20,6 +21,9 @@ struct Tree {};
 
 // input/mod.rs re-exports Base's caret policy.
 using CursorBlink = ::gpui::CursorBlink;
+using gpui::LineDecoration;
+using gpui::LineDecorationCollection;
+using gpui::LineDecorationProvider;
 
 // crates/ui/src/input/language_config.rs::init: text/json/python editing
 // defaults. Unknown languages keep LanguageConfig::Default().

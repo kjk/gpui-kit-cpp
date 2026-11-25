@@ -2853,12 +2853,66 @@ struct EditorUnderlay {
     bool lineNumbers = false;
     float textOriginOffset = 0;
     Bounds textMask = {};
+    El** lineBands = nullptr;
+    Selection bandRows = {};
+    ArenaVec<LineDecorationBackground> lineBackgrounds;
     // layout_folded_lines: one quad per folded line, painted under the text
     // and under the active-line wash. The bands are the lines themselves.
     El* foldBands[64] = {};
     int nFoldBands = 0;
     Rgba foldColor = {};
 };
+
+static void TrackLineDecorationBands(EditorUnderlay* u, Arena* a,
+                                     Selection rows) {
+    int count = rows.end - rows.start;
+    u->lineBands = (El**)Alloc(a, (int)sizeof(El*) * count);
+    if (u->lineBands) {
+        memset(u->lineBands, 0, sizeof(El*) * (size_t)count);
+        u->bandRows = rows;
+    }
+}
+
+static bool EditorLineBandVisible(const El* band, Bounds viewport) {
+    return band && band->y < viewport.Bottom() &&
+           band->Bounds().Bottom() > viewport.y;
+}
+
+static void PaintEditorLineBackgrounds(PaintCtx* ctx, EditorUnderlay* u,
+                                       Bounds viewport) {
+    if (!u->lineBands) {
+        return;
+    }
+    u->lineBackgrounds.Truncate(0);
+    Selection visible = u->bandRows;
+    while (visible.start < visible.end &&
+           !EditorLineBandVisible(
+               u->lineBands[visible.start - u->bandRows.start], viewport)) {
+        visible.start++;
+    }
+    while (visible.end > visible.start &&
+           !EditorLineBandVisible(
+               u->lineBands[visible.end - 1 - u->bandRows.start], viewport)) {
+        visible.end--;
+    }
+    ArenaVec<LineDecoration> decorations;
+    InputLineDecorationsForRows(u->state, visible, &u->cx, &decorations);
+    for (const auto& decoration : decorations) {
+        const El* band = u->lineBands[decoration.row - u->bandRows.start];
+        if (!decoration.hasBackground ||
+            !EditorLineBandVisible(band, viewport)) {
+            continue;
+        }
+        Bounds bounds = {viewport.x, band->y, viewport.w, band->h};
+        Rgba color = decoration.background;
+        if (u->state->disabled) {
+            color = RgbaOpacity(color, 0.5f);
+        }
+        u->lineBackgrounds.Append(u->cx.a, {decoration.row, bounds, color});
+        FillRound(ctx, bounds.x, bounds.y, bounds.w, bounds.h, 0,
+                  PaintFade(ctx, color));
+    }
+}
 
 // element.rs prepaint: wrap_width comes off the bounds layout has just given
 // the editor, and the lines are wrapped to it in the frame that lays them
@@ -2909,6 +2963,7 @@ static void PaintEditorUnderlay(PaintCtx* ctx, El* e, void* user) {
     left = ClampF(left, viewport.x, viewport.x + viewport.w);
     u->textMask = {left, viewport.y, viewport.x + viewport.w - left,
                    viewport.h};
+    PaintEditorLineBackgrounds(ctx, u, viewport);
     if (s->softWrap && e->w > 0 && e->w != s->wrap.measuredWidth &&
         ctx->window) {
         AppInvalidate(ctx->window);
@@ -2981,6 +3036,21 @@ bool InputLastTextMask(const InputState* s, const Window* win, Bounds* out) {
         *out = rows->underlay->textMask;
     }
     return true;
+}
+
+int InputLastLineDecorationBackgrounds(const InputState* s, const Window* win,
+                                       LineDecorationBackground* out, int cap) {
+    const auto* rows = LastPaintedRows(s, win);
+    if (!rows || !rows->underlay) {
+        return 0;
+    }
+    const auto& backgrounds = rows->underlay->lineBackgrounds;
+    int i = 0;
+    for (const auto& background : backgrounds) {
+        if (!out || i >= cap) break;
+        out[i++] = background;
+    }
+    return len(backgrounds);
 }
 
 bool InputLastActiveLine(const InputState* s, const Window* win, Bounds* out) {
@@ -3228,6 +3298,19 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         col->customPaint = [](PaintCtx*, El* element, void*) {
             element->input->textOriginOffset = 0;
         };
+        if (InputHasLineDecorationProviders(state)) {
+            auto* underlay = ArenaNew<EditorUnderlay>(a);
+            if (underlay) {
+                underlay->state = state;
+                underlay->cx = *cx;
+                TrackLineDecorationBands(underlay, a, {0, 1});
+                if (underlay->lineBands) {
+                    underlay->lineBands[0] = col;
+                    col->customPaint = &PaintEditorUnderlay;
+                    col->customUser = underlay;
+                }
+            }
+        }
         if (caret) {
             col->Caret(0, style.caret);
         }
@@ -3740,6 +3823,9 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         underlay->projected = projected;
         underlay->lineNumbers = lineNumbers;
         underlay->textOriginOffset = textOriginOffset;
+        if (InputHasLineDecorationProviders(state)) {
+            TrackLineDecorationBands(underlay, a, {firstRow, endRow});
+        }
         col->customPaint = &PaintEditorUnderlay;
         col->customUser = underlay;
         if (state->softWrap && !state->wrap.buildingRows) {
@@ -4147,6 +4233,9 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                          ->PadL(textOriginOffset)
                          ->Child(el);
             }
+            if (underlay && underlay->lineBands) {
+                underlay->lineBands[row - firstRow] = el;
+            }
             if (underlay && foldedLine && state->hasFoldBackground &&
                 underlay->nFoldBands < (int)(sizeof(underlay->foldBands) /
                                              sizeof(underlay->foldBands[0]))) {
@@ -4221,6 +4310,9 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             el->Flex1();
         }
         band->Child(el);
+        if (underlay && underlay->lineBands) {
+            underlay->lineBands[row - firstRow] = band;
+        }
         col->Child(band);
     }
     if (rangePaint && painted) {

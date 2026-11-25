@@ -1269,11 +1269,18 @@ int RangeDecorationsNormalize(Str text, const RangeDecoration* in, int n,
 
 // The editor end of the collection handles: reference-counted so a handle
 // outliving its editor is a harmless no-op, as Rust's weak entity makes it.
+struct LineDecorationEntry {
+    uint64_t id = 0;
+    LineDecorationProvider provider;
+};
+
 struct RangeDecorationsState {
     int refs = 1;
     bool ownerAlive = true;
     InputState* input = nullptr;
     RangeDecorationCollections collections;
+    Vec<LineDecorationEntry> lineProviders;
+    uint64_t nextLineId = 0;
 };
 
 static void RangeDecorationsRetain(RangeDecorationsState* state) {
@@ -1366,23 +1373,134 @@ bool RangeDecorationCollection::IsValid() const {
     return live && live->Get(id);
 }
 
+static RangeDecorationsState* EnsureEditorDecorations(InputState* s) {
+    if (!s->rangeDecorations) {
+        s->rangeDecorations = new RangeDecorationsState();
+        s->rangeDecorations->input = s;
+    }
+    return s->rangeDecorations;
+}
+
 RangeDecorationCollection InputCreateRangeDecorationsCollection(
     InputState* s, const RangeDecoration* decorations, int n) {
     RangeDecorationCollection result;
     if (!s) {
         return result;
     }
-    if (!s->rangeDecorations) {
-        s->rangeDecorations = new RangeDecorationsState();
-        s->rangeDecorations->input = s;
-    }
     Vec<RangeDecoration> normalized;
     RangeDecorationsNormalize(InputValue(s), decorations, n, &normalized);
-    result.state = s->rangeDecorations;
-    result.id = s->rangeDecorations->collections
+    result.state = EnsureEditorDecorations(s);
+    result.id = result.state->collections
                     .Create(normalized.els, len(normalized));
     RangeDecorationsRetain(result.state);
     return result;
+}
+
+LineDecorationCollection::LineDecorationCollection(
+    const LineDecorationCollection& other)
+    : state(other.state), id(other.id) {
+    RangeDecorationsRetain(state);
+}
+
+LineDecorationCollection& LineDecorationCollection::operator=(
+    const LineDecorationCollection& other) {
+    RangeDecorationsRetain(other.state);
+    RangeDecorationsRelease(state);
+    state = other.state;
+    id = other.id;
+    return *this;
+}
+
+LineDecorationCollection::~LineDecorationCollection() {
+    RangeDecorationsRelease(state);
+}
+
+static int LineProviderIndex(const RangeDecorationsState* state, uint64_t id) {
+    if (state && state->ownerAlive) {
+        for (int i = 0; i < len(state->lineProviders); i++) {
+            if (state->lineProviders[i].id == id) {
+                return i;
+            }
+        }
+    }
+    return -1;
+}
+
+void LineDecorationCollection::SetProvider(LineDecorationProvider provider,
+                                           Ctx* cx) {
+    int index = LineProviderIndex(state, id);
+    if (index >= 0) {
+        state->lineProviders[index].provider = provider;
+        if (cx) Notify(cx);
+    }
+}
+
+void LineDecorationCollection::Clear(Ctx* cx) {
+    SetProvider({}, cx);
+}
+
+void LineDecorationCollection::Dispose(Ctx* cx) {
+    int index = LineProviderIndex(state, id);
+    if (index >= 0) {
+        VecRemoveAt(state->lineProviders, index);
+        if (cx) Notify(cx);
+    }
+}
+
+bool LineDecorationCollection::HasProvider() const {
+    int index = LineProviderIndex(state, id);
+    return index >= 0 && state->lineProviders[index].provider.query;
+}
+
+LineDecorationCollection InputCreateLineDecorationsCollection(
+    InputState* s, LineDecorationProvider provider, Ctx* cx) {
+    LineDecorationCollection result;
+    if (!s || s->kind != InputKind::Editor) {
+        return result;
+    }
+    RangeDecorationsState* state = EnsureEditorDecorations(s);
+    LineDecorationEntry entry = {++state->nextLineId, provider};
+    if (VecAppend(state->lineProviders, entry)) {
+        result.state = state;
+        result.id = entry.id;
+        RangeDecorationsRetain(state);
+        if (cx) Notify(cx);
+    }
+    return result;
+}
+
+bool InputHasLineDecorationProviders(const InputState* s) {
+    if (s && s->rangeDecorations) {
+        for (const auto& entry : s->rangeDecorations->lineProviders) {
+            if (entry.provider.query) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+void InputLineDecorationsForRows(const InputState* s, Selection rows, Ctx* cx,
+                                 ArenaVec<LineDecoration>* out) {
+    if (!s || !s->rangeDecorations || rows.start >= rows.end) {
+        return;
+    }
+    for (const auto& entry : s->rangeDecorations->lineProviders) {
+        const auto& provider = entry.provider;
+        if (!provider.query) {
+            continue;
+        }
+        int first = len(*out);
+        provider.query(s, rows, cx->app, cx->a, out, provider.data);
+        int write = first;
+        for (int i = first; i < len(*out); i++) {
+            const auto& decoration = (*out)[i];
+            if (decoration.row >= rows.start && decoration.row < rows.end) {
+                (*out)[write++] = decoration;
+            }
+        }
+        out->Truncate(write);
+    }
 }
 
 int InputRangeDecorations(const InputState* s, const Selection* ranges,
@@ -1424,6 +1542,7 @@ void InputDecorationsFree(InputState* s) {
         while (len(state->collections.entries) > 0) {
             state->collections.Remove(state->collections.entries[0]->id);
         }
+        VecReset(state->lineProviders);
         RangeDecorationsRelease(state);
         s->rangeDecorations = nullptr;
     }

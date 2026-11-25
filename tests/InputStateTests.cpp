@@ -11711,6 +11711,113 @@ static Str RepeatedText(Arena* a, const char* unit, int times) {
     return sb.TakeStr();
 }
 
+struct TestLineDecorations {
+    int every = 1;
+    Rgba color = {};
+    int calls = 0;
+    Selection asked = {};
+
+    static void Query(const InputState*, Selection rows, const App*, Arena* a,
+                      ArenaVec<LineDecoration>* out, void* data) {
+        auto* self = (TestLineDecorations*)data;
+        self->calls++;
+        self->asked = rows;
+        for (int row = rows.start - 1; row <= rows.end; row++) {
+            if (row % self->every == 0) {
+                out->Append(a, LineDecoration::New(row)
+                                   .WithBackground(self->color));
+            }
+        }
+    }
+
+    LineDecorationProvider Provider() { return {&Query, this}; }
+};
+
+// line_decorations.rs: the builder and the cloned collection lifetime.
+static void LineDecorationCollectionsRoundTripInCreationOrder() {
+    Rgba red = Rgb(255, 0, 0);
+    Rgba green = Rgb(0, 255, 0);
+    LineDecoration decoration = LineDecoration::New(7);
+    utassert(decoration.row == 7 && !decoration.hasBackground);
+    decoration = decoration.WithBackground(green);
+    utassert(decoration.row == 7 && decoration.hasBackground &&
+             decoration.background.g == 255);
+
+    TestLineDecorations even = {2, red};
+    TestLineDecorations thirds = {3, green};
+    LineDecorationCollection first;
+    LineDecorationCollection second;
+    {
+        InputState editor;
+        MakeCodeEditor(&editor);
+        first = InputCreateLineDecorationsCollection(&editor, even.Provider());
+        second =
+            InputCreateLineDecorationsCollection(&editor, thirds.Provider());
+        utassert(first.HasProvider() && second.HasProvider());
+        Arena* a = ArenaNew();
+        Ctx cx = {nullptr, nullptr, a, {}};
+        ArenaVec<LineDecoration> output;
+        InputLineDecorationsForRows(&editor, {1, 7}, &cx, &output);
+        const int expected[] = {2, 4, 6, 3, 6};
+        utassert(len(output) == 5);
+        for (int i = 0; i < len(output) && i < 5; i++) {
+            utassert(output[i].row == expected[i]);
+            utassert(i < 3 ? output[i].background.r == 255
+                           : output[i].background.g == 255);
+        }
+        output.Truncate(0);
+        InputLineDecorationsForRows(&editor, {3, 3}, &cx, &output);
+        utassert(len(output) == 0 && even.calls == 1 && thirds.calls == 1);
+        LineDecorationCollection copy = first;
+        first.Clear();
+        utassert(!copy.HasProvider() && second.HasProvider());
+        copy.SetProvider(even.Provider());
+        utassert(first.HasProvider());
+        copy.Dispose();
+        first.SetProvider(even.Provider());
+        utassert(!first.HasProvider() && second.HasProvider());
+        ArenaDelete(a);
+    }
+    second.Clear();
+    second.SetProvider(thirds.Provider());
+    second.Dispose();
+    utassert(!second.HasProvider());
+}
+
+// element.rs line_decorations_are_asked_for_the_visible_rows_on_every_frame,
+// line_backgrounds_cover_the_bounds_of_their_rows, and
+// line_backgrounds_are_painted_across_their_rows.
+static void EditorLineBackgroundsCoverTheVisibleRows() {
+    Arena* a = ArenaNew();
+    Str source =
+        RepeatedText(a, "word word word word word word word word\n", 100);
+    TestLineDecorations provider = {1, Rgb(255, 0, 0)};
+    DecorationEditor d = DecorationEditorOpen(source.s, true);
+    ArenaDelete(a);
+    auto collection =
+        InputCreateLineDecorationsCollection(d.editor, provider.Provider());
+    TestDraw(d.win);
+    utassert(collection.HasProvider());
+    utassert(provider.calls > 0 && provider.asked.start == 0 &&
+             provider.asked.end < 100);
+    LineDecorationBackground backgrounds[16];
+    int count =
+        InputLastLineDecorationBackgrounds(d.editor, d.win, backgrounds, 16);
+    utassert(count > 0);
+    if (count > 0) {
+        const auto& first = backgrounds[0];
+        utassert(first.row == 0 && first.color.r == 255);
+        utassert(first.bounds.h > d.editor->lastLineH);
+        utassert(first.bounds.w >= d.editor->viewW);
+    }
+    int calls = provider.calls;
+    d.editor->scrollY = d.editor->lastLineH * 80;
+    TestDraw(d.win);
+    TestDraw(d.win);
+    utassert(provider.calls > calls && provider.asked.start > 0);
+    TestAppFree(d.app);
+}
+
 // element.rs the_text_is_clipped_to_its_side_of_the_gutter.
 static void EditorTextIsClippedToItsSideOfTheGutter() {
     Arena* a = ArenaNew();
@@ -12695,6 +12802,8 @@ static void RunElementWindowTests() {
     DefaultDecorationCollectionsAddressNoEditor();
     GutterDecorationsReserveAStripAndMarkLinesAndBoundaries();
     EditorTextOriginOffsetFollowsTheLaidOutGutter();
+    LineDecorationCollectionsRoundTripInCreationOrder();
+    EditorLineBackgroundsCoverTheVisibleRows();
     EditorTextIsClippedToItsSideOfTheGutter();
     GutterDecorationsStartingInAFoldMarkItsRowAndTheRest();
     GutterDecorationsOnlyLayOutTheVisibleRows();

@@ -17,7 +17,7 @@ type Entry = {
 };
 
 const root = resolve(import.meta.dir, "..");
-const pinnedGpuiComponent = "59d2accb8d55555842071833ddec3c242a609cdd";
+const pinnedGpuiComponent = "146eaf025d8bb4f0f20119b4d64c4917940bd9ad";
 
 const baseModules = `
 accordion actions a11y_disabled alert_dialog animation async_util auto_scroll avatar button
@@ -47,13 +47,14 @@ table tag text theme toolbar touch_selection tooltip tree
   .trim()
   .split(/\s+/);
 
-const partialBase = new Set<string>();
+const partialBase = new Set(["input"]);
 const adapterBase = new Set(["component_traits", "element_ext", "event", "measure", "observe", "test_support", "text"]);
 const partialUi = new Set<string>();
 const adapterUi = new Set(["component_traits", "element_ext", "highlighter", "styled"]);
 
 const partialReasons: Record<string, string> = {
   "base/global_state": "the App global carries selection/popover state; entity-stack coverage remains partial",
+  "base/input": "multiline inline completions overlay later rows, so painted row bounds do not include their height",
 };
 
 const adapterReasons: Record<string, string> = {
@@ -670,13 +671,13 @@ function declarationSourceText(targets: string[]): string {
 // hash and forces this ledger to be reviewed with the pin update.
 const surfacePins: Record<CrateName, Record<SurfaceKind, { count: number; sha256: string }>> = {
   base: {
-    declaration: { count: 620, sha256: "12fbc9cd9334aad10922b165b4caf22f92c88cc3038b87a323f1f38b4890c20b" },
-    "pub-use": { count: 177, sha256: "93006409c8062e8866a61975ac3bc1de3c13f6c9a1223e406d1b7b6e7b9ceffe" },
-    test: { count: 1814, sha256: "1ed2ccccab3b7425507b0c9cc5bbb65cfcabb315f07fb5bb731dcc9051009cbf" },
+    declaration: { count: 623, sha256: "d0caa59aeb73bda1b904b77c5635e395b8049bb571f903579a8b8df9fa2e30f0" },
+    "pub-use": { count: 178, sha256: "96d9e360d0441504064e541d2469b3d643855273e2896a8c0c0d0a9db0422d0f" },
+    test: { count: 1823, sha256: "05652ada5b6e685dca1135257e2860fea10cabd3e296ac307070f022d4dcbb1c" },
   },
   ui: {
     declaration: { count: 481, sha256: "70ae72af9fecc28c22d944834c963567da564547c14acf17ba267fdd58ff0a0d" },
-    "pub-use": { count: 173, sha256: "0599d1de882df7fa84c1b26d83bff02ac8ffc3b704d132610c865368d328da21" },
+    "pub-use": { count: 173, sha256: "e2a970ea6cd9c0e301862136f0b69840c985809f917da1387e28381404e87d73" },
     test: { count: 909, sha256: "6ab34ce0f1409b52291b361dedfaf42edd6eacd2edb7ebb315e3704911a50459" },
   },
 };
