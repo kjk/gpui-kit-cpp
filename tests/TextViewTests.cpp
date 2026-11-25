@@ -6767,6 +6767,28 @@ static void WrappedLinksUseSharedTextGeometry() {
     TswClose(&v);
 }
 
+static void InlineObjectsShareRowsWithShapedProse() {
+    TswView v = TswOpen(
+        "Several words before ![icon](assets/icons/heart.svg)"
+        " and several after",
+        TswContainer::Window);
+    TestDraw(v.win);
+    const TextHit* before = HitContaining(v.win, "Several words before");
+    const TextHit* after = HitContaining(v.win, "and several after");
+    utassert(before && after);
+    if (before && after) {
+        utassertnear(before->bounds.y, after->bounds.y);
+        utassert(after->bounds.x > before->bounds.Right());
+        char output[64];
+        int copied =
+            CopyTextHitsIn(&v.win->paint, before->docOff + 8,
+                           before->docOff + 20, before->scope, output,
+                           (int)sizeof(output), SelectionFormat::Source);
+        utassert(StrEq(Str(output, copied), "words before"));
+    }
+    TswClose(&v);
+}
+
 struct TswMention {
     const char* label = nullptr;
 };
@@ -8848,6 +8870,7 @@ static void TestTextStateWindow() {
     SelectAllInSourceFormatReturnsSource();
     ShapedTextCopiesAcrossMarkdownStyleBoundaries();
     WrappedLinksUseSharedTextGeometry();
+    InlineObjectsShareRowsWithShapedProse();
     ParserPluginsKeepTheirConfigurationAcrossAsyncUpdates();
     SelectAllFollowsAnAppendedParse();
     ParserRevisionReparsesSameNameInlineConfiguration();

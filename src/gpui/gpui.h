@@ -2860,12 +2860,27 @@ struct AccessibilityDocumentSource {
     bool (*partRange)(void* data, int part, int* start, int* end) = nullptr;
 };
 
+// A hard text span interrupted by inline objects shares one sequence of
+// advances. Its fragments may land on separate rows or alongside an object.
+struct InlineTextAdvances {
+    Str text;
+    float* positions = nullptr;
+    bool prepared = false;
+};
+
+struct InlineTextFragment {
+    InlineTextAdvances* advances;
+    int start;
+    int end;
+};
+
 struct ElLifecycle {
     void (*prepareStyle)(PaintCtx* ctx, El* e, Rgba inherited,
                          void* user) = nullptr;
     void (*afterPaint)(PaintCtx* ctx, El* e, void* user) = nullptr;
     void* user = nullptr;
     const LinkTooltipTarget* linkTooltip = nullptr;
+    const InlineTextFragment* inlineTextFragment = nullptr;
     // on_pinch: rare, so here rather than in El
     Listener onPinch;
     // El::OnGesture, the same way

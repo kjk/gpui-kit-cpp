@@ -4740,6 +4740,47 @@ static void ResolveImageReplacement(PaintCtx* ctx, El* e) {
 // The style refinement, the inspector's live edit, the inherited font and the
 // inherited color, resolved once per element before anything is measured.
 // The old engine did this on the way down its own recursion.
+static void PrepareInlineTextFragment(PaintCtx* ctx, El* element) {
+    if (!element->lifecycle || !element->lifecycle->inlineTextFragment ||
+        element->style.wrap || element->style.truncate)
+        return;
+    const InlineTextFragment& fragment = *element->lifecycle
+                                              ->inlineTextFragment;
+    InlineTextAdvances& advances = *fragment.advances;
+    if (!advances.prepared) {
+        advances.prepared = true;
+        TextLayout* layout = TextMeasLayout(
+            ctx, advances.text, element->laidFont, 0, false,
+            ElTextWeight(element), element->style.lineHeight, nullptr);
+        if (!layout) return;
+        Vec<TextGlyphBox> glyphs;
+        TextGlyphBoxes(layout, advances.text, &glyphs);
+        float width = TextLayoutSize(layout).w;
+        TextLayoutRelease(layout);
+        // Leave bidirectional runs to their existing shaping path. A
+        // logical source boundary can have distinct visual positions there.
+        float previous = 0.f;
+        for (const TextGlyphBox& glyph : glyphs) {
+            if (glyph.left < previous) return;
+            previous = glyph.left;
+        }
+        auto* positions = (float*)Alloc(
+            element->arena, (len(advances.text) + 1) * (int)sizeof(float));
+        if (!positions) return;
+        for (int i = 0; i <= len(advances.text); i++) positions[i] = -1.f;
+        positions[0] = 0.f;
+        for (const TextGlyphBox& glyph : glyphs)
+            positions[glyph.lo] = glyph.left;
+        positions[len(advances.text)] = width;
+        advances.positions = positions;
+    }
+    if (advances.positions) {
+        float start = advances.positions[fragment.start];
+        float end = advances.positions[fragment.end];
+        if (start >= 0 && end > start) element->style.width = end - start;
+    }
+}
+
 static void PrepareEl(PaintCtx* ctx, El* e, float inheritFont, Rgba inheritFg,
                       uint64_t path, bool groups) {
     // The element's own refinement first — a semantic state, which is meant
@@ -4969,6 +5010,7 @@ static void PrepareEl(PaintCtx* ctx, El* e, float inheritFont, Rgba inheritFg,
         }
     }
     e->laidFont = font;
+    PrepareInlineTextFragment(ctx, e);
     if (e->kind == ElKind::Icon && e->style.width == kAuto &&
         e->style.height == kAuto) {
         // Icon::render asks the inherited text style for its pixel size and

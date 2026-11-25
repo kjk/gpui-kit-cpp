@@ -4696,6 +4696,45 @@ static void PaintShapedTextLinks(PaintCtx* paint, El* element, void* data) {
     }
 }
 
+static const InlineTextFragment* InlineFragment(const El* element) {
+    return element && element->lifecycle
+               ? element->lifecycle->inlineTextFragment
+               : nullptr;
+}
+
+// The flex pass used the shaped advances to place words and atomic objects.
+// Paint each contiguous visual text span as one run, keeping the first
+// fragment's source offset so hit-testing and source copy see the same bytes.
+static void ShapeInlineObjectRows(PaintCtx*, El* row, void*) {
+    for (El* first = row->first; first; first = first->next) {
+        const InlineTextFragment* start = InlineFragment(first);
+        if (!start || !start->advances->positions ||
+            first->style.width == kAuto) {
+            continue;
+        }
+        El* last = first;
+        int end = start->end;
+        while (El* next = last->next) {
+            const InlineTextFragment* part = InlineFragment(next);
+            if (!part || part->advances != start->advances ||
+                part->start != end || next->y != first->y ||
+                next->style.width == kAuto ||
+                std::abs(next->x - last->Bounds().Right()) > 0.01f)
+                break;
+            last = next;
+            end = part->end;
+        }
+        if (last == first) continue;
+        first->text =
+            Str(start->advances->text.s + start->start, end - start->start);
+        first->w = last->Bounds().Right() - first->x;
+        first->laidMaxW = first->w;
+        first->laidLayout = nullptr;
+        first->next = last->next;
+        if (row->last == last) row->last = first;
+    }
+}
+
 El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
                      uint8_t align) {
     // An editor leaf is laid out even when empty, so the editor gets a
@@ -4858,8 +4897,10 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
         }
     };
     int wordCap = 1;
+    bool hasObject = false;
     StrBuilder flowText(a);
     for (MdRun* r = n->runFirst; r; r = r->next) {
+        hasObject |= r->hasCustom || len(r->imgSrc) > 0;
         flowText
             .Append((r->hasCustom || len(r->imgSrc) > 0) ? StrL("\xEF\xBF\xBC")
                                                          : r->text);
@@ -4892,6 +4933,10 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
     int nextRunOffset = 0;
     int revealOffset = 0;
     bool hasReveal = RevealIn(n, &revealOffset);
+    bool shapeAroundObjects = hasObject && !n->hasEditorKey && !hasReveal &&
+                              !nStreamFades && !leafRangeCount;
+    InlineTextAdvances* advances = nullptr;
+    if (shapeAroundObjects) row->customPaint = &ShapeInlineObjectRows;
     El* lastWord = nullptr;
     int lastWordLo = 0;
     El* pending = nullptr;
@@ -4930,6 +4975,12 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             lastWordLo = runOffset + wordStart;
         }
         ApplyTextForeground(a, w, w->text, wordLeaf, ranges, nRanges);
+        if (advances && !shapeLine && !w->nWashes && !w->nSpans) {
+            if (!w->lifecycle) w->lifecycle = ArenaNew<ElLifecycle>(a);
+            auto* fragment = ArenaNew<InlineTextFragment>(a);
+            *fragment = {advances, wordStart, wordStart + wordLen};
+            w->lifecycle->inlineTextFragment = fragment;
+        }
         reportPiece(w, wordLeaf, wordLeaf + wordLen, false);
         while (hasBreak && nextBreak.offset < wordLeaf) {
             hasBreak = breaks.Next(&nextBreak);
@@ -4951,6 +5002,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
     };
     for (MdRun* r = n->runFirst; r; r = r->next) {
         flush();
+        advances = nullptr;
         marks = r->marks;
         href = (marks & MdLink) ? r->href : Str{};
         if ((marks & MdLink) && linkHook) {
@@ -5071,6 +5123,12 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             continue;
         }
         wordRun = r;
+        if (shapeAroundObjects && marks == 0 &&
+            StrFind(r->text, StrL(" ")) >= 0 &&
+            StrFind(r->text, StrL("\n")) < 0) {
+            advances = ArenaNew<InlineTextAdvances>(a);
+            advances->text = r->text;
+        }
         int hanging = 0;
         if (pending && len(pending->text) > 0 &&
             pending->text.s[len(pending->text) - 1] != ' ') {
@@ -5084,6 +5142,8 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
                 SrcBreak();
                 col->Child(row);
                 row = AlignRow(Div(a)->FlexRow()->FlexWrap(), align);
+                if (shapeAroundObjects)
+                    row->customPaint = &ShapeInlineObjectRows;
                 continue;
             }
             if (wordLen == 0) {

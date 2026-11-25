@@ -29,11 +29,11 @@ The current update target is
   announcement delivery is implemented by the Windows, macOS, Linux and web
   hosts.
 
-- **Inline objects use element widths.** Paragraphs with a link or a style
-  change within a word can share a single text layout and retain their
-  Markdown copy boundaries. Paragraphs with inline objects still lay out
-  separate elements. Unicode no-break boundaries keep adjoining fragments
-  together, and trailing spaces still contribute to element width
+- **Inline objects are atomic.** A paragraph can shape its links and retain
+  Markdown copy boundaries in one layout. Around inline objects, plain
+  text uses shaped advances through the wrap pass and contiguous text on
+  each row paints together. Object paragraphs with editor decorations, a
+  streaming fade or bidirectional text still use fragment boxes
   (`src/base/text.cpp`).
 
 - **Windows additionally handles touch-screen pinch.** DirectManipulation
