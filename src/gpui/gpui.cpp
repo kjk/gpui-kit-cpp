@@ -8258,6 +8258,8 @@ static void PaintCaret(PaintCtx* ctx, El* e, float font) {
 
 void PaintEl(PaintCtx* ctx, El* e) {
     VecClear(ctx->deferredPaint);
+    VecClear(ctx->nativeSurfacePaints);
+    VecClear(ctx->nativeOverlayBounds);
     PaintElNode(ctx, e, true);
     auto& overlays = ctx->deferredPaint;
     // Paint and hit records follow the same layer/z order with scene on or
@@ -8292,6 +8294,15 @@ void PaintEl(PaintCtx* ctx, El* e) {
         PaintElNode(ctx, overlay, false);
         scene::ContextPop(ctx, parent);
     }
+    for (const auto& surface : ctx->nativeSurfacePaints) {
+        const int count = len(ctx->nativeOverlayBounds) - surface.firstOverlay;
+        const Bounds* boxes =
+            count > 0 ? ctx->nativeOverlayBounds.els + surface.firstOverlay
+                      : nullptr;
+        surface.finish(surface.user, boxes, count);
+    }
+    VecClear(ctx->nativeSurfacePaints);
+    VecClear(ctx->nativeOverlayBounds);
     VecClear(overlays);
     ctx->dismissScope = nullptr;
     ctx->selectionParagraph = nullptr;
@@ -8654,6 +8665,18 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     bool better = !ctx->pickHit || tier > ctx->pickTier ||
                   (tier == ctx->pickTier && ctx->paintDepth >= ctx->pick.depth);
     Bounds maskedBounds = HitMaskedBounds(ctx, e->Bounds());
+    const Background& background = e->style.bg;
+    bool paintsBackground =
+        e->style.hasBg &&
+        (background.gradient ? background.from.color.a || background.to.color.a
+                             : background.color.a);
+    if (ctx->paintLayer > kPaintLayerTree && len(ctx->nativeSurfacePaints) &&
+        maskedBounds.w > 0.f && maskedBounds.h > 0.f &&
+        (e->stopMouseDown ||
+         (ctx->opacity > 0.f &&
+          (paintsBackground || e->kind != ElKind::Div || e->customPaint)))) {
+        VecAppend(ctx->nativeOverlayBounds, maskedBounds);
+    }
     if (ctx->picking && tier > 0 && better && maskedBounds.w > 0 &&
         maskedBounds.h > 0 &&
         maskedBounds.Contains({ctx->mouseX, ctx->mouseY})) {

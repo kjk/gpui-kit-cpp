@@ -32,6 +32,7 @@
 #include "wry/wry.h"
 
 #import <Cocoa/Cocoa.h>
+#import <QuartzCore/QuartzCore.h>
 // WebKit.h also imports WebKitLegacy, whose Objective-C JSContext and JSValue
 // classes collide with QuickJS's C API when the dist build puts every source
 // in one translation unit. Wry uses only the modern WK API, so include that
@@ -66,6 +67,20 @@
 @class GpuiWryTitleObserver;
 @class GpuiWrySchemeHandler;
 @class GpuiWryWebView;
+@interface GpuiWryClipView : NSView
+@property(nonatomic, strong) CAShapeLayer* visibleMask;
+@end
+
+@implementation GpuiWryClipView
+- (NSView*)hitTest:(NSPoint)point {
+    if (self.visibleMask) {
+        NSPoint local = [self convertPoint:point fromView:self.superview];
+        if (!CGPathContainsPoint(self.visibleMask.path, nullptr, local, false))
+            return nil;
+    }
+    return [super hitTest:point];
+}
+@end
 @interface GpuiWryCookieResult : NSObject
 @property(nonatomic, assign) BOOL done;
 @property(nonatomic, strong) NSArray<NSHTTPCookie*>* cookies;
@@ -97,7 +112,7 @@ struct WebView : WebViewHandlers {
     WKWebView* webview = nil;
     WKUserContentController* manager = nil;
     NSView* parentView = nil;
-    NSView* clipView = nil;
+    GpuiWryClipView* clipView = nil;
     bool isChild = false;
     bool visible = true;
 
@@ -1191,7 +1206,7 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs,
     }
     if (asChild) {
         NSRect documentFrame = wv->webview.frame;
-        wv->clipView = [[NSView alloc] initWithFrame:documentFrame];
+        wv->clipView = [[GpuiWryClipView alloc] initWithFrame:documentFrame];
         wv->clipView.clipsToBounds = YES;
         wv->clipView.hidden = !attrs->visible;
         wv->clipView.autoresizingMask = NSViewMinYMargin;
@@ -1451,6 +1466,38 @@ bool WebViewSetClippedBounds(WebView* wv, Rect bounds, Rect visible) {
     wv->clipView
         .frame = {WindowPosition(parent, vx, vy, vh), NSMakeSize(vw, vh)};
     wv->webview.frame = [wv->clipView convertRect:frame fromView:parent];
+    return true;
+}
+
+bool WebViewSetVisibleRegion(WebView* wv, const Rect* pieces, int count) {
+    if (!wv || !wv->clipView) return false;
+    GpuiWryClipView* view = wv->clipView;
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    if (!pieces) {
+        view.layer.mask = nil;
+        view.visibleMask = nil;
+    } else {
+        view.wantsLayer = YES;
+        CAShapeLayer* mask = view.visibleMask ?: [CAShapeLayer layer];
+        CGMutablePathRef path = CGPathCreateMutable();
+        double scale = ScaleFactor(view);
+        for (int i = 0; i < count; i++) {
+            const Rect& part = pieces[i];
+            double x = ToLogical(part.position.x, part.position.logical, scale);
+            double y = ToLogical(part.position.y, part.position.logical, scale);
+            double w = ToLogical(part.size.width, part.size.logical, scale);
+            double h = ToLogical(part.size.height, part.size.logical, scale);
+            CGPathAddRect(path, nullptr,
+                          CGRectMake(x, NSHeight(view.bounds) - y - h, w, h));
+        }
+        mask.frame = view.layer.bounds;
+        mask.path = path;
+        CGPathRelease(path);
+        view.visibleMask = mask;
+        view.layer.mask = mask;
+    }
+    [CATransaction commit];
     return true;
 }
 

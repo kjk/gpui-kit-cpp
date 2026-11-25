@@ -514,6 +514,9 @@ bool WebViewSetBounds(WebView* webview, Rect bounds);
 // Both rectangles are relative to the parent. Clip the child without
 // changing the web page's viewport size or local coordinates.
 bool WebViewSetClippedBounds(WebView* webview, Rect document, Rect visible);
+// Expose the union of the visible pieces in the clip container's local
+// logical coordinates. A null array restores the full clip rectangle.
+bool WebViewSetVisibleRegion(WebView* webview, const Rect* pieces, int count);
 #else
 #define GPUI_WRY_CLIPPED_CHILD 0
 #endif

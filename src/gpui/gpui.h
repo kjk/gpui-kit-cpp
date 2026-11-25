@@ -4362,6 +4362,13 @@ struct PaintCtx {
         const El* paragraph;
     };
     Vec<DeferredPaint> deferredPaint;
+    struct NativeSurfacePaint {
+        void (*finish)(void* user, const Bounds* overlayBounds, int count);
+        void* user;
+        int firstOverlay;
+    };
+    Vec<NativeSurfacePaint> nativeSurfacePaints;
+    Vec<Bounds> nativeOverlayBounds;
     const PaintDismissScope* dismissScope = nullptr;
     const PaintDismissScope* popupDismissScope = nullptr;
     Vec<ScrollRect> scrolls;

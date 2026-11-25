@@ -256,6 +256,7 @@ struct WebView : WebViewHandlers {
     ::Display* xdisplay = nullptr;
     ::Window x11Window = 0;
     ::Window x11Document = 0;
+    GdkWindow* clipWindow = nullptr;
     ::Window parentWindow = 0;
     GtkWidget* gtkWindow = nullptr;
     bool followsParent = false;
@@ -1459,6 +1460,7 @@ static void FreeInner(WebView* wv) {
     gtk_widget_destroy(GTK_WIDGET(wv->webview));
     if (wv->hasX11) {
         gtk_widget_destroy(wv->gtkWindow);
+        if (wv->clipWindow) g_object_unref(wv->clipWindow);
         XTrap trap(wv->display);
         XDestroyWindow(wv->xdisplay, wv->x11Window);
         XFlush(wv->xdisplay);
@@ -1637,6 +1639,35 @@ bool WebViewSetClippedBounds(WebView* wv, Rect bounds, Rect visible) {
         ResizeClippedContainer(wv, x * s, y * s, w * s, h * s, vx * s, vy * s,
                                vw * s, vh * s);
     }
+    return true;
+}
+
+bool WebViewSetVisibleRegion(WebView* wv, const Rect* pieces, int count) {
+    if (!wv || !wv->hasX11 || !wv->isChild) return false;
+    if (!wv->clipWindow && pieces) {
+        if (!gdk_display_supports_shapes(wv->display)) return false;
+        wv->clipWindow =
+            gdk_x11_window_foreign_new_for_display(wv->display, wv->x11Window);
+        if (!wv->clipWindow) return false;
+    }
+    if (!wv->clipWindow) return true;
+    cairo_region_t* region = pieces ? cairo_region_create() : nullptr;
+    double scale = gdk_window_get_scale_factor(wv->clipWindow);
+    for (int i = 0; i < count; i++) {
+        const Rect& part = pieces[i];
+        int x = ToLogical(part.position.x, part.position.logical, scale);
+        int y = ToLogical(part.position.y, part.position.logical, scale);
+        int w = ToLogical(part.size.width, part.size.logical, scale);
+        int h = ToLogical(part.size.height, part.size.logical, scale);
+        const cairo_rectangle_int_t rect = {x, y, w, h};
+        cairo_region_union_rectangle(region, &rect);
+    }
+    gdk_window_shape_combine_region(wv->clipWindow, region, 0, 0);
+    if (gdk_display_supports_input_shapes(wv->display)) {
+        gdk_window_input_shape_combine_region(wv->clipWindow, region, 0, 0);
+    }
+    if (region) cairo_region_destroy(region);
+    XFlush(wv->xdisplay);
     return true;
 }
 

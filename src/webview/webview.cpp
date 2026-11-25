@@ -74,7 +74,19 @@ void WebView::OnWindowMouseDown(WebView* self, Ctx* cx,
         return;
     }
     Point p = {ev->x, ev->y};
-    if (!self->bounds.Contains(p)) {
+    bool hitsView = self->nativeShown && self->appliedVisible.Contains(p);
+    if (hitsView && self->hasVisibleRegion) {
+        hitsView = false;
+        p.x -= self->appliedVisible.x;
+        p.y -= self->appliedVisible.y;
+        for (const Bounds& piece : self->visibleRegion) {
+            if (piece.Contains(p)) {
+                hitsView = true;
+                break;
+            }
+        }
+    }
+    if (!hitsView) {
         wry::WebViewFocusParent(raw);
     }
 }
@@ -307,6 +319,34 @@ static bool BoundsSame(Bounds a, Bounds b) {
     return a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h;
 }
 
+void WebViewVisibleRegion(Bounds viewport, const Bounds* boxes, int count,
+                          Vec<Bounds>* out) {
+    VecClear(*out);
+    if (viewport.w <= 0 || viewport.h <= 0) return;
+    VecAppend(*out, viewport);
+    for (int b = 0; b < count && len(*out); b++) {
+        for (int i = len(*out) - 1; i >= 0; i--) {
+            Bounds piece = (*out)[i];
+            Bounds cut = ClipIntersect(piece, boxes[b]);
+            if (cut.w <= 0 || cut.h <= 0) continue;
+            VecRemoveAt(*out, i);
+            const Bounds rest[] = {
+                {piece.x, piece.y, piece.w, cut.y - piece.y},
+                {piece.x, cut.Bottom(), piece.w, piece.Bottom() - cut.Bottom()},
+                {piece.x, cut.y, cut.x - piece.x, cut.h},
+                {cut.Right(), cut.y, piece.Right() - cut.Right(), cut.h},
+            };
+            for (Bounds part : rest) {
+                if (part.w > 0 && part.h > 0) VecAppend(*out, part);
+            }
+        }
+    }
+    for (Bounds& piece : *out) {
+        piece.x -= viewport.x;
+        piece.y -= viewport.y;
+    }
+}
+
 // WebKit truncates the view size to whole points. Expand the child, not the
 // clip, and keep its top edge fixed.
 Bounds WebViewDocumentFrame(Bounds document) {
@@ -356,6 +396,61 @@ static void HideNative(WebView* self, wry::WebView* raw) {
     wry::WebViewSetVisible(raw, false);
     self->nativeShown = false;
 }
+
+static void ShowNative(WebView* self, wry::WebView* raw) {
+    if (!self->nativeShown && wry::WebViewSetVisible(raw, true)) {
+        self->nativeShown = true;
+    }
+}
+
+#if GPUI_WRY_CLIPPED_CHILD || GPUI_WEBVIEW_NATIVE_CLIP
+static void FinishNativeWebView(void* user, const Bounds* overlays, int count) {
+    auto* self = static_cast<WebView*>(user);
+    wry::WebView* raw = self->owned.Raw();
+    if (!raw) return;
+    Bounds viewport = self->appliedVisible;
+    Vec<Bounds> region;
+    if (count) WebViewVisibleRegion(viewport, overlays, count, &region);
+    if (count && !len(region)) {
+        HideNative(self, raw);
+        return;
+    }
+    bool shaped =
+        count && !(len(region) == 1 &&
+                   BoundsSame(region[0], {0, 0, viewport.w, viewport.h}));
+    bool changed = self->visibleRegionNeedsUpdate ||
+                   self->hasVisibleRegion != shaped ||
+                   (shaped && len(region) != len(self->visibleRegion));
+    for (int i = 0; shaped && !changed && i < len(region); i++) {
+        changed = !BoundsSame(region[i], self->visibleRegion[i]);
+    }
+    if (changed) {
+#if GPUI_WEBVIEW_NATIVE_CLIP
+        bool applied = WebViewNativeVisibleRegionSet(
+            self, raw, shaped ? region.els : nullptr, shaped ? len(region) : 0);
+#else
+        Vec<wry::Rect> pieces;
+        if (shaped) {
+            for (const Bounds& piece : region) {
+                VecAppend(pieces,
+                          wry::Rect{wry::LogicalPosition(piece.x, piece.y),
+                                    wry::LogicalSize(piece.w, piece.h)});
+            }
+        }
+        bool applied =
+            wry::WebViewSetVisibleRegion(raw, pieces.els, len(pieces));
+#endif
+        if (!applied) {
+            HideNative(self, raw);
+            return;
+        }
+        self->visibleRegion = region;
+        self->hasVisibleRegion = shaped;
+        self->visibleRegionNeedsUpdate = false;
+    }
+    ShowNative(self, raw);
+}
+#endif
 
 // The element's prepaint: layout has decided where the box is, so the OS
 // control is moved there. Rust does this in `Element::prepaint`, which runs
@@ -444,15 +539,19 @@ static void PaintWebView(PaintCtx* ctx, El* e, void* user) {
             return;
         }
         self->applied = document;
+        self->visibleRegionNeedsUpdate = self->hasVisibleRegion;
         self->appliedVisible = visible;
         self->appliedScale = gpuiScale;
         self->hasApplied = true;
         self->geometryFailed = false;
     }
-    if (!self->nativeShown) {
-        wry::WebViewSetVisible(raw, true);
-        self->nativeShown = true;
-    }
+#if GPUI_WRY_CLIPPED_CHILD || GPUI_WEBVIEW_NATIVE_CLIP
+    VecAppend(ctx->nativeSurfacePaints,
+              PaintCtx::NativeSurfacePaint{&FinishNativeWebView, self,
+                                           len(ctx->nativeOverlayBounds)});
+#else
+    ShowNative(self, raw);
+#endif
 }
 
 El* WebViewEl(Entity<WebView> view, Ctx* cx) {

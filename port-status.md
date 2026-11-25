@@ -634,12 +634,12 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   `Module.set_theme(dark)`. An opaque manual redirect is refused because the
   browser hides the target that the shell must capability-check.
   See the browser section of AGENTS.md.
-- **Native webviews are child surfaces.** macOS and Linux clip the child
+- **Native webviews are child surfaces.** Desktop hosts clip the child
   to the content mask and keep the page's full size and scroll position.
-  Windows clips with a window region. Upstream attaches its native child
-  to a composition surface that lets GPUI paint overlays above the page.
-  Overlays that overlap the visible portion of the child can still sit
-  behind the page here (`src/webview/webview.cpp`).
+  Deferred overlays open matching drawing and input cutouts in the child
+  views. Translucent overlay pixels blend with the GPUI background in the
+  cutout. Rust composites those pixels over the page
+  (`src/webview/webview.cpp`).
 - **Linux webview bounds stay logical.** Upstream `device_bounds` passes
   physical pixels because Wry then scales by GDK. `WebViewSetBounds`
   in `wry_linux.cpp` already multiplies a logical rect by that factor

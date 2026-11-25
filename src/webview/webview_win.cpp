@@ -4,6 +4,8 @@
 
 #include "webview/webview.h"
 
+#include <math.h>
+
 namespace gpui {
 
 // The leading entries of ICoreWebView2Controller, up to get_ParentWindow,
@@ -65,10 +67,10 @@ static UINT WebViewHostDpi(HWND hwnd) {
 // in device pixels. On success Windows owns the region; on failure it is
 // deleted here.
 static bool WebViewApplyClip(WebView* self, HWND hwnd, const int32_t* clip) {
-    if (!clip && !self->hasClip) {
+    if (!clip && !self->hasClip && !self->hasVisibleRegion) {
         return true;
     }
-    if (clip && self->hasClip &&
+    if (clip && self->hasClip && !self->hasVisibleRegion &&
         memcmp(clip, self->clip, sizeof(self->clip)) == 0) {
         return true;
     }
@@ -113,7 +115,7 @@ bool WebViewNativeClipSet(WebView* self, wry::WebView* raw, Bounds document,
 }
 
 bool WebViewNativeClipClear(WebView* self, wry::WebView* raw) {
-    if (!self->hasClip) {
+    if (!self->hasClip && !self->hasVisibleRegion) {
         return true;
     }
     HWND hwnd = WebViewHostWindow(raw);
@@ -121,6 +123,58 @@ bool WebViewNativeClipClear(WebView* self, wry::WebView* raw) {
         return false;
     }
     return WebViewApplyClip(self, hwnd, nullptr);
+}
+
+bool WebViewNativeVisibleRegionSet(WebView* self, wry::WebView* raw,
+                                   const Bounds* pieces, int count) {
+    if (!pieces) {
+        return WebViewNativeClipSet(self, raw, self->applied,
+                                    self->appliedVisible);
+    }
+    HWND hwnd = WebViewHostWindow(raw);
+    UINT dpi = hwnd ? WebViewHostDpi(hwnd) : 0;
+    if (!dpi) return false;
+    double scale = (double)dpi / 96.;
+    wry::Rect window;
+    int32_t clip[4] = {};
+    Bounds viewport = self->appliedVisible;
+    if (!WebViewWindowGeometry(self->applied, viewport, scale, &window, clip)) {
+        clip[2] = (int32_t)window.size.width;
+        clip[3] = (int32_t)window.size.height;
+    }
+    HRGN region = CreateRectRgn(0, 0, 0, 0);
+    if (!region) return false;
+    auto px = [&](double value, double origin, double windowOrigin,
+                  double extent, int low, int high) {
+        if (value <= 0.) return low;
+        if (value >= extent) return high;
+        int rounded = (int)round((origin + value) * scale) - (int)windowOrigin;
+        return std::min(high, std::max(low, rounded));
+    };
+    bool ok = true;
+    for (int i = 0; i < count && ok; i++) {
+        const Bounds& part = pieces[i];
+        HRGN slice =
+            CreateRectRgn(px(part.x, viewport.x, window.position.x, viewport.w,
+                             clip[0], clip[2]),
+                          px(part.y, viewport.y, window.position.y, viewport.h,
+                             clip[1], clip[3]),
+                          px(part.Right(), viewport.x, window.position.x,
+                             viewport.w, clip[0], clip[2]),
+                          px(part.Bottom(), viewport.y, window.position.y,
+                             viewport.h, clip[1], clip[3]));
+        if (!slice) {
+            ok = false;
+        } else {
+            ok = CombineRgn(region, region, slice, RGN_OR) != ERROR;
+            DeleteObject(slice);
+        }
+    }
+    if (!ok || !SetWindowRgn(hwnd, region, TRUE)) {
+        DeleteObject(region);
+        return false;
+    }
+    return true;
 }
 
 } // namespace gpui

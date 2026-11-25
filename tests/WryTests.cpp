@@ -82,6 +82,74 @@ static void FractionalDpiKeepsTheDocumentSizeAndFullyVisibleEdge() {
     utassert(!WebViewWindowGeometry(document, document, 1.25, &bounds, clip));
 }
 
+static void WebViewRegionExcludesOverlappingOverlayBoxes() {
+    Bounds viewport = {20, 30, 100, 100};
+    Bounds overlays[] = {{70, 10, 50, 70}, {90, 60, 30, 70}};
+    Vec<Bounds> region;
+    WebViewVisibleRegion(viewport, overlays, 2, &region);
+    float area = 0;
+    for (Bounds b : region) {
+        area += b.w * b.h;
+        utassert(b.x >= 0 && b.y >= 0 && b.Right() <= 100 && b.Bottom() <= 100);
+        utassert(!b.Contains({80, 40}));
+    }
+    utassertnear(area, 6000.f);
+    WebViewVisibleRegion(viewport, &viewport, 1, &region);
+    utassert(len(region) == 0);
+    WebViewVisibleRegion(viewport, nullptr, 0, &region);
+    utassert(len(region) == 1 && region[0].Contains({80, 40}));
+}
+
+struct WebViewOverlayProbe {
+    Vec<Bounds> seen;
+
+    static void Finish(void* user, const Bounds* boxes, int count) {
+        auto* self = static_cast<WebViewOverlayProbe*>(user);
+        VecClear(self->seen);
+        for (int i = 0; i < count; i++) VecAppend(self->seen, boxes[i]);
+    }
+
+    static void PaintNative(PaintCtx* ctx, El*, void* user) {
+        VecAppend(ctx->nativeSurfacePaints,
+                  PaintCtx::NativeSurfacePaint{&Finish, user,
+                                               len(ctx->nativeOverlayBounds)});
+    }
+
+    static El* Render(WebViewOverlayProbe* self, Ctx* cx) {
+        El* native = Div(cx->a)->SizeFull();
+        native->customPaint = &PaintNative;
+        native->customUser = self;
+        return Div(cx->a)
+            ->SizeFull()
+            ->Child(native)
+            ->Child(Div(cx->a)
+                        ->Absolute()
+                        ->Inset0()
+                        ->Bg(RgbaTransparent())
+                        ->Deferred())
+            ->Child(Div(cx->a)
+                        ->Absolute()
+                        ->Left(20)
+                        ->Top(30)
+                        ->W(50)
+                        ->H(40)
+                        ->Bg(Rgba8(0, 0, 0, 255))
+                        ->Deferred());
+    }
+};
+
+static void NativeSurfacesReceiveDeferredPanelBounds() {
+    App* app = TestAppNew();
+    auto view = EntityNew<WebViewOverlayProbe>(app);
+    TestWindowOpen(app, view, 240, 120);
+    const auto& boxes = view.Get(app)->seen;
+    utassert(len(boxes) == 1);
+    if (len(boxes)) {
+        utassert(boxes[0].Contains({30, 40}) && !boxes[0].Contains({10, 10}));
+    }
+    TestAppFree(app);
+}
+
 static void MediaPermissionsRespectEachRequestedDevice() {
     using wry::PermissionKind;
     using wry::PermissionResponse;
@@ -123,6 +191,8 @@ void TestWryUri() {
     DroppingAWebViewRefreshesThePointerTarget();
     FractionalDocumentCoversTheClipWithoutMovingItsTopEdge();
     FractionalDpiKeepsTheDocumentSizeAndFullyVisibleEdge();
+    WebViewRegionExcludesOverlappingOverlayBoxes();
+    NativeSurfacesReceiveDeferredPanelBounds();
 
     // gpui-webview's owned raw handle is copyable even when empty. A real
     // handle follows the same operations while retaining the shared native

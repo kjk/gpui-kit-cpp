@@ -991,6 +991,7 @@ const macFrameworks = [
   "CoreServices",
   "CoreText",
   "CoreGraphics",
+  "QuartzCore",
   "ImageIO",
   "IOKit",
   "WebKit",

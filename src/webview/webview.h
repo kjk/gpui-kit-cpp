@@ -86,6 +86,9 @@ struct WebView {
     Bounds appliedVisible = {};
     float appliedScale = 0;
     bool hasApplied = false;
+    Vec<Bounds> visibleRegion;
+    bool hasVisibleRegion = false;
+    bool visibleRegionNeedsUpdate = false;
     // `windows::NativeClip`: the region last set on wry's host window, as
     // left, top, right, bottom in its device pixels. Windows only.
     int32_t clip[4] = {};
@@ -186,6 +189,10 @@ El* WebViewEl(Entity<WebView> view, Ctx* cx);
     Rust works in the container's bottom-up coordinates and so moves the
     origin down by the growth; a wry rect is top-left, so the origin stays. */
 Bounds WebViewDocumentFrame(Bounds document);
+// Subtract later overlay boxes from the native viewport. Output coordinates
+// are local to the viewport, as consumed by the native child container.
+void WebViewVisibleRegion(Bounds viewport, const Bounds* boxes, int count,
+                          Vec<Bounds>* out);
 
 // Windows clips a partially visible webview with a window region on wry's
 // host window (`windows.rs`). Linux and macOS clip through wry's child
@@ -213,6 +220,8 @@ bool WebViewNativeClipSet(WebView* self, wry::WebView* raw, Bounds document,
                           Bounds visible);
 /** `NativeClip::clear`: drop the region, if one was set. */
 bool WebViewNativeClipClear(WebView* self, wry::WebView* raw);
+bool WebViewNativeVisibleRegionSet(WebView* self, wry::WebView* raw,
+                                   const Bounds* pieces, int count);
 #endif
 
 } // namespace gpui
