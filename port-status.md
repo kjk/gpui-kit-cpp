@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `48e53b11762a7ac37835acca889a924c569ff681` (2026-11-23,
-input: Reduce accessibility text run memory on large documents (#4090)).
-Accessibility snapshots copy the field value once. Native text ranges navigate the live document on demand.
+Processed through `e97fe438129c5e4ccab504f2e6fafd9a4e396bba` (2026-11-23,
+chore: Bump v0.11.0 (#4092)).
+Advanced the workspace to 0.11.0 and the Zed reference to gpui-pre 0.3.14.
 The current update target is
 `832cfdc0baef92855191dfdbbbcacd75f59d3df0`.
 
@@ -357,7 +357,7 @@ The current update target is
 - **Upstream package names.** `crates/component` remains `src/ui/` here;
   `gpui.h` and `AppNew`/`ThemeSet` provide the Kit facade and initialization.
   Rust procedural macros and Cargo publishing have no C++ runtime counterpart.
-  The GPUI reference is `gpui-pre` 0.3.12 (Zed `d2a4fb6ded7c`). Layout is
+  The GPUI reference is `gpui-pre` 0.3.14 (Zed `f126950f9d3b`). Layout is
   taffy 0.15.0. The other ported dependency versions are unchanged.
 - **Base Root's Tab and copy actions are the runtime's.** Base Root's Tab /
   shift-Tab / copy actions are the runtime's for every window (`FocusNext`,
