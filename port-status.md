@@ -526,8 +526,9 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   rather than each parsed inline node. A selection within one view uses its
   format. Selections spanning separate views use the window's fallback.
   Source mapping includes images when a selected run reaches their boundary.
-  Mapped Markdown text endpoints survive reflow while their runs remain
-  available in the new frame.
+  Mapped Markdown text endpoints survive reflow and can reattach after an
+  enclosing virtual list omits their row. Copy needs both endpoints projected
+  onto the current frame.
   Select All copies from the committed document and follows appends until
   the selection moves. A painted block plugin is included whole when the
   drag starts or ends inside its box or covers it. Enclosed top-level

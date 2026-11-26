@@ -329,6 +329,23 @@ struct TouchSelectionSource {
     void (*endDrag)(void*, Window*);
 };
 
+// Preserve Markdown caret positions across frames that regroup or omit runs.
+struct TextSelectionSourcePoint {
+    int source = -1;
+    int entityEnd = -1;
+    int entityByte = 0;
+};
+
+struct TextSelectionReflow {
+    EntityId owner = {};
+    uint64_t replacement = 0;
+    int scope = 0;
+    int offsets[2] = {-1, -1};
+    TextSelectionSourcePoint endpoints[2];
+    Bounds bounds[2];
+    TextSelectionSourcePoint unit[2];
+};
+
 //
 // The runtime calls the three gestures and TextSelectionApply; an
 // application only has to say `Selectable()` on the text.
@@ -337,6 +354,8 @@ struct WindowSelection {
     // SelectionEndpoint::anchor / cursor, as document offsets. -1 is none.
     int anchor = -1;
     int cursor = -1;
+    // A source range awaiting projection because an endpoint didn't paint.
+    TextSelectionReflow pendingReflow;
     // A TextView's explicit Select All owns the document as its runs move.
     EntityId selectAllOwner = {};
     // TextSelectionScopeId: the trap the gesture began in. Extending stays
@@ -460,23 +479,6 @@ SelectionFormat WindowSelectionFormat(Window* win);
 // nothing selected, which is what lets a Ctrl+C fall through to whatever
 // else wants it.
 bool WindowSelectionCopy(Window* win, bool trim = false);
-
-// Preserve Markdown caret positions across a frame that regroups paint runs.
-struct TextSelectionSourcePoint {
-    int source = -1;
-    int entityEnd = -1;
-    int entityByte = 0;
-};
-
-struct TextSelectionReflow {
-    EntityId owner = {};
-    uint64_t replacement = 0;
-    int scope = 0;
-    int offsets[2] = {-1, -1};
-    TextSelectionSourcePoint endpoints[2];
-    Bounds bounds[2];
-    TextSelectionSourcePoint unit[2];
-};
 
 TextSelectionReflow WindowSelectionCaptureReflow(Window* win);
 void WindowSelectionRestoreReflow(Window* win, const TextSelectionReflow& old);

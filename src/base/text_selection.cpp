@@ -10,6 +10,13 @@
 
 namespace gpui {
 
+static bool AwaitingSelectionReflow(const WindowSelection* selection) {
+    const TextSelectionReflow& saved = selection->pendingReflow;
+    return saved.owner.IsValid() && saved.scope == selection->scope &&
+           saved.offsets[0] == selection->anchor &&
+           saved.offsets[1] == selection->cursor;
+}
+
 struct TextSelectionParticipantState {
     Entity<TextSelectionParticipantState> self = {};
     Str fallbackCopyText = {};
@@ -285,7 +292,8 @@ static bool ComputeParticipantSnapshot(TextSelectionParticipantState* receiver,
         return false;
     }
     WindowSelection* selection = receiver->window->sel;
-    if (!TextSelectionPublishes(&selection->gesture) || selection->anchor < 0 ||
+    if (AwaitingSelectionReflow(selection) ||
+        !TextSelectionPublishes(&selection->gesture) || selection->anchor < 0 ||
         selection->cursor < 0 || selection->anchor == selection->cursor ||
         !selection->hasWindowPoints ||
         receiver->registration.scope != selection->activeScope) {
@@ -1044,6 +1052,7 @@ void WindowSelectionClear(Window* win) {
     TextSelectionClear(&s->gesture);
     s->anchor = -1;
     s->cursor = -1;
+    s->pendingReflow = {};
     s->selectAllOwner = {};
     s->scope = 0;
     s->hasWindowPoints = false;
@@ -1084,7 +1093,8 @@ bool WindowSelectionHas(const Window* win) {
     if (s && s->selectAllOwner.IsValid()) {
         return EntityGet(win->app, s->selectAllOwner) != nullptr;
     }
-    if (!s || s->anchor < 0 || s->cursor < 0 || s->anchor == s->cursor) {
+    if (!s || s->anchor < 0 || s->cursor < 0 || s->anchor == s->cursor ||
+        AwaitingSelectionReflow(s)) {
         return false;
     }
     return TextSelectionPublishes(&s->gesture);
@@ -1189,7 +1199,7 @@ void WindowSelectionPress(Window* win, float x, float y, int clickCount,
     // and a local selection ends), keeping only the anchor a shift-click
     // extends from.
     {
-        bool keep = extend && s->anchor >= 0;
+        bool keep = extend && s->anchor >= 0 && !AwaitingSelectionReflow(s);
         int anchor = s->anchor;
         int scope = s->scope;
         Point anchorPoint = s->anchorPoint;
@@ -1540,7 +1550,7 @@ bool WindowSelectionTouchUiContains(const Window* win, Point at) {
 
 static void WindowSelectionDragAt(Window* win, float x, float y) {
     WindowSelection* s = win ? win->sel : nullptr;
-    if (!s || !s->gesture.selecting) {
+    if (!s || !s->gesture.selecting || AwaitingSelectionReflow(s)) {
         return;
     }
     PaintCtx* ctx = &win->paint;
@@ -1735,9 +1745,10 @@ static const TextHit* RestoreSourcePoint(const PaintCtx& paint,
 TextSelectionReflow WindowSelectionCaptureReflow(Window* win) {
     TextSelectionReflow out;
     const WindowSelection* s = win->sel;
-    if (!s || s->touchSource.entity.IsValid() || s->selectAllOwner.IsValid() ||
-        !WindowSelectionHas(win))
+    if (!s || s->touchSource.entity.IsValid() || s->selectAllOwner.IsValid())
         return out;
+    if (AwaitingSelectionReflow(s)) return s->pendingReflow;
+    if (!WindowSelectionHas(win)) return out;
     out.offsets[0] = s->anchor;
     out.offsets[1] = s->cursor;
     out.scope = s->scope;
@@ -1774,18 +1785,30 @@ void WindowSelectionRestoreReflow(Window* win, const TextSelectionReflow& old) {
         s->cursor != old.offsets[1] || s->selectAllOwner.IsValid())
         return;
     const TextViewState* view = TextViewForSelectionOwner(win->app, old.owner);
-    if (!view || view->fullUpdateRevision != old.replacement) return;
+    bool wasPending = AwaitingSelectionReflow(s);
+    if (!view || view->fullUpdateRevision != old.replacement) {
+        if (wasPending) WindowSelectionClear(win);
+        return;
+    }
     int offsets[2] = {};
     const TextHit* endpoints[2] = {};
     for (int i = 0; i < 2; i++) {
         endpoints[i] = RestoreSourcePoint(win->paint, old, old.endpoints[i],
                                           old.offsets[i] > old.offsets[1 - i],
                                           &offsets[i]);
-        if (!endpoints[i]) return;
+        if (!endpoints[i]) {
+            // The offsets from the old frame could now name a different
+            // run. Keep the source endpoints until their geometry returns.
+            s->pendingReflow = old;
+            WindowSelectionApply(win);
+            if (!wasPending) WindowRequestAnimationFrame(win);
+            return;
+        }
     }
     bool remapped = offsets[0] != s->anchor || offsets[1] != s->cursor;
     s->anchor = offsets[0];
     s->cursor = offsets[1];
+    s->pendingReflow = {};
     if (s->hasAnchorCell && endpoints[0]->inCell)
         s->anchorCell = endpoints[0]->cell;
     if (s->hasWindowPoints) {
@@ -1810,7 +1833,7 @@ void WindowSelectionRestoreReflow(Window* win, const TextSelectionReflow& old) {
             RestoreSourcePoint(win->paint, old, old.unit[1], true, &s->unitEnd);
     }
     WindowSelectionApply(win);
-    if (remapped) WindowRequestAnimationFrame(win);
+    if (remapped || wasPending) WindowRequestAnimationFrame(win);
 }
 
 int WindowSelectionTextAs(Window* win, char* out, int cap,
@@ -2188,7 +2211,8 @@ void WindowSelectionApply(Window* win) {
     WindowSelection* s = win->sel;
     // did_hit_text gates the whole thing: a gesture that never touched a
     // glyph shows nothing, however far it dragged.
-    bool publishes = s && TextSelectionPublishes(&s->gesture);
+    bool publishes =
+        s && TextSelectionPublishes(&s->gesture) && !AwaitingSelectionReflow(s);
     win->paint.selA = publishes ? s->anchor : -1;
     win->paint.selB = publishes ? s->cursor : -1;
     win->paint.selScope = publishes ? s->scope : -1;

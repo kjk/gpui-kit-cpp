@@ -809,16 +809,17 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
         FocusCollect(win, root);
     }
     AccessibilityProject(win, root, headless);
+    double tPaint0 = 0;
     if (root) {
         // A dialog that has just opened takes focus into itself, which is what
         // Rust gets from tracking focus on the trap container.
         FocusTrapApplyPending(win);
         gFrameLayoutSecs = TimeNow() - tLay0;
-        double tPaint0 = TimeNow();
+        tPaint0 = TimeNow();
         PaintEl(&win->paint, root);
-        WindowSelectionRestoreReflow(win, selection);
-        gFramePaintSecs = TimeNow() - tPaint0;
     }
+    WindowSelectionRestoreReflow(win, selection);
+    if (root) gFramePaintSecs = TimeNow() - tPaint0;
     // Native children are external to the scene and do not disappear by
     // themselves when the element that painted them is omitted.
     for (int i = len(win->paintedNativeSurfaces) - 1; i >= 0; i--) {

@@ -7063,6 +7063,72 @@ static void PartialSourceSelectionSurvivesInlineObjectReflow() {
     TswClose(&v);
 }
 
+struct VirtualTextSelectionView {
+    Entity<TextViewState> document;
+    int top = 8;
+    static constexpr float kRowHeight = 48;
+
+    static El* Row(void* user, Ctx* cx, int index) {
+        auto* self = (VirtualTextSelectionView*)user;
+        if (index == 8)
+            return TextView::New(cx, self->document)
+                ->SelFormat(SelectionFormat::Source)
+                ->IntoEl();
+        return TextEl(cx->a, StrL("An unrelated selectable row"))->Selectable();
+    }
+
+    static El* Render(VirtualTextSelectionView* self, Ctx* cx) {
+        VirtualListOpts options;
+        options.count = 20;
+        options.rowH = kRowHeight;
+        options.viewH = 96;
+        options.scrollY = self->top * kRowHeight;
+        options.row = &Row;
+        options.user = self;
+        return gpui::VirtualList::New(cx, StrL("rows"), options);
+    }
+};
+
+static void SourceSelectionSurvivesAnUnrenderedVirtualRow() {
+    if (!TestMarkdownIsFull()) return;
+    App* app = TestAppNew();
+    auto root = EntityNew<VirtualTextSelectionView>(app);
+    auto* view = root.Get(app);
+    view->document = TextViewState::Markdown(app, StrL("**alpha**"));
+    Window* win = TestWindowOpen(app, root, 360, 160, 1);
+    TestDraw(win);
+    const TextHit* hit = HitContaining(win, "alpha");
+    utassert(hit);
+    if (hit) {
+        WindowSelection* selection = WindowSelectionOf(win);
+        const int originalStart = hit->docOff + 1;
+        selection->anchor = originalStart;
+        selection->cursor = hit->docOff + 4;
+        selection->scope = hit->scope;
+        TextSelectionBegin(&selection->gesture, true);
+        TextSelectionEnd(&selection->gesture);
+        utassert(WindowSelectionCopy(win));
+        utassert(StrEq(TestReadFromClipboard(GetTempArena()), StrL("**lph**")));
+
+        view->top = 15;
+        TestDraw(win);
+        TestDraw(win);
+        utassert(!HitContaining(win, "alpha"));
+        utassert(!WindowSelectionCopy(win));
+        utassert(win->paint.selA == -1);
+
+        view->top = 7;
+        TestDraw(win);
+        hit = HitContaining(win, "alpha");
+        utassert(hit && selection->anchor == hit->docOff + 1 &&
+                 selection->cursor == hit->docOff + 4 &&
+                 selection->anchor != originalStart);
+        utassert(WindowSelectionCopy(win));
+        utassert(StrEq(TestReadFromClipboard(GetTempArena()), StrL("**lph**")));
+    }
+    TestAppFree(app);
+}
+
 static void ShapedTextCopiesAcrossMarkdownStyleBoundaries() {
     TswView v = TswOpen("Some words pre**fix**", TswContainer::Window);
     v.State()
@@ -9613,6 +9679,7 @@ static void TestTextStateWindow() {
     PartialSourceCopyKeepsLargeEnclosedBlocks();
     PartialCopyUsesTheSelectedTextViewFormat();
     PartialSourceSelectionSurvivesInlineObjectReflow();
+    SourceSelectionSurvivesAnUnrenderedVirtualRow();
     ShapedTextCopiesAcrossMarkdownStyleBoundaries();
     WrappedLinksUseSharedTextGeometry();
     InlineObjectsShareRowsWithShapedProse();
