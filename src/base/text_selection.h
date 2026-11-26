@@ -336,6 +336,8 @@ struct WindowSelection {
     // SelectionEndpoint::anchor / cursor, as document offsets. -1 is none.
     int anchor = -1;
     int cursor = -1;
+    // A TextView's explicit Select All owns the document as its runs move.
+    EntityId selectAllOwner = {};
     // TextSelectionScopeId: the trap the gesture began in. Extending stays
     // inside it, and so does what gets painted and copied.
     int scope = 0;

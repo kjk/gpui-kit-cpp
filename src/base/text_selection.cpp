@@ -1042,6 +1042,7 @@ void WindowSelectionClear(Window* win) {
     TextSelectionClear(&s->gesture);
     s->anchor = -1;
     s->cursor = -1;
+    s->selectAllOwner = {};
     s->scope = 0;
     s->hasWindowPoints = false;
     s->hasAnchorCell = false;
@@ -1074,6 +1075,9 @@ bool WindowSelectionHas(const Window* win) {
     if (s && s->touchSource.snapshot) {
         void* receiver = EntityGet(win->app, s->touchSource.entity);
         return receiver && s->touchSource.snapshot(receiver, win, nullptr);
+    }
+    if (s && s->selectAllOwner.IsValid()) {
+        return EntityGet(win->app, s->selectAllOwner) != nullptr;
     }
     if (!s || s->anchor < 0 || s->cursor < 0 || s->anchor == s->cursor) {
         return false;
@@ -1457,6 +1461,15 @@ void WindowSelectionRelease(Window* win) {
     }
 }
 
+static const TextViewState* SelectAllTextView(Window* win) {
+    if (!win || !win->sel || win->sel->touchSource.copy) return nullptr;
+    EntityId owner = win->sel->selectAllOwner;
+    if (!EntityHasDrop(win->app, owner, &EntityDropT<TextViewState>)) {
+        return nullptr;
+    }
+    return (TextViewState*)EntityGet(win->app, owner);
+}
+
 int WindowSelectionTextAs(Window* win, char* out, int cap,
                           SelectionFormat fmt) {
     if (win && win->sel && win->sel->touchSource.copy && out && cap > 0) {
@@ -1464,6 +1477,9 @@ int WindowSelectionTextAs(Window* win, char* out, int cap,
         if (void* receiver = EntityGet(win->app, source.entity)) {
             return source.copy(receiver, win, out, cap);
         }
+    }
+    if (const TextViewState* view = SelectAllTextView(win)) {
+        return StrCopyCapped(out, cap, view->SelectAllText(fmt));
     }
     if (!WindowSelectionHas(win)) {
         if (out && cap > 0) {
@@ -1477,12 +1493,19 @@ int WindowSelectionTextAs(Window* win, char* out, int cap,
 }
 
 int WindowSelectionText(Window* win, char* out, int cap) {
+    if (const TextViewState* view = SelectAllTextView(win)) {
+        return StrCopyCapped(out, cap,
+                             view->SelectAllText(view->selectionFormat));
+    }
     return WindowSelectionTextAs(win, out, cap, WindowSelectionFormat(win));
 }
 
 bool WindowSelectionHasEntity(const Window* win, EntityId owner) {
     if (!owner.IsValid() || !WindowSelectionHas(win)) return false;
     const WindowSelection* selection = win->sel;
+    if (selection->selectAllOwner.IsValid()) {
+        return selection->selectAllOwner == owner;
+    }
     int a = selection->anchor;
     int b = selection->cursor;
     if (a > b) {
@@ -1540,18 +1563,24 @@ void WindowSelectionSelectAll(Window* win, EntityId owner) {
         last = hit.docOff + (hit.atom ? 1 : len(hit.text));
         lastBounds = hit.bounds;
     }
-    if (!found || first == last) return;
+    bool textView = EntityHasDrop(win->app, owner, &EntityDropT<TextViewState>);
+    if ((!found || first == last) && !textView) return;
+    if (!found && activeScope >= 0) scope = activeScope;
     selection->scope = scope;
     if (selection->activeScope.raw == 0) {
         selection->activeScope = TextSelectionScopeId::FromRaw((uint64_t)scope);
     }
-    selection->anchor = first;
-    selection->cursor = last;
+    selection->selectAllOwner = textView ? owner : EntityId{};
+    selection->anchor = found ? first : -1;
+    selection->cursor = found ? last : -1;
     selection->anchorPoint = {firstBounds.x, firstBounds.y};
     selection->cursorPoint = {lastBounds.x + lastBounds.w,
                               lastBounds.y + lastBounds.h};
-    selection->hasWindowPoints = true;
+    selection->hasWindowPoints = found;
+    selection->anchorInsideText = found;
+    selection->anchorParticipant = {};
     selection->hasAnchorCell = false;
+    selection->unitHeld = false;
     TextSelectionBegin(&selection->gesture, true);
     TextSelectionEnd(&selection->gesture);
     WindowSelectionPublish(win);
@@ -1619,6 +1648,10 @@ int TextSelection::SelectedText(Window* window, App* app, char* out, int cap) {
     out[0] = 0;
     WindowSelection* selection = window ? window->sel : nullptr;
     if (!selection || !app) return 0;
+    if (const TextViewState* view = SelectAllTextView(window)) {
+        return StrCopyCapped(out, cap,
+                             view->SelectAllText(view->selectionFormat));
+    }
     Vec<ParticipantCopyItem> active;
     for (int i = 0; i < len(selection->participants); i++) {
         TextSelectionParticipantState* participant =
@@ -1746,6 +1779,12 @@ SelectionFormat WindowSelectionFormat(Window* win) {
 bool WindowSelectionCopy(Window* win) {
     if (!TextSelection::HasSelection(win, win ? win->app : nullptr)) {
         return false;
+    }
+    if (const TextViewState* view = SelectAllTextView(win)) {
+        Str text = view->SelectAllText(view->selectionFormat);
+        if (!len(text)) return false;
+        ClipboardSetText(win, text);
+        return true;
     }
     // One frame's worth of selectable text; a document longer than this
     // copies its first 64 KB rather than nothing.

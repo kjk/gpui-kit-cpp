@@ -1049,12 +1049,6 @@ struct TextViewState {
     // when each piece starts fading in. An append waiting for the next parse
     // is streamFadePending; streamFadeReplace says it replaced the text.
     Vec<StreamFadeSegment> fadeSegments;
-    // state.rs `select_all`: the selection SelectAll made, which
-    // selected_source_range answers with the whole source for as long as the
-    // window's selection is still that one. -1 when there is none.
-    int selectAllAnchor = -1;
-    int selectAllCursor = -1;
-    int selectAllScope = 0;
     // Borrowed slices of renderedIndex, rebuilt lazily for accessibility.
     Vec<Str> accessibilityLines;
     uint64_t accessibilityLineRevision = UINT64_MAX;
@@ -1133,6 +1127,8 @@ struct TextViewState {
     void SetSelectionFormat(gpui::SelectionFormat value, App* app,
                             Window* window = nullptr);
     int SelectedText(Window* window, char* out, int cap) const;
+    // Clipboard contents for an explicit Select All, from the committed doc.
+    Str SelectAllText(gpui::SelectionFormat format) const;
     // A full replacement keeps the previous document on screen until its
     // parse commits. That document must not supply the clipboard.
     bool CopyDocumentReady() const {

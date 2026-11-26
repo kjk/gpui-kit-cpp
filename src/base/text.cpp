@@ -811,14 +811,26 @@ Entity<TextViewState> TextViewState::Html(App* app, Str text) {
     return NewTextViewState(app, text, TextViewFormat::Html);
 }
 
+static void ClearTextViewSelection(App* app, Window* window, EntityId owner) {
+    WindowSelectionClear(window);
+    if (!app) return;
+    // Clearing may invoke listeners that open another window.
+    int count = len(app->windows);
+    for (int i = 0; i < count; i++) {
+        Window* other = app->windows[i];
+        if (other != window && !other->closed && other->sel &&
+            other->sel->selectAllOwner == owner) {
+            WindowSelectionClear(other);
+        }
+    }
+}
+
 void TextViewState::Changed(App* app, Window* window,
                             bool selectionCompatible) {
     revision++;
     if (!selectionCompatible) {
         selectionRevision++;
-        WindowSelectionClear(window);
-        selectAllAnchor = -1;
-        selectAllCursor = -1;
+        ClearTextViewSelection(app, window, self);
     }
     if (app && self.IsValid()) NotifyEntity(app, self, window);
 }
@@ -870,7 +882,7 @@ void TextViewState::PushStr(Str value, App* app, Window* window) {
 void TextViewState::SetSelectable(bool value, App* app, Window* window) {
     if (selectable == value) return;
     selectable = value;
-    if (!value) WindowSelectionClear(window);
+    if (!value) ClearTextViewSelection(app, window, self);
     Changed(app, window, true);
 }
 
@@ -897,6 +909,15 @@ void TextViewState::SetSelectionFormat(gpui::SelectionFormat value, App* app,
     Changed(app, window, true);
 }
 
+Str TextViewState::SelectAllText(gpui::SelectionFormat selection) const {
+    if (!CopyDocumentReady()) return {};
+    if (format == TextViewFormat::Markdown &&
+        selection != SelectionFormat::Plain) {
+        return Source();
+    }
+    return RenderedText().AsStr();
+}
+
 int TextViewState::SelectedText(Window* window, char* out, int cap) const {
     if (!CopyDocumentReady()) {
         if (out && cap > 0) {
@@ -905,15 +926,8 @@ int TextViewState::SelectedText(Window* window, char* out, int cap) const {
         return 0;
     }
     const WindowSelection* selection = window ? window->sel : nullptr;
-    // Select-all copies the source for every format other than Plain,
-    // SourceAcrossStyles included.
-    bool selectAll = out && cap > 0 && selection && selectAllAnchor >= 0 &&
-                     selection->anchor == selectAllAnchor &&
-                     selection->cursor == selectAllCursor;
-    if (selectAll && format == TextViewFormat::Markdown &&
-        selectionFormat != SelectionFormat::Plain) {
-        Str selected = Source();
-        return StrCopyCapped(out, cap, selected);
+    if (selection && selection->selectAllOwner == self) {
+        return StrCopyCapped(out, cap, SelectAllText(selectionFormat));
     }
     bool plain = format == TextViewFormat::Html;
     return WindowSelectionTextForEntity(
@@ -1176,10 +1190,7 @@ bool TextViewState::SelectedSourceRange(const Window* window, Span* out) const {
         return false;
     }
     const WindowSelection* s = window->sel;
-    // `select_all` stands until the selection moves; the selection it made
-    // is kept so a later drag is not taken for it.
-    if (selectAllAnchor >= 0 && s->anchor == selectAllAnchor &&
-        s->cursor == selectAllCursor) {
+    if (s->selectAllOwner == self) {
         out->start = 0;
         out->end = len(Source());
         return true;
@@ -1195,18 +1206,10 @@ bool TextViewState::HasSelection(const Window* window) const {
 
 void TextViewState::ClearSelection(Window* window, App*) {
     WindowSelectionClear(window);
-    selectAllAnchor = -1;
-    selectAllCursor = -1;
 }
 
 void TextViewState::SelectAll(Window* window, App*) {
     WindowSelectionSelectAll(window, self);
-    const WindowSelection* s = window ? window->sel : nullptr;
-    if (s && WindowSelectionHasEntity(window, self)) {
-        selectAllAnchor = s->anchor;
-        selectAllCursor = s->cursor;
-        selectAllScope = s->scope;
-    }
 }
 
 void TextViewState::OnAction(TextViewState* state, Ctx* cx,
@@ -7661,10 +7664,7 @@ AccessibilityDocumentText TextViewState::AccessibilityText(Window* window) {
         accessibilityLineRevision = renderedRevision;
     }
     const WindowSelection* selected = window ? window->sel : nullptr;
-    bool all = selected && selectAllAnchor >= 0 &&
-               selected->anchor == selectAllAnchor &&
-               selected->cursor == selectAllCursor &&
-               selected->scope == selectAllScope;
+    bool all = selected && selected->selectAllOwner == self;
     return {value, accessibilityLines.els, len(accessibilityLines), all};
 }
 
@@ -8409,9 +8409,7 @@ void TextView::RevealPainted(PaintCtx* ctx, El* element, void* data) {
     TextViewState* managed = view->state.Get(ctx->app);
     if (!managed) return;
     const WindowSelection* selection = ctx->window ? ctx->window->sel : nullptr;
-    if (selection && managed->selectAllAnchor >= 0 &&
-        selection->anchor == managed->selectAllAnchor &&
-        selection->cursor == managed->selectAllCursor) {
+    if (selection && selection->selectAllOwner == managed->self) {
         managed->SelectAll(ctx->window, ctx->app);
     }
     if (!managed->reveal.pending) return;
@@ -9183,6 +9181,10 @@ El* TextView::IntoEl() {
                                   managed->elementTextLen == len(source) &&
                                   len(managed->text) == len(source);
             if (!sameAllocation && !base::StrEq(managed->text, source)) {
+                if (cx->win && cx->win->sel &&
+                    cx->win->sel->selectAllOwner == managed->self) {
+                    WindowSelectionClear(cx->win);
+                }
                 StrFree(managed->text);
                 managed->text = StrDup(source);
                 managed->revision++;

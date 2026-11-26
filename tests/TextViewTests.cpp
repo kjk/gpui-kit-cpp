@@ -2072,7 +2072,9 @@ static void TestManagedTextViewAndParseTimePlugins(Arena* a) {
     managed->SelectAll(&window, &app);
     utassert(managed->HasSelection(&window));
     TempStr selected = AllocStrTemp(63);
-    int n = managed->SelectedText(&window, selected.s, len(selected) + 1);
+    int n =
+        WindowSelectionTextForEntity(&window, state.id, selected.s,
+                                     len(selected) + 1, SelectionFormat::Plain);
     utassert(base::StrEq(Str(selected.s, n), StrL("alpha\nomega")));
     managed->ClearSelection(&window, &app);
     utassert(!managed->HasSelection(&window));
@@ -6734,12 +6736,6 @@ static bool TswSelectedTextIs(const TswView& v, const char* want) {
     return StrEq(got, Str(want));
 }
 
-// state.rs full_parse_coalesced_with_append_preserves_new_select_all: not
-// ported — Rust's select_all is a flag that means the whole view whatever it
-// holds; here it is the selection SelectAll made over the runs painted then
-// (port-status.md "`selected_source_range` reads the window's painted
-// runs"), so text that lands after it is not in it.
-
 // state.rs set_text_extending_after_a_parse_error_parses_it_again: not
 // ported — a parse here cannot fail, so there is no parsed_error to parse
 // again after (port-status.md "A TextView's parser plugins are the view's").
@@ -6825,7 +6821,46 @@ static void SelectAllInSourceFormatReturnsSource() {
     TswFlush(v);
     // Source mode yields the whole source verbatim.
     utassert(TswSelectedTextIs(v, markdown));
+    utassert(WindowSelectionCopy(v.win));
+    utassert(StrEq(TestReadFromClipboard(GetTempArena()), Str(markdown)));
     TswClose(&v);
+}
+
+static void SelectAllClipboardUsesTheCommittedDocument() {
+    if (!TestMarkdownIsFull()) return;
+    Arena* arena = ArenaNew();
+    StrBuilder source(arena);
+    source
+        .Append(StrL("[ref]: https://example.com/\n\n**quick** value\n\n<!--"));
+    for (int i = 0; i < 68 * 1024; i++) source.AppendChar('x');
+    source.Append(StrL("-->\n"));
+    Str markdown = source.TakeStr();
+    TswView v = TswOpen(markdown.s, TswContainer::Window);
+    TestRunUntilParked(v.app);
+    TestDraw(v.win);
+    v.State()->SelectAll(v.win, v.app);
+
+    utassert(WindowSelectionCopy(v.win));
+    utassert(StrEq(TestReadFromClipboard(arena), StrL("quick value\n")));
+    for (SelectionFormat format :
+         {SelectionFormat::Source, SelectionFormat::SourceAcrossStyles}) {
+        v.State()->SetSelectionFormat(format, v.app, v.win);
+        utassert(WindowSelectionCopy(v.win));
+        utassert(StrEq(TestReadFromClipboard(arena), markdown));
+    }
+    v.State()->SetText(StrL("replacement"), v.app);
+    utassert(!WindowSelectionCopy(v.win));
+    utassert(StrEq(TestReadFromClipboard(arena), markdown));
+    TswClose(&v);
+
+    const char* definitions = "[ref]: https://example.com/\n";
+    v = TswOpen(definitions, TswContainer::Window);
+    v.State()->SetSelectionFormat(SelectionFormat::Source, v.app, v.win);
+    v.State()->SelectAll(v.win, v.app);
+    utassert(WindowSelectionCopy(v.win));
+    utassert(StrEq(TestReadFromClipboard(arena), Str(definitions)));
+    TswClose(&v);
+    ArenaDelete(arena);
 }
 
 static void ShapedTextCopiesAcrossMarkdownStyleBoundaries() {
@@ -7206,6 +7241,9 @@ static void SelectAllFollowsAnAppendedParse() {
     utassert(range.start == 0 && range.end == 15);
     v.State()->SetSelectionFormat(gpui::SelectionFormat::Source, v.app, v.win);
     utassert(TswSelectedTextIs(v, "**quick** value"));
+    utassert(WindowSelectionCopy(v.win));
+    utassert(
+        StrEq(TestReadFromClipboard(GetTempArena()), StrL("**quick** value")));
     TswClose(&v);
 }
 
@@ -9288,6 +9326,7 @@ static void TestTextStateWindow() {
     ARegisteredMarkerDrawsItsBlockquoteInAPanel();
     SelectAllReturnsRenderedText();
     SelectAllInSourceFormatReturnsSource();
+    SelectAllClipboardUsesTheCommittedDocument();
     ShapedTextCopiesAcrossMarkdownStyleBoundaries();
     WrappedLinksUseSharedTextGeometry();
     InlineObjectsShareRowsWithShapedProse();

@@ -520,13 +520,14 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   `src/base/virtual_list.cpp`).
 - **TextView selection mapping uses painted runs.** The window owns selection
   rather than each parsed inline node. Source mapping includes images when a
-  selected run reaches their boundary, and Select All follows committed
-  appends until the selection moves. A painted block plugin is included whole
-  when the drag starts or ends inside its box or covers it. Enclosed
+  selected run reaches their boundary. Select All copies from the committed
+  document and follows appends until the selection moves. A painted block
+  plugin is included whole when the drag starts or ends inside its box or
+  covers it. Enclosed
   top-level Markdown blocks copy their original source spans, including
   rules and link definitions that have no text hit. This relies on the
   frame registering the block's position. Rust also covers blocks omitted
-  by virtualization.
+  by virtualization for partial selections.
   Under `-markdown=mini` the parser
   keeps no positions, so source mapping is unavailable (`src/base/text.cpp`,
   `CopyTextHitsFiltered` in `src/gpui/gpui.cpp`).
