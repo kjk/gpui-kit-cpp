@@ -601,8 +601,8 @@ inline constexpr bool kPlatAccessibilityTracksBounds = false;
 // Whether anything would read the portable tree: an automation client is
 // listening, or one has asked this window for it. While nothing would, a
 // frame does not collect or hash it — that walk is a cost of every frame
-// otherwise. Windows answers from UIA, Linux from AT-SPI, and the browser
-// only exposes live regions.
+// otherwise. Windows answers from UIA, Linux from AT-SPI, and browser
+// windows publish the tree as canvas fallback content.
 bool PlatAccessibilityWanted(Window* win);
 // Keep the initial macOS tree available for AppKit's unannounced queries.
 #if GPUI_OS_MAC

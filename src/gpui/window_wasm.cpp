@@ -340,7 +340,8 @@ EM_JS(void, GpJsSetFullscreen, (int on), {
 EM_JS(void, GpJsInstallClipboard, (), {
     globalThis.__gpuiClip = globalThis.__gpuiClip || "";
     document.addEventListener("paste", function(e) {
-        if (!e.clipboardData || document.activeElement !== globalThis.__gpui.canvas) {
+        if (!e.clipboardData ||
+            !globalThis.__gpui.canvas.contains(document.activeElement)) {
             return;
         }
         globalThis.__gpuiClip = e.clipboardData.getData("text/plain") || "";
@@ -880,12 +881,7 @@ extern "C" EMSCRIPTEN_KEEPALIVE void gpui_wasm_resize(void) {
     OnResize(0, nullptr, nullptr);
 }
 
-static EM_BOOL OnFocus(int type, const EmscriptenFocusEvent*, void*) {
-    if (gWin) {
-        WindowSetActive(gWin, type == EMSCRIPTEN_EVENT_FOCUS);
-    }
-    return EM_FALSE;
-}
+static void DetachBrowserAccessibility();
 
 // ─── window commands ──────────────────────────────────────────────────────
 
@@ -895,6 +891,7 @@ static void DestroyPlatWindow(Window* win) {
         return;
     }
     pw->open = false;
+    DetachBrowserAccessibility();
     // Clears win->plat and stops the window; the loop then cancels itself.
     // WindowClosed still reaches win->plat (PlatSetTimer), so free it after.
     WindowClosed(win);
@@ -1064,26 +1061,430 @@ EM_JS(void, GpJsAnnounceStatus, (int assertive, const char* bytes, int size), {
     });
 });
 
+extern "C" EMSCRIPTEN_KEEPALIVE void gpui_wasm_accessibility_active(
+    int active) {
+    if (gWin && gWin->plat && gWin->plat->open) {
+        WindowSetActive(gWin, active != 0);
+    }
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void gpui_wasm_accessibility_action(uint32_t id,
+                                                                    int focus) {
+    if (gWin && gWin->plat && gWin->plat->open) {
+        WindowAccessibilityPerform(
+            gWin, id,
+            focus ? AccessibilityAction::Focus : AccessibilityAction::Default);
+    }
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void gpui_wasm_accessibility_set_value(
+    uint32_t id, char* value, int size) {
+    if (gWin && gWin->plat && gWin->plat->open) {
+        WindowAccessibilityPerform(gWin, id, AccessibilityAction::SetValue,
+                                   Str(value, size));
+    }
+    free(value);
+}
+
+// clang-format off
+
+// Canvas fallback content is focusable and exposed to assistive technology
+// even while the canvas paints. Keyboard events on it bubble to the canvas.
+EM_JS(void, GpJsAccessibilityAttach, (), {
+    const g = globalThis.__gpui;
+    const canvas = g.canvas;
+    const root = document.createElement("div");
+    const abort = new AbortController();
+    const state = {root, abort, nodes: new Map(), focus: 0, syncing: false};
+    g.accessibility = state;
+    canvas.appendChild(root);
+    const listen = function(name, fn) {
+        canvas.addEventListener(name, fn, {signal: abort.signal});
+    };
+    const inside = target => target instanceof Node && canvas.contains(target);
+    listen("focusin", function(e) {
+        if (state.syncing) return;
+        if (!inside(e.relatedTarget)) _gpui_wasm_accessibility_active(1);
+        const node = e.target.gpuiAccessible;
+        if (node && node.canFocus) {
+            _gpui_wasm_accessibility_action(node.id, 1);
+        } else if (e.target === canvas && state.focus) {
+            queueMicrotask(function() {
+                const target = state.nodes.get(state.focus);
+                if (target && document.activeElement === canvas) {
+                    state.syncing = true;
+                    target.focus({preventScroll: true});
+                    state.syncing = false;
+                }
+            });
+        }
+    });
+    listen("focusout", function(e) {
+        if (!state.syncing && !inside(e.relatedTarget)) {
+            _gpui_wasm_accessibility_active(0);
+        }
+    });
+    listen("click", function(e) {
+        const node = e.target.gpuiAccessible;
+        if (node && node.canClick) {
+            _gpui_wasm_accessibility_action(node.id, 0);
+        }
+    });
+    listen("input", function(e) {
+        const node = e.target.gpuiAccessible;
+        if (!node || !node.canEdit) return;
+        const size = lengthBytesUTF8(e.target.value);
+        const ptr = _malloc(size + 1);
+        if (!ptr) return;
+        stringToUTF8(e.target.value, ptr, size + 1);
+        _gpui_wasm_accessibility_set_value(node.id, ptr, size);
+    });
+});
+
+EM_JS(void, GpJsAccessibilityDetach, (), {
+    const g = globalThis.__gpui;
+    const state = g.accessibility;
+    if (!state) return;
+    state.abort.abort();
+    state.root.remove();
+    g.accessibility = null;
+});
+
+EM_JS(void, GpJsAccessibilityBegin, (), {
+    const g = globalThis.__gpui;
+    const state = g.accessibility;
+    if (!state) return;
+    state.inside = g.canvas.contains(document.activeElement);
+    state.syncing = true;
+    state.seen = new Set();
+    state.last = new Map();
+});
+
+EM_JS(void, GpJsAccessibilityNode,
+      (uint32_t id, uint32_t parent, const char* role, int field, int flags,
+       const char* label, int labelLen, const char* description, int descLen,
+       const char* value, int valueLen, const char* placeholder, int placeholderLen,
+       int selected, int expanded, int checked, int orient, int level), {
+    const state = globalThis.__gpui.accessibility;
+    if (!state) return;
+    id = id >>> 0;
+    parent = parent >>> 0;
+    const tag = field === 2 ? "textarea" : field ? "input" : "div";
+    let el = state.nodes.get(id);
+    if (!el || el.localName !== tag) {
+        if (el) el.remove();
+        el = document.createElement(tag);
+        state.nodes.set(id, el);
+    }
+    if (tag === "input") {
+        const type = field === 3 ? "password" : field === 4 ? "search" : "text";
+        if (el.type !== type) el.type = type;
+    }
+    const attr = function(name, text) {
+        if (text === null) {
+            if (el.hasAttribute(name)) el.removeAttribute(name);
+        } else if (el.getAttribute(name) !== text) el.setAttribute(name, text);
+    };
+    const read = (ptr, size) => ptr ? UTF8ToString(ptr, size) : null;
+    const native = tag !== "div";
+    const semanticRole = role ? UTF8ToString(role) : null;
+    const canEdit = !!(flags & 4);
+    el.gpuiAccessible = {id, canClick: !!(flags & 1),
+                         canFocus: !!(flags & 2), canEdit};
+    // GPUI handles Tab within its focus scope. The DOM nodes also accept
+    // direct focus by assistive tools and the active descendant of a widget.
+    attr("tabindex", native || (flags & 3) || state.focus === id ? "-1" : null);
+    attr("role", native && semanticRole !== "combobox" &&
+                 semanticRole !== "spinbutton" ? null : semanticRole);
+    attr("aria-description", read(description, descLen));
+    attr("aria-disabled", flags & 8 ? "true" : null);
+    attr("aria-selected", selected === -1 ? null : String(!!selected));
+    attr("aria-expanded", expanded === -1 ? null : String(!!expanded));
+    const toggled = checked === 0 ? null :
+                    checked === 3 ? "mixed" : String(checked === 2);
+    const pressed = semanticRole === "button";
+    attr("aria-checked", pressed ? null : toggled);
+    attr("aria-pressed", pressed ? toggled : null);
+    attr("aria-orientation", orient === 1 ? "horizontal" :
+                             orient === 2 ? "vertical" : null);
+    attr("aria-level", level ? String(level) : null);
+    if (native) {
+        el.readOnly = !canEdit;
+        const text = read(value, valueLen) ?? "";
+        if (el.value !== text) el.value = text;
+        attr("placeholder", read(placeholder, placeholderLen));
+    }
+    if (flags & 16) {
+        attr("aria-label", null);
+        const text = read(label, labelLen) ?? read(value, valueLen) ?? "";
+        if (!el.gpuiText) {
+            el.gpuiText = document.createTextNode(text);
+            el.prepend(el.gpuiText);
+        } else if (el.gpuiText.data !== text) el.gpuiText.data = text;
+    } else {
+        if (el.gpuiText) {
+            el.gpuiText.remove();
+            el.gpuiText = null;
+        }
+        attr("aria-label", read(label, labelLen));
+    }
+    const owner = state.nodes.get(parent) || state.root;
+    const previous = state.last.get(parent) || owner.gpuiText;
+    const next = previous ? previous.nextSibling : owner.firstChild;
+    if (next !== el && owner.localName !== "input" &&
+                       owner.localName !== "textarea") owner.insertBefore(el, next);
+    state.last.set(parent, el);
+    state.seen.add(id);
+});
+
+EM_JS(void, GpJsAccessibilityNumeric,
+      (uint32_t id, int flags, float value, float min, float max,
+       int position, int size, int rows, int columns, int row, int column), {
+    const el = globalThis.__gpui.accessibility?.nodes.get(id >>> 0);
+    if (!el) return;
+    const attr = function(name, enabled, val) {
+        if (!enabled) {
+            if (el.hasAttribute(name)) el.removeAttribute(name);
+        } else if (el.getAttribute(name) !== String(val)) {
+            el.setAttribute(name, String(val));
+        }
+    };
+    attr("aria-valuenow", flags & 1, value);
+    attr("aria-valuemin", flags & 2, min);
+    attr("aria-valuemax", flags & 4, max);
+    attr("aria-posinset", flags & 8, position);
+    attr("aria-setsize", flags & 16, size);
+    attr("aria-rowcount", flags & 32, rows);
+    attr("aria-colcount", flags & 64, columns);
+    attr("aria-rowindex", flags & 128, row);
+    attr("aria-colindex", flags & 256, column);
+});
+
+EM_JS(void, GpJsAccessibilityFocus, (uint32_t id, int finish), {
+    const g = globalThis.__gpui;
+    const state = g.accessibility;
+    if (!state) return;
+    if (finish) {
+        for (const [key, el] of state.nodes) {
+            if (!state.seen.has(key)) {
+                el.remove();
+                state.nodes.delete(key);
+            }
+        }
+        state.seen = state.last = null;
+    }
+    const inside = finish ? state.inside : g.canvas.contains(document.activeElement);
+    state.focus = id >>> 0;
+    const target = state.nodes.get(state.focus) || g.canvas;
+    // Keep DOM focus on the matching fallback element. Never take focus
+    // from an embedding control elsewhere on the page.
+    if (inside && target !== document.activeElement && target.isConnected) {
+        if (target !== g.canvas && !target.hasAttribute("tabindex")) {
+            target.tabIndex = -1;
+        }
+        state.syncing = true;
+        target.focus({preventScroll: true});
+    }
+    state.syncing = false;
+});
+
+// clang-format on
+
+static void DetachBrowserAccessibility() {
+    GpJsAccessibilityDetach();
+}
+
+static const char* BrowserAccessibilityRole(AccessibilityRole role) {
+    using Role = AccessibilityRole;
+    switch (role) {
+        case Role::Alert:
+            return "alert";
+        case Role::AlertDialog:
+            return "alertdialog";
+        case Role::Application:
+            return "application";
+        case Role::Article:
+            return "article";
+        case Role::Button:
+        case Role::DefaultButton:
+        case Role::DisclosureTriangle:
+            return "button";
+        case Role::Cell:
+            return "cell";
+        case Role::CheckBox:
+            return "checkbox";
+        case Role::ColumnHeader:
+            return "columnheader";
+        case Role::ComboBox:
+        case Role::EditableComboBox:
+            return "combobox";
+        case Role::Dialog:
+            return "dialog";
+        case Role::Document:
+            return "document";
+        case Role::Figure:
+            return "figure";
+        case Role::Form:
+            return "form";
+        case Role::Grid:
+            return "grid";
+        case Role::GridCell:
+            return "gridcell";
+        case Role::Heading:
+            return "heading";
+        case Role::Image:
+            return "img";
+        case Role::Link:
+            return "link";
+        case Role::List:
+            return "list";
+        case Role::ListBox:
+        case Role::MenuListPopup:
+            return "listbox";
+        case Role::ListBoxOption:
+        case Role::MenuListOption:
+            return "option";
+        case Role::ListItem:
+            return "listitem";
+        case Role::Log:
+            return "log";
+        case Role::Main:
+            return "main";
+        case Role::Menu:
+            return "menu";
+        case Role::MenuBar:
+            return "menubar";
+        case Role::MenuItem:
+            return "menuitem";
+        case Role::MenuItemCheckBox:
+            return "menuitemcheckbox";
+        case Role::MenuItemRadio:
+            return "menuitemradio";
+        case Role::Meter:
+            return "meter";
+        case Role::Navigation:
+            return "navigation";
+        case Role::ProgressIndicator:
+            return "progressbar";
+        case Role::RadioButton:
+            return "radio";
+        case Role::RadioGroup:
+            return "radiogroup";
+        case Role::Region:
+            return "region";
+        case Role::Row:
+            return "row";
+        case Role::RowGroup:
+            return "rowgroup";
+        case Role::RowHeader:
+            return "rowheader";
+        case Role::ScrollBar:
+            return "scrollbar";
+        case Role::Search:
+            return "search";
+        case Role::Slider:
+            return "slider";
+        case Role::SpinButton:
+            return "spinbutton";
+        case Role::Splitter:
+            return "separator";
+        case Role::Switch:
+            return "switch";
+        case Role::Tab:
+            return "tab";
+        case Role::TabList:
+            return "tablist";
+        case Role::TabPanel:
+            return "tabpanel";
+        case Role::Table:
+            return "table";
+        case Role::Toolbar:
+            return "toolbar";
+        case Role::Tooltip:
+            return "tooltip";
+        case Role::Tree:
+            return "tree";
+        case Role::TreeGrid:
+            return "treegrid";
+        case Role::TreeItem:
+            return "treeitem";
+        case Role::Label:
+        case Role::Paragraph:
+        case Role::TextRun:
+        case Role::Status:
+            return nullptr;
+        default:
+            return "group";
+    }
+}
+
+static uint32_t BrowserAccessibilityFocus(const Window* win) {
+    int index = WindowAccessibilityFocusIndex(win);
+    return index >= 0 ? win->accessibility[index].id : 0;
+}
+
 void PlatAccessibilityTreeChanged(Window* win) {
     if (!win || !win->plat) return;
+    GpJsAccessibilityBegin();
     for (int i = 0; i < len(win->accessibility); i++) {
         const auto& node = win->accessibility[i];
+        const AccessibilityInfo& info = node.info;
+        using Role = AccessibilityRole;
+        int field = 0;
+        if (node.input && AccessibilityRoleTakesText(info.role)) {
+            field = InputIsMultiLine(node.input) ? 2 : 1;
+            if (info.role == Role::SearchInput) field = 4;
+            if (info.role == Role::PasswordInput || node.input->masked)
+                field = 3;
+        }
+        Str label = info.PlatformName();
+        Str value = field ? WindowAccessibilityTextValue(node) : info.value;
+        bool text = info.role == Role::Label || info.role == Role::TextRun ||
+                    info.role == Role::Paragraph || info.role == Role::Status;
+        bool editable = (node.actions & AccessibilityActionSetValue) &&
+                        !node.textExcerpt.s && field != 3;
+        int flags = (node.actions & AccessibilityActionDefault ? 1 : 0) |
+                    (node.actions & AccessibilityActionFocus ? 2 : 0) |
+                    (editable ? 4 : 0) | (info.disabled ? 8 : 0) |
+                    (text ? 16 : 0);
+        uint32_t parent =
+            node.parent >= 0 ? win->accessibility[node.parent].id : 0;
+        GpJsAccessibilityNode(
+            node.id, parent, BrowserAccessibilityRole(info.role), field, flags,
+            label.s, len(label), info.description.s, len(info.description),
+            value.s, len(value), info.placeholder.s, len(info.placeholder),
+            info.hasSelected ? (int)info.selected : -1,
+            info.hasExpanded ? (int)info.expanded : -1, (int)info.toggled,
+            (int)info.orientation, info.hasLevel ? info.level : 0);
+        int numeric =
+            (info.hasNumericValue ? 1 : 0) | (info.hasMinNumericValue ? 2 : 0) |
+            (info.hasMaxNumericValue ? 4 : 0) |
+            (info.hasPositionInSet ? 8 : 0) | (info.hasSizeOfSet ? 16 : 0) |
+            (info.hasRowCount ? 32 : 0) | (info.hasColumnCount ? 64 : 0) |
+            (info.hasRowIndex ? 128 : 0) | (info.hasColumnIndex ? 256 : 0);
+        int adjust = info.zeroBasedGridIndices ? 1 : 0;
+        GpJsAccessibilityNumeric(
+            node.id, numeric, info.numericValue, info.minNumericValue,
+            info.maxNumericValue, info.positionInSet, info.sizeOfSet,
+            info.rowCount, info.columnCount, info.rowIndex + adjust,
+            info.columnIndex + adjust);
         if (node.liveChanged) {
             Str text = node.info.label;
             GpJsAnnounceStatus(node.info.live == AccessibilityLive::Assertive,
                                text.s, len(text));
         }
     }
+    GpJsAccessibilityFocus(BrowserAccessibilityFocus(win), 1);
 }
 
-void PlatAccessibilityFocusChanged(Window* win, int focusId) {
-    (void)win;
-    (void)focusId;
+void PlatAccessibilityFocusChanged(Window* win, int) {
+    if (win && win->plat) {
+        GpJsAccessibilityFocus(BrowserAccessibilityFocus(win), 0);
+    }
 }
 
-// A canvas has no native accessibility API, so nothing reads the tree.
 bool PlatAccessibilityWanted(Window* win) {
-    return win && win->hasLiveRegions;
+    return win && win->plat;
 }
 
 bool PlatReduceMotion() {
@@ -1245,6 +1646,7 @@ Window* WindowOpen(App* app, Str title, int dipW, int dipH, WinOpts opts) {
     AppSetTitle(win, title);
     GpJsInstallClipboard();
     GpJsInstallFileDrop();
+    GpJsAccessibilityAttach();
 
     const char* canvas = kCanvasSel;
     // Press and wheel on the canvas; move and release on the document, so a
@@ -1260,8 +1662,6 @@ Window* WindowOpen(App* app, Str title, int dipW, int dipH, WinOpts opts) {
     emscripten_set_keyup_callback(canvas, nullptr, EM_FALSE, OnKeyUp);
     emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr,
                                    EM_FALSE, OnResize);
-    emscripten_set_focus_callback(canvas, nullptr, EM_FALSE, OnFocus);
-    emscripten_set_blur_callback(canvas, nullptr, EM_FALSE, OnFocus);
 
     PlatSetTimer(win, WindowTimerMs(win));
     return win;

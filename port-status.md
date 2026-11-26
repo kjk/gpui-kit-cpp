@@ -247,7 +247,8 @@ The current update target is
   accessibility nodes only while `PlatAccessibilityWanted` says something
   reads it: on Windows a UIA client is listening or has asked the window
   (WM_GETOBJECT); on Linux the AT-SPI bridge is ready; macOS and headless
-  test windows always collect; wasm collects for live announcements
+  test windows always collect; browser windows collect for canvas fallback
+  content and live announcements
   (`src/gpui/window_common.cpp`).
 - **Accessibility identity follows the element path.** A named control
   retains its ID across sibling edits. Unnamed elements fall back to their
@@ -672,10 +673,13 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   folder is missing, `DrawIcon`'s stroke sketches cover every `IconName`.
 - **wasm is not a desktop** — one window, `AppRun` never returns, no threads,
   no blocking `HttpGet`, browser-async HTTP subject to CORS, async image
-  decode, clipboard mirror, no semantic DOM projection for the canvas, and
-  `sysinfo` reports the tab. The story page accepts `?story=slug&dark=1` for
-  Rust's embedded story shape; keyboard and paste stay scoped to its canvas,
-  which can sit anywhere on a host page. The host changes appearance live with
+  decode, clipboard mirror, and `sysinfo` reports the tab. The portable
+  accessibility tree is mirrored into canvas fallback content for roles,
+  labels, state, focus and supported actions. Text selection stays in the
+  canvas, and range controls use the canvas keyboard bindings. The story page
+  accepts `?story=slug&dark=1` for Rust's embedded story shape. Keyboard and
+  paste stay scoped to its canvas, which can sit anywhere on a host page.
+  The host changes appearance live with
   `Module.set_theme(dark)`. An opaque manual redirect is refused because the
   browser hides the target that the shell must capability-check.
   See the browser section of AGENTS.md.
