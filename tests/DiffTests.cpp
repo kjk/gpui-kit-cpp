@@ -1089,6 +1089,34 @@ static void PaintedDiffLineGrowsTheHorizontalRange() {
     }
 }
 
+static void ReplacingFilesResetsHorizontalScroll() {
+    App* app = TestAppNew();
+    Init(app);
+    auto view = LongLineDiff(app, DiffMode::Split);
+    auto* state = view.Get(app)->state.Get(app);
+    Window* win = TestWindowOpen(app, view, 400, 200, 1);
+    TestDraw(win);
+    TestSimulateScrollWheel(win, {100, 48}, {-200, 0});
+    utassert(state->horizontalScrollX > 0);
+
+    char line[1001];
+    memset(line, 'x', sizeof(line) - 1);
+    line[sizeof(line) - 1] = '\0';
+    Vec<DiffFile*> replacement;
+    utassert(
+        DiffFile::Parse(fmt("--- a/replacement.txt\n+++ b/replacement.txt\n"
+                            "@@ -1 +1 @@\n-old\n+%s\n",
+                            Str(line)),
+                        &replacement, nullptr));
+    Ctx cx{app, win, win->frameArena, view.Get(app)->state.id};
+    state->SetFiles(replacement.els, len(replacement), &cx);
+    utassertnear(state->horizontalScrollX, 0.f);
+    TestDraw(win);
+    utassert(state->horizontalScrollMax > 200.f);
+    utassertnear(state->horizontalScrollX, 0.f);
+    TestAppFree(app);
+}
+
 // diff/scroll_tests.rs split_columns_keep_half_the_viewport_beside_a_long_line.
 static void SplitColumnsKeepTheirGuttersWhileCodeScrolls() {
     App* app = TestAppNew();
@@ -2601,6 +2629,7 @@ void TestDiff() {
     TheWheelScrollsPastTheRowsRenderedSoFar();
     SplitColumnsKeepTheirGuttersWhileCodeScrolls();
     PaintedDiffLineGrowsTheHorizontalRange();
+    ReplacingFilesResetsHorizontalScroll();
     DiffWidthCandidatesUseDisplayCells();
     TheFileHeaderStaysInsideTheScrollingViewport();
     UnifiedAnnotationsStayInTheViewportWhileCodeScrolls();

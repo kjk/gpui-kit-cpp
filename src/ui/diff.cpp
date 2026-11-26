@@ -2925,6 +2925,8 @@ void DiffState::SetFiles(DiffFile** next, int count, Ctx* cx) {
     for (int i = 0; i < len(files); i++) delete files[i];
     VecClear(files);
     for (int i = 0; i < count; i++) VecAppend(files, next[i]);
+    horizontalScrollX = 0.f;
+    horizontalScrollMax = 0.f;
     horizontalCodeFont = 0;
     // The last hover borrowed its path and text from the files just freed.
     // Rust compares an owned copy; here the next report is heard afresh.
