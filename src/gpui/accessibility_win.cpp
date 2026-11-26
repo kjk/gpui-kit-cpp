@@ -322,19 +322,29 @@ struct WinNodeProperties {
     AccessibilityInfo info;
     uint8_t actions;
     bool hasRange;
+    bool rangeReadOnly;
     double value;
     double minimum;
     double maximum;
+    double step;
     int gridRow = -1;
     int gridColumn = -1;
 
     explicit WinNodeProperties(const AccessibilityNode& node)
         : info(node.info),
           actions(node.actions),
-          hasRange(node.slider != nullptr),
-          value(hasRange ? node.slider->value.End() : 0),
-          minimum(hasRange ? node.slider->min : 0),
-          maximum(hasRange ? node.slider->max : 0) {}
+          hasRange(node.slider || info.hasNumericValue),
+          rangeReadOnly(!node.slider || info.disabled),
+          value(node.slider ? node.slider->value.End() : info.numericValue),
+          minimum(node.slider               ? node.slider->min
+                  : info.hasMinNumericValue ? info.minNumericValue
+                                            : 0),
+          maximum(node.slider               ? node.slider->max
+                  : info.hasMaxNumericValue ? info.maxNumericValue
+                                            : 0),
+          step(node.slider                ? SliderAccessibilityStep(node.slider)
+               : info.hasNumericValueStep ? info.numericValueStep
+                                          : 0) {}
 };
 
 struct WinNodeSnapshot {
@@ -1078,8 +1088,8 @@ HRESULT WinAccessibilityNode::GetPatternProvider(PATTERNID pattern,
         AccessibilityTextRole(node->info.role)) {
         return QueryInterface(__uuidof(IValueProvider), (void**)out);
     }
-    if (pattern == UIA_RangeValuePatternId && node->slider &&
-        node->info.hasNumericValue) {
+    if (pattern == UIA_RangeValuePatternId &&
+        (node->slider || node->info.hasNumericValue)) {
         return QueryInterface(__uuidof(IRangeValueProvider), (void**)out);
     }
     if (pattern == UIA_ExpandCollapsePatternId && node->info.hasExpanded) {
@@ -1247,6 +1257,14 @@ static WinPropertyValue WinSemanticProperty(const WinNodeProperties& node,
         return node.minimum;
     } else if (property == UIA_RangeValueMaximumPropertyId && node.hasRange) {
         return node.maximum;
+    } else if (property == UIA_RangeValueIsReadOnlyPropertyId &&
+               node.hasRange) {
+        return node.rangeReadOnly;
+    } else if ((property == UIA_RangeValueSmallChangePropertyId ||
+                property == UIA_RangeValueLargeChangePropertyId) &&
+               node.hasRange) {
+        // AccessKit uses the step for the jump when none is specified.
+        return node.step;
     } else if (property == UIA_ExpandCollapseExpandCollapseStatePropertyId &&
                info.hasExpanded) {
         return (int)(info.expanded ? ExpandCollapseState_Expanded
@@ -1505,9 +1523,9 @@ HRESULT WinAccessibilityNode::get_IsReadOnly(BOOL* out) {
     if (!node) {
         return UIA_E_ELEMENTNOTAVAILABLE;
     }
-    *out = node->slider
-               ? (node->info.disabled ? TRUE : FALSE)
-               : ((node->actions & AccessibilityActionSetValue) ? FALSE : TRUE);
+    *out = node->slider ? node->info.disabled
+                        : !AccessibilityTextRole(node->info.role) ||
+                              !(node->actions & AccessibilityActionSetValue);
     return S_OK;
 }
 
@@ -1518,69 +1536,34 @@ HRESULT WinAccessibilityNode::SetValue(double value) {
                : UIA_E_INVALIDOPERATION;
 }
 
-HRESULT WinAccessibilityNode::get_Value(double* out) {
-    if (!out) {
-        return E_INVALIDARG;
-    }
-    const AccessibilityNode* node = Node();
-    if (!node || !node->slider) {
-        return UIA_E_ELEMENTNOTAVAILABLE;
-    }
-    *out = node->slider->value.End();
+static HRESULT WinRangeNumber(const AccessibilityNode* node,
+                              PROPERTYID property, double* out) {
+    if (!out) return E_INVALIDARG;
+    if (!node) return UIA_E_ELEMENTNOTAVAILABLE;
+    auto value = WinSemanticProperty(WinNodeProperties(*node), property);
+    if (value.type != VT_R8) return UIA_E_ELEMENTNOTAVAILABLE;
+    *out = value.number;
     return S_OK;
+}
+
+HRESULT WinAccessibilityNode::get_Value(double* out) {
+    return WinRangeNumber(Node(), UIA_RangeValueValuePropertyId, out);
 }
 
 HRESULT WinAccessibilityNode::get_Maximum(double* out) {
-    if (!out) {
-        return E_INVALIDARG;
-    }
-    const AccessibilityNode* node = Node();
-    if (!node || !node->slider) {
-        return UIA_E_ELEMENTNOTAVAILABLE;
-    }
-    *out = node->slider->max;
-    return S_OK;
+    return WinRangeNumber(Node(), UIA_RangeValueMaximumPropertyId, out);
 }
 
 HRESULT WinAccessibilityNode::get_Minimum(double* out) {
-    if (!out) {
-        return E_INVALIDARG;
-    }
-    const AccessibilityNode* node = Node();
-    if (!node || !node->slider) {
-        return UIA_E_ELEMENTNOTAVAILABLE;
-    }
-    *out = node->slider->min;
-    return S_OK;
+    return WinRangeNumber(Node(), UIA_RangeValueMinimumPropertyId, out);
 }
 
 HRESULT WinAccessibilityNode::get_LargeChange(double* out) {
-    if (!out) {
-        return E_INVALIDARG;
-    }
-    const AccessibilityNode* node = Node();
-    if (!node || !node->slider) {
-        return UIA_E_ELEMENTNOTAVAILABLE;
-    }
-    double step = node->slider->step > 0
-                      ? node->slider->step
-                      : (node->slider->max - node->slider->min) / 100.0;
-    *out = step * 10;
-    return S_OK;
+    return WinRangeNumber(Node(), UIA_RangeValueLargeChangePropertyId, out);
 }
 
 HRESULT WinAccessibilityNode::get_SmallChange(double* out) {
-    if (!out) {
-        return E_INVALIDARG;
-    }
-    const AccessibilityNode* node = Node();
-    if (!node || !node->slider) {
-        return UIA_E_ELEMENTNOTAVAILABLE;
-    }
-    *out = node->slider->step > 0
-               ? node->slider->step
-               : (node->slider->max - node->slider->min) / 100.0;
-    return S_OK;
+    return WinRangeNumber(Node(), UIA_RangeValueSmallChangePropertyId, out);
 }
 
 HRESULT WinAccessibilityNode::Expand() {
@@ -2730,6 +2713,9 @@ static constexpr PROPERTYID kWinTrackedProperties[] = {
     UIA_RangeValueValuePropertyId,
     UIA_RangeValueMinimumPropertyId,
     UIA_RangeValueMaximumPropertyId,
+    UIA_RangeValueIsReadOnlyPropertyId,
+    UIA_RangeValueSmallChangePropertyId,
+    UIA_RangeValueLargeChangePropertyId,
     UIA_ExpandCollapseExpandCollapseStatePropertyId,
 };
 
@@ -3183,6 +3169,7 @@ bool AccessibilityWinPropertyChangesSmokeTest() {
     char label[] = "Old";
     SliderState slider;
     slider.value = SliderSingle(10);
+    slider.step = 2;
     AccessibilityNode box;
     box.id = 10;
     box.info.role = AccessibilityRole::CheckBox;
@@ -3192,17 +3179,51 @@ bool AccessibilityWinPropertyChangesSmokeTest() {
     range.id = 7;
     range.info.role = AccessibilityRole::Slider;
     range.slider = &slider;
+    AccessibilityNode meter;
+    meter.id = 11;
+    meter.info.role = AccessibilityRole::ProgressIndicator;
+    meter.info.hasNumericValue = meter.info.hasMaxNumericValue = true;
+    meter.info.numericValue = 25;
+    meter.info.maxNumericValue = 100;
     VecAppend(win.accessibility, box);
     VecAppend(win.accessibility, range);
+    VecAppend(win.accessibility, meter);
     WinAccessibility* root = AccessibilityWinNew(&win, GetDesktopWindow());
     if (!root) return false;
+
+    IRawElementProviderFragment* fragment = root->NewNode(2);
+    IRawElementProviderSimple* simple = nullptr;
+    IUnknown* pattern = nullptr;
+    IRangeValueProvider* meterRange = nullptr;
+    bool ok = fragment &&
+              SUCCEEDED(fragment->QueryInterface(IID_PPV_ARGS(&simple))) &&
+              SUCCEEDED(simple->GetPatternProvider(UIA_RangeValuePatternId,
+                                                   &pattern)) &&
+              pattern &&
+              SUCCEEDED(pattern->QueryInterface(IID_PPV_ARGS(&meterRange)));
+    if (meterRange) {
+        double number = -1;
+        BOOL readOnly = FALSE;
+        ok &= SUCCEEDED(meterRange->get_Value(&number)) && number == 25;
+        ok &= SUCCEEDED(meterRange->get_Minimum(&number)) && number == 0;
+        ok &= SUCCEEDED(meterRange->get_Maximum(&number)) && number == 100;
+        ok &= SUCCEEDED(meterRange->get_SmallChange(&number)) && number == 0;
+        ok &= SUCCEEDED(meterRange->get_IsReadOnly(&readOnly)) && readOnly;
+        meterRange->Release();
+    }
+    if (pattern) pattern->Release();
+    if (simple) simple->Release();
+    if (fragment) fragment->Release();
 
     memcpy(label, "New", sizeof(label));
     win.accessibility[0].info.disabled = true;
     win.accessibility[0].info.toggled = AccessibilityToggled::Mixed;
+    win.accessibility[1].info.disabled = true;
+    win.accessibility[2].info.numericValue = 75;
     slider.value = SliderSingle(30);
+    slider.step = 4;
     Vec<WinPropertyChange> changes;
-    bool ok = !WinSnapshotChanges(root, &changes) && len(changes) == 4;
+    ok &= !WinSnapshotChanges(root, &changes) && len(changes) == 9;
     int matched = 0;
     for (auto& change : changes) {
         const VARIANT& old = change.before;
@@ -3225,9 +3246,25 @@ bool AccessibilityWinPropertyChangesSmokeTest() {
             change.id == 7 && old.vt == VT_R8 && now.vt == VT_R8 &&
             old.dblVal == 10 && now.dblVal == 30)
             matched |= 8;
+        if (change.property == UIA_RangeValueSmallChangePropertyId &&
+            change.id == 7 && old.vt == VT_R8 && now.vt == VT_R8 &&
+            old.dblVal == 2 && now.dblVal == 4)
+            matched |= 16;
+        if (change.property == UIA_RangeValueLargeChangePropertyId &&
+            change.id == 7 && old.vt == VT_R8 && now.vt == VT_R8 &&
+            old.dblVal == 2 && now.dblVal == 4)
+            matched |= 32;
+        if (change.property == UIA_RangeValueIsReadOnlyPropertyId &&
+            change.id == 7 && old.vt == VT_BOOL && now.vt == VT_BOOL &&
+            old.boolVal == VARIANT_FALSE && now.boolVal == VARIANT_TRUE)
+            matched |= 64;
+        if (change.property == UIA_RangeValueValuePropertyId &&
+            change.id == 11 && old.vt == VT_R8 && now.vt == VT_R8 &&
+            old.dblVal == 25 && now.dblVal == 75)
+            matched |= 128;
         ClearWinPropertyChange(&change);
     }
-    ok &= matched == 15;
+    ok &= matched == 255;
     VecClear(changes);
     ok &= !WinSnapshotChanges(root, &changes) && !len(changes);
     box = win.accessibility[0];
@@ -3297,7 +3334,7 @@ bool AccessibilityWinSmokeTest(Window* win, uint32_t nodeId) {
         {UIA_TogglePatternId, expected->info
                                       .toggled != AccessibilityToggled::Unset},
         {UIA_ValuePatternId, AccessibilityTextRole(expected->info.role)},
-        {UIA_RangeValuePatternId, expected->slider && expected->info
+        {UIA_RangeValuePatternId, expected->slider || expected->info
                                                           .hasNumericValue},
         {UIA_ExpandCollapsePatternId, expected->info.hasExpanded != 0},
         {UIA_SelectionPatternId,
