@@ -2889,7 +2889,8 @@ int InputComposeSpans(TextSpan* spans, int n, const TextSpan* decs, int nDecs,
                     RgbaEq(previous.bg, span.bg) &&
                     previous.underline == span.underline &&
                     previous.wavy == span.wavy &&
-                    previous.fontWeight == span.fontWeight) {
+                    previous.fontWeight == span.fontWeight &&
+                    previous.fontStyle == span.fontStyle) {
                     previous.hi = hi;
                     return;
                 }
@@ -2923,6 +2924,8 @@ int InputComposeSpans(TextSpan* spans, int n, const TextSpan* decs, int nDecs,
             }
             if (dec.fontWeight != FontWeight{})
                 combined.fontWeight = dec.fontWeight;
+            if (dec.fontStyle != HighlightFontStyle::Inherit)
+                combined.fontStyle = dec.fontStyle;
             at = std::min(sp.hi, dec.hi);
             append(combined, std::max(sp.lo, dec.lo), at);
             append(sp, dec.hi, sp.hi);
@@ -2935,11 +2938,12 @@ int InputComposeSpans(TextSpan* spans, int n, const TextSpan* decs, int nDecs,
 }
 
 static void ApplyInputRowSpans(El* el, const TextSpan* spans, int count) {
-    bool weighted = false;
+    bool changesFont = false;
     for (int i = 0; i < count; i++) {
-        weighted |= spans[i].fontWeight != FontWeight{};
+        changesFont |= spans[i].fontWeight != FontWeight{} ||
+                       spans[i].fontStyle != HighlightFontStyle::Inherit;
     }
-    if (!weighted) {
+    if (!changesFont) {
         el->Spans(spans, count);
         return;
     }
@@ -2953,6 +2957,7 @@ static void ApplyInputRowSpans(El* el, const TextSpan* spans, int count) {
         const TextSpan& span = spans[i];
         HighlightStyle style;
         style.weight = span.fontWeight;
+        style.fontStyle = span.fontStyle;
         style.hasColor = span.color.a != 0;
         style.color = span.color;
         style.background = span.bg;

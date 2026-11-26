@@ -8691,6 +8691,58 @@ static void TextareaDecorationWeightShapesCaretAndHitTesting() {
     InputViewFree(&view);
 }
 
+// input/base/element.rs test_decorations_override_syntax_highlights, plus
+// the textarea's shaping and pointer geometry.
+static void TextareaDecorationFontStyleShapesCaretAndHitTesting() {
+    InputView view = InputViewBuildTextarea();
+    InputState* state = view.input;
+    Str value = StrL("mmmmmmmmmm");
+    InputSetValue(state, value);
+    TextSpan slant;
+    slant.color.a = 0;
+    slant.fontStyle = HighlightFontStyle::Italic;
+    TextSpan color;
+    color.color = Rgb(240, 40, 20);
+    TextDecoration decorations[] = {TextDecoration::New({0, 6}, slant),
+                                    TextDecoration::New({2, 8}, color)};
+    Ctx cx = {view.app, view.win, view.win->frameArena, view.root.id};
+    for (auto style :
+         {HighlightFontStyle::Italic, HighlightFontStyle::Normal}) {
+        decorations[0].style.fontStyle = style;
+        InputTextareaSetDecorations(state, decorations, dimofi(decorations),
+                                    &cx);
+        TestDraw(view.win);
+
+        TextSpan spans[3] = {};
+        utassert(InputDecorationSpans(state, spans, dimofi(spans)) == 3);
+        utassert(spans[1].lo == 2 && spans[1].hi == 6 &&
+                 spans[1].fontStyle == style &&
+                 RgbaEq(spans[1].color, color.color));
+        utassert(spans[2].fontStyle == HighlightFontStyle::Inherit);
+
+        PaintCtx* paint = &view.win->paint;
+        TextFontRange fonts = {0, 6, 0, style};
+        paint->textFontRanges = {&fonts, 1};
+        TextLayout* layout =
+            TextLayoutNew(paint, value, state->lastFont, 0, false,
+                          state->lastFontWord, 0, nullptr);
+        paint->textFontRanges = {};
+        utassert(layout);
+        if (layout) {
+            Bounds range;
+            utassert(
+                InputRangeToBounds(state, view.win, {0, len(value)}, &range));
+            utassertnear(range.w, TextLayoutSize(layout).w);
+            TextLayoutRelease(layout);
+        }
+        Point caret;
+        utassert(InputLastCaretPoint(state, view.win, 4, &caret));
+        utassert(InputIndexForPosition(state, paint, caret.x,
+                                       caret.y + state->lastLineH / 2) == 4);
+    }
+    InputViewFree(&view);
+}
+
 struct KeptPreeditEvents {
     int changes = 0;
     int edits = 0;
@@ -9561,6 +9613,7 @@ static void RunWindowTestsB() {
     UnmarkReportsTheKeptPreeditAsOneChange();
     TextareaDecorationsFollowEditsAndRender();
     TextareaDecorationWeightShapesCaretAndHitTesting();
+    TextareaDecorationFontStyleShapesCaretAndHitTesting();
     SettingTokensPreservesTextSelectionAndHistory();
     SettingTokensRefreshesTheirLaidOutBounds();
     UndoManagerSelectedReplacementIsAtomic();

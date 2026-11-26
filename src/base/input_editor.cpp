@@ -937,7 +937,8 @@ void InputTextareaSetDecorations(InputState* s, const TextDecoration* items,
         const TextSpan& b = next[i].style;
         same = a.lo == b.lo && a.hi == b.hi && RgbaEq(a.color, b.color) &&
                RgbaEq(a.bg, b.bg) && a.underline == b.underline &&
-               a.wavy == b.wavy && a.fontWeight == b.fontWeight;
+               a.wavy == b.wavy && a.fontWeight == b.fontWeight &&
+               a.fontStyle == b.fontStyle;
     }
     if (!same) {
         old = next;

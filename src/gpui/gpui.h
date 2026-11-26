@@ -1534,6 +1534,7 @@ void InputPaintOverviewRuler(InputState* s, PaintCtx* ctx, float trackX,
                              float lineHeight);
 
 enum class FontWeight : uint16_t;
+enum class HighlightFontStyle : uint8_t;
 
 // A run of a text element painted differently from the rest of it: GPUI's
 // HighlightStyle over a range, which is what a syntax highlighter's captures
@@ -1553,9 +1554,10 @@ struct TextSpan {
     bool underline = false;
     // UnderlineStyle::wavy — the squiggle a diagnostic is marked with.
     bool wavy = false;
-    // Editor decorations can change shaping. Zero inherits the row's weight.
-    // Set color alpha to zero for a weight-only decoration.
+    // Editor decorations can change shaping. Zero inherits the row's font
+    // weight or slant. Set color alpha to zero for a font-only decoration.
     FontWeight fontWeight = {};
+    HighlightFontStyle fontStyle = {};
 };
 
 // HighlightStyle::fade_out over the bytes [lo, hi) of a run: they paint that
