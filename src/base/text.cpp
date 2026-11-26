@@ -4085,6 +4085,8 @@ static El* AlignRow(El* row, uint8_t align) {
 // nest itself.
 struct EditorHostScope {
     int leafBegin = 0;
+    const editor_host::LeafDecoration* decorations = nullptr;
+    int decorationCount = 0;
 };
 
 static Vec<EditorHostScope> gEditorHostScopes;
@@ -4107,13 +4109,16 @@ static void EditorHostFreeRange(int begin, int end) {
     }
 }
 
-void EditorHostBegin() {
+void EditorHostBegin(const editor_host::LeafDecoration* decorations,
+                     int count) {
     if (!EditorHostOn()) {
         EditorHostFreeRange(0, len(gEditorLeaves));
         VecReset(gEditorLeaves);
     }
     EditorHostScope scope;
     scope.leafBegin = len(gEditorLeaves);
+    scope.decorations = decorations;
+    scope.decorationCount = decorations ? count : 0;
     VecAppend(gEditorHostScopes, scope);
 }
 
@@ -4407,16 +4412,66 @@ static void EditorHostStore(const LeafGeometry& leaf) {
     VecAppend(gEditorLeaves, leaf);
 }
 
+static void EditorHostDecorate(El* element, uint64_t key, int start, int end,
+                               bool atom, bool mark = false) {
+    const auto& scope = gEditorHostScopes[len(gEditorHostScopes) - 1];
+    Arena* arena = element->arena;
+    ArenaVec<Rgba> overlays;
+    ArenaVec<TextSpan> washes;
+    bool markInWashes = mark && !element->style.hasBg && element->nWashes;
+    int existingCount = element->nWashes - (markInWashes ? 1 : 0);
+    for (int i = 0; i < scope.decorationCount; i++) {
+        const auto& decoration = scope.decorations[i];
+        if (decoration.key != key || !decoration.color.a) continue;
+        int lo = std::max(start, decoration.range.start);
+        int hi = std::min(end, decoration.range.end);
+        if (lo >= hi) continue;
+        if (atom) {
+            overlays.Append(arena, decoration.color);
+            continue;
+        }
+        if (!len(washes)) {
+            for (int j = 0; j < existingCount; j++) {
+                washes.Append(arena, element->washes[j]);
+            }
+        }
+        TextSpan wash{};
+        wash.lo = lo - start;
+        wash.hi = hi - start;
+        wash.bg = decoration.color;
+        washes.Append(arena, wash);
+    }
+    if (len(overlays)) {
+        if (!element->lifecycle)
+            element->lifecycle = ArenaNew<ElLifecycle>(arena);
+        element->lifecycle->paintOverlays = overlays.Flatten(arena);
+        element->lifecycle->paintOverlayCount = len(overlays);
+    }
+    if (!len(washes)) return;
+    if (markInWashes) {
+        washes.Append(arena, element->washes[existingCount]);
+    } else if (mark && element->style.hasBg) {
+        TextSpan wash{};
+        wash.hi = end - start;
+        wash.bg = element->style.bg.color;
+        washes.Append(arena, wash);
+        element->style.hasBg = false;
+    }
+    element->glyphWashes = true;
+    element->Washes(washes.Flatten(arena), len(washes));
+}
+
 static void EditorHostOnPrepaint(PaintCtx* ctx, El* e, void* user) {
     if (!EditorHostOn() || !e || !user) {
         return;
     }
     LeafGeometry g = {};
     EditorHostFill(&g, ctx, e, *(uint64_t*)user);
+    EditorHostDecorate(e, g.key, 0, len(g.text), false);
     EditorHostStore(g);
 }
 
-// A plain run or an unhighlighted code block is one shaped leaf.
+// Plain paragraphs and keyed code blocks report one shaped leaf.
 static void EditorHostWatch(Arena* a, El* el, MdNode* n) {
     if (!EditorHostOn() || !a || !el || !n || !n->hasEditorKey) {
         return;
@@ -4438,6 +4493,7 @@ struct HostFlowPiece {
     int start;
     int end;
     bool atom;
+    bool mark;
 };
 
 struct HostFlow {
@@ -4479,7 +4535,12 @@ static void EditorHostFlowPrepaint(PaintCtx* ctx, El* e, void* user) {
         int end = entry.atom || emptyLine ? entry.end
                                           : entry.start + len(piece->text);
         if ((entry.start < end || emptyLine) && end <= leaf.textLen) {
-            Bounds bounds = ElTextContentBounds(piece);
+            if (!emptyLine) {
+                EditorHostDecorate(piece, leaf.key, entry.start, end,
+                                   entry.atom, entry.mark);
+            }
+            Bounds bounds =
+                entry.atom ? piece->Bounds() : ElTextContentBounds(piece);
             if (emptyLine) bounds.w = 0;
             leaf.pieces[leaf.pieceCount++] = {
                 bounds,
@@ -5212,10 +5273,11 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
         col->prePaint = EditorHostFlowPrepaint;
         col->customUser = hostFlow;
     }
-    auto reportPiece = [&](El* element, int start, int end, bool atom) {
+    auto reportPiece = [&](El* element, int start, int end, bool atom,
+                           bool mark = false) {
         if (hostFlow && element) {
             hostFlow->pieces
-                .Append(a, HostFlowPiece{element, start, end, atom});
+                .Append(a, HostFlowPiece{element, start, end, atom, mark});
         }
     };
     int wordCap = 1;
@@ -5329,7 +5391,8 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             w->lifecycle->fontRanges =
                 SliceInlineFonts(a, advances->fonts, start, start + wordLen);
         }
-        reportPiece(w, wordLeaf, wordLeaf + wordLen, false);
+        reportPiece(w, wordLeaf, wordLeaf + wordLen, false,
+                    (marks & MdHighlight) && !fragmentText);
         bool joinsWord = pending && !startsAtBreak;
         if (hanging || joinsWord) {
             // A style boundary does not introduce a Unicode line break.
@@ -5801,13 +5864,22 @@ El* TextView::CodeBlock(MdNode* n) {
         segments = n->runFirst->segments;
         segmentCount = n->runFirst->segmentCount;
     }
-    if (len(spans) > 0) {
+    if (len(spans) > 0 && !(n->hasEditorKey && EditorHostOn())) {
         box->Child(CodeLines(Str(buf, at), spans, segments, segmentCount, n));
     } else {
         El* t = TextEl(a, Str(buf, at))
                     ->Font(codeFont)
                     ->Fg(textViewStyle.foreground)
                     ->Mono();
+        ArenaVec<TextHighlight> highlights;
+        for (const CodeHighlight& span : spans) {
+            HighlightStyle style;
+            style.hasColor = span.color.a != 0;
+            style.color = span.color;
+            highlights.Append(a, {span.start, span.end, style});
+        }
+        if (len(highlights))
+            t->Highlights(highlights.Flatten(a), len(highlights));
         if (selectable) {
             t->Selectable()->GlyphSelection();
             SrcMark(t, 0);

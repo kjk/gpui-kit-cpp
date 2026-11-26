@@ -1358,6 +1358,12 @@ struct LeafPiece {
     TextLayout* layout = nullptr;
 };
 
+struct LeafDecoration {
+    uint64_t key;
+    Span range;
+    Rgba color;
+};
+
 } // namespace editor_host
 
 struct LeafGeometry {
@@ -1393,9 +1399,10 @@ MdNode* ParseMarkdown(Arena* a, Str source);
 void MdSetLeafKey(MdNode* n, uint64_t key);
 // collect_leaf_geometry. Begin before the frame that renders the keyed
 // leaves, read them after it, then End. Scopes nest: End restores the
-// scope outside it. This tree has no exceptions, so a panic cannot be
-// the thing that restores the scope.
-void EditorHostBegin();
+// scope outside it. Borrow decorations until End. Ranges are half-open UTF-8
+// byte offsets in the leaf, with each inline object occupying one U+FFFC.
+void EditorHostBegin(const editor_host::LeafDecoration* decorations = nullptr,
+                     int count = 0);
 void EditorHostEnd();
 bool EditorHostActive();
 const LeafGeometry* EditorHostLeaf(uint64_t key);

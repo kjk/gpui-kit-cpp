@@ -10518,6 +10518,105 @@ static El* FindKind(El* e, ElKind kind) {
     return nullptr;
 }
 
+static bool RgbaIs(Rgba c, Rgba color);
+
+// editor_host.rs: decorated_leaves_still_report_geometry and
+// atom_decorations_are_painted_for_custom_nodes_and_images.
+static void EditorHostDecorationsFollowLaidOutLeaves() {
+    GeometryFixture host;
+    Arena* arena = host.win->frameArena;
+    Ctx cx{host.app, host.win, arena, {}};
+    MdNode* doc = HostNode(arena, MdKind::Doc);
+    HostAdd(doc,
+            HostPara(arena, "plain wrap across the narrow viewport", true, 1));
+    MdNode* mixed = HostPara(arena, "a", true, 2);
+    MdRun* styled = HostRun(arena, "bold");
+    styled->marks = MdBold;
+    mixed->runLast->next = styled;
+    MdRun* custom = HostRun(arena, "");
+    custom->hasCustom = true;
+    custom->custom.text = StrL("fallback");
+    styled->next = custom;
+    MdRun* image = HostRun(arena, "");
+    image->imgSrc = StrL("pic.png");
+    custom->next = image;
+    mixed->runLast = image;
+    HostAdd(doc, mixed);
+    HostAdd(doc, HostPara(arena, "unkeyed", false, 1));
+    MdNode* code = HostNode(arena, MdKind::Code);
+    code->runFirst = code->runLast = HostRun(arena, "a = 1\nb = 2");
+    MdSetLeafKey(code, 3);
+    HostAdd(doc, code);
+
+    auto draw = [&]() {
+        El* root = TextView::New(&cx, Str{})
+                       ->CodeBlockHighlighter(TestHighlighter)
+                       ->RenderDocument(doc);
+        LayoutEl(&host.win->paint, root, 0, 0, 150, 600, 14, Rgba{});
+        return root;
+    };
+    Rgba blue{10, 20, 250, 111};
+    Rgba red{250, 10, 20, 123};
+    editor_host::LeafDecoration decorations[] = {
+        {1, {4, 100}, blue}, {2, {0, 6}, blue}, {2, {7, 11}, red},
+        {2, {8, 8}, blue},   {3, {4, 8}, red},  {42, {0, 7}, red},
+    };
+    EditorHostBegin(decorations, dimofi(decorations));
+    EditorHostBegin();
+    El* undecorated = draw();
+    const auto* undecoratedLeaf = EditorHostLeaf(1);
+    utassert(undecoratedLeaf && undecoratedLeaf->bounds.h > 0);
+    Bounds plainBounds = undecoratedLeaf ? undecoratedLeaf->bounds : Bounds{};
+    El* plain =
+        FindTextEl(undecorated, "plain wrap across the narrow viewport");
+    utassert(plain && plain->nWashes == 0);
+    EditorHostEnd();
+
+    El* decorated = draw();
+    const auto* leaf = EditorHostLeaf(1);
+    utassert(leaf && leaf->bounds.w == plainBounds.w &&
+             leaf->bounds.h == plainBounds.h);
+    plain = FindTextEl(decorated, "plain wrap across the narrow viewport");
+    utassert(plain && plain->glyphWashes && plain->nWashes == 1 &&
+             plain->washes[0].lo == 4 &&
+             plain->washes[0].hi == gpui::len(plain->text));
+    El* prose = FindTextEl(decorated, "abold");
+    utassert(prose && prose->glyphWashes && prose->nWashes == 1 &&
+             prose->washes[0].lo == 0 && prose->washes[0].hi == 5);
+    El* atom = FindTextEl(decorated, "fallback");
+    utassert(atom && atom->nWashes == 0 && atom->lifecycle &&
+             atom->lifecycle->paintOverlayCount == 2 &&
+             RgbaIs(atom->lifecycle->paintOverlays[0], blue) &&
+             RgbaIs(atom->lifecycle->paintOverlays[1], red));
+    if (atom && atom->lifecycle && atom->lifecycle->paintOverlayCount == 2) {
+        PaintCtx* paint = &host.win->paint;
+        auto record = [&]() {
+            scene::FrameBegin(paint);
+            PaintEl(paint, atom);
+            Bounds damage;
+            scene::FrameEnd(paint, &damage);
+            return scene::Stats(paint).prims;
+        };
+        int decoratedPrimitives = record();
+        atom->lifecycle->paintOverlayCount = 0;
+        utassert(decoratedPrimitives == record() + 2);
+    }
+    El* picture = FindKind(decorated, ElKind::Image);
+    utassert(picture && picture->lifecycle &&
+             picture->lifecycle->paintOverlayCount == 1 &&
+             RgbaIs(picture->lifecycle->paintOverlays[0], red));
+    El* unkeyed = FindTextEl(decorated, "unkeyed");
+    utassert(unkeyed && unkeyed->nWashes == 0);
+    const auto* codeLeaf = EditorHostLeaf(3);
+    utassert(codeLeaf && StrEq(codeLeaf->text, "a = 1\nb = 2"));
+    El* codeText = FindTextEl(decorated, "a = 1\nb = 2");
+    utassert(codeText && codeText->lifecycle &&
+             codeText->lifecycle->highlightCount == 1 &&
+             codeText->nWashes == 1 && codeText->washes[0].lo == 4 &&
+             codeText->washes[0].hi == 8);
+    EditorHostEnd();
+}
+
 static bool SpanIs(El* e, Rgba color) {
     if (!e || e->nSpans <= 0) {
         return false;
@@ -11415,6 +11514,7 @@ void TestTextView() {
     HostForegroundsFollowTheRenderContext();
     HtmlParagraphsPaintTheirOwnText();
     CollectLeafGeometryNestsAndRestores();
+    EditorHostDecorationsFollowLaidOutLeaves();
 #if GPUI_MARKDOWN_FULL
     ParseMarkdownReadsWhatAnEditorRoundTrips(a);
 #endif

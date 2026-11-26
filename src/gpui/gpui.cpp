@@ -9740,6 +9740,12 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     for (int i = 0; i < std::max(1, codeQuadCount); i++) {
         PaintElBorder(ctx, e, codeQuadCount ? codeQuads.els[i] : e->Bounds());
     }
+    if (e->lifecycle) {
+        for (int i = 0; i < e->lifecycle->paintOverlayCount; i++) {
+            CanvasFillRect(ctx, e->x, e->y, e->w, e->h,
+                           e->lifecycle->paintOverlays[i]);
+        }
+    }
 
     if (paintDx != 0 || paintDy != 0) {
         ShiftElTree(e, -paintDx, -paintDy);
