@@ -88,10 +88,23 @@ static void AFontFamilyIsInternedCascadesAndShapes() {
     app.paint = nullptr;
 }
 
+// theme/mod.rs an_app_font_named_after_init_is_not_probed.
+static void AnAppFontNamedAfterInitIsNotProbed() {
+    App* app = TestAppNew();
+    component::Init(app);
+    utassert(StrEq(ThemeNow(app).fontFamily, StrL(".SystemUIFont")));
+    ThemeUpdate(app,
+                [](Theme* theme) { theme->fontFamily = StrL("Noto Sans"); });
+    TestRunUntilParked(app);
+    utassert(StrEq(ThemeNow(app).fontFamily, StrL("Noto Sans")));
+    TestAppFree(app);
+}
+
 void TestThemeFont() {
     TestSuite("theme_font");
     AFontFamilyIsInternedCascadesAndShapes();
     KeepsTheSystemFontWhenItResolvesToItself();
     NamesTheInstalledFamilyTheSystemFontFellBackTo();
     KeepsTheSystemFontWhenTheResolvedFamilyIsNotInstalled();
+    AnAppFontNamedAfterInitIsNotProbed();
 }

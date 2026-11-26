@@ -7814,6 +7814,8 @@ struct App {
     ImageStore* images = nullptr;
     // cx.set_prompt_builder(fallback_prompt_renderer) is in force.
     bool fallbackPrompts = false;
+    // AppNew and AppNewHeadless manage the executor through AppFree.
+    bool ownsExecutor = false;
 
     App() = default;
 };

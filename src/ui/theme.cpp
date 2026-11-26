@@ -5,6 +5,7 @@
 #include "gpui/paint.h"
 #include "gpui/platform.h"
 #include "sys/dir_watch.h"
+#include "sys/executor.h"
 #include "ui/text.h"
 
 #include <math.h>
@@ -645,6 +646,7 @@ struct AppThemeState {
     Theme active[2] = {};
     ThemeMode mode = ThemeMode::Light;
     bool initialized = false;
+    bool fontProbePending = false;
 };
 
 static ThemeRegistry* RegistryOf(const App* app);
@@ -754,39 +756,41 @@ Str ThemeSubstituteSystemFont(Str requested, Str resolved, const Str* installed,
     return {};
 }
 
-// system_font.rs resolve_default_font. Paint still uses its platform default
-// face; this is the name Theme.fontFamily and semantic tokens expose.
-static void ThemeResolveDefaultFont(App* app, AppThemeState* state) {
+// system_font.rs resolve_default_font. The native backend may need to
+// enumerate fonts, so check the active family's name before asking it.
+static void ThemeResolveDefaultFont(App* app) {
+    auto* state = AppGlobalGet<AppThemeState>(app);
+    if (!state) return;
+    state->fontProbePending = false;
+    Theme& theme = state->active[(int)state->mode];
+    if (!StrEq(theme.fontFamily, ".SystemUIFont")) return;
+
     int n = 0;
-    const Str* installed =
-        PaintInstalledFontNames(app ? app->paint : nullptr, &n);
-    if (n == 0) {
-        return;
-    }
-    Str resolved = {};
-    bool resolvedReady = false;
-    for (int i = 0; i < 2; i++) {
-        Theme* t = &state->active[i];
-        if (!StrEq(t->fontFamily, ".SystemUIFont")) {
-            continue;
-        }
-        if (!resolvedReady) {
-            resolved = ThemeResolvedSystemUIFont(installed, n);
-            resolvedReady = true;
-        }
-        Str family = ThemeSubstituteSystemFont(StrL(".SystemUIFont"), resolved,
-                                               installed, n);
-        if (family.s) {
-            t->fontFamily = family;
-        }
-    }
+    const Str* installed = PaintInstalledFontNames(app->paint, &n);
+    if (n == 0) return;
+    Str resolved = ThemeResolvedSystemUIFont(installed, n);
+    Str family =
+        ThemeSubstituteSystemFont(theme.fontFamily, resolved, installed, n);
+    if (!family.s) return;
+    theme.fontFamily = family;
+    ThemeSyncRuntime(app, state);
+    ThemeSyncBase(app);
+    AppRefreshWindows(app);
 }
 
-static void ThemeDidChange(App* app, AppThemeState* state) {
+static void ThemeDidChange(App* app, AppThemeState* state,
+                           bool mayChangeFont = false) {
     if (state) {
-        ThemeResolveDefaultFont(app, state);
         ThemeSyncRuntime(app, state);
         ThemeSyncBase(app);
+        // A caller can supply its own family just after component::Init.
+        // AppFree drains this foreground queue while the app is still live.
+        if (mayChangeFont && app->ownsExecutor && !state->fontProbePending &&
+            StrEq(state->active[(int)state->mode].fontFamily,
+                  ".SystemUIFont")) {
+            state->fontProbePending = true;
+            ExecPost(MkFunc0(&ThemeResolveDefaultFont, app));
+        }
     }
 }
 
@@ -1079,7 +1083,12 @@ void ThemeEndUpdate(ThemeUpdateScope* scope) {
     }
     state->active[0].cursorBlink = blink;
     state->active[1].cursorBlink = blink;
-    ThemeDidChange(app, state);
+    const Theme& current = state->active[(int)state->mode];
+    bool fontsChanged =
+        !StrEq(current.fontFamily, scope->colorsBefore.fontFamily) ||
+        !StrEq(current.monoFontFamily, scope->colorsBefore.monoFontFamily);
+    ThemeDidChange(app, state,
+                   modeChanged || scope->reloadMode || fontsChanged);
     AppRefreshWindows(app);
 }
 
@@ -1103,7 +1112,7 @@ static AppThemeState* ThemeStateOf(const App* app) {
         state->active[(int)ThemeMode::Light] = ThemeDefaultLight();
         state->active[(int)ThemeMode::Dark] = ThemeDefaultDark();
         state->initialized = true;
-        ThemeDidChange((App*)app, state);
+        ThemeDidChange((App*)app, state, true);
     }
     return state;
 }
@@ -1128,7 +1137,7 @@ void ThemeInstall(App* app, ThemeMode mode, const Theme& t) {
         state->active[(int)mode].mode = mode;
         state->active[0].cursorBlink = blink;
         state->active[1].cursorBlink = blink;
-        ThemeDidChange(app, state);
+        ThemeDidChange(app, state, mode == state->mode);
     }
 }
 

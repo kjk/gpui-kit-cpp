@@ -5836,6 +5836,7 @@ static App* AppMake(bool platform) {
     // says the same thing by handing its foreground executor the platform
     // dispatcher at startup.
     ExecInit();
+    app->ownsExecutor = true;
     // Without a platform loop there is nothing to wake, and the wake an
     // earlier app installed names an app that is gone.
     ExecSetWake(platform ? MkFunc0(PlatWake, app) : Func0{});

@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `2c7299d98288cdab90f02bf637633ae4bf56f44c` (2026-11-26,
-chart: Add accessibility_label to name a chart for screen readers (#4159)).
-A chart with an explicit accessibility label exposes a named image.
-Custom plots use the accessibility role and label on their root element.
+Processed through `0bb3783e634b107c289add39423adf2584977113` (2026-11-26,
+theme: Probe the UI font after init's update, not inside it (#4157)).
+The foreground queue resolves a default UI font after initialization.
+An app's explicit family skips the probe. A resolved family is projected
+to Base and refreshed in existing windows.
 The current update target is
 `0bb3783e634b107c289add39423adf2584977113`.
 
