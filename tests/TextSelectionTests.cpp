@@ -2899,7 +2899,7 @@ static void SelectableTextRevealsOnlyWhenItsValidRangeChanges() {
     TestAppFree(app);
 }
 
-#if GPUI_OS_LINUX || GPUI_OS_WINDOWS
+#if GPUI_OS_LINUX || GPUI_OS_WINDOWS || GPUI_OS_MAC
 static void MixedDirectionSelectionKeepsVisualGaps() {
     SelectionFixture fixture;
     Str text = StrL("abc \xd7\x90\xd7\x91\xd7\x92 xyz");
@@ -2934,6 +2934,32 @@ static void MixedDirectionSelectionKeepsVisualGaps() {
 }
 #endif
 
+#if GPUI_OS_MAC
+static void MacBidiCaretKeepsCombiningMarksOnTheirRow() {
+    SelectionFixture fixture;
+    constexpr Str text = StrL("top\nabc \xd7\x90\xd6\xb7\xd7\x91\xd7\x92 xyz");
+    TextLayout* layout = TextLayoutNew(&fixture.win->paint, text, 16.f, 300.f,
+                                       false, 0, 0, nullptr, TextAlign::Right);
+    utassert(layout);
+    if (!layout) return;
+    Bounds latin = {}, alef = {}, mark = {};
+    utassert(TextLayoutRangeRects(layout, text, 4, 8, &latin, 1) == 1);
+    utassert(TextLayoutRangeRects(layout, text, 8, 12, &alef, 1) == 1);
+    utassert(TextLayoutRangeRects(layout, text, 10, 12, &mark, 1) == 1);
+    utassert(alef.y > 0 && latin.Right() < alef.x);
+    utassertnear(mark.x, alef.x);
+    utassertnear(mark.w, alef.w);
+    float x = 0, y = 0, height = 0;
+    utassert(TextLayoutPointAt(layout, text, false, 8, &x, &y, &height, false));
+    utassertnear(x, alef.Right());
+    utassertnear(y, alef.y);
+    utassert(TextLayoutPointAt(layout, text, false, 12, &x, &y, &height, true));
+    utassertnear(x, alef.x);
+    utassertnear(y, alef.y);
+    TextLayoutRelease(layout);
+}
+#endif
+
 #if GPUI_OS_LINUX
 static void RtlCaretAndOutsideHitsFollowTheReadingEdge() {
     SelectionFixture fixture;
@@ -2964,8 +2990,11 @@ static void RtlCaretAndOutsideHitsFollowTheReadingEdge() {
 void TestTextSelection() {
     SelectableTextRevealsOnlyWhenItsValidRangeChanges();
     TestSuite("text_selection");
-#if GPUI_OS_LINUX || GPUI_OS_WINDOWS
+#if GPUI_OS_LINUX || GPUI_OS_WINDOWS || GPUI_OS_MAC
     MixedDirectionSelectionKeepsVisualGaps();
+#endif
+#if GPUI_OS_MAC
+    MacBidiCaretKeepsCombiningMarksOnTheirRow();
 #endif
 #if GPUI_OS_LINUX
     RtlCaretAndOutsideHitsFollowTheReadingEdge();

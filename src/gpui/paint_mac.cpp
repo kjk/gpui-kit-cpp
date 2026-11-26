@@ -774,6 +774,15 @@ struct MacLine {
     float width = 0;
     // text_align: where the line starts inside the layout's box.
     float dx = 0;
+    int firstCaret = 0;
+    int caretCount = 0;
+};
+
+struct MacCaretSpan {
+    int start;
+    int end;
+    float leading;
+    float trailing;
 };
 
 struct TextLayout {
@@ -781,6 +790,7 @@ struct TextLayout {
     CFAttributedStringRef attr = nullptr;
     MacLine* lines = nullptr;
     int nLines = 0;
+    Vec<MacCaretSpan> carets;
     // GPUI's line box and where the baseline sits inside it.
     float box = 0;
     float baseline = 0;
@@ -794,6 +804,60 @@ struct TextLayout {
     float strikeOff = 0;
     float strikeThick = 1;
 };
+
+struct MacCaretEdges {
+    float leading;
+    float trailing;
+};
+
+static void CollectMacCaretSpans(TextLayout* layout) {
+    Vec<MacCaretEdges> edges;
+    for (int row = 0; row < layout->nLines; row++) {
+        MacLine& line = layout->lines[row];
+        CFArrayRef runs = CTLineGetGlyphRuns(line.line);
+        bool bidi = false;
+        for (CFIndex i = 0; i < CFArrayGetCount(runs); i++) {
+            auto run = (CTRunRef)CFArrayGetValueAtIndex(runs, i);
+            bidi |= (CTRunGetStatus(run) & kCTRunStatusRightToLeft) != 0;
+        }
+        if (!bidi || !line.len || !VecResize(edges, line.len)) continue;
+        for (MacCaretEdges& edge : edges) edge = {NAN, NAN};
+
+        // Core Text enumerates in visual order. A leading index starts its
+        // cluster and a trailing index names the last UTF-16 unit in it.
+        MacCaretEdges* dest = edges.els;
+        int firstUnit = line.start;
+        int unitCount = line.len;
+        CTLineEnumerateCaretOffsets(line.line, ^(double x, CFIndex index,
+                                                 bool leading, bool*) {
+          CFIndex local = index - firstUnit;
+          if (local >= 0 && local < unitCount) {
+              (leading ? dest[local].leading : dest[local].trailing) = (float)x;
+          }
+        });
+
+        int firstCaret = len(layout->carets);
+        int start = 0;
+        for (int i = 0; i < unitCount; i++) {
+            if (i != start && !isnan(edges[i].leading)) break;
+            if (isnan(edges[i].trailing)) continue;
+            if (isnan(edges[start].leading) ||
+                !VecAppend(
+                    layout->carets,
+                    MacCaretSpan{firstUnit + start, firstUnit + i + 1,
+                                 edges[start].leading, edges[i].trailing})) {
+                break;
+            }
+            start = i + 1;
+        }
+        if (start == unitCount) {
+            line.firstCaret = firstCaret;
+            line.caretCount = len(layout->carets) - firstCaret;
+        } else {
+            VecResize(layout->carets, firstCaret);
+        }
+    }
+}
 
 bool TextLayoutClusterWidths(TextLayout* tl, Str s, float* widths) {
     if (!tl || tl->nLines != 1) return false;
@@ -1091,10 +1155,7 @@ TextLayout* TextLayoutShape(PaintCtx* ctx, Str s, float fontSize, float maxW,
             if (line) {
                 CGFloat asc = 0, desc = 0, lead = 0;
                 double w = CTLineGetTypographicBounds(line, &asc, &desc, &lead);
-                lines[nLines].line = line;
-                lines[nLines].start = (int)lineStart;
-                lines[nLines].len = (int)count;
-                lines[nLines].width = (float)w;
+                lines[nLines] = {line, (int)lineStart, (int)count, (float)w};
                 if ((float)w > width) {
                     width = (float)w;
                 }
@@ -1117,6 +1178,7 @@ TextLayout* TextLayoutShape(PaintCtx* ctx, Str s, float fontSize, float maxW,
     tl->attr = attr;
     tl->lines = lines;
     tl->nLines = nLines;
+    CollectMacCaretSpans(tl);
     tl->width = width;
     tl->box = fontSize * (lineH > 0 ? lineH : kLineHeight);
     // gpui text_system centers the glyphs in the box: half the leftover goes
@@ -1232,6 +1294,91 @@ float TextLayoutBaseline(TextLayout* tl) {
     return tl ? tl->baseline : 0.f;
 }
 
+// The first caret span whose source range ends after `at`.
+static int FindMacCaretSpan(const TextLayout* tl, const MacLine& line, int at) {
+    int lo = line.firstCaret;
+    int hi = lo + line.caretCount;
+    while (lo < hi) {
+        int mid = lo + (hi - lo) / 2;
+        if (tl->carets[mid].end <= at)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    return lo;
+}
+
+bool TextLayoutCaretPoint(TextLayout* tl, Str text, int offset, bool trailing,
+                          float* x, float* y, float* height) {
+    if (!tl || !len(tl->carets)) return false;
+    offset = ClampI(offset, 0, len(text));
+    trailing = trailing && offset > 0;
+    int at =
+        Utf8OffsetToUtf16(text, trailing ? Utf8Prev(text, offset) : offset);
+    for (int row = 0; row < tl->nLines; row++) {
+        const MacLine& line = tl->lines[row];
+        if (!line.caretCount || at < line.start || at >= line.start + line.len)
+            continue;
+        const auto& span = tl->carets[FindMacCaretSpan(tl, line, at)];
+        *x = (trailing ? span.trailing : span.leading) + line.dx;
+        *y = (float)row * tl->box;
+        *height = tl->box;
+        return true;
+    }
+    return false;
+}
+
+static int MacBidiRangeRects(const TextLayout* tl, const MacLine& line, int row,
+                             int lo, int hi, Bounds* out, int max) {
+    int i = FindMacCaretSpan(tl, line, lo);
+    int end = line.firstCaret + line.caretCount;
+    float left = 0, right = 0;
+    bool haveRange = false;
+    Vec<Bounds> separated;
+    float y = (float)row * tl->box;
+    for (; i < end && tl->carets[i].start < hi; i++) {
+        const auto& span = tl->carets[i];
+        float a = std::min(span.leading, span.trailing) + line.dx;
+        float b = std::max(span.leading, span.trailing) + line.dx;
+        if (haveRange && a <= right && b >= left) {
+            left = std::min(left, a);
+            right = std::max(right, b);
+            continue;
+        }
+        if (haveRange &&
+            !VecAppend(separated, Bounds{left, y, right - left, tl->box})) {
+            return -1;
+        }
+        left = a;
+        right = b;
+        haveRange = true;
+    }
+    if (!haveRange) return 0;
+    Bounds last = {left, y, right - left, tl->box};
+    if (!len(separated)) {
+        *out = last;
+        return 1;
+    }
+    if (!VecAppend(separated, last)) return -1;
+    qsort(separated.els, (size_t)len(separated), sizeof(last),
+          [](const void* a, const void* b) {
+              float left = static_cast<const Bounds*>(a)->x;
+              float right = static_cast<const Bounds*>(b)->x;
+              return (left > right) - (left < right);
+          });
+    int n = 0;
+    for (Bounds range : separated) {
+        if (n > 0 && range.x <= out[n - 1].Right()) {
+            Bounds& r = out[n - 1];
+            r.w = std::max(r.Right(), range.Right()) - r.x;
+        } else {
+            if (n == max) break;
+            out[n++] = range;
+        }
+    }
+    return n;
+}
+
 int TextLayoutRangeRects(TextLayout* tl, Str s, int u8a, int u8b, Bounds* out,
                          int max) {
     if (!tl || !out || max <= 0 || u8a >= u8b) {
@@ -1247,6 +1394,13 @@ int TextLayoutRangeRects(TextLayout* tl, Str s, int u8a, int u8b, Bounds* out,
         int hi = b < ml.start + ml.len ? b : ml.start + ml.len;
         if (lo >= hi) {
             continue;
+        }
+        if (ml.caretCount) {
+            int got = MacBidiRangeRects(tl, ml, i, lo, hi, out + n, max - n);
+            if (got >= 0) {
+                n += got;
+                continue;
+            }
         }
         CGFloat x0 = CTLineGetOffsetForStringIndex(ml.line, lo, nullptr);
         CGFloat x1 = CTLineGetOffsetForStringIndex(ml.line, hi, nullptr);
