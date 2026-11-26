@@ -40,7 +40,7 @@ static El* ControlIcon(Ctx* cx, IconName icon, int clickId, Listener onClose) {
 // WindowControls: nothing on macOS, where the native traffic lights sit over
 // the bar instead.
 static El* WindowControls(Ctx* cx, const WindowButton* buttons, Str id,
-                          Listener onClose) {
+                          Corners corners, Listener onClose) {
     Arena* a = cx->a;
     Window* win = cx->win;
     // Under server-side decorations the window manager already draws a title
@@ -77,6 +77,15 @@ static El* WindowControls(Ctx* cx, const WindowButton* buttons, Str id,
                 break;
         }
     }
+    if (row->first) {
+        // Children are clipped to a rectangle, so the outer buttons need
+        // their own radii for hover and active backgrounds.
+        bool rtl = LayoutIsRtl(cx->app);
+        El* left = rtl ? row->last : row->first;
+        El* right = rtl ? row->first : row->last;
+        left->Corners(corners.tl, left == right ? corners.tr : 0, 0, 0);
+        if (right != left) right->Corners(0, corners.tr, 0, 0);
+    }
     return row;
 }
 
@@ -90,7 +99,7 @@ TitleBar* TitleBar::New(Ctx* cx) {
     // background; Rust runs that mix down a 180° gradient to the plain title
     // bar color, which this fills flat.
     Rgba mixed = RgbaMix(th.titleBar, th.background, 0.55f);
-    Corners corners = WindowCornerRadii(cx->win, cx->app);
+    t->windowCorners = WindowCornerRadii(cx->win, cx->app);
     t->content = Div(a)
                      ->FlexRowDir(cx->app)
                      ->H(kFill)
@@ -105,10 +114,17 @@ TitleBar* TitleBar::New(Ctx* cx) {
                  ->Shrink0()
                  ->ItemsCenter()
                  ->Bg(mixed)
-                 ->Corners(corners.tl, corners.tr, 0, 0)
+                 ->Corners(t->windowCorners.tl, t->windowCorners.tr, 0, 0)
                  ->BorderB(1, th.titleBarBorder)
                  ->Click(ClickWinCaption)
                  ->SuppressTextSelection();
+    bool physicalSides = WindowGetButtonLayout().physicalSides;
+    if (physicalSides) t->bar->FlexRow();
+    if (PlatSecondaryIsCommand() || physicalSides) {
+        t->bar->PadL(TitleBarLeftPad());
+    } else {
+        t->bar->PadS(TitleBarLeftPad(), cx->app);
+    }
     return t;
 }
 
@@ -125,20 +141,23 @@ TitleBar* TitleBar::OnCloseWindow(Listener listener) {
 El* TitleBar::IntoEl() {
     WindowButtonLayout layout = WindowGetButtonLayout();
     bool showsControls = base::PlatShowsWindowControls();
-    if (layout.physicalSides) bar->FlexRow();
-    if (PlatSecondaryIsCommand() || layout.physicalSides) {
-        bar->PadL(TitleBarLeftPad());
-    } else {
-        bar->PadS(TitleBarLeftPad(), cx->app);
-    }
     if (showsControls && layout.physicalSides) {
-        bar->Child(WindowControls(
-            cx, layout.left, StrL("window-controls-start"), onCloseWindow));
+        float radius = windowCorners.tl - bar->style.pad.left;
+        Corners start = {radius > 0 ? radius : 0};
+        bar->Child(WindowControls(cx, layout.left,
+                                  StrL("window-controls-start"), start,
+                                  onCloseWindow));
     }
     bar->Child(content);
     if (showsControls) {
+        Corners end = {};
+        if (layout.physicalSides || !LayoutIsRtl(cx->app)) {
+            end.tr = windowCorners.tr;
+        } else {
+            end.tl = windowCorners.tl;
+        }
         bar->Child(WindowControls(cx, layout.right, StrL("window-controls"),
-                                  onCloseWindow));
+                                  end, onCloseWindow));
     }
     return bar;
 }

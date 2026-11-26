@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `2a6a1ba3cbf6eb2308552fd6808b709c33335801` (2026-11-26,
-menu: Draw an item's icon at the size it was given (#4150)).
-Popup menu icons keep their explicit size, and the story shows a medium
-icon beside the default extra-small version.
+Processed through `75b682a951b7f269de08cdfecef4894af9f980b7` (2026-11-26,
+title_bar: Keep window control backgrounds inside rounded window corners (#4153)).
+Outermost title-bar controls follow the window corner radius and account
+for the leading group's left padding and the button order in RTL layouts.
 The current update target is
 `75b682a951b7f269de08cdfecef4894af9f980b7`.
 

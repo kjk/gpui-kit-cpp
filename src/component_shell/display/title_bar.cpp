@@ -45,7 +45,8 @@ static El* Materialize(MaterializeRequest* request) {
     int count = 0;
     if (!request->TakeChildren(&children, &count)) return nullptr;
     for (int i = 0; i < count; i++) bar->Child(children[i]);
-    return request->ApplyStyle(bar->IntoEl());
+    request->ApplyStyle(bar->bar);
+    return bar->IntoEl();
 }
 
 static constexpr ArgumentDescriptor kCloseArgs[] = {

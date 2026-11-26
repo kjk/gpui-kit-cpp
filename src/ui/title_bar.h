@@ -25,6 +25,7 @@ struct TitleBar {
     Ctx* cx = nullptr;
     El* bar = nullptr;
     El* content = nullptr;
+    Corners windowCorners = {};
     // on_close_window. Stored on every platform; only Linux draws the close
     // button as an element, so elsewhere the listener is never called.
     Listener onCloseWindow = {};

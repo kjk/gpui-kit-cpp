@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "2a6a1ba3cbf6eb2308552fd6808b709c33335801",
+  sha: "75b682a951b7f269de08cdfecef4894af9f980b7",
   date: "2026-11-26",
-  subject: "menu: Draw an item's icon at the size it was given (#4150)",
+  subject: "title_bar: Keep window control backgrounds inside rounded window corners (#4153)",
   crates: {
     "gpui-kit": "0.11.0",
     "gpui-base": "0.11.0",
