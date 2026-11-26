@@ -5,6 +5,7 @@
 #include "gpui/paint.h"
 #include "gpui/paint_backend.h"
 #include "gpui/platform.h"
+#include "gpui/scene.h"
 #include "sys/executor.h"
 
 namespace gpui {
@@ -443,18 +444,40 @@ static void HideOmittedWebView(WebView* self, Ctx*, const void*) {
 }
 
 static void ShowNative(WebView* self, wry::WebView* raw) {
-    if (!self->nativeShown && wry::WebViewSetVisible(raw, true)) {
+    if (!self->nativeShown) {
+        if (!wry::WebViewSetVisible(raw, true)) {
+            // The native host may have mapped before its browser rejected
+            // the visibility update.
+            wry::WebViewSetVisible(raw, false);
+            return;
+        }
         self->nativeShown = true;
     }
-    if (self->nativeShown) {
-        Entity<WebView> owner{self->selfId};
-        WindowTrackPaintedNativeSurface(
-            self->window, ListenTo(owner, &HideOmittedWebView),
-            ListenTo(owner, &WebView::OnWindowMouseDown));
-    }
+    Entity<WebView> owner{self->selfId};
+    WindowTrackPaintedNativeSurface(
+        self->window, ListenTo(owner, &HideOmittedWebView),
+        ListenTo(owner, &WebView::OnWindowMouseDown));
+}
+
+// Keep the hitbox in paint order, but leave it empty until the platform
+// has placed and shown the surface.
+static int ReserveWebViewHit(PaintCtx* ctx) {
+    HitRect hit;
+    hit.popupDismissScope = ctx->popupDismissScope;
+    hit.stopMouseDown = true;
+    hit.paintLayer = ctx->paintLayer;
+    hit.sceneContext = scene::CurrentContext(ctx);
+    int index = len(ctx->hits);
+    return VecAppend(ctx->hits, hit) ? index : -1;
 }
 
 #if GPUI_WRY_CLIPPED_CHILD || GPUI_WEBVIEW_NATIVE_CLIP
+struct WebViewSurfacePaint {
+    WebView* view;
+    PaintCtx* paint;
+    int hit;
+};
+
 static void WebViewSnapshotComplete(void* user, const uint8_t* bytes,
                                     int count) {
     auto* request = static_cast<WebViewSnapshotRequest*>(user);
@@ -528,7 +551,8 @@ static void UpdateWebViewBackdrop(WebView* view, wry::WebView* raw, bool shaped,
 }
 
 static void FinishNativeWebView(void* user, const Bounds* overlays, int count) {
-    auto* self = static_cast<WebView*>(user);
+    auto* surface = static_cast<WebViewSurfacePaint*>(user);
+    WebView* self = surface->view;
     wry::WebView* raw = self->owned.Raw();
     if (!raw) return;
     Bounds viewport = self->appliedVisible;
@@ -541,10 +565,10 @@ static void FinishNativeWebView(void* user, const Bounds* overlays, int count) {
                    self->hasVisibleRegion != shaped ||
                    (shaped && len(region) != len(self->visibleRegion));
 #if GPUI_WEBVIEW_LIVE_OVERLAY
-    PaintCtx* paint = self->window ? &self->window->paint : nullptr;
+    PaintCtx* paint = surface->paint;
     // Shadows and borders can reach the page without an input cutout.
     bool liveOverlay =
-        paint && len(paint->deferredPaint) && PaintEnableNativeOverlay(paint);
+        len(paint->deferredPaint) && PaintEnableNativeOverlay(paint);
     changed = changed || self->liveOverlay != liveOverlay;
 #endif
     for (int i = 0; shaped && !changed && i < len(region); i++) {
@@ -593,6 +617,9 @@ static void FinishNativeWebView(void* user, const Bounds* overlays, int count) {
 #endif
     }
     ShowNative(self, raw);
+    if (self->nativeShown && surface->hit >= 0) {
+        surface->paint->hits[surface->hit].bounds = viewport;
+    }
 #if GPUI_WEBVIEW_LIVE_OVERLAY
     if (liveOverlay) {
         DropWebViewBackdrop(self);
@@ -702,6 +729,7 @@ static void PaintWebView(PaintCtx* ctx, El* e, void* user) {
         self->hasApplied = true;
         self->geometryFailed = false;
     }
+    int hit = ReserveWebViewHit(ctx);
 #if GPUI_WRY_CLIPPED_CHILD || GPUI_WEBVIEW_NATIVE_CLIP
     const WebViewBackdrop* backdrop = self->backdrop;
     if (same && backdrop && backdrop->image && backdrop->size.w == document.w &&
@@ -716,11 +744,14 @@ static void PaintWebView(PaintCtx* ctx, El* e, void* user) {
             RenderImageDraw(ctx, backdrop->image, cutout, frame, 0, 0.f, false);
         }
     }
+    auto* surface = ArenaNew<WebViewSurfacePaint>(
+        e->arena, WebViewSurfacePaint{self, ctx, hit});
     VecAppend(ctx->nativeSurfacePaints,
-              PaintCtx::NativeSurfacePaint{&FinishNativeWebView, self,
+              PaintCtx::NativeSurfacePaint{&FinishNativeWebView, surface,
                                            len(ctx->nativeOverlayBounds)});
 #else
     ShowNative(self, raw);
+    if (self->nativeShown && hit >= 0) ctx->hits[hit].bounds = visible;
 #endif
 }
 
@@ -731,9 +762,6 @@ El* WebViewEl(Entity<WebView> view, Ctx* cx) {
     if (!self || self->window != cx->win) {
         return e;
     }
-    // `HitboxBehavior::BlockMouse`: the native view covers this box, so
-    // GPUI content under it must not take the press.
-    if (self->visible) e->StopMouseDown();
     e->customPaint = PaintWebView;
     e->customUser = self;
     return e;

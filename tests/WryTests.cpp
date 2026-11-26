@@ -38,13 +38,14 @@ struct WebViewReleaseProbe {
     }
 };
 
-static void DroppingAWebViewRefreshesThePointerTarget() {
+static void MissingNativeWebViewLeavesThePointerTargetReachable() {
     App* app = TestAppNew();
     auto view = EntityNew<WebViewReleaseProbe>(app);
     Window* win = TestWindowOpen(app, view, 240, 120, 1);
     auto* self = view.Get(app);
+    // Even a logically visible element needs a native surface to block.
     TestSimulateClick(win, {20, 20});
-    utassert(self->clicks == 0);
+    utassert(self->clicks == 1);
     TestFlushEffects(app);
     utassert(win->invalidations == 0);
 
@@ -52,7 +53,7 @@ static void DroppingAWebViewRefreshesThePointerTarget() {
     utassert(win->invalidations > 0);
     TestFlushEffects(app);
     TestSimulateClick(win, {20, 20});
-    utassert(self->clicks == 1);
+    utassert(self->clicks == 2);
     TestAppFree(app);
 }
 
@@ -292,7 +293,7 @@ static void MediaPermissionsRespectEachRequestedDevice() {
 void TestWryUri() {
     MediaPermissionsRespectEachRequestedDevice();
     TestSuite("wry_uri");
-    DroppingAWebViewRefreshesThePointerTarget();
+    MissingNativeWebViewLeavesThePointerTargetReachable();
     FractionalDocumentCoversTheClipWithoutMovingItsTopEdge();
     FractionalDpiKeepsTheDocumentSizeAndFullyVisibleEdge();
     WebViewRegionExcludesOverlappingOverlayBoxes();
