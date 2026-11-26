@@ -15442,7 +15442,7 @@ static void DeferredScrollUsesWidthFromTheRebuiltRowBand() {
 
         static El* Render(View* self, Ctx* cx) {
             return Div(cx->a)
-                ->W(240)
+                ->W(500)
                 ->H(self->viewportH)
                 ->Child(InputStateFrame(cx, &self->input));
         }
@@ -15452,17 +15452,19 @@ static void DeferredScrollUsesWidthFromTheRebuiltRowBand() {
     View* view = entity.Get(app);
     view->input.kind = InputKind::Textarea;
     view->input.softWrap = false;
-    Window* win = TestWindowOpen(app, entity, 280, 320);
+    view->input.mode.tabSize = 8;
+    Window* win = TestWindowOpen(app, entity, 540, 320);
     TestDraw(win);
     StrBuilder content;
-    content.AppendChar('e');
-    for (int i = 0; i < 150; ++i) content.Append(StrL("\xCC\x81"));
+    // The first line wins by byte length. The offscreen line is wider
+    // because of its tab stops, including with the headless measurer.
+    for (int i = 0; i < 31; ++i) content.AppendChar('e');
     for (int i = 0; i < 7; ++i) content.Append(StrL("\nshort"));
     content.AppendChar('\n');
     int wideStart = len(content);
-    Str wide = RepeatChar('W', 90);
-    content.Append(wide);
-    StrFree(wide);
+    content.AppendChar('W');
+    for (int i = 0; i < 28; ++i) content.AppendChar('\t');
+    content.AppendChar('W');
     InputSetValue(&view->input, Str(content.els, len(content)));
     TestDraw(win);
     utassert(view->input.contentW - view->input.viewW < 15.f);
