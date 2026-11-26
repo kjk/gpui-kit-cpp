@@ -3256,7 +3256,7 @@ bool AccessibilityWinSelectionEventsSmokeTest() {
     VARIANT unavailable = {};
     ok &= removed &&
           removed->GetPropertyValue(UIA_IsEnabledPropertyId, &unavailable) ==
-              UIA_E_ELEMENTNOTAVAILABLE;
+              (HRESULT)UIA_E_ELEMENTNOTAVAILABLE;
     if (removed) removed->Release();
     VariantClear(&unavailable);
     for (auto& change : changes) ClearWinPropertyChange(&change);
@@ -3424,7 +3424,7 @@ bool AccessibilityWinDialogEventsSmokeTest() {
     VARIANT value = {};
     ok &=
         removed && removed->GetPropertyValue(UIA_IsDialogPropertyId, &value) ==
-                       UIA_E_ELEMENTNOTAVAILABLE;
+                       (HRESULT)UIA_E_ELEMENTNOTAVAILABLE;
     if (removed) removed->Release();
     VariantClear(&value);
     AccessibilityWinClose(root);

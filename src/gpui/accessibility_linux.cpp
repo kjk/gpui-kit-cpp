@@ -17,8 +17,10 @@
 // rewriting enum members here, then restore them for the X11 backend.
 #pragma push_macro("Status")
 #pragma push_macro("True")
+#pragma push_macro("False")
 #undef Status
 #undef True
+#undef False
 
 namespace gpui {
 
@@ -3807,5 +3809,6 @@ bool AccessibilityLinuxEventSmokeTest() {
 } // namespace gpui
 
 #undef GPUI_ATSPI_CACHE_ITEM
+#pragma pop_macro("False")
 #pragma pop_macro("True")
 #pragma pop_macro("Status")

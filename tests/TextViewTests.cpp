@@ -11310,12 +11310,18 @@ static El* FindKind(El* e, ElKind kind) {
 
 static bool RgbaIs(Rgba c, Rgba color);
 
+struct EditorHostGeometryView {
+    static El* Render(EditorHostGeometryView*, Ctx* cx) { return Div(cx->a); }
+};
+
 // editor_host.rs: decorated_leaves_still_report_geometry and
 // atom_decorations_are_painted_for_custom_nodes_and_images.
 static void EditorHostDecorationsFollowLaidOutLeaves() {
-    GeometryFixture host;
-    Arena* arena = host.win->frameArena;
-    Ctx cx{host.app, host.win, arena, {}};
+    App* app = TestAppNew();
+    Window* window =
+        TestWindowOpen(app, EntityNew<EditorHostGeometryView>(app), 400, 200);
+    Arena* arena = window->frameArena;
+    Ctx cx{app, window, arena, {}};
     MdNode* doc = HostNode(arena, MdKind::Doc);
     HostAdd(doc,
             HostPara(arena, "plain wrap across the narrow viewport", true, 1));
@@ -11342,7 +11348,7 @@ static void EditorHostDecorationsFollowLaidOutLeaves() {
         El* root = TextView::New(&cx, Str{})
                        ->CodeBlockHighlighter(TestHighlighter)
                        ->RenderDocument(doc);
-        LayoutEl(&host.win->paint, root, 0, 0, 150, 600, 14, Rgba{});
+        LayoutEl(&window->paint, root, 0, 0, 150, 600, 14, Rgba{});
         return root;
     };
     Rgba blue{10, 20, 250, 111};
@@ -11379,7 +11385,7 @@ static void EditorHostDecorationsFollowLaidOutLeaves() {
              RgbaIs(atom->lifecycle->paintOverlays[0], blue) &&
              RgbaIs(atom->lifecycle->paintOverlays[1], red));
     if (atom && atom->lifecycle && atom->lifecycle->paintOverlayCount == 2) {
-        PaintCtx* paint = &host.win->paint;
+        PaintCtx* paint = &window->paint;
         auto record = [&]() {
             scene::FrameBegin(paint);
             PaintEl(paint, atom);
@@ -11405,6 +11411,7 @@ static void EditorHostDecorationsFollowLaidOutLeaves() {
              codeText->nWashes == 1 && codeText->washes[0].lo == 4 &&
              codeText->washes[0].hi == 8);
     EditorHostEnd();
+    TestAppFree(app);
 }
 
 static bool SpanIs(El* e, Rgba color) {
@@ -12428,7 +12435,9 @@ void TestTextView() {
     ClosingMarkAndSpaceStayWithInlineCode();
     FittedListsKeepTheirBodyWidth();
     TestStatelessMarkdownSettles();
+#if GPUI_MARKDOWN_FULL
     RichTextTouchHandlesUseShapedCarets();
+#endif
     if (TestMarkdownIsFull()) TestStreamFadeTracksRenderedAppends();
     StreamFadeUnitsAreWordsOrCjkCharacters();
     FadesLayerOverHighlightsInsideTheirRange();
