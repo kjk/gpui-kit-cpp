@@ -280,7 +280,8 @@ The current update target is
   receive cache updates for structural changes. Synthetic document pages
   are still queried on demand.
   Each native window has a named frame beneath the application root, and
-  its controls are children of that frame.
+  its controls are children of that frame. Window activation reports the
+  active frame. When no control has focus, the active frame holds focus.
   AT-SPI object paths survive recollection for nodes with a unique element
   path. Nodes that share a path are matched by their collection position.
   Focus follows X11 activation and the retained widget focus handle. An

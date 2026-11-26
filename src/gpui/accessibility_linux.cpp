@@ -25,6 +25,8 @@ static constexpr const char* kRootPath = "/org/a11y/atspi/accessible/root";
 static constexpr const char* kNullPath = "/org/a11y/atspi/null";
 static constexpr const char* kCachePath = "/org/a11y/atspi/cache";
 static constexpr const char* kCache = "org.a11y.atspi.Cache";
+static constexpr const char* kObjectEvent = "org.a11y.atspi.Event.Object";
+static constexpr const char* kWindowEvent = "org.a11y.atspi.Event.Window";
 #define GPUI_ATSPI_CACHE_ITEM "((so)(so)(so)iiassusau)"
 static constexpr const char* kAccessible = "org.a11y.atspi.Accessible";
 static constexpr const char* kApplication = "org.a11y.atspi.Application";
@@ -191,6 +193,7 @@ struct LinuxNodeHistory {
     int frame = 0;
     uint32_t focusedNode = 0;
     int focusedHandle = 0;
+    uint32_t activeWindow = 0;
 };
 
 struct AccessibilityLinuxState {
@@ -1016,6 +1019,7 @@ static void PutInterfaces(DbusWriter* body, const LinuxAccessible& object,
 }
 
 enum AtspiStateBit {
+    kAtspiActive = 1,
     kAtspiChecked = 4,
     kAtspiCollapsed = 5,
     kAtspiEditable = 7,
@@ -1044,15 +1048,36 @@ static constexpr uint64_t AtspiBit(AtspiStateBit bit) {
     return uint64_t{1} << bit;
 }
 
+static const AccessibilityNode* LinuxWindowRoot(const Window* win) {
+    if (!len(win->accessibility)) return nullptr;
+    const auto& root = win->accessibility[0];
+    return root.parent < 0 && root.info.role == AccessibilityRole::Window
+               ? &root
+               : nullptr;
+}
+
+static const AccessibilityNode* LinuxFocusedElement(const Window* win) {
+    if (!win->focusId) return nullptr;
+    for (const auto& node : win->accessibility) {
+        if (node.focusId == win->focusId) return &node;
+    }
+    return nullptr;
+}
+
 static uint64_t LinuxNodeStates(Window* win, const AccessibilityNode& node) {
     uint64_t states = AtspiBit(kAtspiVisible) | AtspiBit(kAtspiShowing);
     if (!node.info.disabled)
         states |= AtspiBit(kAtspiEnabled) | AtspiBit(kAtspiSensitive);
     if (node.actions & AccessibilityActionFocus)
         states |= AtspiBit(kAtspiFocusable);
-    if (node.focusId && node.focusId == win->focusId &&
-        AccessibilityLinuxWindowFocused(win))
-        states |= AtspiBit(kAtspiFocused);
+    if (AccessibilityLinuxWindowFocused(win)) {
+        if (&node == LinuxWindowRoot(win)) {
+            states |= AtspiBit(kAtspiActive);
+            if (!LinuxFocusedElement(win)) states |= AtspiBit(kAtspiFocused);
+        } else if (node.focusId && node.focusId == win->focusId) {
+            states |= AtspiBit(kAtspiFocused);
+        }
+    }
     if (node.info.toggled != AccessibilityToggled::Unset)
         states |= AtspiBit(kAtspiCheckable);
     if (node.info.toggled == AccessibilityToggled::True)
@@ -2513,7 +2538,8 @@ struct AtspiEventValue {
 
 static void SendWireEvent(Window* win, uint32_t wireId, const char* member,
                           const char* detail, int detail1,
-                          AtspiEventValue payload = {}, int detail2 = 0) {
+                          AtspiEventValue payload = {}, int detail2 = 0,
+                          const char* interfaceName = kObjectEvent) {
     if (!gA11y.ready || !win || !gA11y.app) return;
     int wi = -1;
     for (int i = 0; i < len(gA11y.app->windows); i++) {
@@ -2527,7 +2553,7 @@ static void SendWireEvent(Window* win, uint32_t wireId, const char* member,
     DbusWriter fields;
     DbusWriter body;
     PutHeaderString(&fields, 1, "o", path);
-    PutHeaderString(&fields, 2, "s", Str("org.a11y.atspi.Event.Object"));
+    PutHeaderString(&fields, 2, "s", Str(interfaceName));
     PutHeaderString(&fields, 3, "s", Str(member));
     PutHeaderString(&fields, 8, "g", Str("siiva{sv}"));
     PutString(&body, detail);
@@ -3054,15 +3080,27 @@ void AccessibilityLinuxFocusChanged(Window* win) {
     auto* history = LinuxHistory(win);
     if (!history) return; // wait until the first tree has been published
 
-    const AccessibilityNode* focused = nullptr;
-    if (win->focusId && AccessibilityLinuxWindowFocused(win)) {
-        for (const auto& node : win->accessibility) {
-            if (node.focusId == win->focusId) {
-                focused = &node;
-                break;
-            }
+    const bool active = AccessibilityLinuxWindowFocused(win);
+    const auto* root = LinuxWindowRoot(win);
+    const uint32_t activeWindow =
+        active && root ? LinuxWireId(win, root->id) : 0;
+    if (history->activeWindow != activeWindow) {
+        const uint32_t windowId =
+            activeWindow ? activeWindow : history->activeWindow;
+        history->activeWindow = activeWindow;
+        const Str title = root ? root->info.PlatformName() : Str{};
+        SendWireEvent(win, windowId, activeWindow ? "Activate" : "Deactivate",
+                      "", 0, title, 0, kWindowEvent);
+        SendWireEvent(win, windowId, "StateChanged", "active",
+                      activeWindow != 0, AtspiEventValue(uint32_t{0}));
+        if (activeWindow) {
+            SendWireEvent(win, 0, "ActiveDescendantChanged", "", 0,
+                          AtspiEventValue::Object(activeWindow));
         }
     }
+    const AccessibilityNode* focused =
+        active ? LinuxFocusedElement(win) : nullptr;
+    if (active && !focused) focused = root;
     uint32_t next = focused ? LinuxWireId(win, focused->id) : 0;
     int handle = focused ? focused->focusId : 0;
     uint32_t prior = history->focusedNode;
@@ -3354,6 +3392,10 @@ static bool LinuxSmokeEvents(int fd, const LinuxSmokeEvent* expected, int count,
         if (!checkChildren && StrIs(in.member, "ChildrenChanged")) continue;
         if (seen >= count) return false;
         const auto& event = expected[seen++];
+        bool windowEvent = StrEq(Str(event.member), "Activate") ||
+                           StrEq(Str(event.member), "Deactivate");
+        if (!StrIs(in.interfaceName, windowEvent ? kWindowEvent : kObjectEvent))
+            return false;
         int at = 0;
         Str detail = ReadString(in.body, in.bodyLen, &at);
         int pos = ReadI32(in.body, in.bodyLen, &at);
@@ -3545,6 +3587,50 @@ static bool LinuxSmokeSelectionChanges(Window* win, int fd) {
     return LinuxSmokeEvents(fd, nullptr, 0) && ok;
 }
 
+static bool LinuxSmokeWindowActivation(Window* win, int fd) {
+    win->focusId = 0;
+    win->active = false;
+    VecClear(win->accessibility);
+    AccessibilityNode root;
+    root.id = 1;
+    root.info.role = AccessibilityRole::Window;
+    root.info.label = StrL("Probe frame");
+    VecAppend(win->accessibility, root);
+    AccessibilityLinuxTreeChanged(win);
+    bool ok = LinuxSmokeEvents(fd, nullptr, 0);
+
+    const AtspiEventValue zero(uint32_t{0});
+    const auto activeAndFocused =
+        AtspiBit(kAtspiActive) | AtspiBit(kAtspiFocused);
+    const LinuxSmokeEvent activated[] = {
+        {"Activate", "", 0, 0, root.info.label, 1},
+        {"StateChanged", "active", 1, 0, zero, 1},
+        {"ActiveDescendantChanged", "", 0, 0, AtspiEventValue::Object(1)},
+        {"StateChanged", "focused", 1, 0, zero, 1},
+    };
+    win->active = true;
+    AccessibilityLinuxFocusChanged(win);
+    ok = LinuxSmokeEvents(fd, activated, dimofi(activated)) && ok;
+    ok = (LinuxNodeStates(win, win->accessibility[0]) & activeAndFocused) ==
+             activeAndFocused &&
+         ok;
+    AccessibilityLinuxFocusChanged(win);
+    ok = LinuxSmokeEvents(fd, nullptr, 0) && ok;
+
+    const LinuxSmokeEvent deactivated[] = {
+        {"Deactivate", "", 0, 0, root.info.label, 1},
+        {"StateChanged", "active", 0, 0, zero, 1},
+        {"StateChanged", "focused", 0, 0, zero, 1},
+    };
+    win->active = false;
+    AccessibilityLinuxFocusChanged(win);
+    ok = LinuxSmokeEvents(fd, deactivated, dimofi(deactivated)) && ok;
+    ok =
+        !(LinuxNodeStates(win, win->accessibility[0]) & activeAndFocused) && ok;
+    AccessibilityLinuxForgetWindow(win);
+    return LinuxSmokeEvents(fd, nullptr, 0) && ok;
+}
+
 bool AccessibilityLinuxEventSmokeTest() {
     int fds[2] = {-1, -1};
     if (socketpair(AF_UNIX, SOCK_STREAM, 0, fds) != 0) return false;
@@ -3702,6 +3788,7 @@ bool AccessibilityLinuxEventSmokeTest() {
     ok = LinuxSmokeEvents(fds[0], nullptr, 0) && ok;
     ok = LinuxSmokeChildChanges(&win, fds[0]) && ok;
     ok = LinuxSmokeSelectionChanges(&win, fds[0]) && ok;
+    ok = LinuxSmokeWindowActivation(&win, fds[0]) && ok;
     close(fds[0]);
     close(fds[1]);
     gA11y = saved;
