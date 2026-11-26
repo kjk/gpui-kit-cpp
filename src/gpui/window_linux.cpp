@@ -6,12 +6,15 @@
    one device pixel and no coordinate here is scaled. */
 
 #include "gpui/platform.h"
+#include "gpui/keymap.h"
 #include "gpui/paint.h"
 #include "gpui/paint_backend.h"
 #include "gpui/accessibility_linux.h"
 #include "gpui/window_loop.h"
 #include "sys/clock.h"
 #include "sys/executor.h"
+#include "ui/theme.h"
+#include "ui/window_border.h"
 #include "wry/wry.h"
 
 #include <X11/Xlib.h>
