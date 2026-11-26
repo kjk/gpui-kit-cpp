@@ -13456,6 +13456,34 @@ static void AFoldedLineShowsItsPlaceholderRightAfterTheTextAndUnfoldsOnClick() {
     TestAppFree(d.app);
 }
 
+// completions.rs checks both context menus when the debounce expires.
+static void CodeActionMenuBlocksInlineCompletionAtTheDeadline() {
+    InputView view = InputViewBuildEditor(nullptr);
+    InputState* s = view.input;
+    s->inlineCompletionProvider = &TestInlineCompletion;
+    gInlineCalls = 0;
+    InputFocus(s, view.app, view.win);
+
+    CodeActionItem action;
+    action.title = StrL("Fix issue");
+    Type(s, "first");
+    s->inlineCompletion.dueAt = TimeNow() + 60.0;
+    InputPresentCodeActions(s, &action, 1);
+    TestDraw(view.win);
+    utassert(gInlineCalls == 0 && !s->inlineCompletion.asked);
+    InputDismissCodeActions(s);
+    s->inlineCompletion.dueAt = 0.0;
+    TestDraw(view.win);
+    utassert(gInlineCalls == 1 && InputHasInlineCompletion(s));
+
+    Type(s, " second");
+    InputPresentCodeActions(s, &action, 1);
+    s->inlineCompletion.dueAt = 0.0;
+    TestDraw(view.win);
+    utassert(gInlineCalls == 1 && !InputHasInlineCompletion(s));
+    TestAppFree(view.app);
+}
+
 static void RunElementWindowTests() {
     GutterCollectionsKeepEmptyRangesAsLineBoundaries();
     GutterQueriesFindBoundariesInsideTheSpan();
@@ -13463,6 +13491,7 @@ static void RunElementWindowTests() {
     DefaultDecorationCollectionsAddressNoEditor();
     GutterDecorationsReserveAStripAndMarkLinesAndBoundaries();
     InlineCompletionMovesDocumentRowsAndGutterMarks();
+    CodeActionMenuBlocksInlineCompletionAtTheDeadline();
     EditorTextOriginOffsetFollowsTheLaidOutGutter();
     LineDecorationCollectionsRoundTripInCreationOrder();
     EditorLineBackgroundsCoverTheVisibleRows();

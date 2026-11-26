@@ -3922,7 +3922,8 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     if (!InputIsEditable(state)) {
         InputHideContextMenu(state);
         InputClearInlineCompletion(state);
-    } else if (InputUpdateInlineCompletion(state, state->completion.open)) {
+    } else if (InputUpdateInlineCompletion(state,
+                                           InputIsContextMenuOpen(state))) {
         WindowRequestAnimationFrame(cx->win);
     }
     bool showPreview = state->focused && InputHasInlineCompletion(state);
@@ -9632,16 +9633,16 @@ bool InputUpdateInlineCompletion(InputState* s, bool menuOpen) {
     if (!s || !s->inlineCompletionProvider || s->inlineCompletion.asked) {
         return false;
     }
-    // The caret moved while the debounce ran, or a menu opened over it: both
-    // are checks Rust makes on the far side of the timer.
-    if (menuOpen || InputCursor(s) != s->inlineCompletion.at) {
-        InputClearInlineCompletion(s);
-        return false;
-    }
     if (TimeNow() < s->inlineCompletion.dueAt) {
         // Still waiting, and the window has to come back for the frame that
         // is not.
         return true;
+    }
+    // Check the caret and overlay once the debounce has expired. A menu
+    // that was briefly open during the wait does not cancel the request.
+    if (menuOpen || InputCursor(s) != s->inlineCompletion.at) {
+        InputClearInlineCompletion(s);
+        return false;
     }
     s->inlineCompletion.asked = true;
     if (s->inlineCompletion.arena) {
