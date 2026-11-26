@@ -144,10 +144,14 @@ struct WebView {
     way examples/webview.cpp does, and the second pass will skip it. */
 Entity<WebView> WebViewNew(Ctx* cx, const wry::WebViewAttributes* attrs);
 
-/** `WebView::show` / `hide` / `visible`. Showing takes effect when the element
-    next paints. Hiding moves the focus back to the parent window first. */
+/** Set native visibility immediately and preserve the loaded page.
+    Hiding attempts to return focus to the parent first. A focus error
+    returns false even if hiding succeeds. */
+bool WebViewSetVisible(WebView* self, bool visible);
+/** `WebView::show` / `hide`: convenience calls that ignore native errors. */
 void WebViewShow(WebView* self);
 void WebViewHide(WebView* self);
+/** The requested visibility. An empty clip can temporarily hide the view. */
 bool WebViewVisible(const WebView* self);
 /** `WebView::bounds`: the box the element had last frame. */
 Bounds WebViewBounds(const WebView* self);

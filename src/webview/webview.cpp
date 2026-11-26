@@ -185,34 +185,41 @@ Entity<WebView> WebViewNew(Ctx* cx, const wry::WebViewAttributes* attrs) {
     return handle;
 }
 
-void WebViewShow(WebView* self) {
-    wry::WebView* raw = WebViewRaw(self);
-    if (!raw) {
-        return;
+static bool ApplyWebViewVisibility(WebView* self, wry::WebView* raw,
+                                   bool visible) {
+    if (!wry::WebViewSetVisible(raw, visible)) {
+        if (visible && !self->nativeShown) {
+            // The host may have mapped before its browser rejected showing.
+            wry::WebViewSetVisible(raw, false);
+        }
+        return false;
     }
-    bool changed = !self->visible;
-    self->visible = true;
-    if (changed && AppHasWindow(self->app, self->window)) {
-        AppInvalidate(self->window);
-    }
+    self->nativeShown = visible;
+    return true;
 }
 
-void WebViewHide(WebView* self) {
+bool WebViewSetVisible(WebView* self, bool visible) {
     wry::WebView* raw = WebViewRaw(self);
-    if (!raw) {
-        return;
-    }
-    bool changed = self->visible;
-    wry::WebViewFocusParent(raw);
-    wry::WebViewSetVisible(raw, false);
-    self->visible = false;
-    self->nativeShown = false;
+    if (!raw) return false;
+    bool changed = self->visible != visible || self->nativeShown != visible;
+    bool focusOk = visible || !self->visible || wry::WebViewFocusParent(raw);
+    if (!ApplyWebViewVisibility(self, raw, visible)) return false;
+    self->visible = visible;
 #if GPUI_WRY_SNAPSHOT
-    DropWebViewBackdrop(self);
+    if (!visible) DropWebViewBackdrop(self);
 #endif
     if (changed && AppHasWindow(self->app, self->window)) {
         AppInvalidate(self->window);
     }
+    return focusOk;
+}
+
+void WebViewShow(WebView* self) {
+    WebViewSetVisible(self, true);
+}
+
+void WebViewHide(WebView* self) {
+    WebViewSetVisible(self, false);
 }
 
 bool WebViewVisible(const WebView* self) {
@@ -435,11 +442,7 @@ bool WebViewWindowGeometry(Bounds document, Bounds visible, double scale,
 }
 
 static bool HideNative(WebView* self, wry::WebView* raw) {
-    if (self->nativeShown && !wry::WebViewSetVisible(raw, false)) {
-        return false;
-    }
-    self->nativeShown = false;
-    return true;
+    return !self->nativeShown || ApplyWebViewVisibility(self, raw, false);
 }
 
 static void HideOmittedWebView(WebView* self, Ctx*, const void*) {
@@ -450,16 +453,7 @@ static void HideOmittedWebView(WebView* self, Ctx*, const void*) {
 }
 
 static bool ShowNative(WebView* self, wry::WebView* raw) {
-    if (!self->nativeShown) {
-        if (!wry::WebViewSetVisible(raw, true)) {
-            // The native host may have mapped before its browser rejected
-            // the visibility update.
-            wry::WebViewSetVisible(raw, false);
-            return false;
-        }
-        self->nativeShown = true;
-    }
-    return true;
+    return self->nativeShown || ApplyWebViewVisibility(self, raw, true);
 }
 
 static void ShowPaintedWebView(WebView* self, wry::WebView* raw) {
