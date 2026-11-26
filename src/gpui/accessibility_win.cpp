@@ -259,12 +259,24 @@ static bool AccessibilityItemSelected(const AccessibilityInfo& info) {
 }
 
 static bool AccessibilitySelectionContainerRole(AccessibilityRole role) {
-    return role == AccessibilityRole::Grid ||
-           role == AccessibilityRole::TreeGrid ||
-           role == AccessibilityRole::ListBox ||
-           role == AccessibilityRole::RadioGroup ||
-           role == AccessibilityRole::TabList ||
-           role == AccessibilityRole::Tree;
+    switch (role) {
+        case AccessibilityRole::ComboBox:
+        case AccessibilityRole::EditableComboBox:
+        case AccessibilityRole::Grid:
+        case AccessibilityRole::ListBox:
+        case AccessibilityRole::ListGrid:
+        case AccessibilityRole::Menu:
+        case AccessibilityRole::MenuBar:
+        case AccessibilityRole::MenuListPopup:
+        case AccessibilityRole::RadioGroup:
+        case AccessibilityRole::TabList:
+        case AccessibilityRole::Toolbar:
+        case AccessibilityRole::Tree:
+        case AccessibilityRole::TreeGrid:
+            return true;
+        default:
+            return false;
+    }
 }
 
 static bool AccessibilityGridRole(AccessibilityRole role) {
@@ -1259,6 +1271,10 @@ static WinPropertyValue WinSemanticProperty(const WinNodeProperties& node,
     } else if (property == UIA_SelectionItemIsSelectedPropertyId &&
                AccessibilitySelectionItem(info)) {
         return AccessibilityItemSelected(info);
+    } else if ((property == UIA_SelectionCanSelectMultiplePropertyId ||
+                property == UIA_SelectionIsSelectionRequiredPropertyId) &&
+               AccessibilitySelectionContainerRole(info.role)) {
+        return false;
     } else if (property == UIA_GridRowCountPropertyId && info.hasRowCount) {
         return info.rowCount;
     } else if (property == UIA_GridColumnCountPropertyId &&
@@ -1795,8 +1811,7 @@ HRESULT WinAccessibilityNode::get_SelectionContainer(
         parent = root->win->accessibility[parent].parent;
     }
     if (parent < 0) {
-        return root
-            ->QueryInterface(__uuidof(IRawElementProviderSimple), (void**)out);
+        return E_FAIL;
     }
     return AccessibilitySimpleAt(root, parent, out);
 }
@@ -3333,6 +3348,64 @@ bool AccessibilityWinSelectionItemActionsSmokeTest() {
     if (selection) selection->Release();
     if (pattern) pattern->Release();
     if (provider) provider->Release();
+    AccessibilityWinClose(root);
+    VecReset(win.accessibility);
+    return ok;
+}
+
+bool AccessibilityWinSelectionContainerSmokeTest() {
+    Window win;
+    AccessibilityNode container;
+    container.id = 10;
+    container.info.role = AccessibilityRole::ComboBox;
+    container.info.authorId = StrL("options");
+    AccessibilityNode item;
+    item.id = 11;
+    item.parent = 0;
+    item.info.role = AccessibilityRole::MenuListOption;
+    item.info.hasSelected = true;
+    item.info.selected = true;
+    VecAppend(win.accessibility, container);
+    VecAppend(win.accessibility, item);
+    WinAccessibility* root = AccessibilityWinNew(&win, GetDesktopWindow());
+    if (!root) return false;
+    bool ok = true;
+    {
+        WinAccessibilityNode combo(root, container.id);
+        IUnknown* pattern = nullptr;
+        ok = SUCCEEDED(
+                 combo.GetPatternProvider(UIA_SelectionPatternId, &pattern)) &&
+             pattern;
+        if (pattern) pattern->Release();
+        SAFEARRAY* items = nullptr;
+        ok &= SUCCEEDED(combo.GetSelection(&items)) && items &&
+              SafeArrayGetDim(items) == 1 && items->rgsabound[0].cElements == 1;
+        if (items) SafeArrayDestroy(items);
+
+        const PROPERTYID flags[] = {UIA_SelectionCanSelectMultiplePropertyId,
+                                    UIA_SelectionIsSelectionRequiredPropertyId};
+        for (PROPERTYID flag : flags) {
+            VARIANT value = {};
+            ok &= SUCCEEDED(combo.GetPropertyValue(flag, &value)) &&
+                  value.vt == VT_BOOL && value.boolVal == VARIANT_FALSE;
+            VariantClear(&value);
+        }
+
+        WinAccessibilityNode child(root, item.id);
+        IRawElementProviderSimple* owner = nullptr;
+        HRESULT result = child.get_SelectionContainer(&owner);
+        VARIANT id = {};
+        ok &= SUCCEEDED(result) && owner &&
+              SUCCEEDED(
+                  owner->GetPropertyValue(UIA_AutomationIdPropertyId, &id)) &&
+              id.vt == VT_BSTR && id.bstrVal &&
+              wcscmp(id.bstrVal, L"options") == 0;
+        VariantClear(&id);
+        if (owner) owner->Release();
+        win.accessibility[0].info.role = AccessibilityRole::Group;
+        ok &= child.get_SelectionContainer(&owner) == E_FAIL && !owner;
+        if (owner) owner->Release();
+    }
     AccessibilityWinClose(root);
     VecReset(win.accessibility);
     return ok;

@@ -15,6 +15,7 @@ bool AccessibilityWinFocusChangesSmokeTest();
 bool AccessibilityWinTextChangesSmokeTest();
 bool AccessibilityWinSelectionEventsSmokeTest();
 bool AccessibilityWinSelectionItemActionsSmokeTest();
+bool AccessibilityWinSelectionContainerSmokeTest();
 bool AccessibilityWinDialogEventsSmokeTest();
 } // namespace gpui
 #endif
@@ -1862,6 +1863,7 @@ void TestAccessibility() {
     utassert(AccessibilityWinTextChangesSmokeTest());
     utassert(AccessibilityWinSelectionEventsSmokeTest());
     utassert(AccessibilityWinSelectionItemActionsSmokeTest());
+    utassert(AccessibilityWinSelectionContainerSmokeTest());
     utassert(AccessibilityWinDialogEventsSmokeTest());
 #endif
     TheTreeSkipsVisualBoxesButKeepsSemanticParents();
