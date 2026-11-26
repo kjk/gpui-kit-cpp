@@ -957,9 +957,18 @@ EM_JS(int, GpJsTextNew,
         const slant = HEAPU8[p + 10];
         const prefix = slant === 3 ? "oblique "
             : slant === 2 || (slant === 0 && italic) ? "italic " : "";
-        spans.push({lo: lo, hi: hi,
-                    font: prefix + (weight || w / 100) * 100 + " " + fontSize + "px " + family});
+        const face = prefix + (weight || w / 100) * 100 + " " + fontSize + "px " + family;
+        if (face === font) continue;
+        const previous = spans[spans.length - 1];
+        // The source can split one font at a link or a decoration. Canvas
+        // must shape it in one call to preserve kerning and bidi.
+        if (previous && previous.hi === lo && previous.font === face) {
+            previous.hi = hi;
+        } else {
+            spans.push({lo: lo, hi: hi, font: face});
+        }
     }
+    const styled = spans.length > 0;
 
     const c = G.measurer();
     const prevFont = c.font;
@@ -995,7 +1004,7 @@ EM_JS(int, GpJsTextNew,
         return parts;
     };
     const width = function(s, start) {
-        if (!spanCount) return c.measureText(s).width;
+        if (!styled) return c.measureText(s).width;
         const parts = partsOf(s, start);
         if (parts.length === 0) return 0;
         const last = parts[parts.length - 1];
@@ -1041,7 +1050,7 @@ EM_JS(int, GpJsTextNew,
                     line = "";
                 }
                 while (word.length > 1) {
-                    const wordStart = at + (spanCount ? G.u8len(line) : 0);
+                    const wordStart = at + (styled ? G.u8len(line) : 0);
                     if (width(word, wordStart) <= maxW) break;
                     let cut = 0;
                     for (const ch of word) {
@@ -1066,7 +1075,7 @@ EM_JS(int, GpJsTextNew,
     let maxLine = 0;
     const widths = [];
     const fullWidths = [];
-    const parts = spanCount ? [] : null;
+    const parts = styled ? [] : null;
     for (let i = 0; i < lines.length; i++) {
         const lw = width(wrapped[i] ? lines[i].trimEnd() : lines[i], starts[i]);
         if (parts) parts.push(partsOf(lines[i], starts[i]));
