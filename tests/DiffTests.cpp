@@ -2277,6 +2277,40 @@ static PointerStage StagePointer(bool claim, Str patch = {},
     return stage;
 }
 
+static void DiffViewportHasALocalizedDocumentName() {
+    PointerStage stage = StagePointer(false);
+    Str priorLocale = LocaleNow();
+    auto hasDocumentName = [&](Str name) {
+        for (const auto& node : stage.win->accessibility) {
+            if (node.info.role == AccessibilityRole::Document &&
+                StrEq(node.info.PlatformName(), name))
+                return true;
+        }
+        return false;
+    };
+    LocaleSet(StrL("pt-BR"));
+    TestDraw(stage.win);
+    utassert(hasDocumentName(StrL("Diff de file.rs")));
+
+    LocaleSet(StrL("en"));
+    auto* state = stage.host->state.Get(stage.app);
+    Vec<DiffFile*> files;
+    if (Parse("--- a/file.rs\n+++ b/file.rs\n@@ -1 +1 @@\n-a\n+b\n"
+              "--- a/other.rs\n+++ b/other.rs\n@@ -1 +1 @@\n-c\n+d\n",
+              &files)) {
+        state->SetFiles(files.els, len(files), nullptr);
+        TestDraw(stage.win);
+        utassert(hasDocumentName(StrL("Diff for 2 files")));
+    } else {
+        utassert(false);
+    }
+    state->SetFiles(nullptr, 0, nullptr);
+    TestDraw(stage.win);
+    utassert(hasDocumentName(StrL("Diff for 0 files")));
+    LocaleSet(priorLocale);
+    TestAppFree(stage.app);
+}
+
 // A point inside the painted run of the modified side's `lineIx`, `inset`
 // from its left edge, and one past the run's right edge.
 static bool PointerPoints(Window* win, int lineIx, float inset, Point* onText,
@@ -3107,6 +3141,7 @@ void TestDiff() {
     BuiltInDiffSyntaxLandsFromTheExecutorAndResetsAtHunks();
     OwnedDiffHighlighterPreparesOnTheExecutorAndDisposesOnce();
     GutterMarkersActivateWithoutSelectingLines();
+    DiffViewportHasALocalizedDocumentName();
     TextHoverReportsTheCharacterAndOnlyChanges();
     TextHitsUsePaintedSyntaxRunsAndSourceOffsets();
     AModifierAloneReportsTheCharacterAgain();

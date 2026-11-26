@@ -5732,6 +5732,13 @@ El* Diff::IntoEl() {
     st->EnsureSyntax();
     st->EnsureFilePresentation(true);
     st->listScroll.itemsCount = len(st->rows);
+    Str label;
+    if (len(st->files) == 1) {
+        const TrArg name[] = {{"name", st->files[0]->Path()}};
+        label = TrFmtTemp("Diff.Viewer", name, dimofi(name));
+    } else {
+        label = TrCountTemp("Diff.ViewerFiles", (size_t)len(st->files));
+    }
     // A column so the caller's height (the story's 32rem) reaches the list.
     // The list is height 100%, which collapses when its parent is only as
     // tall as that percentage.
@@ -5740,6 +5747,8 @@ El* Diff::IntoEl() {
                    ->SizeFull()
                    ->KeyContext(StrL("Diff"))
                    ->TrackFocus(st->focus)
+                   ->Role(AccessibilityRole::Document)
+                   ->AriaLabel(StrDup(a, label))
                    ->OnMouseMove(ListenTo(state, &OnDiffSelectionMove))
                    ->OnDragMove(ListenTo(state, &OnDiffSelectionDrag))
                    ->OnMouseUp(ListenTo(state, &OnDiffSelectionUp))
