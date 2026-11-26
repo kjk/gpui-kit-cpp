@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `75b682a951b7f269de08cdfecef4894af9f980b7` (2026-11-26,
-title_bar: Keep window control backgrounds inside rounded window corners (#4153)).
-Outermost title-bar controls follow the window corner radius and account
-for the leading group's left padding and the button order in RTL layouts.
+Processed through `6f2a223b2ac71af0e9f654a913ce33227a4ea258` (2026-11-26,
+docs: Dispatch the Action examples' button clicks outside `cx.listener` (#4162)).
+The upstream website's Action and Event guides fix their Rust code samples.
 The current update target is
-`75b682a951b7f269de08cdfecef4894af9f980b7`.
+`6f2a223b2ac71af0e9f654a913ce33227a4ea258`.
 
 ## Known gaps vs Rust
 
