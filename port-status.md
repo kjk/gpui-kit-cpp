@@ -546,8 +546,11 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   ranges. Shift-click in a visible block can extend a word or logical line
   while its anchor is offscreen. Finished touch selections project each
   handle from its retained endpoint, so a visible handle can be dragged even
-  when the other endpoint is offscreen. Active drags and table-cell selections
-  still expand the full layout to reach anchors outside the viewport.
+  when the other endpoint is offscreen. Finished table-cell selections also
+  keep their range and source copy in a virtualized block. Shift extension
+  first resolves an offscreen anchor cell's bounds, then clamps the target
+  to that cell. Active drags still expand the full layout to reach anchors
+  outside the viewport.
   Rust virtualizes the blocks and resolves the same range from the document
   even when the anchor and intervening blocks have no painted runs.
   Clipboard copy sizes the buffer from the selected participants' text.

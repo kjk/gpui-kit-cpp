@@ -9727,6 +9727,54 @@ static void FinishedTouchSelectionKeepsOnlyVisibleHandles() {
     ArenaDelete(a);
 }
 
+static void FinishedTableCellSelectionStaysVirtualized() {
+    Arena* a = ArenaNew();
+    Str document = StrDup(a, fmt("| Header 1 | Header 2 |\n"
+                                 "| --- | --- |\n"
+                                 "| **Alpha** Beta | Unselected |\n\n%s",
+                                 TswParagraphs(a, 120)));
+    TswView v = TswOpen(document.s, TswContainer::Scrollable);
+    v.State()->SetSelectionFormat(SelectionFormat::Source, v.app, v.win);
+    TestDraw(v.win);
+    const TextHit* cell = HitContaining(v.win, "Alpha");
+    utassert(cell && cell->inCell);
+    if (cell && cell->inCell) {
+        Point start = TextHitCaretPoint(&v.win->paint, *cell, 2, false);
+        Point end = TextHitCaretPoint(&v.win->paint, *cell, 4, true);
+        RawMouse(v.win, PlatformInputKind::MouseDown, start, false);
+        RawMouse(v.win, PlatformInputKind::MouseMove, end, true);
+        RawMouse(v.win, PlatformInputKind::MouseUp, end, false);
+        TestDraw(v.win);
+        utassert(!HitContaining(v.win, "paragraph 119"));
+        utassert(StrEq(StrTrimAscii(TswCopy(a, v)), StrL("**ph**")));
+
+        TswReveal(v, "paragraph 60");
+        utassert(!HitContaining(v.win, "Alpha"));
+        utassert(StrEq(StrTrimAscii(TswCopy(a, v)), StrL("**ph**")));
+
+        const TextHit* lower = HitContaining(v.win, "paragraph 60");
+        utassert(lower);
+        if (lower) {
+            Point at = {lower->contentMask.Right() - 1, lower->bounds
+                                                            .CenterY()};
+            WindowSelectionPress(v.win, at.x, at.y, 1, true);
+            WindowSelectionRelease(v.win);
+            TestDraw(v.win);
+            TestDraw(v.win);
+            utassert(!HitContaining(v.win, "Alpha"));
+            utassert(StrEq(StrTrimAscii(TswCopy(a, v)), StrL("**pha** Beta")));
+
+            v.State()->scrollY = 0;
+            TestDraw(v.win);
+            cell = HitContaining(v.win, "Alpha");
+            utassert(cell && cell->inCell && v.win->sel->hasAnchorCell);
+            utassert(StrEq(StrTrimAscii(TswCopy(a, v)), StrL("**pha** Beta")));
+        }
+    }
+    TswClose(&v);
+    ArenaDelete(a);
+}
+
 static void UnicodeParagraphCopyExtendsBeforePaint() {
     Arena* built = ArenaNew();
     StrBuilder sb(built);
@@ -9913,6 +9961,7 @@ static void TestTextStateWindow() {
     SelectionStartsInAnIdleVirtualizedTextView();
     FinishedMultiClickSelectionStaysVirtualized();
     FinishedTouchSelectionKeepsOnlyVisibleHandles();
+    FinishedTableCellSelectionStaysVirtualized();
     UnicodeParagraphCopyExtendsBeforePaint();
     ScrollableTextViewUsesTheBaseScrollbarTheme();
     TripleClickSelectsTheWholeWrappedParagraph();

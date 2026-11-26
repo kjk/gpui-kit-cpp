@@ -346,6 +346,9 @@ struct TextSelectionReflow {
     TextSelectionSourcePoint endpoints[2];
     Bounds bounds[2];
     TextSelectionSourcePoint unit[2];
+    // A Shift press from an offscreen cell needs its newly laid-out bounds.
+    Point cellExtension = {};
+    bool extendCell = false;
 };
 
 struct TextSelectionCopyProjection {

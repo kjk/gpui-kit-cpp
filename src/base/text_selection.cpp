@@ -1596,7 +1596,10 @@ static void WindowSelectionDragAt(Window* win, float x, float y) {
     WindowSelection* s = win ? win->sel : nullptr;
     if (!s || !s->gesture.selecting) return;
     if (AwaitingSelectionReflow(s)) {
-        if (s->hasTouchEdgeDrag) DragPendingTouchEdge(win, {x, y});
+        if (s->pendingReflow.extendCell)
+            s->pendingReflow.cellExtension = {x, y};
+        else if (s->hasTouchEdgeDrag)
+            DragPendingTouchEdge(win, {x, y});
         return;
     }
     PaintCtx* ctx = &win->paint;
@@ -1779,7 +1782,8 @@ static int FirstMapSegmentAt(const SelSourceMap& map, int offset) {
 
 static const TextHit* CaptureSourcePoint(const PaintCtx& paint, int offset,
                                          int scope, bool trailing,
-                                         TextSelectionSourcePoint* out) {
+                                         TextSelectionSourcePoint* out,
+                                         const Bounds* cell = nullptr) {
     auto captureBlock = [&](const TextHit* hit) {
         int hitIndex = (int)(hit - paint.texts.els);
         for (const auto& block : paint.selectionSourceBlocks) {
@@ -1800,6 +1804,10 @@ static const TextHit* CaptureSourcePoint(const PaintCtx& paint, int offset,
             hit.blockPlugin || offset > hit.docOff + len(hit.text)) {
             continue;
         }
+        if (cell &&
+            (!hit.inCell || hit.cell.x != cell->x || hit.cell.y != cell->y ||
+             hit.cell.w != cell->w || hit.cell.h != cell->h))
+            continue;
         if (!candidate) candidate = &hit;
         if (!map || map->atomic) continue;
         int local = map->offset + offset - hit.docOff;
@@ -1877,7 +1885,14 @@ static bool ExtendUnpaintedSelection(Window* win, Point point) {
     WindowSelection* selection = win->sel;
     TextSelectionReflow reflow = selection->pendingReflow;
     auto anchor = reflow.endpoints[0];
-    if (anchor.block < 0 || selection->hasAnchorCell) return false;
+    if (anchor.block < 0) return false;
+    if (selection->hasAnchorCell) {
+        selection->pendingReflow.extendCell = true;
+        selection->pendingReflow.cellExtension = point;
+        TextSelectionBegin(&selection->gesture, true);
+        WindowRequestAnimationFrame(win);
+        return true;
+    }
     int offset = TextHitOffsetIn(&win->paint, point.x, point.y, true,
                                  reflow.scope, nullptr);
     TextSelectionSourcePoint cursor;
@@ -2029,11 +2044,12 @@ TextSelectionReflow WindowSelectionCaptureReflow(Window* win) {
     out.offsets[0] = s->anchor;
     out.offsets[1] = s->cursor;
     out.scope = s->scope;
+    const Bounds* cell = AnchorCellOf(s);
     const TextHit* endpoints[2] = {};
     for (int i = 0; i < 2; i++) {
         endpoints[i] = CaptureSourcePoint(win->paint, out.offsets[i], s->scope,
                                           out.offsets[i] > out.offsets[1 - i],
-                                          &out.endpoints[i]);
+                                          &out.endpoints[i], cell);
         if (!endpoints[i]) return {};
         out.bounds[i] = endpoints[i]->bounds;
     }
@@ -2046,9 +2062,9 @@ TextSelectionReflow WindowSelectionCaptureReflow(Window* win) {
     if (!selectingCaret) CaptureSelectionCopy(win, view, out);
     if (s->unitHeld) {
         const TextHit* start = CaptureSourcePoint(
-            win->paint, s->unitStart, s->scope, false, &out.unit[0]);
-        const TextHit* end = CaptureSourcePoint(win->paint, s->unitEnd,
-                                                s->scope, true, &out.unit[1]);
+            win->paint, s->unitStart, s->scope, false, &out.unit[0], cell);
+        const TextHit* end = CaptureSourcePoint(
+            win->paint, s->unitEnd, s->scope, true, &out.unit[1], cell);
         if (!start || !end || start->owner != out.owner ||
             end->owner != out.owner)
             out.unit[0] = {};
@@ -2110,8 +2126,16 @@ void WindowSelectionRestoreReflow(Window* win, const TextSelectionReflow& old) {
                                &s->unitStart) &&
             RestoreSourcePoint(win->paint, old, old.unit[1], true, &s->unitEnd);
     }
+    if (old.extendCell && s->hasAnchorCell) {
+        // Resume the same Shift gesture against the restored cell geometry.
+        bool pressed = s->gesture.selecting;
+        WindowSelectionPress(win, old.cellExtension.x, old.cellExtension.y, 1,
+                             true);
+        if (!pressed) WindowSelectionRelease(win);
+    }
     WindowSelectionApply(win);
-    if (remapped || wasPending) WindowRequestAnimationFrame(win);
+    if (remapped || wasPending || old.extendCell)
+        WindowRequestAnimationFrame(win);
 }
 
 int WindowSelectionTextAs(Window* win, char* out, int cap,

@@ -9532,8 +9532,8 @@ El* TextView::IntoEl() {
     const TextSelectionReflow* reflow =
         cx->win ? cx->win->paint.selectionReflow : nullptr;
     bool projectSelection =
-        managed && selection && !selection->gesture.selecting &&
-        !selection->hasAnchorCell && reflow && reflow->owner == managed->self &&
+        managed && selection && !selection->gesture.selecting && reflow &&
+        !reflow->extendCell && reflow->owner == managed->self &&
         (!selection->unitHeld ||
          (reflow->unit[0].block >= 0 && reflow->unit[1].block >= 0)) &&
         selection->copyProjection.owner == managed->self &&
