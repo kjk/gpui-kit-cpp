@@ -652,21 +652,29 @@ El* Tig::CommitRow(void* user, Ctx* cx, int index) {
         ->Tip(commit.Subject());
 }
 
-static Str FileStatus(DiffFileStatus status) {
+struct TigFileStatus {
+    Str marker;
+    Str name;
+};
+
+static TigFileStatus FileStatus(DiffFileStatus status) {
     switch (status) {
         case DiffFileStatus::Added:
-            return StrL("A");
+            return {StrL("A"), StrL("Added")};
         case DiffFileStatus::Deleted:
-            return StrL("D");
+            return {StrL("D"), StrL("Deleted")};
         case DiffFileStatus::Renamed:
-            return StrL("R");
+            return {StrL("R"), StrL("Renamed")};
         case DiffFileStatus::Copied:
-            return StrL("C");
+            return {StrL("C"), StrL("Copied")};
         case DiffFileStatus::Conflicted:
-            return StrL("U");
-        default:
-            return StrL("M");
+            return {StrL("U"), StrL("Conflicted")};
+        case DiffFileStatus::Unchanged:
+            return {StrL("-"), StrL("Unchanged")};
+        case DiffFileStatus::Modified:
+            return {StrL("M"), StrL("Modified")};
     }
+    return {StrL("?"), StrL("Unknown")};
 }
 
 El* Tig::FileRow(void* user, Ctx* cx, int index) {
@@ -674,36 +682,71 @@ El* Tig::FileRow(void* user, Ctx* cx, int index) {
     const DiffFile* file = self->File(index, cx);
     if (!file) return Div(cx->a);
     const Theme& th = ThemeNow(cx->app);
-    El* label = Div(cx->a)
-                    ->FlexRow()
-                    ->Flex1()
-                    ->MinW(0)
-                    ->Gap(8)
-                    ->ItemsCenter()
-                    ->Child(TextEl(cx->a, FileStatus(file->Status()))
-                                ->Mono()
-                                ->Font(12)
-                                ->Fg(th.mutedFg))
-                    ->Child(TextEl(cx->a, file->Path())
-                                ->Flex1()
-                                ->MinW(0)
-                                ->Truncate()
-                                ->Font(14))
-                    ->Child(TextEl(cx->a, fmt("+%d", file->Additions()))
-                                ->Mono()
-                                ->Font(12)
-                                ->Fg(th.success))
-                    ->Child(TextEl(cx->a, fmt("-%d", file->Deletions()))
-                                ->Mono()
-                                ->Font(12)
-                                ->Fg(th.danger));
+    Str path = file->Path();
+    int nameStart = len(path);
+    while (nameStart > 0 && path.s[nameStart - 1] != '/') nameStart--;
+    Str name =
+        nameStart ? Str(path.s + nameStart, len(path) - nameStart) : path;
+    Str directory(path.s, std::max(0, nameStart - 1));
+    const TigFileStatus status = FileStatus(file->Status());
+    int added = file->Additions(), deleted = file->Deletions();
+    bool hasCounts = !file->IsBinary() && (added || deleted);
+    El* location = Div(cx->a)
+                       ->FlexCol()
+                       ->Flex1()
+                       ->MinW(0)
+                       ->Child(TextEl(cx->a, name)
+                                   ->Font(14)
+                                   ->LineHeight(20.f / 14)
+                                   ->Truncate())
+                       ->Child(TextEl(cx->a, directory)
+                                   ->H(16)
+                                   ->Font(12)
+                                   ->LineHeight(16.f / 12)
+                                   ->Truncate()
+                                   ->Fg(th.mutedFg));
+    El* label =
+        Div(cx->a)
+            ->FlexRow()
+            ->WFrac(1)
+            ->MinW(0)
+            ->Gap(8)
+            ->Child(Div(cx->a)
+                        ->FlexRow()
+                        ->Flex1()
+                        ->MinW(0)
+                        ->Gap(8)
+                        ->Child(IconEl(cx->a, IconName::FileText,
+                                       UiIconPx(cx, UiSize::Small))
+                                    ->Fg(th.mutedFg))
+                        ->Child(location))
+            ->Child(TextEl(cx->a, status.marker)
+                        ->W(16)
+                        ->FlexNone()
+                        ->Font(12)
+                        ->Fg(th.mutedFg))
+            ->Child(TextEl(cx->a, hasCounts ? fmt("+%d", added) : StrL("-"))
+                        ->W(48)
+                        ->FlexNone()
+                        ->TextRight()
+                        ->Mono()
+                        ->Font(12)
+                        ->Fg(added ? th.foreground : th.mutedFg))
+            ->Child(TextEl(cx->a, hasCounts ? fmt("-%d", deleted) : StrL("-"))
+                        ->W(48)
+                        ->FlexNone()
+                        ->TextRight()
+                        ->Mono()
+                        ->Font(12)
+                        ->Fg(deleted ? th.foreground : th.mutedFg));
     return component::ListItem::New(cx, label)
         ->Selected(self->fileIx == index)
         ->SecondarySelected(self->fileIx == index &&
                             cx->win->lastInputKeyboard &&
                             FocusHandleIsFocused(cx->win, self->filesFocus))
-        ->AccessibilityLabel(file->Path())
-        ->IntoEl(file->Path(),
+        ->AccessibilityLabel(StrDup(
+            cx->a, fmt("%s · %s · +%d -%d", path, status.name, added, deleted)))
+        ->IntoEl(path,
                  Listen(
                      cx,
                      +[](Tig* view, Ctx* cx, const ClickEvent*, int64_t i) {
@@ -712,9 +755,13 @@ El* Tig::FileRow(void* user, Ctx* cx, int index) {
                      },
                      index),
                  {})
-        ->H(32)
+        ->H(48)
+        ->PadY(4)
         ->PadX(16)
-        ->Tip(file->Path());
+        ->MinW(0)
+        ->Tip(StrDup(cx->a,
+                     fmt("%s · %s%s", path, status.name,
+                         file->IsBinary() ? StrL(" · Binary") : StrL(""))));
 }
 
 El* Tig::Navigation(Ctx* cx, Tig* self, bool history) {
@@ -734,17 +781,36 @@ El* Tig::Navigation(Ctx* cx, Tig* self, bool history) {
                     ->Font(14)
                     ->Medium())
             ->Child(TextEl(cx->a, fmt("%d", count))->Font(12)->Fg(th.mutedFg));
+    header->Child(Div(cx->a)->Flex1());
     if (history) {
-        header->Child(Div(cx->a)->Flex1())
-            ->Child(TigButton(cx, TigRefresh)
-                        ->Label(StrL("Refresh"))
-                        ->Tooltip(StrL("Refresh history"))
-                        ->Disabled(self->readingHistory)
-                        ->IntoEl());
+        header->Child(TigButton(cx, TigRefresh)
+                          ->Label(StrL("Refresh"))
+                          ->Tooltip(StrL("Refresh history"))
+                          ->Disabled(self->readingHistory)
+                          ->IntoEl());
+    } else {
+        header
+            ->Child(Div(cx->a)
+                        ->FlexRow()
+                        ->Gap(4)
+                        ->Child(TigButton(cx, TigPreviousFile)
+                                    ->Icon(IconName::ChevronLeft)
+                                    ->AccessibilityLabel(StrL("Previous file"))
+                                    ->Tooltip(StrL("Previous file"))
+                                    ->Disabled(self->fileIx <= 0)
+                                    ->IntoEl())
+                        ->Child(TigButton(cx, TigNextFile)
+                                    ->Icon(IconName::ChevronRight)
+                                    ->AccessibilityLabel(StrL("Next file"))
+                                    ->Tooltip(StrL("Next file"))
+                                    ->Disabled(self->fileIx < 0 ||
+                                               self->fileIx + 1 >= count)
+                                    ->IntoEl()));
     }
     auto* handle = history ? &self->historyScroll : &self->filesScroll;
     El* list = component::VirtualList::New(cx, count)
-                   ->RowH(history ? 48.f : 32.f)
+                   ->RowH(48)
+                   ->Axis(ScrollAxis::Vertical)
                    ->Handle(handle)
                    ->Row(history ? &CommitRow : &FileRow, self)
                    ->IntoEl();
