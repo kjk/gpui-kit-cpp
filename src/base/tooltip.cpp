@@ -89,6 +89,7 @@ static void TooltipRequestClear(TooltipRequest* request) {
         return;
     }
     StrFree(request->text);
+    StrFree(request->shortcut);
     *request = {};
 }
 
@@ -97,6 +98,7 @@ static void TooltipRequestCopy(TooltipRequest* into,
     TooltipRequestClear(into);
     *into = request;
     into->text = StrDup(request.text);
+    into->shortcut = StrDup(request.shortcut);
 }
 
 static void TooltipRequestMove(TooltipRequest* into, TooltipRequest* from) {
@@ -263,22 +265,29 @@ static const BoxShadow kTooltipShadowMd[2] = {
     {0, 2.f, 4.f, -2.f, {0, 0, 0, 26}, false},
 };
 
-static El* TooltipTextView(Ctx* cx, Str text) {
+static El* TooltipTextView(Ctx* cx, Str text, Str shortcut) {
     const RuntimeStyle& theme = RuntimeStyleNow(cx->app);
-    return Tooltip::New(cx, StrL("tooltip-popup"))
-        ->FlexRow()
-        ->ItemsCenter()
-        ->Margin(Rems(cx, 0.75f))
-        ->Bg(theme.popover)
-        ->Fg(theme.popoverForeground)
-        ->Border(1, theme.border)
-        ->Shadows(kTooltipShadowMd, 2)
-        ->Radius(theme.radius)
-        ->PadX(Rems(cx, 0.5f))
-        ->PadY(Rems(cx, 0.125f))
-        ->Font(14)
-        ->Gap(Rems(cx, 0.75f))
-        ->Child(TextEl(cx->a, text));
+    El* tooltip = Tooltip::New(cx, StrL("tooltip-popup"))
+                      ->FlexRow()
+                      ->ItemsCenter()
+                      ->Margin(Rems(cx, 0.75f))
+                      ->Bg(theme.popover)
+                      ->Fg(theme.popoverForeground)
+                      ->Border(1, theme.border)
+                      ->Shadows(kTooltipShadowMd, 2)
+                      ->Radius(theme.radius)
+                      ->PadX(Rems(cx, 0.5f))
+                      ->PadY(Rems(cx, 0.125f))
+                      ->Font(14)
+                      ->Gap(Rems(cx, 0.75f))
+                      ->Child(TextEl(cx->a, text));
+    if (len(shortcut)) {
+        tooltip->Child(TextEl(cx->a, shortcut)
+                           ->Font(12)
+                           ->Fg(theme.mutedForeground)
+                           ->Shrink(0));
+    }
+    return tooltip;
 }
 
 static El* TooltipRenderLink(const TooltipRequest& request, Ctx* cx) {
@@ -375,9 +384,10 @@ El* TooltipOverlay::Render(TooltipOverlay* self, Ctx* cx) {
     if (self->content.buildLink) {
         return TooltipRenderLink(self->content, cx);
     }
-    El* view = self->content.build
-                   ? self->content.build(cx, self->content.buildData)
-                   : TooltipTextView(cx, self->content.text);
+    El* view =
+        self->content.build
+            ? self->content.build(cx, self->content.buildData)
+            : TooltipTextView(cx, self->content.text, self->content.shortcut);
     if (!view) {
         return nullptr;
     }
@@ -522,7 +532,8 @@ void TooltipUpdateLinkAtPointer(Window* win) {
 }
 
 void TooltipRequestShow(Window* win, Str text, Bounds triggerBounds,
-                        int placement, bool rootLayer, int showDelayMs) {
+                        int placement, bool rootLayer, int showDelayMs,
+                        Str shortcut) {
     // A trigger the root view drew asks the root's overlay; any other, or one
     // in a window whose root has none, the window's.
     TooltipOverlay* overlay = rootLayer ? TooltipRootOverlay(win) : nullptr;
@@ -547,6 +558,7 @@ void TooltipRequestShow(Window* win, Str text, Bounds triggerBounds,
     // Re-entering the same visible trigger only cancels its pending hide.
     if (overlay->hasContent && overlay->content.text.s &&
         base::StrEq(overlay->content.text, text) &&
+        base::StrEq(overlay->content.shortcut, shortcut) &&
         overlay->content.triggerBounds.x == triggerBounds.x &&
         overlay->content.triggerBounds.y == triggerBounds.y &&
         overlay->content.triggerBounds.w == triggerBounds.w &&
@@ -556,6 +568,7 @@ void TooltipRequestShow(Window* win, Str text, Bounds triggerBounds,
     }
     Ctx cx = TooltipContext(win, id);
     TooltipRequest request = TooltipRequest::Text(triggerBounds, text);
+    request.shortcut = shortcut;
     // managed_tooltip_with_placement: `Some(placement)` is the trigger's
     // preferred side, `None` leaves the overlay's own placement.
     if (placement >= (int)gpui::Placement::Top &&

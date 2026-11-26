@@ -2908,6 +2908,7 @@ struct ElLifecycle {
     void (*afterPaint)(PaintCtx* ctx, El* e, void* user) = nullptr;
     void* user = nullptr;
     const LinkTooltipTarget* linkTooltip = nullptr;
+    Str tooltipShortcut = {};
     const InlineTextFragment* inlineTextFragment = nullptr;
     Str selectionBlockSource;
     const ArenaVec<Str>* selectionBlockPrefix = nullptr;
@@ -3802,7 +3803,7 @@ struct El {
     El* DebugBelow();
 #endif
     El* TrapId(int v);
-    El* Tip(Str s);
+    El* Tip(Str s, Str shortcut = {});
     // managed_tooltip_with_placement's preferred side, as the value of base's
     // `Placement`; see Style::tooltipPlacement. Does nothing without a Tip.
     El* TipPlacement(int placement);
@@ -3949,6 +3950,7 @@ struct HitRect {
     // El::Tip. The overlay reads it when the pointer arrives, so it has to
     // survive the hit test rather than only the paint that drew it.
     Str tooltip = {};
+    Str tooltipShortcut = {};
     int8_t tooltipPlacement = -1;
     int tooltipShowDelayMs = -1;
     // El::rootTooltip: the root view's own overlay shows it.

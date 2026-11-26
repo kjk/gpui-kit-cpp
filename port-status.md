@@ -218,6 +218,10 @@ The current update target is
 - **Link tooltips build frame-local elements.** Rust retains its tooltip
   view entity. C++ invokes the builder on each visible frame and passes it
   the owning view context and URL (`src/base/tooltip.cpp`).
+- **Button action tooltips resolve shortcuts during the button's frame.**
+  The overlay retains the formatted shortcut through its show delay. As with
+  C++ `Kbd::ForAction`, an omitted context looks up unscoped bindings
+  (`src/ui/button.cpp`, `src/base/tooltip.cpp`).
 - **Client corner radii shape the painted window.** The frame, root and
   title bar use `window.radius`. Rust also supplies the corner radii to
   its Wayland compositor integration. This port uses X11 on Linux

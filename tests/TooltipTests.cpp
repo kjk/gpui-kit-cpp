@@ -10,13 +10,15 @@
 struct TipButtons {
     bool shown[2] = {true, false};
     int delay = 0;
+    uint32_t action = 0;
 
     static El* Render(TipButtons* self, Ctx* cx) {
         El* row = Div(cx->a)->W(400)->H(200)->FlexRow()->Gap(20);
         if (self->shown[0]) {
             row->Child(component::Button::New(cx, StrL("a"))
                            ->Label(StrL("A"))
-                           ->Tooltip(StrL("First"))
+                           ->TooltipWithAction(StrL("First"), self->action,
+                                               "TipButtons")
                            ->TooltipShowDelay(self->delay)
                            ->IntoEl()
                            ->W(80)
@@ -107,6 +109,31 @@ static void PendingButtonShowsAfterTheDelay() {
     TestDraw(win);
     utassert(TipVisible(win));
     TestAppFree(app);
+}
+
+static void ActionTooltipKeepsTheShortcutThroughTheDelay() {
+    App* app = TestAppNew();
+    component::Init(app);
+    uint32_t action = ActionOf(StrL("test::TooltipAction"));
+    const KeyBinding bindings[] = {{"secondary-b", action, "TipButtons"}};
+    KeymapBind(bindings, dimofi(bindings));
+    auto buttons = EntityNew<TipButtons>(app);
+    buttons.Get(app)->action = action;
+    buttons.Get(app)->delay = 500;
+    Window* win = OpenTips(app, buttons);
+    TestSimulateMouseMove(win, {20, 15});
+    TestDraw(win);
+    utassert(TipPending(win));
+    TestAdvanceClock(app, 500);
+    TestDraw(win);
+    const TooltipOverlay* overlay = TooltipShowing(win);
+    utassert(overlay && overlay->hasContent &&
+             StrEq(overlay->content.text, StrL("First")) &&
+             StrEq(overlay->content.shortcut, PlatSecondaryIsCommand()
+                                                  ? StrL("\u2318B")
+                                                  : StrL("Ctrl+B")));
+    TestAppFree(app);
+    KeymapClear();
 }
 
 // removing_old_button_preserves_new_tooltip. The pointer has moved to the
@@ -234,6 +261,7 @@ void TestTooltip() {
     RemovingButtonHidesVisibleTooltip();
     RemovingButtonCancelsPendingTooltip();
     PendingButtonShowsAfterTheDelay();
+    ActionTooltipKeepsTheShortcutThroughTheDelay();
     RemovingOldButtonPreservesNewTooltip();
     LongTextWrapsWithinTheTooltipWidth();
     AManagedTooltipHidesTheNativeTooltipAroundIt();

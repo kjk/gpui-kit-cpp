@@ -2791,8 +2791,10 @@ El* El::TrapId(int v) {
     style.trapId = v;
     return this;
 }
-El* El::Tip(Str s) {
+El* El::Tip(Str s, Str shortcut) {
     style.tooltip = s;
+    if (shortcut.s && !lifecycle) lifecycle = ArenaNew<ElLifecycle>(arena);
+    if (lifecycle) lifecycle->tooltipShortcut = shortcut;
     return this;
 }
 El* El::TipPlacement(int placement) {
@@ -9087,6 +9089,8 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         hr.onHover = e->onHover;
         hr.onMouseMove = e->onMouseMove;
         hr.tooltip = e->style.tooltip;
+        hr.tooltipShortcut =
+            e->lifecycle ? e->lifecycle->tooltipShortcut : Str{};
         hr.tooltipPlacement = e->style.tooltipPlacement;
         hr.tooltipShowDelayMs = e->style.tooltipShowDelayMs;
         hr.rootTooltip = e->rootTooltip;

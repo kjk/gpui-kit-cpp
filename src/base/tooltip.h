@@ -82,6 +82,7 @@ struct TooltipRequest {
     bool hasShowDelay = false;
     int showDelayMs = 0;
     Str text = {};
+    Str shortcut = {};
 
     static TooltipRequest New(Bounds triggerBounds, TooltipBuilder build,
                               void* data = nullptr);
@@ -146,7 +147,7 @@ struct TooltipPositioner {
 // one.
 void TooltipRequestShow(Window* win, Str text, Bounds triggerBounds,
                         int placement = -1, bool rootLayer = false,
-                        int showDelayMs = -1);
+                        int showDelayMs = -1, Str shortcut = {});
 void TooltipRequestHide(Window* win);
 void TooltipHide(Window* win);
 // The hovered trigger left the tree without a pointer event. Hide at once.

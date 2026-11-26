@@ -2831,6 +2831,7 @@ static void DispatchMouseMove(Window* win, const MouseMoveEvent& in) {
         // findable.
         const HitRect* now = HitRectById(win, id);
         Str tip = now ? now->tooltip : Str{};
+        Str tipShortcut = now ? now->tooltipShortcut : Str{};
         Bounds tipAt = now ? now->bounds : Bounds{};
         int tipPlacement = now ? now->tooltipPlacement : -1;
         int tipDelay = now ? now->tooltipShowDelayMs : -1;
@@ -2856,7 +2857,7 @@ static void DispatchMouseMove(Window* win, const MouseMoveEvent& in) {
                 win->tooltipOwner = true;
                 win->tooltipOwnerPath = now->pathId;
                 TooltipRequestShow(win, tip, tipAt, tipPlacement, tipRoot,
-                                   tipDelay);
+                                   tipDelay, tipShortcut);
             }
         } else {
             win->tooltipOwner = false;

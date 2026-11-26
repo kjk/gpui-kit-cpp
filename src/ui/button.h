@@ -171,6 +171,8 @@ struct Button {
     bool hasCustom = false;
     Rgba custom = {};
     Str tooltip = {};
+    uint32_t tooltipAction = 0;
+    const char* tooltipActionContext = nullptr;
     // tooltip_placement: Rust's `Option<Placement>`, -1 for None.
     int8_t tooltipPlacement = -1;
     // tooltip_show_delay: -1 uses TooltipDefaults.
@@ -266,6 +268,8 @@ struct Button {
     Button* FocusRing(bool v);
     Button* TrackFocus(FocusHandle handle);
     Button* Tooltip(Str s);
+    Button* TooltipWithAction(Str text, uint32_t action,
+                              const char* context = nullptr);
     // tooltip_placement: prefer a side for the tooltip, falling back when it
     // does not fit. Applies to `Tooltip`; omitting it keeps automatic
     // positioning, and setting it without tooltip content does nothing.

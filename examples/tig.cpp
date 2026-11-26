@@ -804,27 +804,30 @@ El* Tig::Navigation(Ctx* cx, Tig* self, bool history) {
     if (history) {
         header->Child(TigButton(cx, TigRefresh)
                           ->Label(StrL("Refresh"))
-                          ->Tooltip(StrL("Refresh history"))
+                          ->TooltipWithAction(StrL("Refresh history"),
+                                              TigKey(TigRefresh), "Tig")
                           ->Disabled(self->readingHistory)
                           ->IntoEl());
     } else {
-        header
-            ->Child(Div(cx->a)
-                        ->FlexRow()
-                        ->Gap(4)
-                        ->Child(TigButton(cx, TigPreviousFile)
-                                    ->Icon(IconName::ChevronLeft)
-                                    ->AccessibilityLabel(StrL("Previous file"))
-                                    ->Tooltip(StrL("Previous file"))
-                                    ->Disabled(self->fileIx <= 0)
-                                    ->IntoEl())
-                        ->Child(TigButton(cx, TigNextFile)
-                                    ->Icon(IconName::ChevronRight)
-                                    ->AccessibilityLabel(StrL("Next file"))
-                                    ->Tooltip(StrL("Next file"))
-                                    ->Disabled(self->fileIx < 0 ||
-                                               self->fileIx + 1 >= count)
-                                    ->IntoEl()));
+        header->Child(
+            Div(cx->a)
+                ->FlexRow()
+                ->Gap(4)
+                ->Child(TigButton(cx, TigPreviousFile)
+                            ->Icon(IconName::ChevronLeft)
+                            ->AccessibilityLabel(StrL("Previous file"))
+                            ->TooltipWithAction(StrL("Previous file"),
+                                                TigKey(TigPreviousFile), "Tig")
+                            ->Disabled(self->fileIx <= 0)
+                            ->IntoEl())
+                ->Child(TigButton(cx, TigNextFile)
+                            ->Icon(IconName::ChevronRight)
+                            ->AccessibilityLabel(StrL("Next file"))
+                            ->TooltipWithAction(StrL("Next file"),
+                                                TigKey(TigNextFile), "Tig")
+                            ->Disabled(self->fileIx < 0 ||
+                                       self->fileIx + 1 >= count)
+                            ->IntoEl()));
     }
     auto* handle = history ? &self->historyScroll : &self->filesScroll;
     El* list = component::VirtualList::New(cx, count)
@@ -911,21 +914,25 @@ static El* TigToolbar(Ctx* cx, Tig* self, const DiffState* state) {
         ->FlexNone()
         ->ItemsCenter()
         ->Gap(8)
-        ->Child(Div(cx->a)
-                    ->FlexRow()
-                    ->Gap(4)
-                    ->Child(TigButton(cx, TigPreviousChange)
-                                ->Icon(IconName::ArrowUp)
-                                ->AccessibilityLabel(StrL("Previous change"))
-                                ->Tooltip(StrL("Previous change"))
-                                ->Disabled(!available)
-                                ->IntoEl())
-                    ->Child(TigButton(cx, TigNextChange)
-                                ->Icon(IconName::ArrowDown)
-                                ->AccessibilityLabel(StrL("Next change"))
-                                ->Tooltip(StrL("Next change"))
-                                ->Disabled(!available)
-                                ->IntoEl()))
+        ->Child(
+            Div(cx->a)
+                ->FlexRow()
+                ->Gap(4)
+                ->Child(TigButton(cx, TigPreviousChange)
+                            ->Icon(IconName::ArrowUp)
+                            ->AccessibilityLabel(StrL("Previous change"))
+                            ->TooltipWithAction(StrL("Previous change"),
+                                                TigKey(TigPreviousChange),
+                                                "Tig")
+                            ->Disabled(!available)
+                            ->IntoEl())
+                ->Child(TigButton(cx, TigNextChange)
+                            ->Icon(IconName::ArrowDown)
+                            ->AccessibilityLabel(StrL("Next change"))
+                            ->TooltipWithAction(StrL("Next change"),
+                                                TigKey(TigNextChange), "Tig")
+                            ->Disabled(!available)
+                            ->IntoEl()))
         ->Child(component::DropdownMenu::New(cx, StrL("diff-display"))
                     ->AnchorRight()
                     ->Trigger(
@@ -988,7 +995,8 @@ El* Tig::RenderDiff(Ctx* cx, Tig* self) {
                 ->Child(TigButton(cx, TigCopy)
                             ->Icon(IconName::Copy)
                             ->AccessibilityLabel(StrL("Copy commit hash"))
-                            ->Tooltip(StrL("Copy commit hash"))
+                            ->TooltipWithAction(StrL("Copy commit hash"),
+                                                TigKey(TigCopy), "Tig")
                             ->IntoEl())
                 ->Child(TextEl(cx->a, commit->author)
                             ->MinW(0)
@@ -1188,7 +1196,8 @@ El* Tig::Render(Tig* self, Ctx* cx) {
                                             : IconName::PanelLeftOpen)
                        ->Toggled(self->sidebar)
                        ->AccessibilityLabel(sidebarAction)
-                       ->Tooltip(sidebarAction)
+                       ->TooltipWithAction(sidebarAction, TigKey(TigSidebar),
+                                           "Tig")
                        ->IntoEl())
             ->Left(TextEl(cx->a, commitStatus)->Font(12)->Fg(th.mutedFg))
             ->Right(TextEl(cx->a, fileStatus)->Font(12)->Fg(th.mutedFg));

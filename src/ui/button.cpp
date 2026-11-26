@@ -2,6 +2,7 @@
 #include "base/layout_direction.h"
 #include "ui/i18n.h"
 #include "ui/icon.h"
+#include "ui/kbd.h"
 #include "ui/menu.h"
 #include "ui/progress.h"
 #include "ui/spinner.h"
@@ -359,7 +360,12 @@ Button* Button::TrackFocus(FocusHandle handle) {
     return this;
 }
 Button* Button::Tooltip(Str s) {
+    return TooltipWithAction(s, 0);
+}
+Button* Button::TooltipWithAction(Str s, uint32_t action, const char* context) {
     tooltip = s;
+    tooltipAction = action;
+    tooltipActionContext = context;
     return this;
 }
 Button* Button::TooltipPlacement(gpui::Placement placement) {
@@ -872,7 +878,13 @@ El* Button::IntoEl() {
         e->Cursor(CursorKind::Pointer);
     }
     if (tooltip.s) {
-        e->Tip(tooltip);
+        Str shortcut;
+        Keystroke binding;
+        if (tooltipAction &&
+            KeystrokeForAction(tooltipAction, tooltipActionContext, &binding)) {
+            shortcut = KbdFormatStr(cx, binding);
+        }
+        e->Tip(tooltip, shortcut);
         // Like an HTML title, the tooltip describes the button.
         e->AriaDescription(tooltip);
         if (tooltipPlacement >= 0) {
