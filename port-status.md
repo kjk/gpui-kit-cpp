@@ -266,6 +266,8 @@ The current update target is
   indexed column headers. Counts include virtualized rows, and cell lookup
   is available for rows in the current frame.
 - **Linux invalidates a child list when its retained children reorder.**
+  The bridge can discover the AT-SPI bus through the desktop session
+  when no explicit address or usable X11 address is available.
   Insertions and removals report individual child references, and reparented
   nodes also report the new parent. Lazy document revisions invalidate their
   own child lists. Retained nodes send individual state, name, description,

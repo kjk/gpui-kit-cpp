@@ -1700,6 +1700,52 @@ static void EnsurePortalSettings() {
     }
 }
 
+struct AccessibilityBusLookup {
+    App* app;
+    char* address = nullptr;
+};
+
+static void FindAccessibilityBus(AccessibilityBusLookup* lookup) {
+    GDBusConnection* session =
+        g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, nullptr);
+    if (!session) return;
+    GVariant* reply = g_dbus_connection_call_sync(
+        session, "org.a11y.Bus", "/org/a11y/bus", "org.a11y.Bus", "GetAddress",
+        nullptr, G_VARIANT_TYPE("(s)"), G_DBUS_CALL_FLAGS_NONE, 2000, nullptr,
+        nullptr);
+    if (reply) {
+        g_variant_get(reply, "(s)", &lookup->address);
+        g_variant_unref(reply);
+    }
+    g_object_unref(session);
+}
+
+static void FreeAccessibilityBusLookup(AccessibilityBusLookup* lookup) {
+    g_free(lookup->address);
+    delete lookup;
+}
+
+static void ConnectDiscoveredAccessibilityBus(AccessibilityBusLookup* lookup) {
+    if (lookup->app == gX11App && lookup->address) {
+        AccessibilityLinuxInit(lookup->app, Str(lookup->address));
+    }
+    FreeAccessibilityBusLookup(lookup);
+}
+
+static void DiscoverAccessibilityBus(App* app) {
+    const char* address = getenv("AT_SPI_BUS_ADDRESS");
+    if ((address && *address) || AccessibilityLinuxFd() >= 0) return;
+
+    // The session service can start the private bus on demand. Let D-Bus
+    // activation finish off the UI thread while the first frame is drawn.
+    auto* lookup = new AccessibilityBusLookup{app};
+    if (!ExecSpawn(MkFunc0(FindAccessibilityBus, lookup),
+                   MkFunc0(ConnectDiscoveredAccessibilityBus, lookup),
+                   MkFunc0(FreeAccessibilityBusLookup, lookup))) {
+        FreeAccessibilityBusLookup(lookup);
+    }
+}
+
 WindowButtonLayout WindowGetButtonLayout() {
     if (gX11App) EnsurePortalSettings();
     return gButtonLayout;
@@ -4182,6 +4228,7 @@ int AppRun(App* app) {
     if (!app || !gDpy) {
         return 1;
     }
+    if (AppAnyWindowOpen(app)) DiscoverAccessibilityBus(app);
     int fd = ConnectionNumber(gDpy);
     while (AppAnyWindowOpen(app)) {
         while (XPending(gDpy) > 0) {
