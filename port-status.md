@@ -585,9 +585,10 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
 - **Syntax colouring uses a scanner.** `src/ui/syntax.cpp` in
   tree-sitter's place: comments, strings, numbers, keywords, type names, and
   what position alone settles. Nothing that needs a tree (rename, semantic
-  scope) can be asked of it. Folding scans bracket pairs, SQL SELECT clauses
-  and Python suites (`src/ui/highlighter.cpp`). Other grammar-specific nodes
-  still require the Rust parser. The optional `syntect` feature
+  scope) can be asked of it. Folding scans bracket pairs, SQL SELECT clauses,
+  Python suites, continued Python statements, and Python operator and
+  adjacent-string expressions (`src/ui/highlighter.cpp`). Other
+  grammar-specific nodes still require the Rust parser. The optional `syntect` feature
   (syntect and two-face) is the same exclusion and is not vendored.
 - **Diff owns its selection and painted geometry.** `src/ui/diff.cpp`
   uses source-byte endpoints for text and a separate line range for review.

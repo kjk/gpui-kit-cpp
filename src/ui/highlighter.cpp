@@ -974,6 +974,65 @@ struct PythonFoldRow {
     int end = 0;
 };
 
+struct PythonFoldExpression {
+    PythonFoldRow open;
+    PythonFoldRow first;
+    PythonFoldRow last;
+    char closer = 0;
+    int operatorBase = 0;
+    bool string = false;
+    bool forTarget = false;
+    bool comprehension = false;
+};
+
+struct PythonFoldOperator {
+    PythonFoldRow first;
+    int precedence;
+    bool needsElse = false;
+};
+
+// tree-sitter-python's expression precedence. Each reduction only needs
+// the source extent of its operand, so no syntax tree has to be retained.
+static int PythonFoldPrecedence(Str op) {
+    if (StrEq(op, StrL("or"))) return 10;
+    if (StrEq(op, StrL("and"))) return 11;
+    if (StrEq(op, StrL("not"))) return 12;
+    if (StrEq(op, StrL("in")) || StrEq(op, StrL("is")) ||
+        StrEq(op, StrL("==")) || StrEq(op, StrL("!=")) ||
+        StrEq(op, StrL("<>")) || StrEq(op, StrL("<=")) ||
+        StrEq(op, StrL(">=")) || StrEq(op, StrL("<")) || StrEq(op, StrL(">")))
+        return 13;
+    if (StrEq(op, StrL("|"))) return 14;
+    if (StrEq(op, StrL("^"))) return 15;
+    if (StrEq(op, StrL("&"))) return 16;
+    if (StrEq(op, StrL("<<")) || StrEq(op, StrL(">>"))) return 17;
+    if (StrEq(op, StrL("+")) || StrEq(op, StrL("-"))) return 18;
+    if (StrEq(op, StrL("*")) || StrEq(op, StrL("/")) || StrEq(op, StrL("//")) ||
+        StrEq(op, StrL("%")) || StrEq(op, StrL("@")))
+        return 19;
+    if (StrEq(op, StrL("~"))) return 20;
+    if (StrEq(op, StrL("**"))) return 21;
+    return 0;
+}
+
+static bool PythonExpressionBoundary(Str token) {
+    if (len(token) == 1)
+        return token.s[0] == ',' || token.s[0] == ':' || token.s[0] == '=' ||
+               token.s[0] == ';';
+    return StrEq(token, StrL("return")) || StrEq(token, StrL("assert")) ||
+           StrEq(token, StrL("raise")) || StrEq(token, StrL("yield")) ||
+           StrEq(token, StrL("from")) || StrEq(token, StrL("if")) ||
+           StrEq(token, StrL("elif")) || StrEq(token, StrL("else")) ||
+           StrEq(token, StrL("while")) || StrEq(token, StrL("with")) ||
+           StrEq(token, StrL("as")) || StrEq(token, StrL("match")) ||
+           StrEq(token, StrL("case")) || StrEq(token, StrL("lambda"));
+}
+
+static bool PythonFoldIdentifierByte(uint8_t c) {
+    return c >= 0x80 || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+           (c >= '0' && c <= '9') || c == '_';
+}
+
 struct PythonFoldSuite {
     PythonFoldKind kind;
     PythonFoldKind clauseKind;
@@ -1011,7 +1070,11 @@ struct PythonFoldScanner {
     Str text;
     Vec<FoldRange>* folds;
     Vec<PythonFoldSuite> stack;
+    Vec<PythonFoldExpression> expressions;
+    Vec<PythonFoldOperator> operators;
+    int operatorEnd = 0;
     PythonFoldRow first, last, decorator;
+    PythonFoldRow statement;
     int indent = 0;
     int decoratorIndent = 0;
     int row = 0;
@@ -1065,6 +1128,154 @@ struct PythonFoldScanner {
         if (after > start.row + 1) VecAppend(*folds, {start.row, after});
     }
 
+    void Reduce(PythonFoldExpression& expression, int precedence) {
+        while (len(operators) > expression.operatorBase &&
+               operators[len(operators) - 1].precedence >= precedence) {
+            auto op = VecPop(operators);
+            if (expression.last.row < 0 || op.needsElse) continue;
+            Add(op.first, expression.last);
+            expression.first = op.first;
+            expression.string = false;
+        }
+    }
+
+    void FinishExpression(PythonFoldExpression& expression) {
+        Reduce(expression, 0);
+        expression.first = {};
+        expression.last = {};
+        expression.string = false;
+        expression.forTarget = false;
+    }
+
+    void Operand(PythonFoldExpression& expression, PythonFoldRow begin,
+                 PythonFoldRow end, bool string = false) {
+        if (expression.first.row < 0) expression.first = begin;
+        if (expression.string && string) Add(expression.first, end);
+        expression.last = end;
+        expression.string = string;
+    }
+
+    // The coloring lexer emits punctuation byte by byte. Join just the
+    // operator spellings that matter to expression precedence.
+    Str ExpressionOperator(Str token, int start) {
+        if (len(token) != 1 || start + 1 >= len(text)) return token;
+        char ch = token.s[0];
+        char next = text.s[start + 1];
+        bool doubled =
+            next == ch && (ch == '*' || ch == '/' || ch == '<' || ch == '>');
+        if (doubled) {
+            int size =
+                start + 2 < len(text) && text.s[start + 2] == '=' ? 3 : 2;
+            operatorEnd = start + size;
+            return Str(token.s, size);
+        }
+        if ((next == '=' && strchr("=<>!:+-*/%@&^|", ch)) ||
+            (ch == '<' && next == '>')) {
+            operatorEnd = start + 2;
+            return Str(token.s, 2);
+        }
+        return token;
+    }
+
+    void ExpressionToken(const SyntaxLexer& lexer, PythonFoldRow begin,
+                         PythonFoldRow end) {
+        int at = begin.end;
+        if (at < operatorEnd) return;
+        if (!len(expressions) && !VecAppend(expressions, {})) return;
+        auto& expression = expressions[len(expressions) - 1];
+        if (lexer.tok == SyntaxTok::String) {
+            Operand(expression, begin, end, true);
+            return;
+        }
+        char ch = lexer.text.s[0];
+        if (len(lexer.text) == 1) {
+            char closer = ch == '('   ? ')'
+                          : ch == '[' ? ']'
+                          : ch == '{' ? '}'
+                                      : 0;
+            if (closer) {
+                PythonFoldExpression nested;
+                nested.open = begin;
+                nested.closer = closer;
+                nested.operatorBase = len(operators);
+                VecAppend(expressions, nested);
+                return;
+            }
+            if (ch == expression.closer && len(expressions) > 1) {
+                auto opening = expression.open;
+                FinishExpression(expression);
+                VecPop(expressions);
+                Operand(expressions[len(expressions) - 1], opening, end);
+                return;
+            }
+            if (ch == '\\') return;
+        }
+        Str token = ExpressionOperator(lexer.text, at);
+        bool targetStart = StrEq(token, StrL("for"));
+        constexpr int kConditional = 1;
+        if (StrEq(token, StrL("if")) && expression.last.row >= 0 &&
+            !expression.comprehension) {
+            Reduce(expression, kConditional + 1);
+            VecAppend(operators, {expression.first, kConditional, true});
+            expression.first = expression.last = {};
+            expression.string = false;
+            return;
+        }
+        if (StrEq(token, StrL("else")) && !expression.comprehension) {
+            Reduce(expression, kConditional + 1);
+            if (len(operators) > expression.operatorBase &&
+                operators[len(operators) - 1].needsElse) {
+                operators[len(operators) - 1].needsElse = false;
+                expression.first = expression.last = {};
+                expression.string = false;
+                return;
+            }
+        }
+        if (targetStart || (expression.forTarget && StrEq(token, StrL("in"))) ||
+            PythonExpressionBoundary(token) ||
+            (len(token) > 1 && token.s[len(token) - 1] == '=' &&
+             !PythonFoldPrecedence(token))) {
+            FinishExpression(expression);
+            expression.forTarget = targetStart;
+            expression.comprehension |= targetStart;
+            return;
+        }
+        int precedence = PythonFoldPrecedence(token);
+        bool notWord = StrEq(token, StrL("not"));
+        if (precedence && expression.last.row >= 0) {
+            // "not in" and "is not" share comparison precedence.
+            if (notWord || StrEq(token, StrL("is"))) {
+                int next = SkipFoldWhitespace(text, end.end);
+                Str expected = notWord ? StrL("in") : StrL("not");
+                if (len(expected) <= len(text) - next &&
+                    StrEq(Str(text.s + next, len(expected)), expected)) {
+                    int after = next + len(expected);
+                    if (after == len(text) ||
+                        !PythonFoldIdentifierByte((uint8_t)text.s[after])) {
+                        operatorEnd = after;
+                        precedence = 13;
+                    }
+                }
+            }
+            // Exponentiation is right-associative.
+            Reduce(expression, precedence == 21 ? precedence + 1 : precedence);
+            VecAppend(operators, {expression.first, precedence});
+            expression.first = expression.last = {};
+            expression.string = false;
+        } else if (precedence) {
+            if (notWord || ch == '+' || ch == '-' || ch == '~')
+                VecAppend(operators, {begin, notWord ? 12 : 20});
+        } else if (end.end < len(text) &&
+                   (text.s[end.end] == '\'' || text.s[end.end] == '"') &&
+                   len(token) <= 2) {
+            // Python's string prefixes are separate tokens in the coloring
+            // lexer. Leave the pending string's adjacency intact.
+            if (expression.first.row < 0) expression.first = begin;
+        } else {
+            Operand(expression, begin, end);
+        }
+    }
+
     void FinishClause(const PythonFoldSuite& suite) const {
         if (suite.clause.row != suite.header.row) Add(suite.clause, suite.last);
         // The match block starts on its header row in the Python grammar.
@@ -1094,10 +1305,15 @@ struct PythonFoldScanner {
 
     void FinishLine() {
         if (first.row < 0) return;
+        if (len(expressions) == 1) {
+            FinishExpression(expressions[0]);
+            expressions[0].comprehension = false;
+        }
         auto headerKind = colon ? kind : PythonFoldKind::None;
         if (asyncHead && kind != PythonFoldKind::Definition &&
             kind != PythonFoldKind::Loop && kind != PythonFoldKind::Suite)
             headerKind = PythonFoldKind::None;
+        if (headerKind == PythonFoldKind::None) Add(statement, last);
         bool continued = false;
         while (len(stack) && stack[len(stack) - 1].indent >= indent) {
             auto& suite = stack[len(stack) - 1];
@@ -1145,6 +1361,7 @@ struct PythonFoldScanner {
             }
         }
         first = {};
+        statement = {};
         asyncHead = colon = inlineBody = false;
     }
 
@@ -1186,8 +1403,14 @@ struct PythonFoldScanner {
         } else if (kind == PythonFoldKind::Async) {
             kind = PythonHeader(lexer.text);
         }
+        PythonFoldRow opening = {row, rowStart, start};
+        if (ch == ';' && brackets == 0) {
+            if (!colon) Add(statement, last);
+            statement = {};
+        } else if (statement.row < 0) {
+            statement = opening;
+        }
         if (lexer.tok == SyntaxTok::String) {
-            PythonFoldRow opening = {row, rowStart, start};
             for (int i = 0; i < len(lexer.text); i++) {
                 if (lexer.text.s[i] != '\n') continue;
                 row++;
@@ -1201,6 +1424,7 @@ struct PythonFoldScanner {
                 brackets--;
             last = {row, rowStart, start + len(lexer.text)};
         }
+        ExpressionToken(lexer, opening, last);
         if (ch == ':' && brackets == 0 && kind != PythonFoldKind::None &&
             kind != PythonFoldKind::Decorator) {
             colon = true;
@@ -1210,18 +1434,6 @@ struct PythonFoldScanner {
         }
     }
 };
-
-static void AppendPythonFolds(SyntaxLang lang, Str text,
-                              Vec<FoldRange>* folds) {
-    PythonFoldScanner scanner;
-    scanner.text = text;
-    scanner.folds = folds;
-    SyntaxLexer lexer;
-    SyntaxLexStart(&lexer, lang, text);
-    while (SyntaxLexNext(&lexer)) scanner.Token(lexer);
-    scanner.FinishLine();
-    while (len(scanner.stack)) scanner.PopSuite();
-}
 
 static void SynHlLexInto(SyntaxLang lang, Str text, Vec<HlRun>* runs,
                          Vec<FoldRange>* folds) {
@@ -1234,6 +1446,7 @@ static void SynHlLexInto(SyntaxLang lang, Str text, Vec<HlRun>* runs,
     struct Bracket {
         int offset;
         int line;
+        int lineStart;
         char closer;
     };
     Bracket starts[64];
@@ -1243,12 +1456,17 @@ static void SynHlLexInto(SyntaxLang lang, Str text, Vec<HlRun>* runs,
     int lineStart = 0;
     int at = 0;
     bool sql = StrEq(SyntaxLangName(lang), StrL("sql"));
+    bool python = StrEq(SyntaxLangName(lang), StrL("python"));
+    PythonFoldScanner pythonScanner;
+    pythonScanner.text = text;
+    pythonScanner.folds = folds;
     int sqlStart = -1;
     int sqlFrom = -1;
     int lastSqlLine = -1;
     SyntaxLexer lx;
     SyntaxLexStart(&lx, lang, text);
     while (SyntaxLexNext(&lx)) {
+        if (python) pythonScanner.Token(lx);
         int tokStart = (int)(lx.text.s - text.s);
         for (; at < tokStart && at < len(text); at++) {
             if (text.s[at] == '\n') {
@@ -1289,7 +1507,7 @@ static void SynHlLexInto(SyntaxLang lang, Str text, Vec<HlRun>* runs,
             char closer = c == '{' ? '}' : c == '(' ? ')' : c == '[' ? ']' : 0;
             if (closer) {
                 if (nOpen < capacity) {
-                    starts[nOpen] = {offset, line, closer};
+                    starts[nOpen] = {offset, line, lineStart, closer};
                 }
                 nOpen++;
             } else if ((c == '}' || c == ')' || c == ']') && nOpen > 0) {
@@ -1305,6 +1523,11 @@ static void SynHlLexInto(SyntaxLang lang, Str text, Vec<HlRun>* runs,
                 }
                 const Bracket& open = starts[nOpen];
                 if (open.line == line) {
+                    continue;
+                }
+                if (python) {
+                    pythonScanner.Add({open.line, open.lineStart, open.offset},
+                                      {line, lineStart, offset + 1});
                     continue;
                 }
                 bool standaloneCloser =
@@ -1339,8 +1562,9 @@ static void SynHlLexInto(SyntaxLang lang, Str text, Vec<HlRun>* runs,
         VecAppend(*runs, run);
     }
     AppendSqlSelectFolds(folds, sqlStart, sqlFrom, lastSqlLine, false);
-    if (StrEq(SyntaxLangName(lang), StrL("python"))) {
-        AppendPythonFolds(lang, text, folds);
+    if (python) {
+        pythonScanner.FinishLine();
+        while (len(pythonScanner.stack)) pythonScanner.PopSuite();
         // Rust traverses parents first. A suite with the same start row as
         // a bracket or nested statement takes precedence.
         if (len(*folds) > 1) {
