@@ -9151,6 +9151,7 @@ struct TextViewVirtualFrame {
     TextViewBlockMeasurements* measured = nullptr;
     const TextViewVirtualBlock* blocks = nullptr;
     float* bounceOffset = nullptr;
+    bool projectSelection = false;
     void (*listAfterPaint)(PaintCtx*, El*, void*) = nullptr;
     void* listUser = nullptr;
 };
@@ -9218,6 +9219,7 @@ El* TextView::RenderVirtualBlock(void* user, Ctx* cx, int index) {
 void TextView::VirtualBlocksArranged(PaintCtx* ctx, El* list, void* user) {
     if (LayoutInScratchPass()) return;
     auto* frame = (TextViewVirtualFrame*)user;
+    if (frame->projectSelection) ctx->paintVirtualSelection = true;
     float offset = list->scrollY;
     RevealArranged(ctx, list, frame->view);
     if (offset != list->scrollY) {
@@ -9526,11 +9528,21 @@ El* TextView::IntoEl() {
     bool partialSelection =
         selectable && selection && !selection->selectAllOwner.IsValid() &&
         (selection->gesture.selecting || WindowSelectionHas(cx->win));
-    if (scrollable && !partialSelection && !inheritedBuilder && cx->win &&
-        managed) {
+    const TextSelectionReflow* reflow =
+        cx->win ? cx->win->paint.selectionReflow : nullptr;
+    bool projectSelection =
+        managed && selection && !selection->gesture.selecting &&
+        !selection->touchActive && !selection->hasAnchorCell &&
+        !selection->unitHeld && reflow && reflow->owner == managed->self &&
+        selection->copyProjection.owner == managed->self &&
+        reflow->replacement == managed->fullUpdateRevision &&
+        reflow->endpoints[0].block >= 0 && reflow->endpoints[1].block >= 0;
+    if (scrollable && (!partialSelection || projectSelection) &&
+        !inheritedBuilder && cx->win && managed) {
         virtualList = VirtualBlocks(managed, doc, TextViewScrollKey(state),
                                     ListenTo(state, &TextViewState::OnScroll),
                                     &virtualFrame);
+        if (virtualFrame) virtualFrame->projectSelection = projectSelection;
     }
     El* element =
         inheritedBuilder || virtualList ? root : Blocks(root, doc, 0, false);

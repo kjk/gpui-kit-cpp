@@ -536,8 +536,10 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   link definitions that have no text hit. This relies on the frame registering
   the block's position. Scrollable TextViews cache block heights and build
   the viewport's blocks. A reveal scrolls to its block and then uses the
-  painted line to settle the offset. A partial selection expands the full
-  layout so a drag can extend from an anchor outside the viewport.
+  painted line to settle the offset. A finished character selection can
+  project onto virtual blocks and copy its retained range. Active drags,
+  word and line selections, table-cell selections, and touch selections
+  still expand the full layout to reach anchors outside the viewport.
   Rust virtualizes the blocks and resolves the same range from the document
   even when the anchor and intervening blocks have no painted runs.
   Participant copy callbacks receive a 64 KiB buffer.

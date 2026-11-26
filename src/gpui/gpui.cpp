@@ -8886,6 +8886,9 @@ static void PaintElNode(PaintCtx* ctx, El* e, bool skipOverlay) {
         return VecAppend(ctx->selectionSourceBlocks, block) ? index : -1;
     };
     int sourceBlock = -1;
+    int previousSelectionStart = ctx->selA;
+    int previousSelectionEnd = ctx->selB;
+    int previousSelectionScope = ctx->selScope;
     if (e->lifecycle) {
         if (const auto* prefix = e->lifecycle->selectionBlockPrefix) {
             for (Str source : *prefix) addSourceBlock(source, -1);
@@ -8894,6 +8897,11 @@ static void PaintElNode(PaintCtx* ctx, El* e, bool skipOverlay) {
         int blockIndex = e->lifecycle->selectionBlockIndex;
         if (source.s || blockIndex >= 0)
             sourceBlock = addSourceBlock(source, blockIndex);
+        int scope = ElSelectionScope(ctx, e);
+        if (WindowSelectionBlockRange(ctx, e->selectionOwner, blockIndex, scope,
+                                      &ctx->selA, &ctx->selB)) {
+            ctx->selScope = scope;
+        }
     }
 #ifndef NDEBUG
     // debug_below sets DebugBelow for as long as the element and what it
@@ -8950,6 +8958,9 @@ static void PaintElNode(PaintCtx* ctx, El* e, bool skipOverlay) {
         block.endHit = len(ctx->texts);
         block.end = ctx->textDocLen;
     }
+    ctx->selA = previousSelectionStart;
+    ctx->selB = previousSelectionEnd;
+    ctx->selScope = previousSelectionScope;
 #ifndef NDEBUG
     if (e->debugBelow) {
         ctx->debugBelow--;
@@ -9394,7 +9405,9 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     // carrying the Markdown on the SelSource beside it.
     // node.rs CustomBlockElement: one hit for the whole plugin box. The
     // copy decides later, from the drag points, whether it was selected.
+    int pluginOffset = -1;
     if (e->selBlockPlugin && e->selectable) {
+        pluginOffset = ctx->textDocLen;
         TextHit th = ElTextHit(ctx, e, ctx->textDocLen);
         th.text = e->text;
         th.blockPlugin = !e->selInlinePlugin;
@@ -9808,11 +9821,15 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     ctx->tableCellDepth = savedTableCellDepth;
     // The selection wash goes over the plugin, as CustomBlockElement paints
     // its quad after the content.
-    if (e->selBlockPlugin && e->selectable && ctx->selPoints &&
-        ctx->selA != ctx->selB) {
+    if (pluginOffset >= 0 && ctx->selA != ctx->selB) {
         Point start = {ctx->selX0, ctx->selY0};
         Point end = {ctx->selX1, ctx->selY1};
-        if (CustomBlockIsSelected(e->Bounds(), start, end)) {
+        bool selected = ctx->selPoints
+                            ? CustomBlockIsSelected(e->Bounds(), start, end)
+                            : ctx->paintVirtualSelection && ctx->selA >= 0 &&
+                                  ctx->selA <= pluginOffset &&
+                                  ctx->selB > pluginOffset;
+        if (selected) {
             CanvasFillRect(ctx, e->x, e->y, e->w, e->h, e->selColor);
         }
     }

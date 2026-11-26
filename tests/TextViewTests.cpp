@@ -9595,6 +9595,26 @@ static void SelectionStartsInAnIdleVirtualizedTextView() {
             end.x -= 0.1f;
             RawMouse(view.win, PlatformInputKind::MouseMove, end, true);
             utassert(StrEq(StrTrimAscii(TswCopy(a, view)), StrL("ragraph")));
+            RawMouse(view.win, PlatformInputKind::MouseUp, end, false);
+            TestDraw(view.win);
+            utassert(!HitContaining(view.win, "paragraph 119"));
+
+            view.State()->scrollY = 0;
+            TestDraw(view.win);
+            utassert(!HitContaining(view.win, "paragraph 60"));
+            utassert(StrEq(StrTrimAscii(TswCopy(a, view)), StrL("ragraph")));
+            const TextHit* first = HitContaining(view.win, "paragraph 0");
+            utassert(first);
+            if (first) {
+                Point firstCaret =
+                    TextHitCaretPoint(&view.win->paint, *first, 0, false);
+                WindowSelectionPress(view.win, firstCaret.x + 0.1f,
+                                     firstCaret.y, 1, true);
+                TestDraw(view.win);
+                Str extended = StrTrimAscii(TswCopy(a, view));
+                utassert(base::StrStartsWith(extended, StrL("paragraph 0")));
+                utassert(base::StrEndsWith(extended, StrL("pa")));
+            }
         }
     }
     TswClose(&view);

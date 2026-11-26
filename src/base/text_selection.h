@@ -500,6 +500,8 @@ bool WindowSelectionCopy(Window* win, bool trim = false);
 
 TextSelectionReflow WindowSelectionCaptureReflow(Window* win);
 void WindowSelectionRestoreReflow(Window* win, const TextSelectionReflow& old);
+bool WindowSelectionBlockRange(const PaintCtx* paint, EntityId owner, int block,
+                               int scope, int* start, int* end);
 
 // Hand the range to the frame being built, which is what makes it paint.
 // The runtime calls this before the view renders.

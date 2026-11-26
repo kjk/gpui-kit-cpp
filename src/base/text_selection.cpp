@@ -1190,6 +1190,8 @@ static void SelectionUnitExtend(Window* win, float x, float y) {
     s->gesture.didHitText = true;
 }
 
+static bool ExtendUnpaintedSelection(Window* win, Point point);
+
 void WindowSelectionPress(Window* win, float x, float y, int clickCount,
                           bool extend) {
     if (WindowKeepsTextSelectionAt(win, {x, y})) return;
@@ -1201,6 +1203,7 @@ void WindowSelectionPress(Window* win, float x, float y, int clickCount,
     if (!s) {
         return;
     }
+    if (extend && ExtendUnpaintedSelection(win, {x, y})) return;
     // prepare_for_mouse_down: every press — a shift-click too — clears what
     // the participants hold (each hears Cleared and its clear handler runs,
     // and a local selection ends), keeping only the anchor a shift-click
@@ -1741,6 +1744,18 @@ static int FirstMapSegmentAt(const SelSourceMap& map, int offset) {
 static const TextHit* CaptureSourcePoint(const PaintCtx& paint, int offset,
                                          int scope, bool trailing,
                                          TextSelectionSourcePoint* out) {
+    auto captureBlock = [&](const TextHit* hit) {
+        int hitIndex = (int)(hit - paint.texts.els);
+        for (const auto& block : paint.selectionSourceBlocks) {
+            if (block.index >= 0 && block.owner == hit->owner &&
+                block.scope == scope && hitIndex >= block.firstHit &&
+                hitIndex < block.endHit) {
+                out->block = block.index;
+                out->blockByte = offset - block.start;
+                break;
+            }
+        }
+    };
     const TextHit* candidate = nullptr;
     for (const TextHit& hit : paint.texts) {
         if (hit.docOff > offset) break;
@@ -1774,29 +1789,57 @@ static const TextHit* CaptureSourcePoint(const PaintCtx& paint, int offset,
                     out->entityByte = local - segment.renderedStart;
                 }
             }
+            captureBlock(&hit);
             return &hit;
         }
     }
-    if (candidate) {
-        int hitIndex = (int)(candidate - paint.texts.els);
-        for (const auto& block : paint.selectionSourceBlocks) {
-            if (block.index >= 0 && block.owner == candidate->owner &&
-                block.scope == scope && hitIndex >= block.firstHit &&
-                hitIndex < block.endHit) {
-                out->block = block.index;
-                out->blockByte = offset - block.start;
-                return candidate;
-            }
-        }
-    }
-    return nullptr;
+    if (candidate) captureBlock(candidate);
+    return out->block >= 0 ? candidate : nullptr;
+}
+
+static bool ExtendUnpaintedSelection(Window* win, Point point) {
+    const TextViewState* view = RetainedSelectionView(win);
+    if (!view) return false;
+    WindowSelection* selection = win->sel;
+    TextSelectionReflow reflow = selection->pendingReflow;
+    const auto& anchor = reflow.endpoints[0];
+    if (anchor.block < 0 || selection->hasAnchorCell || selection->unitHeld)
+        return false;
+    int offset = TextHitOffsetIn(&win->paint, point.x, point.y, true,
+                                 reflow.scope, nullptr);
+    TextSelectionSourcePoint cursor;
+    const TextHit* hit =
+        CaptureSourcePoint(win->paint, offset, reflow.scope, false, &cursor);
+    if (!hit || hit->owner != view->self || cursor.block < 0) return false;
+    bool backwards =
+        cursor.block < anchor.block ||
+        (cursor.block == anchor.block && cursor.blockByte < anchor.blockByte);
+    reflow.endpoints[1] = cursor;
+    reflow.bounds[1] = hit->bounds;
+    // The real offsets are assigned when both blocks next lay out. Until
+    // then the order carries each endpoint's boundary affinity.
+    reflow.offsets[0] = backwards ? 1 : 0;
+    reflow.offsets[1] = backwards ? 0 : 1;
+    Point anchorPoint = selection->anchorPoint;
+    WindowSelectionClear(win);
+    selection->anchor = reflow.offsets[0];
+    selection->cursor = reflow.offsets[1];
+    selection->scope = reflow.scope;
+    selection->anchorPoint = anchorPoint;
+    selection->cursorPoint = point;
+    selection->hasWindowPoints = true;
+    selection->anchorInsideText = true;
+    selection->pendingReflow = reflow;
+    TextSelectionBegin(&selection->gesture, true);
+    WindowRequestAnimationFrame(win);
+    return true;
 }
 
 static const TextHit* RestoreSourcePoint(const PaintCtx& paint,
                                          const TextSelectionReflow& old,
                                          const TextSelectionSourcePoint& key,
                                          bool trailing, int* offset) {
-    if (key.block >= 0) {
+    if (key.source < 0 && key.block >= 0) {
         for (const auto& block : paint.selectionSourceBlocks) {
             if (block.owner != old.owner || block.scope != old.scope ||
                 block.index != key.block)
@@ -1855,6 +1898,22 @@ static const TextHit* RestoreSourcePoint(const PaintCtx& paint,
         }
     }
     return fallback;
+}
+
+bool WindowSelectionBlockRange(const PaintCtx* paint, EntityId owner, int block,
+                               int scope, int* start, int* end) {
+    if (!paint->paintVirtualSelection || block < 0) return false;
+    const TextSelectionReflow* selection = paint->selectionReflow;
+    if (!selection || selection->owner != owner || selection->scope != scope)
+        return false;
+    int first = selection->offsets[0] <= selection->offsets[1] ? 0 : 1;
+    const auto& lo = selection->endpoints[first];
+    const auto& hi = selection->endpoints[1 - first];
+    if (block < lo.block || block > hi.block) return false;
+    int base = paint->textDocLen;
+    *start = block == lo.block ? base + lo.blockByte : base;
+    *end = block == hi.block ? base + hi.blockByte : INT_MAX;
+    return true;
 }
 
 TextSelectionReflow WindowSelectionCaptureReflow(Window* win) {

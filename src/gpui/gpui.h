@@ -4352,6 +4352,8 @@ struct SelectionSourceBlock {
     int index = -1;
 };
 
+struct TextSelectionReflow;
+
 struct PaintCtx {
     App* app = nullptr;
     Window* window = nullptr;
@@ -4484,6 +4486,9 @@ struct PaintCtx {
     int textDocLen = 0;
     int selA = -1;
     int selB = -1;
+    // A frame-owned projection prepared from the previously painted range.
+    const TextSelectionReflow* selectionReflow = nullptr;
+    bool paintVirtualSelection = false;
     // Which scope the range above belongs to; -1 paints it wherever it
     // falls, which is what a caller that knows of no scopes wants.
     int selScope = -1;

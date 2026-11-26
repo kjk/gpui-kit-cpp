@@ -747,6 +747,8 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     // only says Selectable() on its text, the way Rust has the window drive
     // every registered run.
     WindowSelectionApply(win);
+    win->paint.selectionReflow = &selection;
+    win->paint.paintVirtualSelection = false;
 
     // A request no scroller took last frame is not this frame's.
     win->hasAutoscroll = false;
@@ -816,8 +818,14 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
         FocusTrapApplyPending(win);
         gFrameLayoutSecs = TimeNow() - tLay0;
         tPaint0 = TimeNow();
+        if (win->paint.paintVirtualSelection) {
+            win->paint.selA = win->paint.selB = -1;
+            win->paint.selPoints = false;
+        }
         PaintEl(&win->paint, root);
     }
+    win->paint.selectionReflow = nullptr;
+    win->paint.paintVirtualSelection = false;
     WindowSelectionRestoreReflow(win, selection);
     if (root) gFramePaintSecs = TimeNow() - tPaint0;
     // Native children are external to the scene and do not disappear by
