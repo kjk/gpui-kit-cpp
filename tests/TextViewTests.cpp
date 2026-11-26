@@ -9414,6 +9414,30 @@ static void UnicodeParagraphCopyExtendsBeforePaint() {
     TswClose(&v);
 }
 
+// text_view.rs TextView::request_layout builds a themed vertical scrollbar.
+static void ScrollableTextViewUsesTheBaseScrollbarTheme() {
+    Arena* a = ArenaNew();
+    TswView v = TswOpen(TswParagraphs(a, 20).s, TswContainer::Scrollable);
+    BaseTheme theme = BaseTheme::Global(v.app);
+    theme.scrollbar =
+        theme.scrollbar.WithMode(ScrollbarMode::Always)
+            .WithStyles(ScrollbarStyles{}
+                            .Track(ScrollbarTrackStyle{}.Width(24))
+                            .Thumb(ScrollbarThumbStyle{}.Width(11)));
+    BaseThemeSet(v.app, theme);
+    TestDraw(v.win);
+    utassert(len(v.win->paint.scrolls) == 1);
+    if (len(v.win->paint.scrolls) == 1) {
+        ScrollRect bar = v.win->paint.scrolls[0];
+        utassert(bar.barY && bar.barVisible);
+        utassert(bar.mode == ScrollbarMode::Always);
+        utassertnear(bar.trackWidth, 24.f);
+        utassertnear(bar.thumbWidth, 11.f);
+    }
+    TswClose(&v);
+    ArenaDelete(a);
+}
+
 // text_view.rs: triple_click_selects_a_wrapped_paragraph_*.
 static void TripleClickSelectsTheWholeWrappedParagraph() {
     struct Case {
@@ -9538,6 +9562,7 @@ static void TestTextStateWindow() {
     ScrollingBeforePaintKeepsTheCompletedFrame();
     ScrollingKeepsAnInlineCodeSelectionAnchor();
     UnicodeParagraphCopyExtendsBeforePaint();
+    ScrollableTextViewUsesTheBaseScrollbarTheme();
     TripleClickSelectsTheWholeWrappedParagraph();
     ATextViewMayReplaceTheHoverCursor();
     PushStrFadesOnlyTheAppendedText();

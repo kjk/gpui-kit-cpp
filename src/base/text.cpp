@@ -9314,11 +9314,12 @@ El* TextView::IntoEl() {
     if (scrollable && cx->win && managed) {
         uint32_t key = TextViewScrollKey(state);
         Listener onScroll = ListenTo(state, &TextViewState::OnScroll);
-        scrollBox = Div(a)
+        // The integrated bar paints after the document and shares its
+        // scroll offset, including when ScrollBounce shifts the content.
+        scrollBox = Scrollbar::New(cx)
                         ->FlexCol()
                         ->W(kFill)
                         ->H(kFill)
-                        ->ClipY()
                         ->ScrollY(managed->scrollY)
                         ->ScrollId((int)key)
                         ->OnScroll(onScroll)
