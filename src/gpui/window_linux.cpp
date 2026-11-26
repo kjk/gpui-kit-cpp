@@ -1700,50 +1700,124 @@ static void EnsurePortalSettings() {
     }
 }
 
-struct AccessibilityBusLookup {
-    App* app;
-    char* address = nullptr;
-};
+static constexpr const char* kAccessibilityService = "org.a11y.Bus";
+static constexpr const char* kAccessibilityServicePath = "/org/a11y/bus";
+static GCancellable* gAccessibilityWatch = nullptr;
+static GDBusProxy* gAccessibilityStatus = nullptr;
+static unsigned gAccessibilityWatchId = 0;
+static unsigned gAccessibilityLookupId = 0;
+static bool gAccessibilityLookupPending = false;
+static bool gAccessibilityKnowsStatus = false;
 
-static void FindAccessibilityBus(AccessibilityBusLookup* lookup) {
-    GDBusConnection* session =
-        g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, nullptr);
-    if (!session) return;
-    GVariant* reply = g_dbus_connection_call_sync(
-        session, "org.a11y.Bus", "/org/a11y/bus", "org.a11y.Bus", "GetAddress",
-        nullptr, G_VARIANT_TYPE("(s)"), G_DBUS_CALL_FLAGS_NONE, 2000, nullptr,
-        nullptr);
-    if (reply) {
-        g_variant_get(reply, "(s)", &lookup->address);
-        g_variant_unref(reply);
-    }
-    g_object_unref(session);
-}
-
-static void FreeAccessibilityBusLookup(AccessibilityBusLookup* lookup) {
-    g_free(lookup->address);
-    delete lookup;
-}
-
-static void ConnectDiscoveredAccessibilityBus(AccessibilityBusLookup* lookup) {
-    if (lookup->app == gX11App && lookup->address) {
-        AccessibilityLinuxInit(lookup->app, Str(lookup->address));
-    }
-    FreeAccessibilityBusLookup(lookup);
-}
-
-static void DiscoverAccessibilityBus(App* app) {
+static bool TryLocalAccessibilityBus() {
     const char* address = getenv("AT_SPI_BUS_ADDRESS");
-    if ((address && *address) || AccessibilityLinuxFd() >= 0) return;
-
-    // The session service can start the private bus on demand. Let D-Bus
-    // activation finish off the UI thread while the first frame is drawn.
-    auto* lookup = new AccessibilityBusLookup{app};
-    if (!ExecSpawn(MkFunc0(FindAccessibilityBus, lookup),
-                   MkFunc0(ConnectDiscoveredAccessibilityBus, lookup),
-                   MkFunc0(FreeAccessibilityBusLookup, lookup))) {
-        FreeAccessibilityBusLookup(lookup);
+    if (address && *address) {
+        AccessibilityLinuxInit(gX11App, Str(address));
+        return true;
     }
+    // Older desktops can publish the private bus on the root window.
+    Atom property = XInternAtom(gDpy, "AT_SPI_BUS", False);
+    Atom type = None;
+    int format = 0;
+    unsigned long count = 0;
+    unsigned long after = 0;
+    unsigned char* value = nullptr;
+    if (XGetWindowProperty(gDpy, gRoot, property, 0, 4096, False,
+                           AnyPropertyType, &type, &format, &count, &after,
+                           &value) == Success &&
+        format == 8 && value && count && !after) {
+        AccessibilityLinuxInit(gX11App, Str((char*)value, (int)count));
+    }
+    if (value) XFree(value);
+    return AccessibilityLinuxFd() >= 0;
+}
+
+static void AccessibilityAddressReceived(GObject* source, GAsyncResult* result,
+                                         gpointer data) {
+    GVariant* reply = g_dbus_connection_call_finish(G_DBUS_CONNECTION(source),
+                                                    result, nullptr);
+    if (GPOINTER_TO_UINT(data) == gAccessibilityLookupId) {
+        gAccessibilityLookupPending = false;
+        if (reply) {
+            const char* address = nullptr;
+            g_variant_get(reply, "(&s)", &address);
+            AccessibilityLinuxInit(gX11App, Str(address));
+        }
+    }
+    if (reply) g_variant_unref(reply);
+}
+
+static void RefreshAccessibilityStatus() {
+    GVariant* enabled =
+        g_dbus_proxy_get_cached_property(gAccessibilityStatus, "IsEnabled");
+    bool active = !gAccessibilityKnowsStatus;
+    if (enabled) {
+        active = g_variant_is_of_type(enabled, G_VARIANT_TYPE_BOOLEAN) &&
+                 g_variant_get_boolean(enabled);
+        gAccessibilityKnowsStatus = true;
+        g_variant_unref(enabled);
+    }
+    if (!active) {
+        ++gAccessibilityLookupId;
+        gAccessibilityLookupPending = false;
+        if (AccessibilityLinuxFd() >= 0) {
+            AccessibilityLinuxShutdown();
+            for (auto* win : gX11App->windows) AppInvalidate(win);
+        }
+        return;
+    }
+    if (AccessibilityLinuxFd() >= 0 || gAccessibilityLookupPending ||
+        TryLocalAccessibilityBus())
+        return;
+    gAccessibilityLookupPending = true;
+    g_dbus_connection_call(g_dbus_proxy_get_connection(gAccessibilityStatus),
+                           kAccessibilityService, kAccessibilityServicePath,
+                           kAccessibilityService, "GetAddress", nullptr,
+                           G_VARIANT_TYPE("(s)"), G_DBUS_CALL_FLAGS_NONE, 2000,
+                           gAccessibilityWatch, AccessibilityAddressReceived,
+                           GUINT_TO_POINTER(++gAccessibilityLookupId));
+}
+
+static void AccessibilityStatusChanged(GDBusProxy*, GVariant*,
+                                       const char* const*, gpointer) {
+    RefreshAccessibilityStatus();
+}
+
+static void AccessibilityStatusReady(GObject*, GAsyncResult* result,
+                                     gpointer data) {
+    GDBusProxy* proxy = g_dbus_proxy_new_for_bus_finish(result, nullptr);
+    if (GPOINTER_TO_UINT(data) != gAccessibilityWatchId) {
+        if (proxy) g_object_unref(proxy);
+        return;
+    }
+    if (!proxy) {
+        TryLocalAccessibilityBus();
+        return;
+    }
+    gAccessibilityStatus = proxy;
+    g_signal_connect(proxy, "g-properties-changed",
+                     G_CALLBACK(AccessibilityStatusChanged), nullptr);
+    RefreshAccessibilityStatus();
+}
+
+static void StartAccessibilityStatusWatch() {
+    gAccessibilityWatch = g_cancellable_new();
+    g_dbus_proxy_new_for_bus(
+        G_BUS_TYPE_SESSION, G_DBUS_PROXY_FLAGS_GET_INVALIDATED_PROPERTIES,
+        nullptr, kAccessibilityService, kAccessibilityServicePath,
+        "org.a11y.Status", gAccessibilityWatch, AccessibilityStatusReady,
+        GUINT_TO_POINTER(++gAccessibilityWatchId));
+}
+
+static void StopAccessibilityStatusWatch() {
+    ++gAccessibilityWatchId;
+    ++gAccessibilityLookupId;
+    gAccessibilityLookupPending = false;
+    gAccessibilityKnowsStatus = false;
+    g_cancellable_cancel(gAccessibilityWatch);
+    g_clear_object(&gAccessibilityStatus);
+    g_clear_object(&gAccessibilityWatch);
+    AccessibilityLinuxShutdown();
 }
 
 WindowButtonLayout WindowGetButtonLayout() {
@@ -3864,7 +3938,8 @@ void PlatAddLoopSource(PlatLoopPrepare prepare, PlatLoopDispatch dispatch) {
 
 // The X connection, the wake pipe and the accessibility bus, then whatever
 // the loop source asked for. Its revents are copied back for its dispatch.
-static void PollAll(int xfd, int timeoutMs, PlatPollFd* extra, int nExtra) {
+template <typename ExtraFd>
+static void PollAll(int xfd, int timeoutMs, ExtraFd* extra, int nExtra) {
     static Vec<struct pollfd> pfd;
     VecClear(pfd);
     int accessibilityFd = AccessibilityLinuxFd();
@@ -3972,27 +4047,6 @@ bool PlatInit(App* app) {
     aGnomeCopiedFiles =
         XInternAtom(gDpy, "x-special/gnome-copied-files", False);
     XiInit();
-    const char* accessibilityBus = getenv("AT_SPI_BUS_ADDRESS");
-    if (accessibilityBus && *accessibilityBus) {
-        AccessibilityLinuxInit(app, Str(accessibilityBus));
-    } else {
-        // at-spi-bus-launcher publishes the private bus here for applications
-        // that were started before its environment could be inherited.
-        Atom property = XInternAtom(gDpy, "AT_SPI_BUS", True);
-        Atom type = None;
-        int format = 0;
-        unsigned long count = 0;
-        unsigned long after = 0;
-        unsigned char* value = nullptr;
-        if (property != None &&
-            XGetWindowProperty(gDpy, gRoot, property, 0, 4096, False,
-                               AnyPropertyType, &type, &format, &count, &after,
-                               &value) == Success &&
-            format == 8 && value && count) {
-            AccessibilityLinuxInit(app, Str((char*)value, (int)count));
-        }
-        if (value) XFree(value);
-    }
     return true;
 }
 
@@ -4228,7 +4282,15 @@ int AppRun(App* app) {
     if (!app || !gDpy) {
         return 1;
     }
-    if (AppAnyWindowOpen(app)) DiscoverAccessibilityBus(app);
+    GMainContext* context = g_main_context_default();
+    bool watchAccessibility = g_main_context_acquire(context);
+    Vec<GPollFD> contextFds;
+    if (watchAccessibility) {
+        g_main_context_push_thread_default(context);
+        StartAccessibilityStatusWatch();
+    } else {
+        TryLocalAccessibilityBus();
+    }
     int fd = ConnectionNumber(gDpy);
     while (AppAnyWindowOpen(app)) {
         while (XPending(gDpy) > 0) {
@@ -4256,27 +4318,43 @@ int AppRun(App* app) {
         PlatPollFd* extra = nullptr;
         int extraTimeoutMs = -1;
         int nExtra = gLoopPrepare ? gLoopPrepare(&extra, &extraTimeoutMs) : 0;
-        if (gLoopPrepare) {
+        int timeoutMs = idle && waitS > 0 ? (int)(waitS * 1000.0) : 0;
+        if (nExtra > 0) {
             // With a second loop the poll always happens — without blocking
             // when this loop has work of its own — so a busy X connection
             // never starves GLib's descriptors.
-            int timeoutMs =
-                !idle ? 0 : (waitS <= 0 ? 0 : (int)(waitS * 1000.0));
             if (extraTimeoutMs >= 0 && extraTimeoutMs < timeoutMs) {
                 timeoutMs = extraTimeoutMs;
             }
             PollAll(fd, timeoutMs, extra, nExtra);
+            gLoopDispatch();
+        } else if (watchAccessibility) {
+            // Without GTK, drive the same GLib context for the AT-SPI watch.
+            int priority = 0;
+            int contextTimeout = -1;
+            g_main_context_prepare(context, &priority);
+            int count = 0;
+            for (;;) {
+                count = g_main_context_query(context, priority, &contextTimeout,
+                                             contextFds.els, len(contextFds));
+                if (count <= len(contextFds)) break;
+                if (!VecResize(contextFds, count)) {
+                    count = 0;
+                    break;
+                }
+            }
+            if (contextTimeout >= 0)
+                timeoutMs = std::min(timeoutMs, contextTimeout);
+            PollAll(fd, timeoutMs, contextFds.els, count);
+            if (g_main_context_check(context, priority, contextFds.els, count))
+                g_main_context_dispatch(context);
         } else if (idle) {
-            int timeoutMs = waitS <= 0 ? 0 : (int)(waitS * 1000.0);
             int accessibilityFd = AccessibilityLinuxFd();
             struct pollfd pfd[3] = {{fd, POLLIN, 0},
                                     {gWakeFd[0], POLLIN, 0},
                                     {accessibilityFd, POLLIN, 0}};
             int nfd = accessibilityFd >= 0 ? 3 : (gWakeFd[0] >= 0 ? 2 : 1);
             poll(pfd, nfd, timeoutMs);
-        }
-        if (gLoopDispatch) {
-            gLoopDispatch();
         }
         // Whatever woke us, the queue is drained on the way past: a worker
         // that finished while we were asleep wrote the byte that ended the
@@ -4286,6 +4364,12 @@ int AppRun(App* app) {
         ExecDrain();
 
         RunLoopTickDue<PlatWindow>(app);
+    }
+    if (watchAccessibility) {
+        StopAccessibilityStatusWatch();
+        g_main_context_pop_thread_default(context);
+        g_main_context_release(context);
+        VecReset(contextFds);
     }
     return app->exitCode;
 }

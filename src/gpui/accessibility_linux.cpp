@@ -2206,8 +2206,11 @@ static void HandleReply(const Incoming& in) {
         gA11y.desktopPath = StrDup(desktopPath);
         gA11y.ready = true;
         if (gA11y.app) {
-            for (int i = 0; i < len(gA11y.app->windows); i++) {
-                AppInvalidate(gA11y.app->windows[i]);
+            for (auto* win : gA11y.app->windows) {
+                // Rebuild the bridge's snapshots even if the last rendered
+                // tree was identical before the previous connection closed.
+                win->accessibilityHash = 0;
+                AppInvalidate(win);
             }
         }
     }
