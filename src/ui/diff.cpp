@@ -3318,10 +3318,6 @@ static bool ClipRange(const DiffState* state, DiffLineRange in,
 }
 
 void DiffState::SetSelectedLines(bool has, DiffLineRange range, Ctx* cx) {
-    if (textSelection.file >= 0) {
-        textSelection = {};
-        if (cx) Notify(cx);
-    }
     DiffLineRange clipped;
     bool ok = has && ClipRange(this, range, &clipped);
     if (!ok) {
@@ -3347,13 +3343,14 @@ void DiffState::SetSelectedLines(bool has, DiffLineRange range, Ctx* cx) {
 }
 
 Str DiffState::SelectedText(Arena* a) const {
-    if (textSelection.HasSourceRange() && textSelection.file < len(files)) {
+    if (!hasSelection) {
+        if (!textSelection.HasSourceRange() || textSelection.file >= len(files))
+            return {};
         Str source = files[textSelection.file]->Source(textSelection.side);
         return Own(
             a, Slice(source, IMin(textSelection.anchor, textSelection.cursor),
                      IMax(textSelection.anchor, textSelection.cursor)));
     }
-    if (!hasSelection) return {};
     int fileIx = FileIx(this, selected.path);
     if (fileIx < 0) return {};
     const DiffFile* file = files[fileIx];
@@ -5360,6 +5357,7 @@ static void OnDiffAction(DiffState* self, Ctx* cx, const ActionEvent* ev) {
         DiffLineRange range = Between(anchor, cursor);
         bool changed = !self->hasSelection || !RangeEq(self->selected, range);
         TextSelection::Clear(cx->win, cx->app);
+        self->textSelection = {};
         self->SetSelectedLines(true, range, cx);
         self->anchor = anchor;
         self->cursor = cursor;

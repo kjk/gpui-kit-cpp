@@ -2591,6 +2591,23 @@ static void CodeSelectionCopiesCharactersAndWords() {
     TestSimulateKeystrokes(stage.win, "secondary-c");
     utassert(StrEq(TestReadFromClipboard(a), "oth"));
 
+    // Synchronizing review lines is independent of the pointer selection.
+    state->SetSelectedLines(false, {}, nullptr);
+    utassert(StrEq(state->SelectedText(a), "oth"));
+    state->SetSelectedLines(
+        true,
+        DiffLineRange::New(state->files[0]->Path(), DiffSide::Modified, 1, 1),
+        nullptr);
+    utassert(StrEq(state->SelectedText(a), "fn place() {}\n"));
+    state->SetSelectedLines(false, {}, nullptr);
+    utassert(StrEq(state->SelectedText(a), "oth"));
+
+    // Keyboard review selection explicitly clears the pointer selection.
+    TestSimulateKeystrokes(stage.win, "shift-down");
+    utassert(StrEq(state->SelectedText(a), "fn place() {}\n"));
+    state->SetSelectedLines(false, {}, nullptr);
+    utassert(len(state->SelectedText(a)) == 0);
+
     TestSimulateMouseDown(stage.win, at(4.2f), MouseButton::Left, {}, 2);
     TestSimulateMouseUp(stage.win, at(4.2f), MouseButton::Left, {}, 2);
     utassert(StrEq(state->SelectedText(a), "other"));
