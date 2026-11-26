@@ -8562,6 +8562,7 @@ El* TextView::Blocks(El* into, MdNode* n, int depth, bool inList,
             documentSource = managed ? managed->Source() : source;
         }
     }
+    ArenaVec<Str>* sourceOnly = nullptr;
     int blockIx = 0;
     for (MdNode* c = n->first; c; c = c->next, blockIx++) {
         // A surface's last visible block carries the gap, not a trailing
@@ -8577,31 +8578,42 @@ El* TextView::Blocks(El* into, MdNode* n, int depth, bool inList,
             }
         }
         El* e = Block(c, depth, inList, last);
-        if (e && c->kind != MdKind::Heading && c->kind != MdKind::Rule) {
+        Str blockSource;
+        if (documentSource.s && c->blockStart >= 0 &&
+            c->blockEnd > c->blockStart && c->blockEnd <= len(documentSource)) {
+            blockSource = Str(documentSource.s + c->blockStart,
+                              c->blockEnd - c->blockStart);
+        }
+        if (!e) {
+            // Definitions have no element. Record their position before the
+            // next block without adding anything to the layout or hit list.
+            if (blockSource.s) {
+                if (!sourceOnly) sourceOnly = ArenaNew<ArenaVec<Str>>(a);
+                if (sourceOnly) sourceOnly->Append(a, blockSource);
+            }
+            continue;
+        }
+        if (c->kind != MdKind::Heading && c->kind != MdKind::Rule) {
             flowPrev = 3;
         }
-        if (e && outer && revealTarget && revealTarget->block && revealOut &&
+        if (outer && revealTarget && revealTarget->block && revealOut &&
             revealTarget->blockIx == blockIx) {
             // RevealTarget::Block: the whole top-level block reports its box.
             e->BoundsOut(revealOut);
             revealOut = nullptr;
         }
-        if (e) {
-            if (documentSource.s && c->blockStart >= 0 &&
-                c->blockEnd > c->blockStart &&
-                c->blockEnd <= len(documentSource)) {
-                if (!e->lifecycle) e->lifecycle = ArenaNew<ElLifecycle>(a);
-                if (e->lifecycle) {
-                    e->lifecycle->selectionBlockSource =
-                        Str(documentSource.s + c->blockStart,
-                            c->blockEnd - c->blockStart);
-                    e->SelectionOwner(state.id);
-                }
+        if (blockSource.s || sourceOnly) {
+            if (!e->lifecycle) e->lifecycle = ArenaNew<ElLifecycle>(a);
+            if (e->lifecycle) {
+                e->lifecycle->selectionBlockSource = blockSource;
+                e->lifecycle->selectionBlockPrefix = sourceOnly;
+                e->SelectionOwner(state.id);
             }
-            bool indented = continuation && (blockIx > 0 || n->runFirst ||
-                                             c->kind == MdKind::List);
-            (indented ? continuation : into)->Child(e);
+            sourceOnly = nullptr;
         }
+        bool indented = continuation &&
+                        (blockIx > 0 || n->runFirst || c->kind == MdKind::List);
+        (indented ? continuation : into)->Child(e);
     }
     blockDepth--;
     return into;

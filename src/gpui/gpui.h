@@ -2910,6 +2910,7 @@ struct ElLifecycle {
     const LinkTooltipTarget* linkTooltip = nullptr;
     const InlineTextFragment* inlineTextFragment = nullptr;
     Str selectionBlockSource;
+    const ArenaVec<Str>* selectionBlockPrefix = nullptr;
     const TextSpan* strikes = nullptr;
     int strikeCount = 0;
     bool inlineTextGroup = false;

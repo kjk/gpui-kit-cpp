@@ -8807,16 +8807,21 @@ static void PaintElNode(PaintCtx* ctx, El* e, bool skipOverlay) {
     if (selectionScope) {
         VecAppend(ctx->window->textSelectionScopes, e->selectionScope);
     }
-    int sourceBlock = -1;
-    if (e->lifecycle && e->lifecycle->selectionBlockSource.s) {
+    auto addSourceBlock = [&](Str source) {
         int index = len(ctx->selectionSourceBlocks);
-        if (VecAppend(ctx->selectionSourceBlocks,
-                      SelectionSourceBlock{
-                          e->lifecycle->selectionBlockSource, e->selectionOwner,
-                          ElSelectionScope(ctx, e), len(ctx->texts),
-                          len(ctx->texts), ctx->textDocLen, ctx->textDocLen})) {
-            sourceBlock = index;
+        SelectionSourceBlock block{
+            source,          e->selectionOwner, ElSelectionScope(ctx, e),
+            len(ctx->texts), len(ctx->texts),   ctx->textDocLen,
+            ctx->textDocLen};
+        return VecAppend(ctx->selectionSourceBlocks, block) ? index : -1;
+    };
+    int sourceBlock = -1;
+    if (e->lifecycle) {
+        if (const auto* prefix = e->lifecycle->selectionBlockPrefix) {
+            for (Str source : *prefix) addSourceBlock(source);
         }
+        if (Str source = e->lifecycle->selectionBlockSource; source.s)
+            sourceBlock = addSourceBlock(source);
     }
 #ifndef NDEBUG
     // debug_below sets DebugBelow for as long as the element and what it

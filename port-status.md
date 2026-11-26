@@ -520,8 +520,9 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   appends until the selection moves. A painted block plugin is included whole
   when the drag starts or ends inside its box or covers it. Enclosed
   top-level Markdown blocks copy their original source spans, including
-  rules that have no text hit. This relies on the frame registering the
-  block's position. Rust also covers blocks omitted by virtualization.
+  rules and link definitions that have no text hit. This relies on the
+  frame registering the block's position. Rust also covers blocks omitted
+  by virtualization.
   Under `-markdown=mini` the parser
   keeps no positions, so source mapping is unavailable (`src/base/text.cpp`,
   `CopyTextHitsFiltered` in `src/gpui/gpui.cpp`).

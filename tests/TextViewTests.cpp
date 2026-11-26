@@ -7629,6 +7629,32 @@ static void EnclosedBlocksKeepTheirOriginalMarkdown() {
     TswClose(&v);
 }
 
+static void EnclosedLinkDefinitionsCopyWithoutTextHits() {
+    TswView v = TswOpen(
+        "before\n\n"
+        "[guide]: https://example.com/guide \"Guide\"\n"
+        "[api]: https://example.com/api\n\nafter",
+        TswContainer::Window);
+    const TextHit* before = HitContaining(v.win, "before");
+    const TextHit* after = HitContaining(v.win, "after");
+    utassert(before && after && !HitContaining(v.win, "https://example.com"));
+    if (before && after) {
+        char copy[160];
+        int start = before->docOff + 1;
+        int end = after->docOff + 2;
+        int size = CopyTextHitsIn(&v.win->paint, start, end, before->scope,
+                                  copy, dimofi(copy), SelectionFormat::Source);
+        utassert(StrEq(Str(copy, size),
+                       "efore\n\n"
+                       "[guide]: https://example.com/guide \"Guide\"\n\n"
+                       "[api]: https://example.com/api\n\naf"));
+        size = CopyTextHitsIn(&v.win->paint, start, end, before->scope, copy,
+                              dimofi(copy), SelectionFormat::Plain);
+        utassert(StrEq(Str(copy, size), "efore\naf"));
+    }
+    TswClose(&v);
+}
+
 // `leaf_nodes`: the blocks holding text, the way the index builder walks
 // them.
 static void RfsLeafNodes(const MdNode* n, Vec<const MdNode*>& leaves) {
@@ -9262,6 +9288,7 @@ static void TestTextStateWindow() {
     CustomBlocksConvertWhole();
     CustomBlockFallbackKeepsAtomicSelection();
     EnclosedBlocksKeepTheirOriginalMarkdown();
+    EnclosedLinkDefinitionsCopyWithoutTextHits();
     SelectionsRoundTripThroughSourceRanges();
     SourceRangesHighlightTheTextRenderedFromThem();
     SelectAllConvertsToEveryRenderedCharacter();
