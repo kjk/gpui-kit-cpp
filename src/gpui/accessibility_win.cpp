@@ -115,6 +115,10 @@ static int AccessibilityControlType(AccessibilityRole role) {
             return UIA_DataGridControlTypeId;
         case AccessibilityRole::TabList:
             return UIA_TabControlTypeId;
+        case AccessibilityRole::Tree:
+            return UIA_TreeControlTypeId;
+        case AccessibilityRole::TreeItem:
+            return UIA_TreeItemControlTypeId;
         case AccessibilityRole::Toolbar:
             return UIA_ToolBarControlTypeId;
         case AccessibilityRole::Tooltip:
@@ -199,6 +203,10 @@ static const wchar_t* AccessibilityRoleName(AccessibilityRole role) {
             return L"table";
         case AccessibilityRole::TabList:
             return L"tablist";
+        case AccessibilityRole::Tree:
+            return L"tree";
+        case AccessibilityRole::TreeItem:
+            return L"treeitem";
         case AccessibilityRole::Toolbar:
             return L"toolbar";
         case AccessibilityRole::Tooltip:
