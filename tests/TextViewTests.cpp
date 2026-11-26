@@ -3325,6 +3325,34 @@ static void ClosingMarkAndSpaceStayWithInlineCode() {
           StrL(" "), StrL("Next."));
     check(StrL("Use `transform_columns:a` now"), StrL("transform_columns:a"),
           StrL(" "), StrL("now"));
+
+    auto* state = view.Get(app);
+    Str span = StrL("0123456789abcdefghijklmnopqrstuvwxyz0123");
+    state->source = StrL("`0123456789abcdefghijklmnopqrstuvwxyz0123`. Next.");
+    state->width = 102.f;
+    TestDraw(win);
+    const TextHit* code = nullptr;
+    const TextHit* closing = nullptr;
+    for (const auto& hit : win->paint.texts) {
+        if (StrEq(hit.text, span)) code = &hit;
+        if (StrEq(hit.text, ". ")) closing = &hit;
+    }
+    utassert(code && closing);
+    if (code && closing) {
+        float endX = 0, endY = 0, height = 0;
+        utassert(TextPointAt(&win->paint, code->text, code->font, code->maxW,
+                             code->wrap, len(code->text), &endX, &endY, &height,
+                             kFontMono));
+        utassert(endY > 0);
+        utassertnear(closing->bounds.y, code->bounds.y + endY);
+        utassertnear(closing->bounds.x, code->bounds.x + endX);
+        char copied[80];
+        int n = CopyTextHitsIn(&win->paint, code->docOff, closing->docOff + 1,
+                               code->scope, copied, dimofi(copied),
+                               SelectionFormat::Source);
+        utassert(StrEq(Str(copied, n),
+                       "`0123456789abcdefghijklmnopqrstuvwxyz0123`."));
+    }
     TestAppFree(app);
 }
 

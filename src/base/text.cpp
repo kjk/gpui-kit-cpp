@@ -4793,6 +4793,43 @@ static int HangingPrefix(Str text) {
     return at;
 }
 
+// A hanging suffix belongs to the final visual line of its code span.
+static void PlaceInlineCodeSuffix(PaintCtx* ctx, El*, void* user) {
+    const El* code = (const El*)user;
+    El* suffix = code->next;
+    Bounds stack[8];
+    Vec<Bounds> lines;
+    VecUseExternalBuffer(lines, stack);
+    int bytes = len(code->text);
+    int cap = std::min(bytes, dimofi(stack));
+    int count = 0;
+    while (cap > 1) {
+        Bounds* out = VecReserve(lines, cap);
+        if (!out) return;
+        count = ElTextRangeRects(ctx, code, 0, bytes, out, cap);
+        if (count < cap || cap == bytes) break;
+        cap += std::min(cap, bytes - cap);
+    }
+    if (count <= 1) return;
+    Bounds finalLine = lines.els[0];
+    for (int i = 1; i < count; i++) {
+        const Bounds& line = lines.els[i];
+        if (line.y > finalLine.y) {
+            finalLine = line;
+        } else if (line.y == finalLine.y) {
+            finalLine.w = std::max(finalLine.Right(), line.Right()) - finalLine
+                                                                          .x;
+        }
+    }
+    float offset = finalLine.y - lines.els[0].y;
+    if (offset > 0.f) {
+        float inset = code->Bounds().Right() - ElTextContentBounds(code)
+                                                   .Right();
+        suffix->x = finalLine.Right() + inset;
+        suffix->y += offset;
+    }
+}
+
 // A shared text layout can span an emphasis boundary or a link. Atomic
 // objects and spans with their own padding still go through inline flow.
 static bool CanShapeStyledLine(const MdNode* node) {
@@ -5441,6 +5478,15 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
                     pendingGroup->lifecycle->inlineTextGroup = true;
                 }
                 pending = pendingGroup;
+            }
+            El* previous = pendingGroup->last;
+            if (hanging && previous->lifecycle &&
+                previous->lifecycle->inlineCodeBox) {
+                // The suffix can hang past the line's limit. It does not
+                // take space out of the code span's wrap width.
+                previous->FlexNone();
+                pendingGroup->prePaint = PlaceInlineCodeSuffix;
+                pendingGroup->customUser = previous;
             }
             pendingGroup->Child(hanging ? w->FlexNone() : w);
         } else {
