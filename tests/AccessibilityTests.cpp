@@ -1010,9 +1010,14 @@ static void SliderActionsUseTheSlidersOwnStep() {
         utassert(WindowAccessibilityPerform(f.win, id,
                                             AccessibilityAction::Decrement));
         utassertnear(state.value.End(), 6);
-        utassert(WindowAccessibilitySetNumericValue(f.win, id, 8.6f));
+        float applied = 0;
+        utassert(WindowAccessibilitySetNumericValue(f.win, id, 8.6f, &applied));
+        utassertnear(applied, 8);
         utassertnear(state.value.End(), 8);
-        utassert(WindowAccessibilitySetNumericValue(f.win, id, 100));
+        utassert(WindowAccessibilitySetNumericValue(f.win, id, 8.4f, &applied));
+        utassertnear(applied, 8);
+        utassert(WindowAccessibilitySetNumericValue(f.win, id, 100, &applied));
+        utassertnear(applied, 10);
         utassertnear(state.value.End(), 10);
     }
     FreeAccessibilityFrame(&f);

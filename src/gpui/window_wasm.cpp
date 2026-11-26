@@ -32,6 +32,7 @@
 
 #include <emscripten/emscripten.h>
 #include <emscripten/html5.h>
+#include <math.h>
 
 namespace gpui {
 
@@ -1086,6 +1087,15 @@ extern "C" EMSCRIPTEN_KEEPALIVE void gpui_wasm_accessibility_set_value(
     free(value);
 }
 
+extern "C" EMSCRIPTEN_KEEPALIVE float gpui_wasm_accessibility_set_number(
+    uint32_t id, float value) {
+    float applied = NAN;
+    if (gWin && gWin->plat && gWin->plat->open) {
+        WindowAccessibilitySetNumericValue(gWin, id, value, &applied);
+    }
+    return applied;
+}
+
 // clang-format off
 
 // Canvas fallback content is focusable and exposed to assistive technology
@@ -1130,14 +1140,31 @@ EM_JS(void, GpJsAccessibilityAttach, (), {
             _gpui_wasm_accessibility_action(node.id, 0);
         }
     });
+    const setNumber = function(el, node) {
+        if (state.syncing || el.valueAsNumber === node.projectedNumber) return;
+        const applied = el.disabled ? NaN :
+            _gpui_wasm_accessibility_set_number(node.id, el.valueAsNumber);
+        if (el.gpuiAccessible !== node) return;
+        if (Number.isFinite(applied)) node.number = applied;
+        el.valueAsNumber = node.number;
+        node.projectedNumber = el.valueAsNumber;
+    };
     listen("input", function(e) {
         const node = e.target.gpuiAccessible;
+        if (node?.range) {
+            setNumber(e.target, node);
+            return;
+        }
         if (!node || !node.canEdit) return;
         const size = lengthBytesUTF8(e.target.value);
         const ptr = _malloc(size + 1);
         if (!ptr) return;
         stringToUTF8(e.target.value, ptr, size + 1);
         _gpui_wasm_accessibility_set_value(node.id, ptr, size);
+    });
+    listen("change", function(e) {
+        const node = e.target.gpuiAccessible;
+        if (node?.range) setNumber(e.target, node);
     });
 });
 
@@ -1177,7 +1204,8 @@ EM_JS(void, GpJsAccessibilityNode,
         state.nodes.set(id, el);
     }
     if (tag === "input") {
-        const type = field === 3 ? "password" : field === 4 ? "search" : "text";
+        const type = field === 3 ? "password" : field === 4 ? "search" :
+                     field === 5 ? "range" : "text";
         if (el.type !== type) el.type = type;
     }
     const attr = function(name, text) {
@@ -1190,7 +1218,7 @@ EM_JS(void, GpJsAccessibilityNode,
     const semanticRole = role ? UTF8ToString(role) : null;
     const canEdit = !!(flags & 4);
     el.gpuiAccessible = {id, canClick: !!(flags & 1),
-                         canFocus: !!(flags & 2), canEdit};
+                         canFocus: !!(flags & 2), canEdit, range: field === 5};
     // GPUI handles Tab within its focus scope. The DOM nodes also accept
     // direct focus by assistive tools and the active descendant of a widget.
     attr("tabindex", native || (flags & 3) || state.focus === id ? "-1" : null);
@@ -1208,7 +1236,10 @@ EM_JS(void, GpJsAccessibilityNode,
     attr("aria-orientation", orient === 1 ? "horizontal" :
                              orient === 2 ? "vertical" : null);
     attr("aria-level", level ? String(level) : null);
-    if (native) {
+    if (field === 5) {
+        el.disabled = !!(flags & 8);
+    } else if (native) {
+        el.disabled = false;
         el.readOnly = !canEdit;
         const text = read(value, valueLen) ?? "";
         if (el.value !== text) el.value = text;
@@ -1238,7 +1269,7 @@ EM_JS(void, GpJsAccessibilityNode,
 });
 
 EM_JS(void, GpJsAccessibilityNumeric,
-      (uint32_t id, int flags, float value, float min, float max,
+      (uint32_t id, int flags, float value, float min, float max, float step,
        int position, int size, int rows, int columns, int row, int column), {
     const el = globalThis.__gpui.accessibility?.nodes.get(id >>> 0);
     if (!el) return;
@@ -1249,9 +1280,25 @@ EM_JS(void, GpJsAccessibilityNumeric,
             el.setAttribute(name, String(val));
         }
     };
-    attr("aria-valuenow", flags & 1, value);
-    attr("aria-valuemin", flags & 2, min);
-    attr("aria-valuemax", flags & 4, max);
+    const node = el.gpuiAccessible;
+    if (node.range) {
+        attr("min", true, min);
+        attr("max", true, max);
+        const ticks = Math.round((value - min) / step);
+        const stepFits = step > 0 && Number.isFinite(ticks) &&
+                         Math.fround(min + ticks * step) === value;
+        attr("step", true, stepFits ? step : "any");
+        el.valueAsNumber = value;
+        node.number = value;
+        node.projectedNumber = el.valueAsNumber;
+    } else {
+        attr("min", false, 0);
+        attr("max", false, 0);
+        attr("step", false, 0);
+    }
+    attr("aria-valuenow", !node.range && (flags & 1), value);
+    attr("aria-valuemin", !node.range && (flags & 2), min);
+    attr("aria-valuemax", !node.range && (flags & 4), max);
     attr("aria-posinset", flags & 8, position);
     attr("aria-setsize", flags & 16, size);
     attr("aria-rowcount", flags & 32, rows);
@@ -1437,8 +1484,16 @@ void PlatAccessibilityTreeChanged(Window* win) {
             if (info.role == Role::PasswordInput || node.input->masked)
                 field = 3;
         }
+        if (node.slider && info.role == Role::Slider && info.hasNumericValue &&
+            info.hasMinNumericValue && info.hasMaxNumericValue &&
+            isfinite(info.minNumericValue) && isfinite(info.maxNumericValue) &&
+            info.numericValue >= info.minNumericValue &&
+            info.numericValue <= info.maxNumericValue) {
+            field = 5;
+        }
         Str label = info.PlatformName();
-        Str value = field ? WindowAccessibilityTextValue(node) : info.value;
+        Str value = node.input && field ? WindowAccessibilityTextValue(node)
+                                        : info.value;
         bool text = info.role == Role::Label || info.role == Role::TextRun ||
                     info.role == Role::Paragraph || info.role == Role::Status;
         bool editable = (node.actions & AccessibilityActionSetValue) &&
@@ -1465,9 +1520,10 @@ void PlatAccessibilityTreeChanged(Window* win) {
         int adjust = info.zeroBasedGridIndices ? 1 : 0;
         GpJsAccessibilityNumeric(
             node.id, numeric, info.numericValue, info.minNumericValue,
-            info.maxNumericValue, info.positionInSet, info.sizeOfSet,
-            info.rowCount, info.columnCount, info.rowIndex + adjust,
-            info.columnIndex + adjust);
+            info.maxNumericValue,
+            info.hasNumericValueStep ? info.numericValueStep : 0,
+            info.positionInSet, info.sizeOfSet, info.rowCount, info.columnCount,
+            info.rowIndex + adjust, info.columnIndex + adjust);
         if (node.liveChanged) {
             Str text = node.info.label;
             GpJsAnnounceStatus(node.info.live == AccessibilityLive::Assertive,

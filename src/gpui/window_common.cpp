@@ -2067,14 +2067,16 @@ bool WindowAccessibilityPerform(Window* win, uint32_t nodeId,
 }
 
 bool WindowAccessibilitySetNumericValue(Window* win, uint32_t nodeId,
-                                        float value) {
+                                        float value, float* applied) {
     const AccessibilityNode* found = WindowAccessibilityNode(win, nodeId);
     if (!found || found->info.disabled || !found->slider) {
         return false;
     }
     AccessibilityNode node = *found;
     if (!isfinite(value)) return false;
-    if (SliderSetThumbValue(node.slider, false, value)) {
+    bool changed = SliderSetThumbValue(node.slider, false, value);
+    if (applied) *applied = node.slider->value.End();
+    if (changed) {
         SliderEmitStep(win, node.slider);
         AppInvalidate(win);
     }

@@ -9277,7 +9277,7 @@ bool WindowAccessibilityPerform(Window* win, uint32_t nodeId,
 // RangeValue::SetValue needs an absolute numeric setter rather than a run
 // of Increment actions. Only a live, enabled slider node accepts it.
 bool WindowAccessibilitySetNumericValue(Window* win, uint32_t nodeId,
-                                        float value);
+                                        float value, float* applied = nullptr);
 int FocusNext(Window* win, int trapId, bool backward);
 // The tab stop FocusNext would move to from `fromId`, without moving the
 // focus or running anyone's blur; `fromId` when there is none.
