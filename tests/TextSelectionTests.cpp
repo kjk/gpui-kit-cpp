@@ -2663,6 +2663,29 @@ static void PaintDoesNotResolveWindowSelectedText() {
     TestAppFree(app);
 }
 
+static void ClipboardCopiesFullParticipantText() {
+    SelectionFixture f;
+    auto* first = f.Add("first", 0, 0, 1);
+    auto* second = f.Add("second", 40, 0, 2);
+    auto* third = f.Add("third", 80, 0, 3);
+    Arena* arena = GetTempArena();
+    Str large = AllocStrTemp(70 * 1024);
+    memset(large.s, 'x', (size_t)len(large));
+    CopyCount calls;
+    first->selection.CopyWith(&CountGammaCopy, &calls, f.app);
+    second->selection.SetFallbackCopyText(large, f.app);
+    first->selection.SetLocalSelection(true, f.app);
+    second->selection.SetLocalSelection(true, f.app);
+    third->selection.SetLocalSelection(true, f.app);
+    StrBuilder expected(arena);
+    expected.Append(StrL("gamma\n"));
+    expected.Append(large);
+    expected.Append(StrL("\nthird"));
+    utassert(WindowSelectionCopy(f.win, false));
+    utassert(StrEq(TestReadFromClipboard(arena), expected.TakeStr()));
+    utassert(calls.n == 1);
+}
+
 struct TextBesideInput {
     InputState input;
 
@@ -3050,6 +3073,7 @@ void TestTextSelection() {
     RtlCaretAndOutsideHitsFollowTheReadingEdge();
 #endif
     PaintDoesNotResolveWindowSelectedText();
+    ClipboardCopiesFullParticipantText();
     HighlightedTextSelectsAndCopiesAsPlainText();
     ADragRedrawsOwnedTextBeforeRelease();
     CopyWithOnlyACaretUsesTheWindowSelection();

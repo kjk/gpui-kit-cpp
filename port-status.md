@@ -547,7 +547,8 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   still expand the full layout to reach anchors outside the viewport.
   Rust virtualizes the blocks and resolves the same range from the document
   even when the anchor and intervening blocks have no painted runs.
-  Participant copy callbacks receive a 64 KiB buffer.
+  Clipboard copy sizes the buffer from the selected participants' text.
+  Callers using the C++ bounded copy callback receive 64 KiB per participant.
   Under `-markdown=mini` the parser
   keeps no positions, so source mapping is unavailable (`src/base/text.cpp`,
   `CopyTextHitsFiltered` in `src/gpui/gpui.cpp`).

@@ -2189,6 +2189,23 @@ struct ParticipantCopyItem {
     Str text = {};
 };
 
+static constexpr int kParticipantCallbackCapacity = 64 * 1024;
+
+static TextSelectionParticipantState* ActiveCopyParticipant(App* app,
+                                                            EntityId id) {
+    auto* participant = (TextSelectionParticipantState*)EntityGet(app, id);
+    return participant &&
+                   (participant->hasSnapshot || participant->localSelection)
+               ? participant
+               : nullptr;
+}
+
+static Str ParticipantCopyText(
+    const TextSelectionParticipantState& participant) {
+    return participant.hasProjectedCopyText ? participant.projectedCopyText
+                                            : participant.fallbackCopyText;
+}
+
 static int CopyParticipantItem(const ParticipantCopyItem& item, App* app,
                                char* out, int cap) {
     if (!out || cap <= 0) return 0;
@@ -2211,21 +2228,14 @@ static int SelectedTextInto(Window* window, App* app, char* out, int cap,
                              view->SelectAllText(view->selectionFormat));
     }
     Vec<ParticipantCopyItem> active;
-    for (int i = 0; i < len(selection->participants); i++) {
-        TextSelectionParticipantState* participant =
-            (TextSelectionParticipantState*)EntityGet(
-                app, selection->participants[i]);
-        if (!participant ||
-            (!participant->hasSnapshot && !participant->localSelection)) {
-            continue;
-        }
+    for (EntityId id : selection->participants) {
+        auto* participant = ActiveCopyParticipant(app, id);
+        if (!participant) continue;
         ParticipantCopyItem item;
         item.documentOrder = participant->registration.documentOrder;
         item.copy = participant->copy;
         item.copyUser = participant->copyUser;
-        item.text = StrDup(participant->hasProjectedCopyText
-                               ? participant->projectedCopyText
-                               : participant->fallbackCopyText);
+        item.text = StrDup(ParticipantCopyText(*participant));
         int insert = len(active);
         while (insert > 0 && active[insert - 1]
                                      .documentOrder > item.documentOrder) {
@@ -2247,7 +2257,10 @@ static int SelectedTextInto(Window* window, App* app, char* out, int cap,
         int before = written;
         if (emitted && written < cap - 1) out[written++] = '\n';
         int textStart = written;
-        int n = CopyParticipantItem(item, app, out + written, cap - written);
+        int available = cap - written;
+        if (paintedText && item.copy)
+            available = std::min(available, kParticipantCallbackCapacity);
+        int n = CopyParticipantItem(item, app, out + written, available);
         if (n <= 0 || !HasNonWhitespace(Str(out + textStart, n))) {
             written = before;
             continue;
@@ -2365,6 +2378,19 @@ SelectionFormat WindowSelectionFormat(Window* win) {
     return s->format;
 }
 
+static int ParticipantClipboardCapacity(Window* win) {
+    int64_t capacity = 1;
+    for (EntityId id : win->sel->participants) {
+        auto* participant = ActiveCopyParticipant(win->app, id);
+        if (!participant) continue;
+        // Bounded callbacks run once and have their own clipboard allowance.
+        capacity += participant->copy ? kParticipantCallbackCapacity - 1
+                                      : len(ParticipantCopyText(*participant));
+        capacity++; // separator between selected participants
+    }
+    return (int)std::min(capacity, (int64_t)INT_MAX);
+}
+
 bool WindowSelectionCopy(Window* win, bool trim) {
     if (!TextSelection::HasSelection(win, win ? win->app : nullptr)) {
         return false;
@@ -2388,11 +2414,9 @@ bool WindowSelectionCopy(Window* win, bool trim) {
     if (const TextViewState* view = RetainedSelectionView(win)) {
         return write(RetainedSelectionText(selection, view->selectionFormat));
     }
-    // Participant copy callbacks still use the bounded copy API.
-    bool usesCallbacks = len(selection->participants) > 0;
-    int cap = usesCallbacks ? 64 * 1024 : 1;
+    int cap = ParticipantClipboardCapacity(win);
     char scratch[1];
-    char* buf = usesCallbacks ? (char*)Alloc(nullptr, cap) : scratch;
+    char* buf = cap > 1 ? (char*)Alloc(nullptr, cap) : scratch;
     if (!buf) {
         return false;
     }
@@ -2400,7 +2424,7 @@ bool WindowSelectionCopy(Window* win, bool trim) {
     int n = SelectedTextInto(win, win->app, buf, cap, &paintedText);
     bool copied =
         n > 0 && write(Str(len(paintedText) ? paintedText.els : buf, n));
-    if (usesCallbacks) Free(nullptr, buf);
+    if (cap > 1) Free(nullptr, buf);
     return copied;
 }
 
