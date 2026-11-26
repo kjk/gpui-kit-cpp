@@ -776,6 +776,14 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
         PaintEl(&win->paint, root);
         gFramePaintSecs = TimeNow() - tPaint0;
     }
+    // Native children are external to the scene and do not disappear by
+    // themselves when the element that painted them is omitted.
+    for (int i = len(win->paintedNativeSurfaces) - 1; i >= 0; i--) {
+        const auto surface = win->paintedNativeSurfaces[i];
+        if (surface.frame == win->frameSeq) continue;
+        VecRemoveAtFast(win->paintedNativeSurfaces, i);
+        ListenerCall(win->app, win, surface.onOmitted, nullptr);
+    }
     // A Scrolling scrollbar part-way through its fade wants the next frame.
     // One ask for the whole tree, after it has painted, the way Rust's
     // scrollbar schedules its own idle timer.
@@ -5405,6 +5413,7 @@ static void WindowReleaseResources(Window* w) {
     PaintTargetFree(&w->paint);
     VecReset(w->timers);
     VecReset(w->rendered);
+    VecReset(w->paintedNativeSurfaces);
     VecReset(w->imageCacheStack);
     VecReset(w->plotAppearScopes);
     VecReset(w->debugViewRoots);
@@ -5798,6 +5807,19 @@ void WindowSetRemSize(Window* win, float size) {
     }
     win->remSize = size;
     AppInvalidate(win);
+}
+
+void WindowTrackPaintedNativeSurface(Window* win, Listener onOmitted) {
+    if (!win || !onOmitted.IsValid()) return;
+    for (auto& surface : win->paintedNativeSurfaces) {
+        if (surface.onOmitted.view == onOmitted.view) {
+            surface.onOmitted = onOmitted;
+            surface.frame = win->frameSeq;
+            return;
+        }
+    }
+    VecAppend(win->paintedNativeSurfaces,
+              Window::PaintedNativeSurface{onOmitted, win->frameSeq});
 }
 
 void WindowRequestAutoscroll(Window* win, Bounds bounds) {

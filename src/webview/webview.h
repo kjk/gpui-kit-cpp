@@ -74,7 +74,7 @@ struct WebView {
     WebViewHandle owned;
     bool visible = true;
     // The OS view, which a clip can hide without changing `visible`.
-    bool nativeShown = true;
+    bool nativeShown = false;
     // The last geometry update failed. The failure is logged once, until
     // a later update succeeds.
     bool geometryFailed = false;
@@ -150,8 +150,8 @@ struct WebView {
     way examples/webview.cpp does, and the second pass will skip it. */
 Entity<WebView> WebViewNew(Ctx* cx, const wry::WebViewAttributes* attrs);
 
-/** `WebView::show` / `hide` / `visible`. Hiding moves the focus back to the
-    parent window first, as Rust does. */
+/** `WebView::show` / `hide` / `visible`. Showing takes effect when the element
+    next paints. Hiding moves the focus back to the parent window first. */
 void WebViewShow(WebView* self);
 void WebViewHide(WebView* self);
 bool WebViewVisible(const WebView* self);

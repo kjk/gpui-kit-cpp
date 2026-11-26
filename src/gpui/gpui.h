@@ -7808,6 +7808,11 @@ struct Window {
     // built — GPUI's `Window::dirty_views`, and what makes `Notify` name a
     // window rather than every window. Rebuilt each frame.
     Vec<EntityId> rendered;
+    struct PaintedNativeSurface {
+        Listener onOmitted;
+        uint64_t frame;
+    };
+    Vec<PaintedNativeSurface> paintedNativeSurfaces;
     // A debug build's paint_debug_info. The element each view rendered this
     // frame, which is where GPUI's ViewElement puts ElementId::View on the
     // id stack; and the elements whose hitboxes last frame's hit test found
@@ -9171,6 +9176,9 @@ inline float FontPx(const Ctx* cx, float px) {
 // what asks reads where it was last painted.
 void WindowRequestAutoscroll(Window* win, Bounds bounds);
 bool WindowTakeAutoscroll(Window* win, Bounds* out);
+// Keep a native child only while its element paints. An owner is notified
+// once when the next completed frame omits its surface.
+void WindowTrackPaintedNativeSurface(Window* win, Listener onOmitted);
 // window.last_input_was_keyboard(): whether the last input was a key press
 // rather than the pointer. What focus_visible reads, so a control focused
 // by a click does not show the focus a Tab to it would.

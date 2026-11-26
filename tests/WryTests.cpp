@@ -162,6 +162,55 @@ static void NativeSurfacesReceiveDeferredPanelBounds() {
     TestAppFree(app);
 }
 
+struct NativeSurfaceLifetimeProbe {
+    EntityId owner;
+    bool mounted = true;
+    int omissions = 0;
+
+    static void OnOmitted(NativeSurfaceLifetimeProbe* self, Ctx*, const void*) {
+        self->omissions++;
+    }
+
+    static void Paint(PaintCtx* ctx, El*, void* user) {
+        auto* self = static_cast<NativeSurfaceLifetimeProbe*>(user);
+        WindowTrackPaintedNativeSurface(
+            ctx->window,
+            ListenTo(Entity<NativeSurfaceLifetimeProbe>{self->owner},
+                     &OnOmitted));
+    }
+
+    static El* Render(NativeSurfaceLifetimeProbe* self, Ctx* cx) {
+        self->owner = cx->self;
+        El* root = Div(cx->a)->SizeFull();
+        if (self->mounted) {
+            root->customPaint = &Paint;
+            root->customUser = self;
+        }
+        return root;
+    }
+};
+
+static void OmittedNativeSurfacesAreHiddenOnce() {
+    App* app = TestAppNew();
+    auto view = EntityNew<NativeSurfaceLifetimeProbe>(app);
+    Window* win = TestWindowOpen(app, view, 240, 120);
+    auto* self = view.Get(app);
+    TestDraw(win);
+    utassert(self->omissions == 0);
+    self->mounted = false;
+    TestDraw(win);
+    utassert(self->omissions == 1);
+    TestDraw(win);
+    utassert(self->omissions == 1);
+    self->mounted = true;
+    TestDraw(win);
+    utassert(self->omissions == 1);
+    self->mounted = false;
+    TestDraw(win);
+    utassert(self->omissions == 2);
+    TestAppFree(app);
+}
+
 static void MediaPermissionsRespectEachRequestedDevice() {
     using wry::PermissionKind;
     using wry::PermissionResponse;
@@ -205,6 +254,7 @@ void TestWryUri() {
     FractionalDpiKeepsTheDocumentSizeAndFullyVisibleEdge();
     WebViewRegionExcludesOverlappingOverlayBoxes();
     NativeSurfacesReceiveDeferredPanelBounds();
+    OmittedNativeSurfacesAreHiddenOnce();
 
     // gpui-webview's owned raw handle is copyable even when empty. A real
     // handle follows the same operations while retaining the shared native

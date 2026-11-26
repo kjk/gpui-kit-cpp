@@ -165,6 +165,7 @@ Entity<WebView> WebViewNew(Ctx* cx, const wry::WebViewAttributes* attrs) {
     wry::WebViewAttributes copy = *attrs;
     // `WebView::new` starts it at nothing and lets the element place it.
     copy.bounds = wry::Rect{wry::LogicalPosition(0, 0), wry::LogicalSize(0, 0)};
+    copy.visible = false;
     wry::WebView* raw = wry::WebViewNew(window, &copy, /*asChild=*/true);
     if (raw) {
         WebViewHandleState* state = new WebViewHandleState();
@@ -178,9 +179,6 @@ Entity<WebView> WebViewNew(Ctx* cx, const wry::WebViewAttributes* attrs) {
     self->app = cx->app;
     self->selfId = handle.id;
     self->visible = raw != nullptr;
-    // What wry made is what the OS shows now: created hidden, the native
-    // view is not shown, and the first paint has to show it.
-    self->nativeShown = raw != nullptr && copy.visible;
     return handle;
 }
 
@@ -190,9 +188,7 @@ void WebViewShow(WebView* self) {
         return;
     }
     bool changed = !self->visible;
-    wry::WebViewSetVisible(raw, true);
     self->visible = true;
-    self->nativeShown = true;
     if (changed && AppHasWindow(self->app, self->window)) {
         AppInvalidate(self->window);
     }
@@ -438,9 +434,21 @@ static void HideNative(WebView* self, wry::WebView* raw) {
     self->nativeShown = false;
 }
 
+static void HideOmittedWebView(WebView* self, Ctx*, const void*) {
+    if (wry::WebView* raw = self->owned.Raw()) HideNative(self, raw);
+#if GPUI_WRY_SNAPSHOT
+    DropWebViewBackdrop(self);
+#endif
+}
+
 static void ShowNative(WebView* self, wry::WebView* raw) {
     if (!self->nativeShown && wry::WebViewSetVisible(raw, true)) {
         self->nativeShown = true;
+    }
+    if (self->nativeShown) {
+        WindowTrackPaintedNativeSurface(
+            self->window,
+            ListenTo(Entity<WebView>{self->selfId}, &HideOmittedWebView));
     }
 }
 
@@ -718,7 +726,7 @@ El* WebViewEl(Entity<WebView> view, Ctx* cx) {
     WebView* self = view.Get(cx->app);
     // `Style { size: Size::full(), flex_shrink: 1., ..Default }`.
     El* e = Div(cx->a)->SizeFull();
-    if (!self) {
+    if (!self || self->window != cx->win) {
         return e;
     }
     if (!self->subscribed) {
