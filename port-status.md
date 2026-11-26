@@ -295,6 +295,7 @@ The current update target is
   description carries the node's supplementary description.
   Toggled buttons, switches and disclosure controls use the AT-SPI
   toggle-button role and report the pressed state and its transitions.
+  Progress indicators without a numeric value report an indeterminate state.
   AT-SPI clients can read the current tree in a single cache request and
   receive cache updates for structural changes. Synthetic document pages
   are still queried on demand.

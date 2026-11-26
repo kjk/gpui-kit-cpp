@@ -1069,7 +1069,9 @@ static uint64_t LinuxNodeStates(Window* win, const AccessibilityNode& node,
         states |= AtspiBit(kAtspiCheckable);
     if (node.info.toggled == AccessibilityToggled::True)
         states |= AtspiBit(toggleButton ? kAtspiPressed : kAtspiChecked);
-    if (node.info.toggled == AccessibilityToggled::Mixed)
+    if (node.info.toggled == AccessibilityToggled::Mixed ||
+        (node.info.role == AccessibilityRole::ProgressIndicator &&
+         !node.info.hasNumericValue))
         states |= AtspiBit(kAtspiIndeterminate);
     if (node.info.hasExpanded) {
         states |=
@@ -3805,6 +3807,40 @@ static bool LinuxSmokeToggleButton(Window* win, int fd) {
     return ok;
 }
 
+static bool LinuxSmokeProgressState(Window* win, int fd) {
+    VecClear(win->accessibility);
+    AccessibilityNode node;
+    node.id = 1;
+    node.info.role = AccessibilityRole::ProgressIndicator;
+    VecAppend(win->accessibility, node);
+    auto& progress = win->accessibility[0];
+    auto check = [&](bool indeterminate) {
+        bool state = (LinuxObjectStates({win, 0, 0}) &
+                      AtspiBit(kAtspiIndeterminate)) != 0;
+        bool hasValue = (LinuxNodeInterfaces(progress) & kLinuxValue) != 0;
+        return state == indeterminate && hasValue == !indeterminate;
+    };
+    const AtspiEventValue zero(uint32_t{0});
+    AccessibilityLinuxTreeChanged(win);
+    bool ok = LinuxSmokeEvents(fd, nullptr, 0) && check(true);
+    // Zero is a valid numeric value, even when the previous frame was busy.
+    progress.info.hasNumericValue = true;
+    AccessibilityLinuxTreeChanged(win);
+    const LinuxSmokeEvent ready[] = {
+        {"StateChanged", "indeterminate", 0, 0, zero},
+        {"PropertyChange", "accessible-value", 0, 0, AtspiEventValue(0.0)},
+    };
+    ok = LinuxSmokeEvents(fd, ready, dimofi(ready)) && check(false) && ok;
+    progress.info.hasNumericValue = false;
+    AccessibilityLinuxTreeChanged(win);
+    const LinuxSmokeEvent busy[] = {
+        {"StateChanged", "indeterminate", 1, 0, zero},
+    };
+    ok = LinuxSmokeEvents(fd, busy, dimofi(busy)) && check(true) && ok;
+    AccessibilityLinuxForgetWindow(win);
+    return ok;
+}
+
 bool AccessibilityLinuxEventSmokeTest() {
     int fds[2] = {-1, -1};
     if (socketpair(AF_UNIX, SOCK_STREAM, 0, fds) != 0) return false;
@@ -3962,6 +3998,7 @@ bool AccessibilityLinuxEventSmokeTest() {
     ok = LinuxSmokeWindowActivation(&win, fds[0]) && ok;
     ok = LinuxSmokeAttributes(&win, fds[0], fds[1]) && ok;
     ok = LinuxSmokeToggleButton(&win, fds[0]) && ok;
+    ok = LinuxSmokeProgressState(&win, fds[0]) && ok;
     close(fds[0]);
     close(fds[1]);
     gA11y = saved;
