@@ -167,12 +167,18 @@ struct LinuxNodeSnapshot {
     uint64_t name, description;
     float value;
     bool hasValue;
+    int parentIndex = -1;
+    int siblingIndex = 0;
+    int nextIndex = -1;
 };
 
 struct LinuxNodeHistory {
     Window* window;
     Vec<LinuxNodeSnapshot> frames[2];
     Vec<uint32_t> wireIds;
+    Vec<int> treeOrder;
+    Vec<int> childCounts;
+    Vec<int> lastRetainedChild;
     uint64_t nextWireId = 1;
     int frame = 0;
     uint32_t focusedNode = 0;
@@ -2262,6 +2268,9 @@ void AccessibilityLinuxShutdown() {
     VecReset(gA11y.nodes);
 }
 
+static void RemoveLinuxRootChildren(Window* win,
+                                    const LinuxNodeHistory& history);
+
 void AccessibilityLinuxForgetWindow(Window* win) {
     for (int i = len(gA11y.text) - 1; i >= 0; i--) {
         if (gA11y.text[i].window != win) continue;
@@ -2270,6 +2279,7 @@ void AccessibilityLinuxForgetWindow(Window* win) {
     }
     for (int i = 0; i < len(gA11y.nodes); i++) {
         if (gA11y.nodes[i]->window != win) continue;
+        RemoveLinuxRootChildren(win, *gA11y.nodes[i]);
         delete gA11y.nodes[i];
         VecRemoveAtFast(gA11y.nodes, i);
         break;
@@ -2312,6 +2322,12 @@ struct AtspiEventValue {
     AtspiEventValue(Str value) : text(value) {}
     explicit AtspiEventValue(uint32_t value) : type('u'), role(value) {}
     explicit AtspiEventValue(double value) : type('d'), number(value) {}
+
+    static AtspiEventValue Object(uint32_t wireId) {
+        AtspiEventValue value(wireId);
+        value.type = '(';
+        return value;
+    }
 };
 
 static void SendWireEvent(Window* win, uint32_t wireId, const char* member,
@@ -2340,7 +2356,12 @@ static void SendWireEvent(Window* win, uint32_t wireId, const char* member,
         PutVariantU32(&body, payload.role);
     else if (payload.type == 'd')
         PutVariantDouble(&body, payload.number);
-    else
+    else if (payload.type == '(') {
+        PutSignature(&body, "(so)");
+        PutObjectRef(&body, payload.role
+                                ? (Str)WirePathForTemp(wi, payload.role)
+                                : Str(kRootPath));
+    } else
         PutVariantString(&body, "s", payload.text);
     PutEmptyStringDict(&body);
     SendMessage(4, 0, &fields, &body);
@@ -2355,6 +2376,15 @@ static void SendEvent(Window* win, uint32_t nodeId, const char* member,
     uint32_t wireId = LinuxWireId(win, nodeId);
     if (wireId || !nodeId)
         SendWireEvent(win, wireId, member, detail, detail1, payload, detail2);
+}
+
+static void RemoveLinuxRootChildren(Window* win,
+                                    const LinuxNodeHistory& history) {
+    for (const auto& node : history.frames[history.frame]) {
+        if (node.parentIndex < 0 && node.wireId)
+            SendWireEvent(win, 0, "ChildrenChanged", "remove", -1,
+                          AtspiEventValue::Object(node.wireId));
+    }
 }
 
 static void SendTextEdit(Window* win, uint32_t id, Str before, Str after) {
@@ -2535,6 +2565,84 @@ static void SendLinuxNodeChanges(Window* win, const LinuxNodeSnapshot& before,
                   AtspiEventValue((double)after.value));
 }
 
+static uint32_t LinuxParentWireId(const Vec<LinuxNodeSnapshot>& frame,
+                                  const LinuxNodeSnapshot& node) {
+    return node.parentIndex < 0 ? 0 : frame[node.parentIndex].wireId;
+}
+
+static int LinuxRootChildOffset(Window* win) {
+    int count = 0;
+    for (Window* window : gA11y.app->windows) {
+        if (window == win) break;
+        if (!window || !window->plat) continue;
+        for (const auto& node : window->accessibility) count += node.parent < 0;
+    }
+    return count;
+}
+
+static void SendLinuxChildrenChanges(Window* win, LinuxNodeHistory* history,
+                                     const Vec<LinuxNodeSnapshot>& previous,
+                                     Vec<LinuxNodeSnapshot>& next) {
+    auto& childCounts = history->childCounts;
+    auto& lastRetainedChild = history->lastRetainedChild;
+    int rootSlot = len(next);
+    childCounts[rootSlot] = LinuxRootChildOffset(win);
+    for (int index : history->treeOrder) {
+        auto& child = next[index];
+        int parent = win->accessibility[child.index].parent;
+        child.parentIndex = parent < 0 ? -1 : history->treeOrder[parent];
+        int slot = child.parentIndex < 0 ? rootSlot : child.parentIndex;
+        child.siblingIndex = childCounts[slot]++;
+    }
+
+    // Once a subtree disappears its former parent is the only live object
+    // whose child list needs a removal. Report all removals before additions.
+    for (const auto& old : previous) {
+        if (old.parentIndex >= 0 && previous[old.parentIndex].nextIndex < 0)
+            continue;
+        uint32_t parent = LinuxParentWireId(previous, old);
+        if (old.nextIndex < 0 ||
+            LinuxParentWireId(next, next[old.nextIndex]) != parent)
+            SendWireEvent(win, parent, "ChildrenChanged", "remove", -1,
+                          AtspiEventValue::Object(old.wireId));
+    }
+
+    for (int index : history->treeOrder) {
+        const auto& child = next[index];
+        if (child.parentIndex >= 0 && next[child.parentIndex].previousIndex < 0)
+            continue;
+        uint32_t parent = LinuxParentWireId(next, child);
+        const auto* old =
+            child.previousIndex >= 0 ? &previous[child.previousIndex] : nullptr;
+        if (!old || LinuxParentWireId(previous, *old) != parent) {
+            SendWireEvent(win, parent, "ChildrenChanged", "add",
+                          child.siblingIndex,
+                          AtspiEventValue::Object(child.wireId));
+        } else {
+            // An insertion can shift child indices without changing the
+            // relative order. Only actual reorders invalidate the list.
+            int slot = child.parentIndex < 0 ? rootSlot : child.parentIndex;
+            int& last = lastRetainedChild[slot];
+            if (last == -2) continue;
+            last = old->siblingIndex < last ? -2 : old->siblingIndex;
+        }
+    }
+    for (int slot = 0; slot <= rootSlot; slot++) {
+        if (lastRetainedChild[slot] == -2)
+            SendWireEvent(win, slot == rootSlot ? 0 : next[slot].wireId,
+                          "ChildrenChanged", "invalidate", 0);
+    }
+    for (const auto& child : next) {
+        if (child.previousIndex < 0) continue;
+        uint32_t parent = LinuxParentWireId(next, child);
+        if (LinuxParentWireId(previous, previous[child.previousIndex]) !=
+            parent)
+            SendWireEvent(win, child.wireId, "PropertyChange",
+                          "accessible-parent", 0,
+                          AtspiEventValue::Object(parent));
+    }
+}
+
 static void TrackLinuxNodes(Window* win) {
     LinuxNodeHistory* history = LinuxHistory(win);
     if (!history) {
@@ -2546,10 +2654,21 @@ static void TrackLinuxNodes(Window* win) {
         }
     }
 
-    const auto& previous = history->frames[history->frame];
+    auto& previous = history->frames[history->frame];
     auto& next = history->frames[1 - history->frame];
     int count = len(win->accessibility);
-    if (!VecResize(next, count) || !VecResize(history->wireIds, count)) return;
+    if (!VecResize(next, count) || !VecResize(history->wireIds, count) ||
+        !VecResize(history->treeOrder, count) ||
+        !VecResize(history->childCounts, count + 1) ||
+        !VecResize(history->lastRetainedChild, count + 1)) {
+        SendWireEvent(win, 0, "ChildrenChanged", "invalidate", 0);
+        return;
+    }
+    for (int i = 0; i <= count; i++) {
+        history->childCounts[i] = 0;
+        history->lastRetainedChild[i] = -1;
+    }
+    for (auto& old : previous) old.nextIndex = -1;
     for (int i = 0; i < len(next); i++) {
         const auto& node = win->accessibility[i];
         const auto& info = node.info;
@@ -2587,14 +2706,18 @@ static void TrackLinuxNodes(Window* win) {
     // Publish the full mapping before emitting any events. The frame-local
     // IDs still identify nodes for the shared action and document APIs.
     for (auto& current : next) {
+        int sortedIndex = (int)(&current - next.els);
         if (current.previousIndex >= 0) {
             current.wireId = previous[current.previousIndex].wireId;
+            previous[current.previousIndex].nextIndex = sortedIndex;
         } else if (history->nextWireId <= UINT32_MAX) {
             current.wireId = (uint32_t)history->nextWireId++;
         }
         history->wireIds[current.index] = current.wireId;
+        history->treeOrder[current.index] = sortedIndex;
     }
     history->frame = 1 - history->frame;
+    SendLinuxChildrenChanges(win, history, previous, next);
     for (const auto& current : next) {
         if (current.previousIndex >= 0)
             SendLinuxNodeChanges(win, previous[current.previousIndex], current);
@@ -2603,7 +2726,6 @@ static void TrackLinuxNodes(Window* win) {
 
 void AccessibilityLinuxTreeChanged(Window* win) {
     if (!win || !gA11y.ready) return;
-    SendEvent(win, 0, "ChildrenChanged", "invalidate", 0);
     TrackLinuxNodes(win);
     const auto* history = LinuxHistory(win);
     int previouslyFocused = history ? history->focusedHandle : 0;
@@ -2614,6 +2736,8 @@ void AccessibilityLinuxTreeChanged(Window* win) {
         // A revision invalidates the source without specifying an edit span.
         if (node.documentTextChanged) {
             SendEvent(win, node.id, "VisibleDataChanged", "", 0);
+            if (node.document.partCount)
+                SendEvent(win, node.id, "ChildrenChanged", "invalidate", 0);
         }
         if (node.documentSelectionChanged) {
             SendEvent(win, node.id, "TextSelectionChanged", "", 0);
@@ -2897,8 +3021,8 @@ struct LinuxSmokeEvent {
     uint32_t nodeId = 0;
 };
 
-static bool LinuxSmokeEvents(int fd, const LinuxSmokeEvent* expected,
-                             int count) {
+static bool LinuxSmokeEvents(int fd, const LinuxSmokeEvent* expected, int count,
+                             bool checkChildren = false) {
     uint8_t buffer[4096];
     int size = (int)recv(fd, buffer, sizeof(buffer), MSG_DONTWAIT);
     int seen = 0;
@@ -2909,7 +3033,7 @@ static bool LinuxSmokeEvents(int fd, const LinuxSmokeEvent* expected,
             in.type != 4 || !StrIs(in.signature, "siiva{sv}"))
             return false;
         offset += bytes;
-        if (StrIs(in.member, "ChildrenChanged")) continue;
+        if (!checkChildren && StrIs(in.member, "ChildrenChanged")) continue;
         if (seen >= count) return false;
         const auto& event = expected[seen++];
         int at = 0;
@@ -2919,7 +3043,7 @@ static bool LinuxSmokeEvents(int fd, const LinuxSmokeEvent* expected,
         Str payloadKind = ReadSignature(in.body, in.bodyLen, &at);
         if (!StrIs(in.member, event.member) || !StrIs(detail, event.detail) ||
             pos != event.offset || lenText != event.count ||
-            len(payloadKind) != 1 || payloadKind.s[0] != event.payload.type)
+            !len(payloadKind) || payloadKind.s[0] != event.payload.type)
             return false;
         if (event.nodeId && !StrEq(in.path, WirePathForTemp(0, event.nodeId)))
             return false;
@@ -2929,12 +3053,86 @@ static bool LinuxSmokeEvents(int fd, const LinuxSmokeEvent* expected,
         } else if (event.payload.type == 'd') {
             if (ReadDouble(in.body, in.bodyLen, &at) != event.payload.number)
                 return false;
+        } else if (event.payload.type == '(') {
+            if (!StrIs(payloadKind, "(so)")) return false;
+            at = AlignAt(at, 8);
+            Str bus = ReadString(in.body, in.bodyLen, &at);
+            Str path = ReadString(in.body, in.bodyLen, &at);
+            Str wanted = event.payload.role
+                             ? (Str)WirePathForTemp(0, event.payload.role)
+                             : Str(kRootPath);
+            if (!StrEq(bus, gA11y.busName) || !StrEq(path, wanted))
+                return false;
         } else if (!StrEq(ReadString(in.body, in.bodyLen, &at), event.payload
                                                                     .text)) {
             return false;
         }
     }
     return seen == count;
+}
+
+static bool LinuxSmokeChildChanges(Window* win, int fd) {
+    gA11y.busName = StrL(":1.9");
+    auto setTree = [win](const uint32_t* paths, const int* parents, int count) {
+        VecClear(win->accessibility);
+        for (int i = 0; i < count; i++) {
+            AccessibilityNode node;
+            node.id = (uint32_t)i + 1;
+            node.elementPath = paths[i];
+            node.parent = parents[i];
+            node.info.role = AccessibilityRole::Group;
+            VecAppend(win->accessibility, node);
+        }
+        AccessibilityLinuxTreeChanged(win);
+    };
+    const uint32_t original[] = {100, 200, 300};
+    const int siblings[] = {-1, 0, 0};
+    setTree(original, siblings, dimofi(original));
+    const LinuxSmokeEvent opened[] = {
+        {"ChildrenChanged", "add", 0, 0, AtspiEventValue::Object(1)},
+    };
+    bool ok = LinuxSmokeEvents(fd, opened, dimofi(opened), true);
+
+    const uint32_t inserted[] = {100, 150, 200, 300};
+    const int insertedParents[] = {-1, 0, 0, 0};
+    setTree(inserted, insertedParents, dimofi(inserted));
+    const LinuxSmokeEvent added[] = {
+        {"ChildrenChanged", "add", 0, 0, AtspiEventValue::Object(4), 1},
+    };
+    ok = LinuxSmokeEvents(fd, added, dimofi(added), true) && ok;
+    ok = LinuxWireId(win, 3) == 2 && LinuxWireId(win, 4) == 3 && ok;
+
+    setTree(original, siblings, dimofi(original));
+    const LinuxSmokeEvent removed[] = {
+        {"ChildrenChanged", "remove", -1, 0, AtspiEventValue::Object(4), 1},
+    };
+    ok = LinuxSmokeEvents(fd, removed, dimofi(removed), true) && ok;
+    ok = LinuxNodeIndexForWire(win, 4) < 0 && ok;
+
+    const uint32_t reordered[] = {100, 300, 200};
+    setTree(reordered, siblings, dimofi(reordered));
+    const LinuxSmokeEvent orderChanged[] = {
+        {"ChildrenChanged", "invalidate", 0, 0, {}, 1},
+    };
+    ok = LinuxSmokeEvents(fd, orderChanged, dimofi(orderChanged), true) && ok;
+
+    const int reparented[] = {-1, 0, 1};
+    setTree(original, reparented, dimofi(original));
+    const LinuxSmokeEvent moved[] = {
+        {"ChildrenChanged", "remove", -1, 0, AtspiEventValue::Object(3), 1},
+        {"ChildrenChanged", "add", 0, 0, AtspiEventValue::Object(3), 2},
+        {"PropertyChange", "accessible-parent", 0, 0,
+         AtspiEventValue::Object(2), 3},
+    };
+    ok = LinuxSmokeEvents(fd, moved, dimofi(moved), true) && ok;
+    AccessibilityLinuxTreeChanged(win);
+    ok = LinuxSmokeEvents(fd, nullptr, 0, true) && ok;
+
+    AccessibilityLinuxForgetWindow(win);
+    const LinuxSmokeEvent closed[] = {
+        {"ChildrenChanged", "remove", -1, 0, AtspiEventValue::Object(1)},
+    };
+    return LinuxSmokeEvents(fd, closed, dimofi(closed), true) && ok;
 }
 
 bool AccessibilityLinuxEventSmokeTest() {
@@ -3091,6 +3289,8 @@ bool AccessibilityLinuxEventSmokeTest() {
     AccessibilityLinuxTreeChanged(&win);
     ok = LinuxSmokeEvents(fds[0], nullptr, 0) && ok;
     AccessibilityLinuxForgetWindow(&win);
+    ok = LinuxSmokeEvents(fds[0], nullptr, 0) && ok;
+    ok = LinuxSmokeChildChanges(&win, fds[0]) && ok;
     close(fds[0]);
     close(fds[1]);
     gA11y = saved;
