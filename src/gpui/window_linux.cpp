@@ -45,6 +45,10 @@
 #include <X11/extensions/shape.h>
 #include <cairo/cairo-xlib-xrender.h>
 #endif
+#if defined(GPUI_HAVE_X11_OVERLAY_REDIRECT)
+#include <X11/extensions/Xcomposite.h>
+#include <X11/extensions/Xdamage.h>
+#endif
 
 namespace gpui {
 
@@ -66,6 +70,13 @@ struct LinuxNativeOverlay {
     bool restack = true;
     bool ready = false;
     bool lastFrame = false;
+#if defined(GPUI_HAVE_X11_OVERLAY_REDIRECT)
+    XWindow redirected = 0;
+    Damage damage = 0;
+    Pixmap pixmap = 0;
+    cairo_surface_t* backdrop = nullptr;
+    XRectangle shape = {};
+#endif
 };
 
 static bool gNativeOverlayProbed = false;
@@ -75,6 +86,9 @@ static Visual* gNativeOverlayVisual = nullptr;
 static XRenderPictFormat* gNativeOverlayFormat = nullptr;
 static Atom gNativeOverlaySelection = None;
 static int gNativeOverlaySelectionEvent = 0;
+#if defined(GPUI_HAVE_X11_OVERLAY_REDIRECT)
+static int gOverlayDamageEvent = 0;
+#endif
 #endif
 
 struct PlatWindow {
@@ -241,19 +255,132 @@ static void ProbeNativeOverlay() {
         XGetSelectionOwner(gDpy, gNativeOverlaySelection) != None;
     gNativeOverlayXWayland =
         XQueryExtension(gDpy, "XWAYLAND", &opcode, &event, &error);
+#if defined(GPUI_HAVE_X11_OVERLAY_REDIRECT)
+    if (XCompositeQueryExtension(gDpy, &event, &error) &&
+        XCompositeQueryVersion(gDpy, &major, &minor) &&
+        (major > 0 || minor >= 2) &&
+        XDamageQueryExtension(gDpy, &event, &error) &&
+        XDamageQueryVersion(gDpy, &major, &minor)) {
+        gOverlayDamageEvent = event + XDamageNotify;
+    }
+#endif
     XWindowAttributes attrs = {};
     if (XGetWindowAttributes(gDpy, gRoot, &attrs))
         XSelectInput(gDpy, gRoot,
                      attrs.your_event_mask | SubstructureNotifyMask);
 }
 
+#if defined(GPUI_HAVE_X11_OVERLAY_REDIRECT)
+static void DropOverlayPixmap(LinuxNativeOverlay& overlay) {
+    if (overlay.backdrop) cairo_surface_destroy(overlay.backdrop);
+    if (overlay.pixmap) XFreePixmap(gDpy, overlay.pixmap);
+    overlay.backdrop = nullptr;
+    overlay.pixmap = 0;
+}
+
+static void StopOverlayRedirect(LinuxNativeOverlay& overlay) {
+    if (!overlay.redirected) return;
+    DropOverlayPixmap(overlay);
+    XDamageDestroy(gDpy, overlay.damage);
+    XCompositeUnredirectWindow(gDpy, overlay.redirected,
+                               CompositeRedirectAutomatic);
+    overlay.redirected = 0;
+    overlay.damage = 0;
+    if (overlay.window)
+        XShapeCombineMask(gDpy, overlay.window, ShapeBounding, 0, 0, None,
+                          ShapeSet);
+}
+
+static bool PrepareOverlayRedirect(PlatWindow* pw) {
+    auto& overlay = pw->nativeOverlay;
+    if (overlay.backdrop &&
+        cairo_xlib_surface_get_width(overlay.backdrop) == pw->pxW &&
+        cairo_xlib_surface_get_height(overlay.backdrop) == pw->pxH) {
+        return true;
+    }
+    DropOverlayPixmap(overlay);
+    // Naming the pixmap requires a mapped host. A window manager can unmap
+    // or resize it, so check the drawable and name its storage atomically.
+    XGrabServer(gDpy);
+    XWindowAttributes attrs = {};
+    bool viewable = XGetWindowAttributes(gDpy, pw->xwin, &attrs) &&
+                    attrs.map_state == IsViewable && attrs.width == pw->pxW &&
+                    attrs.height == pw->pxH;
+    if (viewable) {
+        if (!overlay.redirected) {
+            XCompositeRedirectWindow(gDpy, pw->xwin,
+                                     CompositeRedirectAutomatic);
+            overlay.redirected = pw->xwin;
+            overlay
+                .damage = XDamageCreate(gDpy, pw->xwin, XDamageReportNonEmpty);
+        }
+        overlay.pixmap = XCompositeNameWindowPixmap(gDpy, pw->xwin);
+    }
+    XUngrabServer(gDpy);
+    XFlush(gDpy);
+    if (!viewable) return false;
+    overlay.backdrop = cairo_xlib_surface_create(
+        gDpy, overlay.pixmap, attrs.visual, pw->pxW, pw->pxH);
+    if (cairo_surface_status(overlay.backdrop) == CAIRO_STATUS_SUCCESS)
+        return true;
+    StopOverlayRedirect(overlay);
+    return false;
+}
+
+static XRectangle OverlayInk(cairo_surface_t* image, int w, int h) {
+    const auto* pixels =
+        reinterpret_cast<const uint32_t*>(cairo_image_surface_get_data(image));
+    int stride = cairo_image_surface_get_stride(image) / sizeof(uint32_t);
+    int left = w, top = h, right = 0, bottom = 0;
+    for (int y = 0; y < h; y++, pixels += stride) {
+        int x = 0;
+        while (x < w && !(pixels[x] >> 24)) x++;
+        if (x == w) continue;
+        left = std::min(left, x);
+        top = std::min(top, y);
+        bottom = y + 1;
+        x = w - 1;
+        while (x >= right && !(pixels[x] >> 24)) x--;
+        right = std::max(right, x + 1);
+    }
+    if (left >= right) return {};
+    return {(short)left, (short)top, (unsigned short)(right - left),
+            (unsigned short)(bottom - top)};
+}
+
+static void PaintRedirectedOverlay(LinuxNativeOverlay& overlay) {
+    if (!overlay.backdrop || !overlay.shape.width) return;
+    cairo_surface_mark_dirty(overlay.backdrop);
+    cairo_t* cr = cairo_create(overlay.screen);
+    const XRectangle& shape = overlay.shape;
+    cairo_rectangle(cr, shape.x, shape.y, shape.width, shape.height);
+    cairo_clip(cr);
+    cairo_set_source_surface(cr, overlay.backdrop, 0, 0);
+    cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+    cairo_paint(cr);
+    cairo_set_source_surface(cr, overlay.back, 0, 0);
+    cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
+    cairo_paint(cr);
+    cairo_destroy(cr);
+    cairo_surface_flush(overlay.screen);
+    XFlush(gDpy);
+}
+#endif
+
 static void HideNativeOverlay(LinuxNativeOverlay& overlay) {
-    if (!overlay.mapped) return;
-    XUnmapWindow(gDpy, overlay.window);
-    overlay.mapped = false;
+    if (overlay.mapped) {
+        XUnmapWindow(gDpy, overlay.window);
+        overlay.mapped = false;
+    }
+#if defined(GPUI_HAVE_X11_OVERLAY_REDIRECT)
+    StopOverlayRedirect(overlay);
+#endif
 }
 
 static void DestroyNativeOverlay(LinuxNativeOverlay& overlay) {
+#if defined(GPUI_HAVE_X11_OVERLAY_REDIRECT)
+    StopOverlayRedirect(overlay);
+#endif
     if (overlay.back) cairo_surface_destroy(overlay.back);
     if (overlay.screen) cairo_surface_destroy(overlay.screen);
     if (overlay.window) XDestroyWindow(gDpy, overlay.window);
@@ -318,10 +445,15 @@ cairo_surface_t* LinuxWindowNativeOverlay(Window* win) {
     if (!win || !win->plat) return nullptr;
     PlatWindow* pw = win->plat;
     ProbeNativeOverlay();
-    if (!gNativeOverlayFormat ||
-        (!gNativeOverlayComposited && !gNativeOverlayXWayland) ||
-        pw->pxW <= 0 || pw->pxH <= 0)
+    if (!gNativeOverlayFormat || pw->pxW <= 0 || pw->pxH <= 0) return nullptr;
+    bool compositor = gNativeOverlayComposited || gNativeOverlayXWayland;
+#if defined(GPUI_HAVE_X11_OVERLAY_REDIRECT)
+    if (!compositor &&
+        (!gOverlayDamageEvent || pw->pxW > INT16_MAX || pw->pxH > INT16_MAX))
         return nullptr;
+#else
+    if (!compositor) return nullptr;
+#endif
     LinuxNativeOverlay& overlay = pw->nativeOverlay;
     if (!overlay.sibling) overlay.sibling = RootSibling(pw->xwin);
     if (!overlay.sibling || (!overlay.window && !CreateNativeOverlay(pw)))
@@ -341,6 +473,10 @@ cairo_surface_t* LinuxWindowNativeOverlay(Window* win) {
         }
         overlay.back = back;
     }
+#if defined(GPUI_HAVE_X11_OVERLAY_REDIRECT)
+    if (!compositor && !PrepareOverlayRedirect(pw)) return nullptr;
+    if (compositor) StopOverlayRedirect(overlay);
+#endif
     return overlay.back;
 }
 
@@ -388,15 +524,46 @@ static void PresentNativeOverlay(PlatWindow* pw) {
         overlay.h = pw->pxH;
         overlay.restack = false;
     }
+#if defined(GPUI_HAVE_X11_OVERLAY_REDIRECT)
+    if (overlay.backdrop) {
+        // The redirected host includes GPUI and its live WebKit children.
+        // Keep the overlay a root sibling so it cannot feed back into that
+        // pixmap. Its bounding shape limits the opaque result to the ink.
+        overlay.shape = OverlayInk(overlay.back, pw->pxW, pw->pxH);
+        XShapeCombineRectangles(gDpy, overlay.window, ShapeBounding, 0, 0,
+                                &overlay.shape, overlay.shape.width ? 1 : 0,
+                                ShapeSet, Unsorted);
+    }
+#endif
     if (!overlay.mapped) {
         XMapWindow(gDpy, overlay.window);
         overlay.mapped = true;
     }
+#if defined(GPUI_HAVE_X11_OVERLAY_REDIRECT)
+    if (overlay.backdrop) {
+        PaintRedirectedOverlay(overlay);
+        return;
+    }
+#endif
     PresentX11Surface(overlay.screen, overlay.back);
 }
 
 static bool HandleNativeOverlayEvent(App* app, XEvent* ev) {
     if (!gNativeOverlayFormat) return false;
+#if defined(GPUI_HAVE_X11_OVERLAY_REDIRECT)
+    if (gOverlayDamageEvent && ev->type == gOverlayDamageEvent) {
+        auto* damage = reinterpret_cast<XDamageNotifyEvent*>(ev);
+        for (Window* win : app->windows) {
+            if (!win->plat) continue;
+            auto& overlay = win->plat->nativeOverlay;
+            if (overlay.damage != damage->damage) continue;
+            XDamageSubtract(gDpy, overlay.damage, None, None);
+            if (overlay.mapped && !win->dirty) PaintRedirectedOverlay(overlay);
+            break;
+        }
+        return true;
+    }
+#endif
     if (ev->type == gNativeOverlaySelectionEvent) {
         auto* selection = reinterpret_cast<XFixesSelectionNotifyEvent*>(ev);
         if (selection->selection != gNativeOverlaySelection) return false;
@@ -427,6 +594,11 @@ static bool HandleNativeOverlayEvent(App* app, XEvent* ev) {
         if (changed != pw->xwin && changed != overlay.sibling) continue;
         if (ev->type == ReparentNotify) overlay.sibling = 0;
         if (ev->type == UnmapNotify) HideNativeOverlay(overlay);
+#if defined(GPUI_HAVE_X11_OVERLAY_REDIRECT)
+        if (changed == pw->xwin &&
+            (ev->type == ReparentNotify || ev->type == MapNotify))
+            DropOverlayPixmap(overlay);
+#endif
         if (ev->type != Expose) {
             overlay.restack = true;
             win->dirty = true;
@@ -3793,6 +3965,13 @@ void PlatShutdown(App* app) {
     if (gDpy) {
         XCloseDisplay(gDpy);
         gDpy = nullptr;
+#if defined(GPUI_HAVE_X11_NATIVE_OVERLAY)
+        gNativeOverlayProbed = false;
+        gNativeOverlayFormat = nullptr;
+#endif
+#if defined(GPUI_HAVE_X11_OVERLAY_REDIRECT)
+        gOverlayDamageEvent = 0;
+#endif
     }
 }
 
