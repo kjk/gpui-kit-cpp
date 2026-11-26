@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "6f2a223b2ac71af0e9f654a913ce33227a4ea258",
+  sha: "2c7299d98288cdab90f02bf637633ae4bf56f44c",
   date: "2026-11-26",
-  subject: "docs: Dispatch the Action examples' button clicks outside `cx.listener` (#4162)",
+  subject: "chart: Add accessibility_label to name a chart for screen readers (#4159)",
   crates: {
     "gpui-kit": "0.11.0",
     "gpui-base": "0.11.0",

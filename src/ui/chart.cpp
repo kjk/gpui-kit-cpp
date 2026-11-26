@@ -197,7 +197,8 @@ AreaChart* AreaChart::Tooltip(Str name) {
     return this;
 }
 El* AreaChart::IntoEl() {
-    El* e = ChartEl(a, ys, n, stroke, fill, fillBottom, tickMargin);
+    El* e = ApplyPlotAccessibility(
+        ChartEl(a, ys, n, stroke, fill, fillBottom, tickMargin));
     ChartSeries* chart = e->Chart();
     chart->exact = exact;
     chart->labels = labels;
@@ -246,7 +247,8 @@ LineChart* LineChart::Dot(bool v) {
 }
 El* LineChart::IntoEl() {
     Rgba none = {0, 0, 0, 0};
-    El* e = ChartEl(a, ys, n, stroke, none, none, tickMargin);
+    El* e = ApplyPlotAccessibility(
+        ChartEl(a, ys, n, stroke, none, none, tickMargin));
     ChartSeries* chart = e->Chart();
     chart->exact = exact;
     chart->kind = ChartKind::Line;
@@ -346,7 +348,8 @@ BarChart* BarChart::FillGradientDiagonal(Rgba from, Rgba to) {
 }
 El* BarChart::IntoEl() {
     Rgba none = {0, 0, 0, 0};
-    El* e = ChartEl(a, ys, n, fill, none, none, tickMargin);
+    El* e =
+        ApplyPlotAccessibility(ChartEl(a, ys, n, fill, none, none, tickMargin));
     ChartSeries* chart = e->Chart();
     chart->exact = exact;
     chart->kind = ChartKind::Bar;
@@ -469,7 +472,8 @@ CandlestickChart* CandlestickChart::MaxBandWidth(float width) {
 El* CandlestickChart::IntoEl() {
     Rgba none = {0, 0, 0, 0};
     // The closes are the series; the other three ride along beside them.
-    El* e = ChartEl(a, closes, n, up, none, none, tickMargin);
+    El* e = ApplyPlotAccessibility(
+        ChartEl(a, closes, n, up, none, none, tickMargin));
     ChartSeries* chart = e->Chart();
     chart->kind = ChartKind::Candlestick;
     chart->labels = labels;
@@ -833,7 +837,8 @@ RadarChart* RadarChart::Tooltip(Str name) {
     return this;
 }
 El* RadarChart::IntoEl() {
-    El* e = ChartEl(a, values, n, stroke, fill, fill, 1);
+    El* e =
+        ApplyPlotAccessibility(ChartEl(a, values, n, stroke, fill, fill, 1));
     ChartSeries* chart = e->Chart();
     chart->kind = ChartKind::Radar;
     chart->dot = dot;
@@ -1274,7 +1279,7 @@ static void PaintPie(PaintCtx* ctx, El* e, void* user) {
 }
 
 El* PieChart::IntoEl() {
-    El* e = Div(a);
+    El* e = ApplyPlotAccessibility(Div(a));
     if (outerRadius > 0) {
         float d = outerRadius * 2;
         e->W(d)->H(d);
@@ -1797,7 +1802,7 @@ SankeyChart* SankeyChart::TooltipValue(Str value) {
     return this;
 }
 El* SankeyChart::IntoEl() {
-    El* e = Div(a);
+    El* e = ApplyPlotAccessibility(Div(a));
     e->customPaint = PaintSankey;
     e->customUser = this;
     return e;

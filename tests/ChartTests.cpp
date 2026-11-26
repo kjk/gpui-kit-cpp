@@ -307,6 +307,21 @@ static PieChart* PieAtOneSite(Ctx* cx) {
     return PieChart::New(cx)->Slice(1, RgbaHex(0xff0000));
 }
 
+// chart/mod.rs a_labelled_chart_is_an_image_named_by_its_label.
+static void ALabelledChartIsAnImageNamedByItsLabel() {
+    Arena* arena = ArenaNew();
+    Ctx cx = {};
+    cx.a = arena;
+    El* decorative = PieAtOneSite(&cx)->IntoEl();
+    utassert(decorative->accessibility.role == AccessibilityRole::None);
+    El* named = PieAtOneSite(&cx)
+                    ->AccessibilityLabel(StrL("Sales by region"))
+                    ->IntoEl();
+    utassert(named->accessibility.role == AccessibilityRole::Image);
+    utassert(StrEq(named->accessibility.label, StrL("Sales by region")));
+    ArenaDelete(arena);
+}
+
 static void AChartsIdDefaultsToItsConstructionSite() {
     App app = {};
     component::Init(&app);
@@ -1045,4 +1060,5 @@ void TestChart() {
     TooltipFillRendersTheCallerContentWithoutBuildingRows();
     RadarChartHoveredIndex();
     RadarChartBuilder();
+    ALabelledChartIsAnImageNamedByItsLabel();
 }

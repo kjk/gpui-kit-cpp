@@ -83,6 +83,7 @@ struct ChartBuilder {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
     Str tooltipName = {};
+    Str accessibilityLabel = {};
     // The chart's ElementId, folded onto the id stack it was built under: its
     // construction site unless Id renamed it (chart/mod.rs caller_id).
     uint32_t id = 0;
@@ -98,6 +99,19 @@ struct ChartBuilder {
     Self* Tooltip(Str name) {
         tooltipName = name;
         return This();
+    }
+    // Name this plot as an image in the accessibility tree. Decorative
+    // plots can leave the label unset.
+    Self* AccessibilityLabel(Str label) {
+        accessibilityLabel = label;
+        return This();
+    }
+    El* ApplyPlotAccessibility(El* element) const {
+        if (accessibilityLabel.s) {
+            element->Role(AccessibilityRole::Image)
+                ->AriaLabel(accessibilityLabel);
+        }
+        return element;
     }
     // id(..): rename the chart's ElementId, replacing the construction site.
     // Needed where one site builds several of these as siblings, which would

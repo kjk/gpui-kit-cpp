@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `6f2a223b2ac71af0e9f654a913ce33227a4ea258` (2026-11-26,
-docs: Dispatch the Action examples' button clicks outside `cx.listener` (#4162)).
-The upstream website's Action and Event guides fix their Rust code samples.
+Processed through `2c7299d98288cdab90f02bf637633ae4bf56f44c` (2026-11-26,
+chart: Add accessibility_label to name a chart for screen readers (#4159)).
+A chart with an explicit accessibility label exposes a named image.
+Custom plots use the accessibility role and label on their root element.
 The current update target is
-`6f2a223b2ac71af0e9f654a913ce33227a4ea258`.
+`0bb3783e634b107c289add39423adf2584977113`.
 
 ## Known gaps vs Rust
 
