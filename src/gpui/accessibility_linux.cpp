@@ -625,10 +625,24 @@ static Str ChildPathTemp(const LinuxAccessible& object, int wanted) {
 }
 
 static bool IsSelectionRole(AccessibilityRole role) {
-    return role == AccessibilityRole::ListBox ||
-           role == AccessibilityRole::RadioGroup ||
-           role == AccessibilityRole::TabList ||
-           role == AccessibilityRole::Tree;
+    switch (role) {
+        case AccessibilityRole::ComboBox:
+        case AccessibilityRole::EditableComboBox:
+        case AccessibilityRole::Grid:
+        case AccessibilityRole::ListBox:
+        case AccessibilityRole::ListGrid:
+        case AccessibilityRole::Menu:
+        case AccessibilityRole::MenuBar:
+        case AccessibilityRole::MenuListPopup:
+        case AccessibilityRole::RadioGroup:
+        case AccessibilityRole::TabList:
+        case AccessibilityRole::Toolbar:
+        case AccessibilityRole::Tree:
+        case AccessibilityRole::TreeGrid:
+            return true;
+        default:
+            return false;
+    }
 }
 
 // ATSPI_ROLE_PAGE, a document part's role, as for Evince's pages. UIA has no
@@ -1156,7 +1170,7 @@ static Str ObjectText(const LinuxAccessible& object) {
 }
 
 static int Utf8CharacterForByte(Str text, int byte);
-static int SelectedAt(const LinuxAccessible& object, int wanted);
+static int SelectedCount(const LinuxAccessible& object);
 
 static bool PutPropertyVariant(DbusWriter* body, const LinuxAccessible& object,
                                Str interfaceName, Str property) {
@@ -1229,13 +1243,12 @@ static bool PutPropertyVariant(DbusWriter* body, const LinuxAccessible& object,
             return false;
         }
         PutVariantDouble(body, value);
-    } else if (StrIs(interfaceName, kSelection) && node) {
+    } else if (StrIs(interfaceName, kSelection) && node &&
+               IsSelectionRole(node->info.role)) {
         if (StrIs(property, "version")) {
             PutVariantU32(body, 1);
         } else if (StrIs(property, "NSelectedChildren")) {
-            int n = 0;
-            while (SelectedAt(object, n) >= 0) n++;
-            PutVariantI32(body, n);
+            PutVariantI32(body, SelectedCount(object));
         } else {
             return false;
         }
@@ -2071,30 +2084,52 @@ static bool SelectionDescendant(const Window* win, int index, int ancestor) {
     return false;
 }
 
+static bool IsSelectedDescendant(const LinuxAccessible& object, int index) {
+    const auto& info = object.win->accessibility[index].info;
+    return info.hasSelected && info.selected &&
+           SelectionDescendant(object.win, index, object.nodeIndex);
+}
+
 static int SelectedAt(const LinuxAccessible& object, int wanted) {
-    for (int i = 0; object.win && i < len(object.win->accessibility); i++) {
-        const AccessibilityNode& node = object.win->accessibility[i];
-        if (node.info.hasSelected && node.info.selected &&
-            SelectionDescendant(object.win, i, object.nodeIndex) &&
-            wanted-- == 0) {
-            return i;
-        }
+    for (int i = 0; i < len(object.win->accessibility); i++) {
+        if (IsSelectedDescendant(object, i) && wanted-- == 0) return i;
     }
     return -1;
 }
 
+static int SelectedCount(const LinuxAccessible& object) {
+    int count = 0;
+    for (int i = 0; i < len(object.win->accessibility); i++) {
+        if (IsSelectedDescendant(object, i)) count++;
+    }
+    return count;
+}
+
+static bool LinuxSelectChild(const LinuxAccessible& object, int child) {
+    int wi = -1;
+    int ni = -1;
+    if (!ChildAt(object, child, &wi, &ni) || wi != object.windowIndex) {
+        return false;
+    }
+    const auto& node = object.win->accessibility[ni];
+    return node.info.hasSelected &&
+           (node.info.selected ||
+            (!node.info.disabled &&
+             WindowAccessibilityPerform(object.win, node.id,
+                                        AccessibilityAction::Default)));
+}
+
 static bool HandleSelection(const Incoming& in, const LinuxAccessible& object) {
-    if (!StrIs(in.interfaceName, kSelection) || !object.win ||
-        object.nodeIndex < 0) {
+    if (!StrIs(in.interfaceName, kSelection)) return false;
+    const auto* target = ElementNode(object);
+    if (!target || !IsSelectionRole(target->info.role)) {
         return false;
     }
     DbusWriter body;
     const char* signature = "";
     int at = 0;
     if (StrIs(in.member, "GetNSelectedChildren")) {
-        int n = 0;
-        while (SelectedAt(object, n) >= 0) n++;
-        PutI32(&body, n);
+        PutI32(&body, SelectedCount(object));
         signature = "i";
     } else if (StrIs(in.member, "GetSelectedChild")) {
         int selected =
@@ -2108,16 +2143,8 @@ static bool HandleSelection(const Incoming& in, const LinuxAccessible& object) {
         }
         signature = "(so)";
     } else if (StrIs(in.member, "SelectChild")) {
-        int wi = -1;
-        int ni = -1;
         int child = (int)ReadU32(in.body, in.bodyLen, &at);
-        bool ok = ChildAt(object, child, &wi, &ni) && wi == object.windowIndex;
-        if (ok) {
-            ok = WindowAccessibilityPerform(object.win,
-                                            object.win->accessibility[ni].id,
-                                            AccessibilityAction::Default);
-        }
-        PutBool(&body, ok);
+        PutBool(&body, LinuxSelectChild(object, child));
         signature = "b";
     } else if (StrIs(in.member, "IsChildSelected")) {
         int wi = -1;
@@ -3229,7 +3256,8 @@ static bool LinuxSmokeSelectionChanges(Window* win, int fd) {
         node.elementPath = node.id;
         node.parent = parent;
         node.info.role = role;
-        node.info.hasSelected = role == AccessibilityRole::ListBoxOption;
+        node.info.hasSelected = role == AccessibilityRole::ListBoxOption ||
+                                role == AccessibilityRole::GridCell;
         node.info.selected = selected;
         VecAppend(win->accessibility, node);
     };
@@ -3237,18 +3265,39 @@ static bool LinuxSmokeSelectionChanges(Window* win, int fd) {
     append(AccessibilityRole::Group, 0, false);
     append(AccessibilityRole::ListBoxOption, 1, true);
     append(AccessibilityRole::ListBoxOption, 1, false);
-    append(AccessibilityRole::ListBox, 0, false);
-    append(AccessibilityRole::ListBoxOption, 4, false);
+    append(AccessibilityRole::Grid, 0, false);
+    append(AccessibilityRole::GridCell, 4, false);
     AccessibilityLinuxTreeChanged(win);
     const AtspiEventValue zero(uint32_t{0});
     const LinuxSmokeEvent initial[] = {
         {"SelectionChanged", "", 0, 0, zero, 1},
     };
     bool ok = LinuxSmokeEvents(fd, initial, dimofi(initial));
+    int clicks = 0;
+    auto& cell = win->accessibility[5];
+    cell.actions = AccessibilityActionDefault;
+    cell.onClick = MkFunc0(+[](int* count) { ++*count; }, &clicks);
+    const LinuxAccessible list{win, 0, 0};
+    const LinuxAccessible grid{win, 0, 4};
+    ok = !LinuxSelectChild(list, 0) && !LinuxSelectChild(grid, 2) &&
+         LinuxSelectChild(grid, 0) && clicks == 1 && ok;
 
     win->accessibility[2].info.selected = false;
     win->accessibility[3].info.selected = true;
-    win->accessibility[5].info.selected = true;
+    cell.info.selected = true;
+    ok = LinuxSelectChild(grid, 0) && clicks == 1 && SelectedAt(grid, 0) == 5 &&
+         SelectedAt(list, 0) == 3 && SelectedAt(list, 1) == -1 && ok;
+    DbusWriter property;
+    int at = 0;
+    ok = PutPropertyVariant(&property, grid, Str(kSelection),
+                            StrL("NSelectedChildren")) &&
+         StrIs(ReadSignature(property.bytes.els, len(property.bytes), &at),
+               "i") &&
+         ReadI32(property.bytes.els, len(property.bytes), &at) == 1 && ok;
+    const LinuxAccessible group{win, 0, 1};
+    ok = !PutPropertyVariant(&property, group, Str(kSelection),
+                             StrL("NSelectedChildren")) &&
+         ok;
     AccessibilityLinuxTreeChanged(win);
     const LinuxSmokeEvent switched[] = {
         {"StateChanged", "selected", 0, 0, zero, 3},
