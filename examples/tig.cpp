@@ -178,8 +178,17 @@ struct TigJob {
         if (!Git(body, dimofi(body), &text)) return;
         int split = StrFind(text, StrL("\n\n"));
         if (split >= 0) {
-            message =
-                StrDup(StrTrim(Str(text.s + split + 2, len(text) - split - 2)));
+            int start = split + 2;
+            int end = len(text);
+            // Keep the leading indentation for the Markdown renderer.
+            while (end > start) {
+                int last = Utf8Prev(text, end);
+                uint32_t cp;
+                Utf8At(text, last, &cp);
+                if (!IsUnicodeWhitespace(cp)) break;
+                end = last;
+            }
+            message = StrDup(Str(text.s + start, end - start));
         }
         StrFree(text);
         const Str patch[] = {StrL("show"),
