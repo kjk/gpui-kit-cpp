@@ -15363,6 +15363,59 @@ static void TextareaStartsEachParagraphAtItsReadingEdge() {
     TestAppFree(app);
 }
 
+// element.rs resolves an explicit offset against the viewport and text
+// measured in that prepaint, and the request takes priority over the caret.
+static void DeferredScrollUsesTheResizedTextareaViewport() {
+    struct View {
+        InputState input;
+        float viewportH = 260;
+
+        static El* Render(View* self, Ctx* cx) {
+            return Div(cx->a)
+                ->W(240)
+                ->H(self->viewportH)
+                ->Child(InputStateFrame(cx, &self->input));
+        }
+    };
+    for (bool wrap : {false, true}) {
+        App* app = TestAppNew();
+        auto view = EntityNew<View>(app);
+        View* host = view.Get(app);
+        InputState* s = &host->input;
+        s->kind = InputKind::Textarea;
+        s->softWrap = wrap;
+        StrBuilder text;
+        for (int i = 0; i < 40; ++i) text.Append(StrL("line\n"));
+        int last = len(text);
+        InputSetValue(s, Str(text.els, last));
+        Window* win = TestWindowOpen(app, view, 280, 320);
+        TestDraw(win);
+
+        host->viewportH = 80;
+        InputSetScrollYF64(s, app, win, 10000.);
+        TestDraw(win);
+        utassertnear(s->viewH, 80.f);
+        double end = InputContentHeightF64(s) - s->viewH;
+        utassert(InputScrollYF64(s) == end);
+        Point bottom = {};
+        utassert(InputLastCaretPoint(s, win, last, &bottom));
+        utassertnear(bottom.y + s->lastLineH, s->inputBounds.Bottom());
+
+        host->viewportH = 240;
+        InputSetScrollYF64(s, app, win, 0.);
+        InputFocus(s, app, win);
+        InputSetSelectedRange(s, app, win, 35, 35);
+        TestDraw(win);
+        utassert(s->caretWinY <= s->inputBounds.Bottom());
+        host->viewportH = 60;
+        InputSetScrollYF64(s, app, win, 0.);
+        TestDraw(win);
+        utassert(InputScrollYF64(s) == 0.);
+        utassert(!s->resizeRevealOwned);
+        TestAppFree(app);
+    }
+}
+
 // element.rs large_line_count_coordinates_stay_aligned_past_f32_cliff.
 static void LargeEditorKeepsViewportLocalRowGeometry() {
     struct View {
@@ -15611,6 +15664,7 @@ void TestInputState() {
     EditorHoverScrollsInsideTheWindow();
     LosingFocusEndsImeComposition();
     ForwardWordDeletionStopsAtWhitespaceAndLineBreaks();
+    DeferredScrollUsesTheResizedTextareaViewport();
     LargeEditorKeepsViewportLocalRowGeometry();
     TextareaStartsEachParagraphAtItsReadingEdge();
     LastInputEditsFollowTheChange();

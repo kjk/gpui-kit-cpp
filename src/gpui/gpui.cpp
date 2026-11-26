@@ -5739,6 +5739,15 @@ static void WriteBackEl(LayoutCache* lc, PaintCtx* ctx, El* e, float originX,
     }
     ResolveRelLengths(e, l);
 
+    // The virtualized column chooses its rows in prepaint. Give an explicit
+    // scroll request the final viewport, including for a relative height.
+    bool inputScrollRequested = e->input && e->input->hasDeferredScrollY &&
+                                e->style.overflowY == Overflow::Scroll &&
+                                !LayoutInScratchPass();
+    if (inputScrollRequested) {
+        e->input->viewH = e->h - e->style.pad.VerticalAxisSum();
+    }
+
     // Use the new scroll extent before positioning rows and carets. A stale
     // offset can point beyond the last glyph after an edit or a resize.
     if (e->input && e->style.overflowX == Overflow::Scroll &&
@@ -5778,6 +5787,9 @@ static void WriteBackEl(LayoutCache* lc, PaintCtx* ctx, El* e, float originX,
     }
 
     WriteBackChildren(lc, ctx, e);
+    if (inputScrollRequested) {
+        e->scrollY = InputLayoutScrollY(e->input);
+    }
     // GPUI Element::prepaint: the box is final. A virtual list binds visible
     // rows here from the laid-out viewport, as layout_as_root / prepaint_at.
     if (e->prePaint) {
@@ -9391,6 +9403,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
                 e->input->viewH = viewH;
             }
             InputRememberCaretGeometry(e->input);
+            e->input->hasDeferredScrollY = false;
             // The scroll rect was recorded before this viewport existed.
             // A padded field's range is the document inside that viewport;
             // the bar stays on the padded track.

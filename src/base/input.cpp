@@ -3395,8 +3395,7 @@ static void BuildRangeDecorationPaths(PaintCtx* ctx, RangeDecorationPaint* p,
 
 // What the editor's column paints before its rows: the active line's wash and
 // then every range decoration, each path once for the whole editor. It also
-// keeps what the column was built from, for RewrapEditorColumn to build it
-// again.
+// keeps what the column was built from so prepaint can build it again.
 struct EditorLineIcon {
     Str path = {};
     float y = 0.f;
@@ -3411,6 +3410,7 @@ struct EditorUnderlay {
     float activeBleedL = 0;
     Ctx cx = {};
     InputEditorStyle projected = {};
+    float layoutViewH = 0;
     bool lineNumbers = false;
     float textOriginOffset = 0;
     ArenaVec<El*> gutters;
@@ -3498,15 +3498,18 @@ static void PaintEditorLineBackgrounds(PaintCtx* ctx, EditorUnderlay* u,
     }
 }
 
-// element.rs prepaint: wrap_width comes off the bounds layout has just given
-// the editor, and the lines are wrapped to it in the frame that lays them
-// out. The row elements here are built during prepaint and wrapped
-// once layout supplies the current column width. A height change asks for
-// another frame so the containing auto-grow field can follow.
-static void RewrapEditorColumn(PaintCtx* ctx, El* e, void* user) {
+static float InputViewportHeight(Ctx* cx, const InputState* state);
+
+// element.rs prepaint: wrap and resolve the requested scroll using the
+// bounds this frame laid out. A height change also asks for another frame
+// so the containing auto-grow field can follow.
+static void LayoutEditorColumn(PaintCtx* ctx, El* e, void* user) {
     EditorUnderlay* u = (EditorUnderlay*)user;
     InputState* s = u ? u->state : nullptr;
-    if (!s || !s->softWrap || e->w <= 0 || LayoutInScratchPass()) {
+    if (!s || e->w <= 0 || LayoutInScratchPass()) {
+        return;
+    }
+    if (!s->softWrap && u->layoutViewH == InputViewportHeight(&u->cx, s)) {
         return;
     }
     s->contentBox = e->Bounds();
@@ -3537,7 +3540,7 @@ static void PaintEditorUnderlay(PaintCtx* ctx, El* e, void* user) {
     if (!u || !u->state) {
         return;
     }
-    // RewrapEditorColumn has wrapped the rows to this column already, unless
+    // LayoutEditorColumn has wrapped the rows to this column already, unless
     // the column was laid out inside a measure, which it leaves alone; the
     // frame after wraps to it then.
     InputState* s = u->state;
@@ -3951,7 +3954,6 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         state->gutterLaneW = 0;
         state->gutterGap = 0;
         state->contentH = lineH;
-        state->hasDeferredScrollY = false;
         col->customPaint = [](PaintCtx*, El* element, void*) {
             element->input->textOriginOffset = 0;
         };
@@ -4040,7 +4042,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         underlay->projected = projected;
         underlay->lineNumbers = lineNumbers;
         col->customUser = underlay;
-        col->prePaint = &RewrapEditorColumn;
+        col->prePaint = &LayoutEditorColumn;
         double height = state->contentH > 0
                             ? state->contentH
                             : (double)InputLinesLen(state) * lineH;
@@ -4188,7 +4190,6 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         state->hasDeferredScrollY ? state->deferredScrollY : state->scrollY;
     state->scrollY =
         InputClampVerticalScrollOffsetF64(requested, scrollHeight, vh);
-    state->hasDeferredScrollY = false;
     int firstRow = 0;
     int endRow = rows;
     double padTop = 0;
@@ -4550,8 +4551,9 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         }
         col->customPaint = &PaintEditorUnderlay;
         col->customUser = underlay;
-        if (state->softWrap && !state->wrap.buildingRows) {
-            col->prePaint = &RewrapEditorColumn;
+        if (state->hasDeferredScrollY && !state->wrap.buildingRows) {
+            underlay->layoutViewH = vh;
+            col->prePaint = &LayoutEditorColumn;
         }
         if (painted) {
             painted->underlay = underlay;
@@ -6647,6 +6649,10 @@ static void InputClampScrollY(InputState* s, float viewH) {
 bool InputRevealCaretOnResize(InputState* s, float newViewW, float newViewH,
                               float lineH) {
     if (!s) {
+        return false;
+    }
+    if (s->hasDeferredScrollY) {
+        s->resizeRevealOwned = false;
         return false;
     }
     if (lineH <= 0) {
