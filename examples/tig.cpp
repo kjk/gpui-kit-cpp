@@ -219,6 +219,8 @@ struct TigJob {
         else
             job->Details();
     }
+
+    static void Discard(TigJob* job) { delete job; }
 };
 
 enum TigAction {
@@ -304,11 +306,13 @@ struct Tig {
     VirtualListScrollHandle historyScroll, filesScroll;
     int commitIx = -1, fileIx = -1;
     uint64_t revision = 0;
+    TaskId loadTask = 0;
     float messageScroll = 0;
     bool started = false, readingHistory = false, readingCommit = false;
     bool sidebar = true, wrap = true, numbers = true, messageOpen = false;
 
     ~Tig() {
+        ExecCancel(loadTask);
         StrFree(log);
         StrFree(message);
         StrFree(error);
@@ -365,6 +369,7 @@ struct Tig {
         }
         Ctx cx = {job->app, window, window ? window->frameArena : nullptr,
                   job->owner};
+        self->loadTask = 0;
         self->readingCommit = self->readingHistory = false;
         StrFree(self->error);
         self->error = job->error;
@@ -424,6 +429,7 @@ struct Tig {
     }
 
     void Start(Ctx* cx, bool history, Str hash) {
+        ExecCancel(loadTask);
         auto* job = new TigJob();
         job->app = cx->app;
         job->window = cx->win;
@@ -440,7 +446,9 @@ struct Tig {
         readingCommit = !history;
         StrFree(error);
         error = {};
-        if (!ExecSpawn(MkFunc0(&TigJob::Run, job), MkFunc0(&Finish, job))) {
+        loadTask = ExecSpawn(MkFunc0(&TigJob::Run, job), MkFunc0(&Finish, job),
+                             MkFunc0(&TigJob::Discard, job));
+        if (!loadTask) {
             job->error = StrDup(StrL("Couldn't start Git."));
             Finish(job);
         }
