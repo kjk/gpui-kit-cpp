@@ -5,6 +5,7 @@
 #include "gpui/paint.h"
 #include "gpui/paint_backend.h"
 #include "gpui/scene.h"
+#include "sys/clock.h"
 
 #include <d2d1.h>
 #include <d2d1_1.h>
@@ -119,7 +120,8 @@ struct PaintTarget {
     OffscreenTarget* nativeOverlay = nullptr;
     bool overlayActive = false;
     bool lastOverlay = false;
-    bool overlayFailed = false;
+    int overlayRetryDelayMs = 0;
+    double overlayRetryAt = 0;
 };
 
 static void FreeWinDibTarget(OffscreenTarget* target);
@@ -654,7 +656,8 @@ bool PaintEnableNativeOverlay(PaintCtx* ctx) {
     if (!ctx || !ctx->rt || !ctx->rt->hwnd || !scene::Recording()) return false;
     PaintTarget* target = ctx->rt;
     if (target->overlayActive) return true;
-    if (target->overlayFailed || !WinWindowPrepareNativeOverlay(ctx))
+    if (target->overlayRetryAt > TimeNow() ||
+        !WinWindowPrepareNativeOverlay(ctx))
         return false;
     if (!target->nativeOverlay) target->nativeOverlay = new OffscreenTarget();
     OffscreenTarget* overlay = target->nativeOverlay;
@@ -722,20 +725,37 @@ bool PaintTargetEnd(PaintCtx* ctx) {
     if (split && SUCCEEDED(hr) && SUCCEEDED(overlayResult)) {
         GdiFlush();
         if (WinWindowPresentNativeOverlay(ctx->window, overlay->dc, overlay->w,
-                                          overlay->h))
+                                          overlay->h)) {
+            target->overlayRetryDelayMs = 0;
+            target->overlayRetryAt = 0;
             return true;
+        }
     }
     WinWindowHideNativeOverlay(ctx->window);
     if (split) {
-        target->overlayFailed = true;
+        // Present the complete scene through the clipped-child fallback
+        // first. Recreate the failed overlay resources on a later frame.
+        target->overlayRetryDelayMs =
+            target->overlayRetryDelayMs
+                ? std::min(target->overlayRetryDelayMs * 2, 4000)
+                : 250;
+        target
+            ->overlayRetryAt = TimeNow() + target->overlayRetryDelayMs / 1000.0;
+        FreeWinDibTarget(overlay);
+        WinWindowScheduleNativeOverlayRetry(ctx->window,
+                                            target->overlayRetryDelayMs);
         AppInvalidate(ctx->window);
     }
     return true;
 }
 
+void WinPaintNativeOverlayRetryReady(PaintCtx* ctx) {
+    if (ctx->rt) ctx->rt->overlayRetryAt = 0;
+}
+
 void WinPaintCaptureNativeOverlay(PaintCtx* ctx, HDC dc, int x, int y) {
     PaintTarget* target = ctx->rt;
-    if (!target || !target->lastOverlay || target->overlayFailed) return;
+    if (!target || !target->lastOverlay || target->overlayRetryDelayMs) return;
     OffscreenTarget* overlay = target->nativeOverlay;
     BLENDFUNCTION blend = {AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
     GdiAlphaBlend(dc, x, y, overlay->w, overlay->h, overlay->dc, 0, 0,

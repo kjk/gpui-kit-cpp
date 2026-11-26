@@ -45,6 +45,8 @@ bool PaintEnableNativeOverlay(PaintCtx* ctx);
 bool WinWindowPrepareNativeOverlay(PaintCtx* ctx);
 bool WinWindowPresentNativeOverlay(Window* win, HDC dc, int width, int height);
 void WinWindowHideNativeOverlay(Window* win);
+void WinWindowScheduleNativeOverlayRetry(Window* win, int delayMs);
+void WinPaintNativeOverlayRetryReady(PaintCtx* ctx);
 void WinPaintCaptureNativeOverlay(PaintCtx* ctx, HDC dc, int x, int y);
 #endif
 #if GPUI_OS_MAC

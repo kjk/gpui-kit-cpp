@@ -614,6 +614,24 @@ void WinWindowHideNativeOverlay(Window* win) {
     if (plat->nativeOverlay) ShowWindow(plat->nativeOverlay, SW_HIDE);
 }
 
+static constexpr UINT_PTR kWinNativeOverlayRetryTimer = 3;
+
+static void DropNativeOverlayWindows(PlatWindow* plat) {
+    HWND visual = plat->nativeOverlay;
+    HWND input = plat->nativeOverlayInput;
+    plat->nativeOverlay = nullptr;
+    plat->nativeOverlayInput = nullptr;
+    if (input) DestroyWindow(input);
+    if (visual) DestroyWindow(visual);
+}
+
+void WinWindowScheduleNativeOverlayRetry(Window* win, int delayMs) {
+    HWND hwnd = Hwnd(win);
+    if (!hwnd) return;
+    DropNativeOverlayWindows(win->plat);
+    SetTimer(hwnd, kWinNativeOverlayRetryTimer, (UINT)delayMs, nullptr);
+}
+
 bool WinWindowPrepareNativeOverlay(PaintCtx* ctx) {
     Window* win = ctx->window;
     HWND owner = Hwnd(win);
@@ -2419,6 +2437,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
         case WM_TIMER:
             if (wParam == kWinTouchpadTimer) {
                 UpdateWinTouchpad(win, hwnd);
+            } else if (wParam == kWinNativeOverlayRetryTimer) {
+                KillTimer(hwnd, kWinNativeOverlayRetryTimer);
+                WinPaintNativeOverlayRetryReady(&win->paint);
+                AppInvalidate(win);
             } else {
                 WindowTimerTick(win);
             }
@@ -2583,11 +2605,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
         case WM_DESTROY: {
             RevokeFileDrop(win, hwnd);
             KillTimer(hwnd, 1);
+            KillTimer(hwnd, kWinNativeOverlayRetryTimer);
             App* app = win->app;
             PlatWindow* plat = win->plat;
-            if (plat->nativeOverlayInput)
-                DestroyWindow(plat->nativeOverlayInput);
-            if (plat->nativeOverlay) DestroyWindow(plat->nativeOverlay);
+            DropNativeOverlayWindows(plat);
             if (plat->touchpad) {
                 plat->touchpad->Close();
                 plat->touchpad = nullptr;
