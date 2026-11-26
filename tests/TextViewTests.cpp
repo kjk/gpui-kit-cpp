@@ -9321,6 +9321,63 @@ static void ScrollingBeforePaintKeepsTheCompletedFrame() {
     TswClose(&v);
 }
 
+// text_view.rs virtualized_flow_retains_its_source_owned_partial_anchor.
+static void ScrollingKeepsAnInlineCodeSelectionAnchor() {
+    Arena* a = ArenaNew();
+    Str tail = TswJoin(a, "row %03d caf\u00e9", 180, "\n\n");
+    Str markdown = StrDup(a, fmt("PREFIX `code` suffix\n\n%s", tail));
+    const gpui::SelectionFormat formats[] = {gpui::SelectionFormat::Plain,
+                                             gpui::SelectionFormat::Source};
+    for (gpui::SelectionFormat format : formats) {
+        TswView v = TswOpen(markdown.s, TswContainer::Scrollable);
+        v.State()->SetSelectionFormat(format, v.app, v.win);
+        TestDraw(v.win);
+        const TextHit* code = HitContaining(v.win, "code");
+        const TextHit* suffix = HitContaining(v.win, "suffix");
+        utassert(code && suffix);
+        if (code && suffix) {
+            Point start = TextHitCaretPoint(&v.win->paint, *code, 0, false);
+            Point end = TextHitCaretPoint(&v.win->paint, *suffix,
+                                          len(suffix->text), true);
+            start.x += 0.1f;
+            end.x -= 0.1f;
+            RawMouse(v.win, PlatformInputKind::MouseDown, start, false);
+            RawMouse(v.win, PlatformInputKind::MouseMove, end, true);
+            TestDraw(v.win);
+            const TextHit* last = HitContaining(v.win, "row 179");
+            utassert(last);
+            if (last) {
+                float viewportBottom = last->contentMask.Bottom();
+                v.State()->scrollY = last->bounds.Bottom() - viewportBottom;
+                TestDraw(v.win);
+                TestDraw(v.win);
+                code = HitContaining(v.win, "code");
+                utassert(code && code->bounds.Bottom() < code->contentMask.y);
+                last = HitContaining(v.win, "row 179");
+                utassert(last && last->contentMask
+                                     .Contains({last->bounds.CenterX(),
+                                                last->bounds.CenterY()}));
+                if (last) {
+                    end = TextHitCaretPoint(&v.win->paint, *last,
+                                            len(last->text), true);
+                    end.x -= 0.1f;
+                    RawMouse(v.win, PlatformInputKind::MouseMove, end, true);
+                    Str expected =
+                        format == gpui::SelectionFormat::Source
+                            ? Str(fmt("`code` suffix\n\n%s", tail))
+                            : Str(fmt(
+                                  "code suffix\n%s",
+                                  TswJoin(a, "row %03d caf\u00e9", 180, "\n")));
+                    Str copy = StrTrimAscii(TswCopy(a, v));
+                    utassert(StrEq(copy, expected));
+                }
+            }
+        }
+        TswClose(&v);
+    }
+    ArenaDelete(a);
+}
+
 static void UnicodeParagraphCopyExtendsBeforePaint() {
     Arena* built = ArenaNew();
     StrBuilder sb(built);
@@ -9479,6 +9536,7 @@ static void TestTextStateWindow() {
     ABlankGestureDoesNotReuseThePreviousRange();
     ReplacingSourceCannotReprojectOldContent();
     ScrollingBeforePaintKeepsTheCompletedFrame();
+    ScrollingKeepsAnInlineCodeSelectionAnchor();
     UnicodeParagraphCopyExtendsBeforePaint();
     TripleClickSelectsTheWholeWrappedParagraph();
     ATextViewMayReplaceTheHoverCursor();

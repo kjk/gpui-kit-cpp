@@ -529,8 +529,10 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   drag starts or ends inside its box or covers it. Enclosed top-level
   Markdown blocks copy their original source spans, including rules and
   link definitions that have no text hit. This relies on the frame registering
-  the block's position. Rust also covers blocks omitted by virtualization for
-  partial selections.
+  the block's position. Scrollable TextView currently lays out all blocks,
+  so a partial selection can extend from an anchor outside the viewport.
+  Rust virtualizes the blocks and resolves the same range from the document
+  even when the anchor and intervening blocks have no painted runs.
   Participant copy callbacks receive a 64 KiB buffer.
   Under `-markdown=mini` the parser
   keeps no positions, so source mapping is unavailable (`src/base/text.cpp`,
