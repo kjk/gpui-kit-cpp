@@ -1047,19 +1047,33 @@ El* Tig::RenderDiff(Ctx* cx, Tig* self) {
                             ->Font(14)
                             ->Fg(th.mutedFg)
                             ->Wrap())
+                ->Child(component::Button::New(cx, StrL("retry"))
+                            ->Label(StrL("Retry"))
+                            ->OnClick(Listen(cx, &ClickTigAction, TigRefresh))
+                            ->IntoEl()
+                            ->SelfStart());
+    } else if (!len(state->files)) {
+        bool emptyHistory = !len(self->commits);
+        content =
+            Div(cx->a)
+                ->FlexCol()
+                ->SizeFull()
+                ->ItemsCenter()
+                ->JustifyCenter()
+                ->Gap(8)
+                ->Child(TextEl(cx->a,
+                               emptyHistory
+                                   ? StrL("This repository has no commits")
+                                   : StrL("This commit has no file changes")))
                 ->Child(
-                    TigButton(cx, TigRefresh)->Label(StrL("Retry"))->IntoEl());
-    } else if (self->fileIx < 0) {
-        content = Div(cx->a)
-                      ->FlexCol()
-                      ->SizeFull()
-                      ->ItemsCenter()
-                      ->JustifyCenter()
-                      ->Gap(8)
-                      ->Child(TextEl(
-                          cx->a, len(self->commits)
-                                     ? StrL("This commit has no file changes")
-                                     : StrL("This repository has no commits")));
+                    TextEl(
+                        cx->a,
+                        emptyHistory
+                            ? StrL("Create a commit, then refresh the history.")
+                            : StrL("Select another commit to inspect its "
+                                   "changes."))
+                        ->Font(14)
+                        ->Fg(th.mutedFg));
     } else {
         content = component::Diff::New(cx, self->diff)
                       ->LineNumber(self->numbers)
