@@ -4797,6 +4797,39 @@ static void ResolveImageReplacement(PaintCtx* ctx, El* e) {
     }
 }
 
+bool TextLayoutRangeClusterWidths(TextLayout* layout, Str text, float* widths) {
+    if (!layout || !len(text) || !widths) return false;
+    memset(widths, 0, (size_t)len(text) * sizeof(*widths));
+    float total = 0.f;
+    Bounds previous = {};
+    for (int start = 0; start < len(text);) {
+        int end = TextNextGraphemeBoundary(text, start);
+        Bounds rects[8];
+        int count = TextLayoutRangeRects(layout, text, start, end, rects,
+                                         dimofi(rects));
+        if (count == dimofi(rects)) return false;
+        float advance = 0.f;
+        for (int i = 0; i < count; i++) {
+            const Bounds& rect = rects[i];
+            if (rect.w <= 0.f) continue;
+            // Some hosts return the same full ligature box for successive
+            // graphemes in that cluster. Only the first owns its advance.
+            if (rect.x != previous.x || rect.y != previous.y ||
+                rect.w != previous.w) {
+                advance += rect.w;
+            }
+            previous = rect;
+        }
+        widths[start] = advance;
+        total += advance;
+        start = end;
+    }
+    // A host may omit whitespace or provide only visible glyph bounds.
+    // Keep the fragment fallback if its ranges cannot account for the line.
+    float lineWidth = TextLayoutSize(layout).w;
+    return (total > 0.f || lineWidth == 0.f) && fabsf(lineWidth - total) <= 1.f;
+}
+
 static float* InlineTextPositions(Arena* arena, TextLayout* layout, Str text) {
     int n = len(text);
     if (n >= INT_MAX / (int)sizeof(float)) return nullptr;
@@ -4804,7 +4837,8 @@ static float* InlineTextPositions(Arena* arena, TextLayout* layout, Str text) {
     auto* positions = (float*)Alloc(arena, bytes);
     if (!positions) return nullptr;
     memset(positions, 0, (size_t)bytes);
-    if (TextLayoutClusterWidths(layout, text, positions)) {
+    if (TextLayoutClusterWidths(layout, text, positions) ||
+        TextLayoutRangeClusterWidths(layout, text, positions)) {
         // Each cluster contributes its in-context advance in logical order,
         // independent of the visual caret positions around bidi boundaries.
         float x = 0.f;
@@ -4816,8 +4850,8 @@ static float* InlineTextPositions(Arena* arena, TextLayout* layout, Str text) {
         positions[n] = x;
         return positions;
     }
-    // Hosts without cluster metrics can still use an unambiguous sequence
-    // of left-to-right caret positions.
+    // A host that omits advances may still expose unambiguous leading
+    // edges for a left-to-right line.
     Vec<TextGlyphBox> glyphs;
     TextGlyphBoxes(layout, text, &glyphs);
     for (int i = 0; i <= n; i++) positions[i] = -1.f;

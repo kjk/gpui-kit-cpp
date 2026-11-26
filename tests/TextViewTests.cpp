@@ -6985,6 +6985,35 @@ static void InlineObjectsKeepBidiRunsTogether() {
     TswClose(&v);
 }
 
+#if GPUI_OS_LINUX
+static void InlineObjectAdvancesCanUseHostRangeGeometry() {
+    TswView v = TswOpen("text", TswContainer::Window);
+    // Latin followed by Hebrew alef + patah and bet. In visual order the
+    // bet is left of the alef, but their advances belong to source order.
+    constexpr Str text = StrL("abc \xd7\x90\xd6\xb7\xd7\x91 xyz");
+    TextLayout* layout =
+        TextLayoutNew(&v.win->paint, text, 18.f, 0, false, 0, 0, nullptr);
+    utassert(layout);
+    if (layout) {
+        float widths[32] = {};
+        utassert(TextLayoutRangeClusterWidths(layout, text, widths));
+        Bounds alef = {}, bet = {};
+        utassert(TextLayoutRangeRects(layout, text, 4, 8, &alef, 1) == 1);
+        utassert(TextLayoutRangeRects(layout, text, 8, 10, &bet, 1) == 1);
+        utassert(alef.w > 0 && bet.w > 0 && bet.x < alef.x);
+        utassertnear(widths[4], alef.w);
+        utassertnear(widths[6], 0.f);
+        utassertnear(widths[8], bet.w);
+        utassert(widths[3] > 0 && widths[10] > 0);
+        float total = 0.f;
+        for (int i = 0; i < len(text); i++) total += widths[i];
+        utassert(fabsf(total - TextLayoutSize(layout).w) <= 1.f);
+        TextLayoutRelease(layout);
+    }
+    TswClose(&v);
+}
+#endif
+
 static void InlineObjectsWrapProseAtUnicodeBreaks() {
     constexpr Str prose = StrL(
         "漢字漢字漢字漢字漢字漢字漢字漢字"
@@ -9264,6 +9293,9 @@ static void TestTextStateWindow() {
     InlineObjectsShareRowsWithShapedProse();
     MixedObjectProseSharesFontsLinksAndSourceRanges();
     InlineObjectsKeepBidiRunsTogether();
+#if GPUI_OS_LINUX
+    InlineObjectAdvancesCanUseHostRangeGeometry();
+#endif
     InlineObjectsWrapProseAtUnicodeBreaks();
     MixedObjectStrikesStayInsideTheSharedProse();
     MixedObjectMarkFollowsItsGlyphRange();

@@ -39,8 +39,10 @@ The current update target is
   in-context grapheme ranges and uses Canvas widths for each styled span.
   Link hit targets, selection rectangles and caret positions follow visual
   order across browser font runs.
-  Mobile host layouts use caret geometry or isolated word widths
-  (`src/base/text.cpp`, `src/gpui/gpui.cpp`).
+  Mobile uses the host's shaped selection rectangles to recover logical
+  grapheme advances, including on mixed-direction lines. Hosts that omit
+  range geometry fall back to unambiguous caret positions or isolated word
+  widths (`src/base/text.cpp`, `src/gpui/gpui.cpp`).
 
 - **Windows additionally handles touch-screen pinch.** DirectManipulation
   supplies precision-touchpad pinch and two-finger scroll with inertia as in

@@ -392,6 +392,10 @@ inline bool TextLayoutClusterWidths(TextLayout*, Str, float*) {
     return false;
 }
 #endif
+// Recover logical widths from one shaped hard line on hosts that report
+// selection rectangles. Writes len(s) slots, with nonzero widths at UTF-8
+// grapheme starts. Returns false when the rectangles do not cover the line.
+bool TextLayoutRangeClusterWidths(TextLayout* tl, Str s, float* widths);
 // Positioned caret when the backend exposes both edges of a bidi boundary.
 #if GPUI_OS_WASM
 bool TextLayoutCaretPoint(TextLayout* tl, int offset, bool trailing, float* x,
