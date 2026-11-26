@@ -171,6 +171,9 @@ struct LinuxNodeSnapshot {
     int parentIndex = -1;
     int siblingIndex = 0;
     int nextIndex = -1;
+    int selectionParent = -1;
+    bool selectionContainer = false;
+    bool selectionChanged = false;
 };
 
 struct LinuxNodeHistory {
@@ -2611,6 +2614,12 @@ static void SendLinuxChildrenChanges(Window* win, LinuxNodeHistory* history,
         auto& child = next[index];
         int parent = win->accessibility[child.index].parent;
         child.parentIndex = parent < 0 ? -1 : history->treeOrder[parent];
+        if (child.parentIndex >= 0) {
+            const auto& parentNode = next[child.parentIndex];
+            child.selectionParent = parentNode.selectionContainer
+                                        ? child.parentIndex
+                                        : parentNode.selectionParent;
+        }
         int slot = child.parentIndex < 0 ? rootSlot : child.parentIndex;
         child.siblingIndex = childCounts[slot]++;
     }
@@ -2663,6 +2672,40 @@ static void SendLinuxChildrenChanges(Window* win, LinuxNodeHistory* history,
     }
 }
 
+static uint32_t LinuxSelectionOwner(const Vec<LinuxNodeSnapshot>& frame,
+                                    const LinuxNodeSnapshot& item) {
+    if (!(item.state & AtspiBit(kAtspiSelected)) || item.selectionParent < 0)
+        return 0;
+    return frame[item.selectionParent].wireId;
+}
+
+static void SendLinuxSelectionChanges(Window* win,
+                                      const Vec<LinuxNodeSnapshot>& previous,
+                                      Vec<LinuxNodeSnapshot>& next) {
+    for (const auto& old : previous) {
+        uint32_t owner = LinuxSelectionOwner(previous, old);
+        if (!owner) continue;
+        int container = previous[old.selectionParent].nextIndex;
+        if (container < 0 || !next[container].selectionContainer) continue;
+        if (old.nextIndex < 0 ||
+            LinuxSelectionOwner(next, next[old.nextIndex]) != owner)
+            next[container].selectionChanged = true;
+    }
+    for (const auto& item : next) {
+        uint32_t owner = LinuxSelectionOwner(next, item);
+        if (!owner) continue;
+        if (item.previousIndex < 0 ||
+            LinuxSelectionOwner(previous, previous[item.previousIndex]) !=
+                owner)
+            next[item.selectionParent].selectionChanged = true;
+    }
+    for (const auto& item : next) {
+        if (item.selectionChanged)
+            SendWireEvent(win, item.wireId, "SelectionChanged", "", 0,
+                          AtspiEventValue(uint32_t{0}));
+    }
+}
+
 static void TrackLinuxNodes(Window* win) {
     LinuxNodeHistory* history = LinuxHistory(win);
     if (!history) {
@@ -2704,6 +2747,7 @@ static void TrackLinuxNodes(Window* win) {
                    info.numericValue,
                    (bool)info.hasNumericValue,
                    node.bounds};
+        next[i].selectionContainer = IsSelectionRole(info.role);
     }
     if (len(next) > 1)
         qsort(next.els, (size_t)len(next), sizeof(next[0]), CompareLinuxNode);
@@ -2743,6 +2787,7 @@ static void TrackLinuxNodes(Window* win) {
         if (current.previousIndex >= 0)
             SendLinuxNodeChanges(win, previous[current.previousIndex], current);
     }
+    SendLinuxSelectionChanges(win, previous, next);
 }
 
 void AccessibilityLinuxTreeChanged(Window* win) {
@@ -3176,6 +3221,54 @@ static bool LinuxSmokeChildChanges(Window* win, int fd) {
     return LinuxSmokeEvents(fd, closed, dimofi(closed), true) && ok;
 }
 
+static bool LinuxSmokeSelectionChanges(Window* win, int fd) {
+    VecClear(win->accessibility);
+    auto append = [win](AccessibilityRole role, int parent, bool selected) {
+        AccessibilityNode node;
+        node.id = (uint32_t)len(win->accessibility) + 1;
+        node.elementPath = node.id;
+        node.parent = parent;
+        node.info.role = role;
+        node.info.hasSelected = role == AccessibilityRole::ListBoxOption;
+        node.info.selected = selected;
+        VecAppend(win->accessibility, node);
+    };
+    append(AccessibilityRole::ListBox, -1, false);
+    append(AccessibilityRole::Group, 0, false);
+    append(AccessibilityRole::ListBoxOption, 1, true);
+    append(AccessibilityRole::ListBoxOption, 1, false);
+    append(AccessibilityRole::ListBox, 0, false);
+    append(AccessibilityRole::ListBoxOption, 4, false);
+    AccessibilityLinuxTreeChanged(win);
+    const AtspiEventValue zero(uint32_t{0});
+    const LinuxSmokeEvent initial[] = {
+        {"SelectionChanged", "", 0, 0, zero, 1},
+    };
+    bool ok = LinuxSmokeEvents(fd, initial, dimofi(initial));
+
+    win->accessibility[2].info.selected = false;
+    win->accessibility[3].info.selected = true;
+    win->accessibility[5].info.selected = true;
+    AccessibilityLinuxTreeChanged(win);
+    const LinuxSmokeEvent switched[] = {
+        {"StateChanged", "selected", 0, 0, zero, 3},
+        {"StateChanged", "selected", 1, 0, zero, 4},
+        {"StateChanged", "selected", 1, 0, zero, 6},
+        {"SelectionChanged", "", 0, 0, zero, 1},
+        {"SelectionChanged", "", 0, 0, zero, 5},
+    };
+    ok = LinuxSmokeEvents(fd, switched, dimofi(switched)) && ok;
+
+    VecRemoveAt(win->accessibility, 3);
+    win->accessibility[4].parent = 3;
+    AccessibilityLinuxTreeChanged(win);
+    ok = LinuxSmokeEvents(fd, initial, dimofi(initial)) && ok;
+    AccessibilityLinuxTreeChanged(win);
+    ok = LinuxSmokeEvents(fd, nullptr, 0) && ok;
+    AccessibilityLinuxForgetWindow(win);
+    return LinuxSmokeEvents(fd, nullptr, 0) && ok;
+}
+
 bool AccessibilityLinuxEventSmokeTest() {
     int fds[2] = {-1, -1};
     if (socketpair(AF_UNIX, SOCK_STREAM, 0, fds) != 0) return false;
@@ -3332,6 +3425,7 @@ bool AccessibilityLinuxEventSmokeTest() {
     AccessibilityLinuxForgetWindow(&win);
     ok = LinuxSmokeEvents(fds[0], nullptr, 0) && ok;
     ok = LinuxSmokeChildChanges(&win, fds[0]) && ok;
+    ok = LinuxSmokeSelectionChanges(&win, fds[0]) && ok;
     close(fds[0]);
     close(fds[1]);
     gA11y = saved;

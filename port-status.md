@@ -244,6 +244,8 @@ The current update target is
   nodes also report the new parent. Lazy document revisions invalidate their
   own child lists. Retained nodes send individual state, name, description,
   role, numeric-value and window-relative bounds changes.
+  Selection containers report changes to their selected descendants once per
+  tree update.
   AT-SPI object paths survive recollection for nodes with a unique element
   path. Nodes that share a path are matched by their collection position.
   Focus follows X11 activation and the retained widget focus handle. An
