@@ -47,6 +47,8 @@
 #endif
 #if defined(GPUI_HAVE_X11_OVERLAY_REDIRECT)
 #include <X11/extensions/Xcomposite.h>
+#endif
+#if defined(GPUI_HAVE_X11_OVERLAY_DAMAGE)
 #include <X11/extensions/Xdamage.h>
 #endif
 
@@ -72,10 +74,13 @@ struct LinuxNativeOverlay {
     bool lastFrame = false;
 #if defined(GPUI_HAVE_X11_OVERLAY_REDIRECT)
     XWindow redirected = 0;
+#if defined(GPUI_HAVE_X11_OVERLAY_DAMAGE)
     Damage damage = 0;
+#endif
     Pixmap pixmap = 0;
     cairo_surface_t* backdrop = nullptr;
     XRectangle shape = {};
+    double nextRefresh = 0;
 #endif
 };
 
@@ -87,7 +92,10 @@ static XRenderPictFormat* gNativeOverlayFormat = nullptr;
 static Atom gNativeOverlaySelection = None;
 static int gNativeOverlaySelectionEvent = 0;
 #if defined(GPUI_HAVE_X11_OVERLAY_REDIRECT)
+static bool gOverlayComposite = false;
+#if defined(GPUI_HAVE_X11_OVERLAY_DAMAGE)
 static int gOverlayDamageEvent = 0;
+#endif
 #endif
 #endif
 
@@ -257,13 +265,15 @@ static void ProbeNativeOverlay() {
     gNativeOverlayXWayland =
         XQueryExtension(gDpy, "XWAYLAND", &opcode, &event, &error);
 #if defined(GPUI_HAVE_X11_OVERLAY_REDIRECT)
-    if (XCompositeQueryExtension(gDpy, &event, &error) &&
-        XCompositeQueryVersion(gDpy, &major, &minor) &&
-        (major > 0 || minor >= 2) &&
-        XDamageQueryExtension(gDpy, &event, &error) &&
+    gOverlayComposite = XCompositeQueryExtension(gDpy, &event, &error) &&
+                        XCompositeQueryVersion(gDpy, &major, &minor) &&
+                        (major > 0 || minor >= 2);
+#if defined(GPUI_HAVE_X11_OVERLAY_DAMAGE)
+    if (gOverlayComposite && XDamageQueryExtension(gDpy, &event, &error) &&
         XDamageQueryVersion(gDpy, &major, &minor)) {
         gOverlayDamageEvent = event + XDamageNotify;
     }
+#endif
 #endif
     XWindowAttributes attrs = {};
     if (XGetWindowAttributes(gDpy, gRoot, &attrs))
@@ -282,11 +292,14 @@ static void DropOverlayPixmap(LinuxNativeOverlay& overlay) {
 static void StopOverlayRedirect(LinuxNativeOverlay& overlay) {
     if (!overlay.redirected) return;
     DropOverlayPixmap(overlay);
-    XDamageDestroy(gDpy, overlay.damage);
+#if defined(GPUI_HAVE_X11_OVERLAY_DAMAGE)
+    if (overlay.damage) XDamageDestroy(gDpy, overlay.damage);
+    overlay.damage = 0;
+#endif
     XCompositeUnredirectWindow(gDpy, overlay.redirected,
                                CompositeRedirectAutomatic);
     overlay.redirected = 0;
-    overlay.damage = 0;
+    overlay.nextRefresh = 0;
     if (overlay.window)
         XShapeCombineMask(gDpy, overlay.window, ShapeBounding, 0, 0, None,
                           ShapeSet);
@@ -312,8 +325,12 @@ static bool PrepareOverlayRedirect(PlatWindow* pw) {
             XCompositeRedirectWindow(gDpy, pw->xwin,
                                      CompositeRedirectAutomatic);
             overlay.redirected = pw->xwin;
-            overlay
-                .damage = XDamageCreate(gDpy, pw->xwin, XDamageReportNonEmpty);
+#if defined(GPUI_HAVE_X11_OVERLAY_DAMAGE)
+            if (gOverlayDamageEvent) {
+                overlay.damage =
+                    XDamageCreate(gDpy, pw->xwin, XDamageReportNonEmpty);
+            }
+#endif
         }
         overlay.pixmap = XCompositeNameWindowPixmap(gDpy, pw->xwin);
     }
@@ -349,6 +366,15 @@ static XRectangle OverlayInk(cairo_surface_t* image, int w, int h) {
             (unsigned short)(bottom - top)};
 }
 
+static bool OverlayRefreshNeedsPolling(const LinuxNativeOverlay& overlay) {
+    if (!overlay.backdrop || !overlay.shape.width) return false;
+#if defined(GPUI_HAVE_X11_OVERLAY_DAMAGE)
+    return !overlay.damage;
+#else
+    return true;
+#endif
+}
+
 static void PaintRedirectedOverlay(LinuxNativeOverlay& overlay) {
     if (!overlay.backdrop || !overlay.shape.width) return;
     cairo_surface_mark_dirty(overlay.backdrop);
@@ -365,6 +391,21 @@ static void PaintRedirectedOverlay(LinuxNativeOverlay& overlay) {
     cairo_destroy(cr);
     cairo_surface_flush(overlay.screen);
     XFlush(gDpy);
+    if (OverlayRefreshNeedsPolling(overlay))
+        overlay.nextRefresh = TimeNow() + 1.0 / 60.0;
+}
+
+static void PollRedirectedOverlays(App* app, double* waitS) {
+    double now = TimeNow();
+    for (Window* win : app->windows) {
+        if (!win->plat) continue;
+        auto& overlay = win->plat->nativeOverlay;
+        if (!overlay.mapped || !OverlayRefreshNeedsPolling(overlay)) continue;
+        // XComposite still exposes a live pixmap without XDamage. Refresh
+        // just the shaped overlay, without running another GPUI frame.
+        if (overlay.nextRefresh <= now) PaintRedirectedOverlay(overlay);
+        *waitS = std::min(*waitS, std::max(0.001, overlay.nextRefresh - now));
+    }
 }
 #endif
 
@@ -450,7 +491,7 @@ cairo_surface_t* LinuxWindowNativeOverlay(Window* win) {
     bool compositor = gNativeOverlayComposited || gNativeOverlayXWayland;
 #if defined(GPUI_HAVE_X11_OVERLAY_REDIRECT)
     if (!compositor &&
-        (!gOverlayDamageEvent || pw->pxW > INT16_MAX || pw->pxH > INT16_MAX))
+        (!gOverlayComposite || pw->pxW > INT16_MAX || pw->pxH > INT16_MAX))
         return nullptr;
 #else
     if (!compositor) return nullptr;
@@ -551,7 +592,7 @@ static void PresentNativeOverlay(PlatWindow* pw) {
 
 static bool HandleNativeOverlayEvent(App* app, XEvent* ev) {
     if (!gNativeOverlayFormat) return false;
-#if defined(GPUI_HAVE_X11_OVERLAY_REDIRECT)
+#if defined(GPUI_HAVE_X11_OVERLAY_DAMAGE)
     if (gOverlayDamageEvent && ev->type == gOverlayDamageEvent) {
         auto* damage = reinterpret_cast<XDamageNotifyEvent*>(ev);
         for (Window* win : app->windows) {
@@ -4087,6 +4128,9 @@ void PlatShutdown(App* app) {
         gNativeOverlayFormat = nullptr;
 #endif
 #if defined(GPUI_HAVE_X11_OVERLAY_REDIRECT)
+        gOverlayComposite = false;
+#endif
+#if defined(GPUI_HAVE_X11_OVERLAY_DAMAGE)
         gOverlayDamageEvent = 0;
 #endif
     }
@@ -4328,6 +4372,9 @@ int AppRun(App* app) {
         // Sleep until the next tick, or until X has something to say.
         bool anyDirty = false;
         double waitS = RunLoopWaitFor<PlatWindow>(app, &anyDirty);
+#if defined(GPUI_HAVE_X11_OVERLAY_REDIRECT)
+        PollRedirectedOverlays(app, &waitS);
+#endif
         if (moveEndWaiting && waitS > kMoveEndPollMs / 1000.0) {
             waitS = kMoveEndPollMs / 1000.0;
         }

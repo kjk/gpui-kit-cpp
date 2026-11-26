@@ -717,8 +717,10 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   The same native layers are used when scene recording is disabled.
   On X11 without a compositor, XComposite keeps a live pixmap of the host
   and its webviews. XDamage refreshes the blended overlay without a GPUI frame.
-  Servers without the required extensions use drawing and input cutouts
-  with asynchronous snapshots (`src/webview/webview.cpp`).
+  When XDamage is unavailable, the X11 event loop refreshes the same live
+  pixmap while the overlay is visible. Servers without the compositing
+  extensions use drawing and input cutouts with asynchronous snapshots
+  (`src/webview/webview.cpp`).
 - **WebView2 file drops release the OLE storage medium after each read.**
   Windows uses the Shell item array when `CF_HDROP` is unavailable, including
   for long paths, and copies the paths before releasing their native storage

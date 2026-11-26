@@ -1057,10 +1057,15 @@ function linuxDeps(fail: (msg: string) => never): LinuxDeps {
     if (haveShape && Bun.spawnSync(["pkg-config", "--exists", ...overlay]).exitCode === 0) {
       cflags.push(...pkgConfig(overlay, "--cflags", fail), "-DGPUI_HAVE_X11_NATIVE_OVERLAY=1");
       libs.push(...pkgConfig(overlay, "--libs", fail));
-      const redirect = ["xcomposite", "xdamage"];
+      const redirect = ["xcomposite"];
       if (Bun.spawnSync(["pkg-config", "--exists", ...redirect]).exitCode === 0) {
         cflags.push(...pkgConfig(redirect, "--cflags", fail), "-DGPUI_HAVE_X11_OVERLAY_REDIRECT=1");
         libs.push(...pkgConfig(redirect, "--libs", fail));
+        const damage = ["xdamage"];
+        if (Bun.spawnSync(["pkg-config", "--exists", ...damage]).exitCode === 0) {
+          cflags.push(...pkgConfig(damage, "--cflags", fail), "-DGPUI_HAVE_X11_OVERLAY_DAMAGE=1");
+          libs.push(...pkgConfig(damage, "--libs", fail));
+        }
       }
     }
   } else {
