@@ -1596,10 +1596,15 @@ static void WindowSelectionDragAt(Window* win, float x, float y) {
     WindowSelection* s = win ? win->sel : nullptr;
     if (!s || !s->gesture.selecting) return;
     if (AwaitingSelectionReflow(s)) {
-        if (s->pendingReflow.extendCell)
-            s->pendingReflow.cellExtension = {x, y};
-        else if (s->hasTouchEdgeDrag)
+        if (s->hasTouchEdgeDrag && !s->hasAnchorCell) {
             DragPendingTouchEdge(win, {x, y});
+        } else {
+            auto& reflow = s->pendingReflow;
+            if (reflow.deferredGesture == TextSelectionDeferredGesture::None)
+                reflow.deferredGesture = TextSelectionDeferredGesture::Drag;
+            reflow.deferredPoint = {x, y};
+            WindowRequestAnimationFrame(win);
+        }
         return;
     }
     PaintCtx* ctx = &win->paint;
@@ -1887,8 +1892,9 @@ static bool ExtendUnpaintedSelection(Window* win, Point point) {
     auto anchor = reflow.endpoints[0];
     if (anchor.block < 0) return false;
     if (selection->hasAnchorCell) {
-        selection->pendingReflow.extendCell = true;
-        selection->pendingReflow.cellExtension = point;
+        selection->pendingReflow
+            .deferredGesture = TextSelectionDeferredGesture::ExtendCell;
+        selection->pendingReflow.deferredPoint = point;
         TextSelectionBegin(&selection->gesture, true);
         WindowRequestAnimationFrame(win);
         return true;
@@ -2126,16 +2132,22 @@ void WindowSelectionRestoreReflow(Window* win, const TextSelectionReflow& old) {
                                &s->unitStart) &&
             RestoreSourcePoint(win->paint, old, old.unit[1], true, &s->unitEnd);
     }
-    if (old.extendCell && s->hasAnchorCell) {
+    Point point = old.deferredPoint;
+    if (old.deferredGesture == TextSelectionDeferredGesture::ExtendCell &&
+        s->hasAnchorCell) {
         // Resume the same Shift gesture against the restored cell geometry.
         bool pressed = s->gesture.selecting;
-        WindowSelectionPress(win, old.cellExtension.x, old.cellExtension.y, 1,
-                             true);
+        WindowSelectionPress(win, point.x, point.y, 1, true);
         if (!pressed) WindowSelectionRelease(win);
+    } else if (old.deferredGesture == TextSelectionDeferredGesture::Drag) {
+        bool pressed = s->gesture.selecting;
+        s->gesture.selecting = true;
+        WindowSelectionDragAt(win, point.x, point.y);
+        s->gesture.selecting = pressed;
+        if (pressed) WindowSelectionUpdateAutoScroll(win, point);
     }
     WindowSelectionApply(win);
-    if (remapped || wasPending || old.extendCell)
-        WindowRequestAnimationFrame(win);
+    if (remapped || wasPending) WindowRequestAnimationFrame(win);
 }
 
 int WindowSelectionTextAs(Window* win, char* out, int cap,

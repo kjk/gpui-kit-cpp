@@ -1750,7 +1750,8 @@ struct TextView {
     static void VirtualBlocksArranged(PaintCtx* ctx, El* list, void* user);
     static void VirtualBlocksPainted(PaintCtx* ctx, El* list, void* user);
     El* VirtualBlocks(TextViewState* state, MdNode* doc, uint32_t key,
-                      Listener scroll, TextViewVirtualFrame** out);
+                      Listener scroll, TextViewVirtualFrame** out,
+                      const TextSelectionReflow* drag);
     El* Item(MdNode* n, Str marker, int depth);
     El* Table(MdNode* n);
     // The `table_actions` row, built from the table it goes under. Null when

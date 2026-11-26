@@ -6023,6 +6023,7 @@ struct TswRoot {
     // Last frame's scroll box of a scrollable view and the document inside it,
     // for scroll_top. Frame-arena memory, read only between frames.
     El* scroller = nullptr;
+    float scrollHeight = 100;
     bool listenForLinks = false;
     int linkClicks = 0;
 
@@ -6096,7 +6097,7 @@ struct TswRoot {
             case TswContainer::Scrollable: {
                 El* e = view->Scrollable()->IntoEl();
                 self->scroller = e;
-                return frame->Child(e);
+                return frame->H(self->scrollHeight)->Child(e);
             }
             case TswContainer::Div:
             case TswContainer::Clamped: {
@@ -9543,33 +9544,26 @@ static void ScrollingKeepsAnInlineCodeSelectionAnchor() {
             RawMouse(v.win, PlatformInputKind::MouseDown, start, false);
             RawMouse(v.win, PlatformInputKind::MouseMove, end, true);
             TestDraw(v.win);
+            utassert(!HitContaining(v.win, "row 179"));
+            TswReveal(v, "row 179");
+            code = HitContaining(v.win, "code");
+            utassert(code && code->bounds.Bottom() < code->contentMask.y);
             const TextHit* last = HitContaining(v.win, "row 179");
-            utassert(last);
+            utassert(last && last->contentMask
+                                 .Contains({last->bounds.CenterX(),
+                                            last->bounds.CenterY()}));
             if (last) {
-                float viewportBottom = last->contentMask.Bottom();
-                v.State()->scrollY = last->bounds.Bottom() - viewportBottom;
-                TestDraw(v.win);
-                TestDraw(v.win);
-                code = HitContaining(v.win, "code");
-                utassert(code && code->bounds.Bottom() < code->contentMask.y);
-                last = HitContaining(v.win, "row 179");
-                utassert(last && last->contentMask
-                                     .Contains({last->bounds.CenterX(),
-                                                last->bounds.CenterY()}));
-                if (last) {
-                    end = TextHitCaretPoint(&v.win->paint, *last,
-                                            len(last->text), true);
-                    end.x -= 0.1f;
-                    RawMouse(v.win, PlatformInputKind::MouseMove, end, true);
-                    Str expected =
-                        format == gpui::SelectionFormat::Source
-                            ? Str(fmt("`code` suffix\n\n%s", tail))
-                            : Str(fmt(
-                                  "code suffix\n%s",
+                end = TextHitCaretPoint(&v.win->paint, *last, len(last->text),
+                                        true);
+                end.x -= 0.1f;
+                RawMouse(v.win, PlatformInputKind::MouseMove, end, true);
+                Str expected =
+                    format == gpui::SelectionFormat::Source
+                        ? Str(fmt("`code` suffix\n\n%s", tail))
+                        : Str(fmt("code suffix\n%s",
                                   TswJoin(a, "row %03d caf\u00e9", 180, "\n")));
-                    Str copy = StrTrimAscii(TswCopy(a, v));
-                    utassert(StrEq(copy, expected));
-                }
+                Str copy = StrTrimAscii(TswCopy(a, v));
+                utassert(StrEq(copy, expected));
             }
         }
         TswClose(&v);
@@ -9589,11 +9583,14 @@ static void SelectionStartsInAnIdleVirtualizedTextView() {
         RawMouse(view.win, PlatformInputKind::MouseDown, start, false);
         TestDraw(view.win);
         hit = HitContaining(view.win, "paragraph 60");
-        utassert(hit && HitContaining(view.win, "paragraph 119"));
+        utassert(hit && !HitContaining(view.win, "paragraph 119"));
         if (hit) {
             Point end = TextHitCaretPoint(&view.win->paint, *hit, 9, true);
             end.x -= 0.1f;
             RawMouse(view.win, PlatformInputKind::MouseMove, end, true);
+            utassert(StrEq(StrTrimAscii(TswCopy(a, view)), StrL("ragraph")));
+            TestDraw(view.win);
+            utassert(!HitContaining(view.win, "paragraph 119"));
             utassert(StrEq(StrTrimAscii(TswCopy(a, view)), StrL("ragraph")));
             RawMouse(view.win, PlatformInputKind::MouseUp, end, false);
             TestDraw(view.win);
@@ -9615,6 +9612,40 @@ static void SelectionStartsInAnIdleVirtualizedTextView() {
                 utassert(base::StrStartsWith(extended, StrL("paragraph 0")));
                 utassert(base::StrEndsWith(extended, StrL("pa")));
             }
+        }
+    }
+    TswClose(&view);
+    ArenaDelete(a);
+}
+
+static void DragAfterViewportShrinksRestoresItsAnchor() {
+    Arena* a = ArenaNew();
+    TswView view = TswOpen(TswParagraphs(a, 120).s, TswContainer::Scrollable);
+    const TextHit* hit = HitContaining(view.win, "paragraph 3");
+    utassert(hit);
+    if (hit) {
+        Point start = TextHitCaretPoint(&view.win->paint, *hit, 2, false);
+        Point end = TextHitCaretPoint(&view.win->paint, *hit, 9, true);
+        start.x += 0.1f;
+        end.x -= 0.1f;
+        RawMouse(view.win, PlatformInputKind::MouseDown, start, false);
+        RawMouse(view.win, PlatformInputKind::MouseMove, end, true);
+        view.Root()->scrollHeight = 24;
+        TestDraw(view.win);
+        utassert(!HitContaining(view.win, "paragraph 3"));
+        utassert(StrEq(StrTrimAscii(TswCopy(a, view)), StrL("ragraph")));
+        hit = HitContaining(view.win, "paragraph 0");
+        utassert(hit);
+        if (hit) {
+            Point cursor = TextHitCaretPoint(&view.win->paint, *hit, 0, false);
+            cursor.x += 0.1f;
+            RawMouse(view.win, PlatformInputKind::MouseMove, cursor, true);
+            RawMouse(view.win, PlatformInputKind::MouseUp, cursor, false);
+            TestDraw(view.win);
+            TestDraw(view.win);
+            utassert(!HitContaining(view.win, "paragraph 3"));
+            utassert(StrEq(StrTrimAscii(TswCopy(a, view)),
+                           StrL("paragraph 0\nparagraph 1\nparagraph 2\npa")));
         }
     }
     TswClose(&view);
@@ -9959,6 +9990,7 @@ static void TestTextStateWindow() {
     ScrollingBeforePaintKeepsTheCompletedFrame();
     ScrollingKeepsAnInlineCodeSelectionAnchor();
     SelectionStartsInAnIdleVirtualizedTextView();
+    DragAfterViewportShrinksRestoresItsAnchor();
     FinishedMultiClickSelectionStaysVirtualized();
     FinishedTouchSelectionKeepsOnlyVisibleHandles();
     FinishedTableCellSelectionStaysVirtualized();

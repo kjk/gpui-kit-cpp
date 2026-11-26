@@ -9251,7 +9251,8 @@ static bool TextBlockHasDynamicSize(const MdNode* node) {
 }
 
 El* TextView::VirtualBlocks(TextViewState* managed, MdNode* doc, uint32_t key,
-                            Listener scroll, TextViewVirtualFrame** out) {
+                            Listener scroll, TextViewVirtualFrame** out,
+                            const TextSelectionReflow* drag) {
     auto* frame = ArenaNew<TextViewVirtualFrame>(cx->a);
     frame->view = ArenaNew<TextView>(cx->a);
     *frame->view = *this;
@@ -9289,6 +9290,22 @@ El* TextView::VirtualBlocks(TextViewState* managed, MdNode* doc, uint32_t key,
         measured->styleRevision = managed->selectionRevision;
         measured->rem = rem;
         measured->font = baseFont;
+    }
+    if (drag) {
+        // Keep the selection's blocks in the upcoming frame, including when
+        // the wheel is moving before the next pointer event. Reuse the last
+        // viewport and measured row sizes to test the requested offset.
+        VirtualListScrollHandle next = measured->handle;
+        next.offset = managed->scrollY;
+        if (measured->width < 0 || next.pending || revealTarget) return nullptr;
+        VirtualListHandleLayout(&next, measured->heights.els, count, 0,
+                                next.viewport);
+        VirtualRange visible =
+            VirtualListHandleRange(&next, measured->heights.els, count, 0);
+        for (const auto& endpoint : drag->endpoints) {
+            if (endpoint.block < visible.first || endpoint.block >= visible.end)
+                return nullptr;
+        }
     }
     measured->handle.offset = managed->scrollY;
     // Jump to the owning block before its line has geometry. Once the
@@ -9531,19 +9548,23 @@ El* TextView::IntoEl() {
          (managed && selection->pendingReflow.owner == managed->self));
     const TextSelectionReflow* reflow =
         cx->win ? cx->win->paint.selectionReflow : nullptr;
+    bool dragging = selection && selection->gesture.selecting;
     bool projectSelection =
-        managed && selection && !selection->gesture.selecting && reflow &&
-        !reflow->extendCell && reflow->owner == managed->self &&
+        managed && selection && reflow &&
+        reflow->deferredGesture == TextSelectionDeferredGesture::None &&
+        reflow->owner == managed->self &&
         (!selection->unitHeld ||
          (reflow->unit[0].block >= 0 && reflow->unit[1].block >= 0)) &&
-        selection->copyProjection.owner == managed->self &&
+        (selection->copyProjection.owner == managed->self ||
+         (dragging && selection->anchor == selection->cursor)) &&
         reflow->replacement == managed->fullUpdateRevision &&
         reflow->endpoints[0].block >= 0 && reflow->endpoints[1].block >= 0;
     if (scrollable && (!partialSelection || projectSelection) &&
         !inheritedBuilder && cx->win && managed) {
-        virtualList = VirtualBlocks(managed, doc, TextViewScrollKey(state),
-                                    ListenTo(state, &TextViewState::OnScroll),
-                                    &virtualFrame);
+        virtualList = VirtualBlocks(
+            managed, doc, TextViewScrollKey(state),
+            ListenTo(state, &TextViewState::OnScroll), &virtualFrame,
+            dragging && projectSelection ? reflow : nullptr);
         if (virtualFrame) virtualFrame->projectSelection = projectSelection;
     }
     El* element =

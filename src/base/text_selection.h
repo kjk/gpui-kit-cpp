@@ -338,6 +338,12 @@ struct TextSelectionSourcePoint {
     int blockByte = 0;
 };
 
+enum class TextSelectionDeferredGesture : uint8_t {
+    None,
+    ExtendCell,
+    Drag,
+};
+
 struct TextSelectionReflow {
     EntityId owner = {};
     uint64_t replacement = 0;
@@ -346,9 +352,10 @@ struct TextSelectionReflow {
     TextSelectionSourcePoint endpoints[2];
     Bounds bounds[2];
     TextSelectionSourcePoint unit[2];
-    // A Shift press from an offscreen cell needs its newly laid-out bounds.
-    Point cellExtension = {};
-    bool extendCell = false;
+    // Pointer input received while the relevant block has no painted geometry.
+    Point deferredPoint = {};
+    TextSelectionDeferredGesture deferredGesture =
+        TextSelectionDeferredGesture::None;
 };
 
 struct TextSelectionCopyProjection {
