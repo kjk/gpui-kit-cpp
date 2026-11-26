@@ -11,6 +11,7 @@ namespace gpui {
 bool AccessibilityWinSmokeTest(Window* win, uint32_t nodeId);
 bool AccessibilityWinPartsSmokeTest(Window* win, uint32_t nodeId);
 bool AccessibilityWinPropertyChangesSmokeTest();
+bool AccessibilityWinFocusChangesSmokeTest();
 bool AccessibilityWinTextChangesSmokeTest();
 bool AccessibilityWinSelectionEventsSmokeTest();
 bool AccessibilityWinDialogEventsSmokeTest();
@@ -1850,6 +1851,7 @@ void TestAccessibility() {
     TestSuite("accessibility");
 #if GPUI_OS_WINDOWS
     utassert(AccessibilityWinPropertyChangesSmokeTest());
+    utassert(AccessibilityWinFocusChangesSmokeTest());
     utassert(AccessibilityWinTextChangesSmokeTest());
     utassert(AccessibilityWinSelectionEventsSmokeTest());
     utassert(AccessibilityWinDialogEventsSmokeTest());

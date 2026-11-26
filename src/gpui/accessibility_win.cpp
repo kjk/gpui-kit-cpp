@@ -1050,6 +1050,10 @@ HRESULT WinAccessibility::ElementProviderFromPoint(
     return S_OK;
 }
 
+static int WinFocusedIndex(const Window* win) {
+    return win && win->active ? WindowAccessibilityFocusIndex(win) : -1;
+}
+
 HRESULT WinAccessibility::GetFocus(IRawElementProviderFragment** out) {
     if (!out) {
         return E_INVALIDARG;
@@ -1058,7 +1062,7 @@ HRESULT WinAccessibility::GetFocus(IRawElementProviderFragment** out) {
     if (!win) {
         return UIA_E_ELEMENTNOTAVAILABLE;
     }
-    int index = WindowAccessibilityFocusIndex(win);
+    int index = WinFocusedIndex(win);
     if (index >= 0) *out = NewNode(index);
     return S_OK;
 }
@@ -1280,7 +1284,7 @@ HRESULT WinAccessibilityNode::GetPropertyValue(PROPERTYID property,
     const AccessibilityNode* node = Node();
     if (!node) return UIA_E_ELEMENTNOTAVAILABLE;
     if (property == UIA_HasKeyboardFocusPropertyId) {
-        int index = WindowAccessibilityFocusIndex(root->win);
+        int index = WinFocusedIndex(root->win);
         VariantBool(out, index >= 0 && node == &root->win
                                                     ->accessibility[index]);
     } else if (property == UIA_IsOffscreenPropertyId && root->hwnd) {
@@ -2663,15 +2667,6 @@ intptr_t AccessibilityWinGetObject(WinAccessibility* accessibility,
         static_cast<IRawElementProviderSimple*>(accessibility));
 }
 
-static void AccessibilityRaiseNodeEvent(WinAccessibility* root, int index,
-                                        EVENTID event) {
-    IRawElementProviderSimple* provider = nullptr;
-    if (SUCCEEDED(AccessibilitySimpleAt(root, index, &provider)) && provider) {
-        UiaRaiseAutomationEvent(provider, event);
-        provider->Release();
-    }
-}
-
 // A removal can refer to an item that has already left the tree. Preserve
 // its runtime ID without reviving the provider's properties or actions.
 static IRawElementProviderSimple* WinEventProvider(WinAccessibility* root,
@@ -2951,6 +2946,65 @@ static bool WinSnapshotChanges(WinAccessibility* root,
     return structureChanged;
 }
 
+static bool WinSnapshotContains(const Vec<WinNodeSnapshot>& snapshots,
+                                uint32_t id) {
+    int lo = 0, hi = len(snapshots);
+    while (lo < hi) {
+        int mid = lo + (hi - lo) / 2;
+        if (snapshots[mid].id < id)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    return lo < len(snapshots) && snapshots[lo].id == id;
+}
+
+static void WinFocusChanges(WinAccessibility* root,
+                            const Vec<WinNodeSnapshot>* previousTree,
+                            Vec<WinPropertyChange>* properties,
+                            Vec<WinNodeEvent>* events) {
+    int index = WinFocusedIndex(root->win);
+    uint32_t focused = index >= 0 ? root->win->accessibility[index].id : 0;
+    uint32_t before = root->focusedNode;
+    if (before == focused) return;
+    root->focusedNode = focused;
+    auto reportProperty = [&](uint32_t id, bool nowFocused) {
+        if (!id || root->NodeIndex(id) < 0 ||
+            (previousTree && !WinSnapshotContains(*previousTree, id)))
+            return;
+        WinPropertyChange change{id, UIA_HasKeyboardFocusPropertyId, {}, {}};
+        VariantBool(&change.before, !nowFocused);
+        VariantBool(&change.after, nowFocused);
+        VecAppend(*properties, change);
+    };
+    reportProperty(before, false);
+    reportProperty(focused, true);
+    if (focused)
+        VecAppend(*events,
+                  WinNodeEvent{focused, UIA_AutomationFocusChangedEventId});
+}
+
+static void WinPublishEvents(WinAccessibility* root,
+                             Vec<WinPropertyChange>& properties,
+                             const Vec<WinNodeEvent>& events) {
+    for (auto& change : properties) {
+        if (auto* provider =
+                WinEventProvider(root, change.id, change.allowRemovedNode)) {
+            UiaRaiseAutomationPropertyChangedEvent(provider, change.property,
+                                                   change.before, change.after);
+            provider->Release();
+        }
+        ClearWinPropertyChange(&change);
+    }
+    for (const auto& event : events) {
+        if (auto* provider =
+                WinEventProvider(root, event.id, event.allowRemovedNode)) {
+            UiaRaiseAutomationEvent(provider, event.event);
+            provider->Release();
+        }
+    }
+}
+
 void AccessibilityWinTreeChanged(WinAccessibility* accessibility) {
     if (!accessibility || !accessibility->win) {
         return;
@@ -2959,32 +3013,19 @@ void AccessibilityWinTreeChanged(WinAccessibility* accessibility) {
     bool listening = UiaClientsAreListening();
     Vec<WinPropertyChange> properties;
     Vec<WinNodeEvent> events;
+    int oldFrame = accessibility->snapshotFrame;
     bool structure =
         WinSnapshotChanges(accessibility, listening ? &properties : nullptr,
                            listening ? &events : nullptr);
     if (listening) {
+        WinFocusChanges(accessibility, &accessibility->snapshots[oldFrame],
+                        &properties, &events);
         if (structure) {
             UiaRaiseStructureChangedEvent(
                 static_cast<IRawElementProviderSimple*>(accessibility),
                 StructureChangeType_ChildrenInvalidated, nullptr, 0);
         }
-        for (auto& change : properties) {
-            if (auto* provider = WinEventProvider(accessibility, change.id,
-                                                  change.allowRemovedNode)) {
-                UiaRaiseAutomationPropertyChangedEvent(
-                    provider, change.property, change.before, change.after);
-                provider->Release();
-            }
-            ClearWinPropertyChange(&change);
-        }
-        for (const auto& event : events) {
-            if (auto* provider = WinEventProvider(accessibility, event.id,
-                                                  event.allowRemovedNode)) {
-                UiaRaiseAutomationEvent(provider, event.event);
-                provider->Release();
-            }
-        }
-        AccessibilityWinFocusChanged(accessibility);
+        WinPublishEvents(accessibility, properties, events);
     }
     accessibility->Release();
 }
@@ -2992,19 +3033,95 @@ void AccessibilityWinTreeChanged(WinAccessibility* accessibility) {
 void AccessibilityWinFocusChanged(WinAccessibility* accessibility) {
     if (!accessibility || !accessibility->win || !UiaClientsAreListening())
         return;
-    int index = WindowAccessibilityFocusIndex(accessibility->win);
-    uint32_t focused =
-        index >= 0 ? accessibility->win->accessibility[index].id : 0;
-    if (accessibility->focusedNode == focused) return;
-    accessibility->focusedNode = focused;
-    if (focused)
-        AccessibilityRaiseNodeEvent(accessibility, index,
-                                    UIA_AutomationFocusChangedEventId);
+    accessibility->AddRef();
+    Vec<WinPropertyChange> properties;
+    Vec<WinNodeEvent> events;
+    WinFocusChanges(accessibility, nullptr, &properties, &events);
+    WinPublishEvents(accessibility, properties, events);
+    accessibility->Release();
 }
 
 // Linked only by the repository test runner (it is deliberately absent from
 // accessibility_win.h). This exercises the COM projection itself without
 // opening a second native window or making the public API carry test types.
+bool AccessibilityWinFocusChangesSmokeTest() {
+    Window win;
+    win.focusId = 5;
+    AccessibilityNode list;
+    list.id = 10;
+    list.focusId = 5;
+    list.info.role = AccessibilityRole::ListBox;
+    AccessibilityNode row;
+    row.id = 11;
+    row.parent = 0;
+    row.info.activeDescendant = true;
+    AccessibilityNode next = row;
+    next.id = 12;
+    next.info.activeDescendant = false;
+    VecAppend(win.accessibility, list);
+    VecAppend(win.accessibility, row);
+    VecAppend(win.accessibility, next);
+    WinAccessibility* root = AccessibilityWinNew(&win, GetDesktopWindow());
+    if (!root) return false;
+
+    Vec<WinPropertyChange> changes;
+    Vec<WinNodeEvent> events;
+    auto property = [&](int index, uint32_t id, bool focused) {
+        if (index >= len(changes)) return false;
+        const auto& change = changes[index];
+        return change.id == id &&
+               change.property == UIA_HasKeyboardFocusPropertyId &&
+               change.before.vt == VT_BOOL && change.after.vt == VT_BOOL &&
+               (change.before.boolVal != VARIANT_FALSE) == !focused &&
+               (change.after.boolVal != VARIANT_FALSE) == focused;
+    };
+    auto focusEvent = [&](uint32_t id) {
+        return len(events) == 1 && events[0].id == id &&
+               events[0].event == UIA_AutomationFocusChangedEventId;
+    };
+    auto clear = [&]() {
+        for (auto& change : changes) ClearWinPropertyChange(&change);
+        VecClear(changes);
+        VecClear(events);
+    };
+    WinFocusChanges(root, nullptr, &changes, &events);
+    bool ok = len(changes) == 1 && property(0, 11, true) && focusEvent(11);
+    clear();
+
+    win.accessibility[1].info.activeDescendant = false;
+    win.accessibility[2].info.activeDescendant = true;
+    int oldFrame = root->snapshotFrame;
+    WinSnapshotChanges(root, &changes);
+    WinFocusChanges(root, &root->snapshots[oldFrame], &changes, &events);
+    ok &= len(changes) == 2 && property(0, 11, false) &&
+          property(1, 12, true) && focusEvent(12);
+    clear();
+    WinFocusChanges(root, nullptr, &changes, &events);
+    ok &= !len(changes) && !len(events);
+
+    win.active = false;
+    WinFocusChanges(root, nullptr, &changes, &events);
+    ok &= len(changes) == 1 && property(0, 12, false) && !len(events);
+    IRawElementProviderFragment* focused = nullptr;
+    ok &= SUCCEEDED(root->GetFocus(&focused)) && !focused;
+    if (focused) focused->Release();
+    clear();
+
+    win.active = true;
+    WinFocusChanges(root, nullptr, &changes, &events);
+    ok &= len(changes) == 1 && property(0, 12, true) && focusEvent(12);
+    clear();
+
+    oldFrame = root->snapshotFrame;
+    win.accessibility[2].id = 13;
+    WinSnapshotChanges(root, &changes);
+    WinFocusChanges(root, &root->snapshots[oldFrame], &changes, &events);
+    ok &= !len(changes) && focusEvent(13);
+    clear();
+    AccessibilityWinClose(root);
+    return ok;
+}
+
 bool AccessibilityWinTextChangesSmokeTest() {
     Window win;
     InputState input;
