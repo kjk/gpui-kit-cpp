@@ -622,7 +622,8 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
 - **Diff owns its selection and painted geometry.** `src/ui/diff.cpp`
   uses source-byte endpoints for text and a separate line range for review.
   The focused diff handles copy and its paint runs provide glyph bounds.
-  The window's touch handles extend the diff's retained source-byte selection.
+  The window's touch handles extend the diff's retained source-byte selection
+  and scroll the diff when held near the vertical viewport edge.
   Rebuilding a disclosure preserves measured heights before and after the
   changed rows. Switching display modes measures the new column geometry.
   The diff body handles arrow, page and endpoint scrolling independently

@@ -4288,9 +4288,17 @@ static bool DiffTouchSnapshot(void* user, const Window*,
     return true;
 }
 
-static SelectionEdge ExtendDiffTouch(void* user, Window* win,
-                                     SelectionEdge edge, Point point) {
-    auto* state = static_cast<DiffState*>(user);
+static void StopDiffSelectionScroll(DiffState* state, Window* win);
+static void TrackDiffSelectionScroll(DiffState* state, Window* win, Point at);
+
+static bool DiffTouchDragActive(const DiffState* state, const Window* win) {
+    return win->sel && win->sel->touchSource.entity == state->self.id &&
+           (win->sel->hasTouchEdgeDrag || win->longPressSelection);
+}
+
+static SelectionEdge MoveDiffTouchEndpoint(DiffState* state, Window* win,
+                                           SelectionEdge edge, Point point,
+                                           bool* changed) {
     DiffTextSelection& sel = state->textSelection;
     const auto* run = DiffSelectionRun(state, point, sel.file, sel.side);
     if (!run) return edge;
@@ -4298,11 +4306,29 @@ static SelectionEdge ExtendDiffTouch(void* user, Window* win,
                                              : IMin(sel.anchor, sel.cursor);
     int moving = DiffSelectionAt(state, &win->paint, *run, point, 1).start;
     if (moving == fixed) return edge;
-    sel.anchor = IMin(fixed, moving);
-    sel.cursor = IMax(fixed, moving);
-    Ctx cx = {win->app, win, win->frameArena, state->self.id};
-    Notify(&cx);
+    int lo = IMin(fixed, moving);
+    int hi = IMax(fixed, moving);
+    if (sel.anchor != lo || sel.cursor != hi) {
+        sel.anchor = lo;
+        sel.cursor = hi;
+        *changed = true;
+    }
     return moving < fixed ? SelectionEdge::Start : SelectionEdge::End;
+}
+
+static SelectionEdge ExtendDiffTouch(void* user, Window* win,
+                                     SelectionEdge edge, Point point) {
+    auto* state = static_cast<DiffState*>(user);
+    if (DiffTouchDragActive(state, win))
+        TrackDiffSelectionScroll(state, win, point);
+    bool changed = false;
+    edge = MoveDiffTouchEndpoint(state, win, edge, point, &changed);
+    if (changed) NotifyEntity(win->app, state->self.id, win);
+    return edge;
+}
+
+static void EndDiffTouchDrag(void* user, Window* win) {
+    StopDiffSelectionScroll(static_cast<DiffState*>(user), win);
 }
 
 static Str CopyDiffTouch(void* user, Window* win, Arena* arena) {
@@ -4313,6 +4339,7 @@ static Str CopyDiffTouch(void* user, Window* win, Arena* arena) {
 
 static void ClearDiffTouch(void* user, Window* win) {
     auto* state = static_cast<DiffState*>(user);
+    StopDiffSelectionScroll(state, win);
     state->textSelection = {};
     AppInvalidate(win);
 }
@@ -4338,7 +4365,7 @@ static void OnDiffCodeLongPress(DiffState* state, Ctx* cx,
     selection.hitText = true;
     WindowSelectionAttachTouchSource(
         cx->win, {state->self.id, &DiffTouchSnapshot, &ExtendDiffTouch,
-                  &ClearDiffTouch, &CopyDiffTouch});
+                  &ClearDiffTouch, &CopyDiffTouch, &EndDiffTouchDrag});
     WindowPreventDefault(cx);
     Notify(cx);
 }
@@ -4404,41 +4431,60 @@ static void StopDiffSelectionScroll(DiffState* self, Window* win) {
 }
 
 static void DiffSelectionScrollTick(DiffState* self, Ctx* cx, const void*) {
+    Window* win = cx->win;
+    bool touch = DiffTouchDragActive(self, win);
+    bool pointer = win->mouseDown && self->textSelection.dragging;
     float delta = 0;
-    if (!cx->win->mouseDown || !self->textSelection.dragging ||
+    if ((!touch && !pointer) || self->selectionViewport.h <= 0 ||
         !AutoScrollComputeDelta(self->selectionPointer.y,
                                 self->selectionViewport, &delta)) {
-        StopDiffSelectionScroll(self, cx->win);
+        StopDiffSelectionScroll(self, win);
         return;
     }
-    ExtendDiffTextSelection(self, cx, self->selectionPointer);
+    bool changed = false;
+    if (touch) {
+        WindowSelection* selection = win->sel;
+        SelectionEdge& edge = selection->hasTouchEdgeDrag
+                                  ? selection->touchEdgeDrag.edge
+                                  : selection->touchSourceEdge;
+        edge = MoveDiffTouchEndpoint(self, win, edge, self->selectionPointer,
+                                     &changed);
+    } else {
+        ExtendDiffTextSelection(self, cx, self->selectionPointer);
+    }
     VirtualListScrollHandle& scroll = self->listScroll;
     float limit = std::max(0.f, scroll.contentSize - scroll.viewport);
     float next = std::max(0.f, std::min(scroll.offset + delta, limit));
     if (next != scroll.offset) {
         scroll.offset = next;
         scroll.pending = false;
-        Notify(cx);
+        changed = true;
     } else {
-        StopDiffSelectionScroll(self, cx->win);
+        StopDiffSelectionScroll(self, win);
+    }
+    if (changed) Notify(cx);
+}
+
+static void TrackDiffSelectionScroll(DiffState* self, Window* win, Point at) {
+    self->selectionPointer = at;
+    float delta = 0;
+    if (self->selectionViewport.h > 0 &&
+        AutoScrollComputeDelta(at.y, self->selectionViewport, &delta)) {
+        if (!self->selectionTimer) {
+            self->selectionTimer = WindowSetInterval(
+                win, 16, ListenTo(self->self, &DiffSelectionScrollTick));
+        }
+    } else {
+        StopDiffSelectionScroll(self, win);
     }
 }
 
 static void OnDiffSelectionMove(DiffState* self, Ctx* cx,
                                 const MouseMoveEvent* ev) {
     if (!ev->Dragging() || !self->textSelection.dragging) return;
-    self->selectionPointer = {ev->x, ev->y};
-    ExtendDiffTextSelection(self, cx, self->selectionPointer);
-    float delta = 0;
-    if (self->selectionViewport.h > 0 &&
-        AutoScrollComputeDelta(ev->y, self->selectionViewport, &delta)) {
-        if (!self->selectionTimer) {
-            self->selectionTimer = WindowSetInterval(
-                cx->win, 16, ListenTo(self->self, &DiffSelectionScrollTick));
-        }
-    } else {
-        StopDiffSelectionScroll(self, cx->win);
-    }
+    Point at = {ev->x, ev->y};
+    ExtendDiffTextSelection(self, cx, at);
+    TrackDiffSelectionScroll(self, cx->win, at);
 }
 
 static void OnDiffSelectionDrag(DiffState* self, Ctx* cx,

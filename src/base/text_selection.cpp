@@ -1452,6 +1452,12 @@ void WindowSelectionDrag(Window* win, float x, float y) {
 void WindowSelectionRelease(Window* win) {
     WindowSelection* s = win ? win->sel : nullptr;
     if (s) {
+        TouchSelectionSource source = s->touchSource;
+        if (source.endDrag) {
+            if (void* receiver = EntityGet(win->app, source.entity)) {
+                source.endDrag(receiver, win);
+            }
+        }
         s->autoScroll.Stop();
         s->autoScrollRelayout = false;
         ParticipantAutoScroll(win, s->cursorPoint, true);

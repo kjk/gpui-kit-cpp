@@ -2394,6 +2394,63 @@ static void TouchCopyMenuKeepsLargeDiffSource() {
     TestAppFree(stage.app);
 }
 
+static void DiffTouchHandleScrollsAndExtendsAtTheViewportEdge() {
+    StrBuilder patch;
+    patch.Append(StrL("--- /dev/null\n+++ b/file.rs\n@@ -0,0 +1,120 @@\n"));
+    for (int i = 0; i < 120; i++) {
+        patch.Append(fmt("+fn line%d() {}\n", i));
+    }
+    PointerStage stage = StagePointer(false, Str(patch.els, len(patch)));
+    DiffState* state = stage.host->state.Get(stage.app);
+    Bounds row;
+    bool found = DiffRunBounds(stage.win, DiffSide::Modified, 0, &row);
+    utassert(found);
+    if (found) {
+        float cell = MeasureText(&stage.win->paint, StrL("f"),
+                                 ThemeFontSize(stage.app), 0, false, kFontMono)
+                         .w;
+        Point word = {row.x + 4.5f * cell, row.CenterY()};
+        auto dispatch = [&](PlatformInput event) {
+            WindowDispatchInput(stage.win, &event);
+            TestDraw(stage.win);
+        };
+        dispatch(InputLongPress(TouchPhase::Started, word, word));
+        dispatch(InputLongPress(TouchPhase::Ended, word, word));
+        TouchSelectionSnapshot snapshot;
+        bool selected = WindowSelectionTouchSnapshot(stage.win, &snapshot);
+        utassert(selected && snapshot.endVisible);
+        if (selected && snapshot.endVisible) {
+            int anchor = state->textSelection.anchor;
+            Bounds knob =
+                TouchHandle::KnobBounds(SelectionEdge::End, snapshot.end);
+            Point start = {knob.CenterX(), knob.CenterY()};
+            Point edge = {start.x, state->selectionViewport.Bottom() + 32.f};
+            dispatch(InputTouchDrag(TouchPhase::Started, start, start));
+            utassert(stage.win->sel->hasTouchEdgeDrag);
+            dispatch(InputTouchDrag(TouchPhase::Moved, start, edge));
+            utassert(state->selectionTimer != 0);
+            int firstCursor = state->textSelection.cursor;
+            float firstOffset = state->listScroll.offset;
+            for (int i = 0; i < 8; i++) {
+                TestAdvanceClock(stage.app, 20);
+                TestDraw(stage.win);
+            }
+            utassert(state->listScroll.offset > firstOffset);
+            utassert(state->textSelection.anchor == anchor);
+            utassert(state->textSelection.cursor > firstCursor);
+            dispatch(InputTouchDrag(TouchPhase::Ended, start, edge));
+            utassert(state->selectionTimer == 0);
+            float released = state->listScroll.offset;
+            TestAdvanceClock(stage.app, 40);
+            TestDraw(stage.win);
+            utassertnear(state->listScroll.offset, released);
+            utassert(WindowSelectionTouchSnapshot(stage.win, &snapshot) &&
+                     snapshot.menuOpen);
+        }
+    }
+    TestAppFree(stage.app);
+}
+
 // selection_tests.rs: code copy uses the source bytes, and a double click
 // takes the word under the shaped glyph instead of its entire review line.
 static void CodeSelectionCopiesCharactersAndWords() {
@@ -2837,6 +2894,7 @@ void TestDiff() {
     AnnotationButtonPassesTheSelectedRange();
     TouchHandlesExtendAndCopyTheDiffSourceRange();
     TouchCopyMenuKeepsLargeDiffSource();
+    DiffTouchHandleScrollsAndExtendsAtTheViewportEdge();
     AnUnclaimedTextClickFallsThroughToTheLine();
     DiffPointerReportsLargeLineNumbers();
     HasLineCountsFoldedLinesButNotAbsentOnes();

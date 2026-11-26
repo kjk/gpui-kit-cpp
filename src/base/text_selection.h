@@ -326,6 +326,7 @@ struct TouchSelectionSource {
     SelectionEdge (*extend)(void*, Window*, SelectionEdge, Point);
     void (*clear)(void*, Window*);
     Str (*copy)(void*, Window*, Arena*);
+    void (*endDrag)(void*, Window*);
 };
 
 //
