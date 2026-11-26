@@ -2172,8 +2172,8 @@ static void SendEmbed() {
     DbusWriter body;
     PutObjectRef(&body, Str(kRootPath));
     gA11y.embedSerial =
-        SendCall("org.a11y.atspi.Registry", "/org/a11y/atspi/registry",
-                 "org.a11y.atspi.Socket", "Embed", "(so)", &body);
+        SendCall("org.a11y.atspi.Registry", kRootPath, "org.a11y.atspi.Socket",
+                 "Embed", "(so)", &body);
     VecReset(body.bytes);
 }
 
