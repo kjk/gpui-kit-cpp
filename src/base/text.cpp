@@ -9281,14 +9281,6 @@ El* TextView::IntoEl() {
                                  ListenTo(state, &TextViewState::OnFadeTick));
         }
     }
-    // Rust keeps selection_format on the view's own state and reconstructs
-    // the source when the copy asks for it. The copy is the window's here,
-    // so the view says what format it wants and the runs it builds below
-    // carry the Markdown that format needs.
-    if (selectable) {
-        WindowSelectionSetFormat(
-            cx->win, html ? gpui::SelectionFormat::Plain : selFormat);
-    }
     // `.text_color(text_view_style.foreground())` on the root: every block
     // below names no colour of its own, so this is what they inherit.
     El* root = Div(a)->FlexCol();

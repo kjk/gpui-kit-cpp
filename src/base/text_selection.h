@@ -370,9 +370,7 @@ struct WindowSelection {
     // Stable handles registered in this window. The participant state owns
     // its frame geometry; this list only lets window gestures publish events.
     Vec<EntityId> participants;
-    // What a copy says. Rust hangs `selection_format` off the TextView's own
-    // state and the document does the copying; the copy here is the window's,
-    // so the format is too, and `TextView::SelFormat` sets it as it renders.
+    // The fallback for copy outside a single TextView.
     SelectionFormat format = SelectionFormat::Plain;
     // The selection a long press left: handles and an edit menu. Cleared
     // when the selection is moved by anything other than the gesture.
@@ -445,7 +443,7 @@ void WindowSelectionSelectAll(Window* win, EntityId owner);
 // TextSelection::select_all for the touch edit menu: the participant the
 // gesture started in, keeping the handles and the menu over the result.
 void WindowSelectionSelectAllTouched(Window* win);
-// TextView::selection_format, on the window that does the copying.
+// The window fallback and the active selection's effective copy format.
 void WindowSelectionSetFormat(Window* win, SelectionFormat fmt);
 SelectionFormat WindowSelectionFormat(Window* win);
 // The window's copy: the selection to the clipboard. False when there is

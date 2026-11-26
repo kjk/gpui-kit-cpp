@@ -1461,13 +1461,24 @@ void WindowSelectionRelease(Window* win) {
     }
 }
 
-static const TextViewState* SelectAllTextView(Window* win) {
-    if (!win || !win->sel || win->sel->touchSource.copy) return nullptr;
-    EntityId owner = win->sel->selectAllOwner;
-    if (!EntityHasDrop(win->app, owner, &EntityDropT<TextViewState>)) {
+static const TextViewState* TextViewForSelectionOwner(App* app,
+                                                      EntityId owner) {
+    if (!EntityHasDrop(app, owner, &EntityDropT<TextViewState>)) {
         return nullptr;
     }
-    return (TextViewState*)EntityGet(win->app, owner);
+    return (const TextViewState*)EntityGet(app, owner);
+}
+
+static const TextViewState* SelectAllTextView(Window* win) {
+    if (!win || !win->sel || win->sel->touchSource.copy) return nullptr;
+    return TextViewForSelectionOwner(win->app, win->sel->selectAllOwner);
+}
+
+static bool SelectionContainsHit(const TextHit& hit, int lo, int hi,
+                                 int scope) {
+    int size = hit.atom || hit.blockPlugin ? 1 : len(hit.text);
+    return size > 0 && (scope < 0 || hit.scope == scope) && hit.docOff < hi &&
+           hit.docOff + size > lo;
 }
 
 int WindowSelectionTextAs(Window* win, char* out, int cap,
@@ -1493,10 +1504,6 @@ int WindowSelectionTextAs(Window* win, char* out, int cap,
 }
 
 int WindowSelectionText(Window* win, char* out, int cap) {
-    if (const TextViewState* view = SelectAllTextView(win)) {
-        return StrCopyCapped(out, cap,
-                             view->SelectAllText(view->selectionFormat));
-    }
     return WindowSelectionTextAs(win, out, cap, WindowSelectionFormat(win));
 }
 
@@ -1711,17 +1718,11 @@ static int SelectedTextInto(Window* window, App* app, char* out, int cap,
                                                        : selection->anchor;
         for (int i = 0; i < len(window->paint.texts); i++) {
             const TextHit& hit = window->paint.texts[i];
-            if (selection->scope && hit.scope != selection->scope) {
+            if (!SelectionContainsHit(hit, lo, hi, selection->scope)) {
                 continue;
             }
-            int hitEnd = hit.docOff + (hit.atom ? 1 : len(hit.text));
-            if (hitEnd <= lo || hit.docOff >= hi) {
-                continue;
-            }
-            if (!EntityHasDrop(app, hit.owner, &EntityDropT<TextViewState>)) {
-                continue;
-            }
-            TextViewState* view = (TextViewState*)EntityGet(app, hit.owner);
+            const TextViewState* view =
+                TextViewForSelectionOwner(app, hit.owner);
             if (view && !view->CopyDocumentReady()) {
                 out[0] = 0;
                 return 0;
@@ -1784,8 +1785,31 @@ void WindowSelectionSetFormat(Window* win, SelectionFormat fmt) {
 }
 
 SelectionFormat WindowSelectionFormat(Window* win) {
-    WindowSelection* s = win ? win->sel : nullptr;
-    return s ? s->format : SelectionFormat::Plain;
+    const WindowSelection* s = win ? win->sel : nullptr;
+    if (!s) return SelectionFormat::Plain;
+    if (s->touchSource.copy || !WindowSelectionHas(win)) return s->format;
+
+    EntityId owner = s->selectAllOwner;
+    if (!owner.IsValid()) {
+        int lo = std::min(s->anchor, s->cursor);
+        int hi = std::max(s->anchor, s->cursor);
+        for (const TextHit& hit : win->paint.texts) {
+            if (hit.docOff >= hi) break;
+            if (!SelectionContainsHit(hit, lo, hi, s->scope)) continue;
+            if (!hit.owner.IsValid() ||
+                (owner.IsValid() && hit.owner != owner)) {
+                return s->format;
+            }
+            owner = hit.owner;
+        }
+    }
+    if (const TextViewState* view =
+            TextViewForSelectionOwner(win->app, owner)) {
+        return view->format == TextViewFormat::Markdown
+                   ? view->selectionFormat
+                   : SelectionFormat::Plain;
+    }
+    return s->format;
 }
 
 bool WindowSelectionCopy(Window* win) {

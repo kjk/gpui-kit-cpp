@@ -6897,6 +6897,57 @@ static void PartialSourceCopyKeepsLargeEnclosedBlocks() {
     ArenaDelete(arena);
 }
 
+struct TextViewCopyFormats {
+    static El* Render(TextViewCopyFormats*, Ctx* cx) {
+        return Div(cx->a)
+            ->FlexCol()
+            ->Child(TextView::New(cx, StrL("**alpha**"))
+                        ->Selectable()
+                        ->SelFormat(SelectionFormat::Source)
+                        ->IntoEl())
+            ->Child(TextView::NewHtml(cx, StrL("<strong>beta</strong>"))
+                        ->Selectable()
+                        ->SelFormat(SelectionFormat::Source)
+                        ->IntoEl());
+    }
+};
+
+static void PartialCopyUsesTheSelectedTextViewFormat() {
+    App* app = TestAppNew();
+    auto view = EntityNew<TextViewCopyFormats>(app);
+    Window* win = TestWindowOpen(app, view);
+    TestDraw(win);
+    const TextHit* markdown = HitContaining(win, "alpha");
+    const TextHit* html = HitContaining(win, "beta");
+    utassert(markdown && html);
+    if (markdown && html) {
+        WindowSelection* selection = WindowSelectionOf(win);
+        auto select = [&](const TextHit& hit) {
+            selection->anchor = hit.docOff + 1;
+            selection->cursor = hit.docOff + 3;
+            selection->scope = hit.scope;
+            TextSelectionBegin(&selection->gesture, true);
+            TextSelectionEnd(&selection->gesture);
+        };
+        char bounded[64];
+        select(*markdown);
+        int n = WindowSelectionText(win, bounded, dimofi(bounded));
+        utassert(StrEq(Str(bounded, n), StrL("**lp**")));
+        utassert(WindowSelectionCopy(win));
+        utassert(StrEq(TestReadFromClipboard(GetTempArena()), StrL("**lp**")));
+        n = WindowSelectionTextAs(win, bounded, dimofi(bounded),
+                                  SelectionFormat::Plain);
+        utassert(StrEq(Str(bounded, n), StrL("lp")));
+
+        WindowSelectionSetFormat(win, SelectionFormat::Source);
+        select(*html);
+        utassert(WindowSelectionFormat(win) == SelectionFormat::Plain);
+        utassert(WindowSelectionCopy(win));
+        utassert(StrEq(TestReadFromClipboard(GetTempArena()), StrL("et")));
+    }
+    TestAppFree(app);
+}
+
 static void ShapedTextCopiesAcrossMarkdownStyleBoundaries() {
     TswView v = TswOpen("Some words pre**fix**", TswContainer::Window);
     v.State()
@@ -9362,6 +9413,7 @@ static void TestTextStateWindow() {
     SelectAllInSourceFormatReturnsSource();
     SelectAllClipboardUsesTheCommittedDocument();
     PartialSourceCopyKeepsLargeEnclosedBlocks();
+    PartialCopyUsesTheSelectedTextViewFormat();
     ShapedTextCopiesAcrossMarkdownStyleBoundaries();
     WrappedLinksUseSharedTextGeometry();
     InlineObjectsShareRowsWithShapedProse();
