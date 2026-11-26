@@ -200,7 +200,6 @@ struct AccessibilityLinuxState {
     uint32_t helloSerial = 0;
     uint32_t embedSerial = 0;
     Str busName = {};
-    Str busAddress = {};
     Str desktopBusName = {};
     Str desktopPath = {};
     Vec<uint8_t> rx;
@@ -1606,7 +1605,9 @@ static bool HandleApplication(const Incoming& in,
         PutString(&body, locale ? locale : "");
         SendReply(in.serial, in.sender, "s", &body);
     } else if (StrIs(in.member, "GetApplicationBusAddress")) {
-        PutString(&body, gA11y.busAddress);
+        // The application serves requests on its registered bus name. Only
+        // applications listening on a separate peer socket advertise one.
+        PutString(&body, "");
         SendReply(in.serial, in.sender, "s", &body);
     } else {
         VecReset(body.bytes);
@@ -2407,7 +2408,6 @@ void AccessibilityLinuxInit(App* app, Str busAddress) {
     }
     gA11y.fd = fd;
     gA11y.app = app;
-    gA11y.busAddress = StrDup(busAddress);
     if (!Authenticate()) {
         AccessibilityLinuxShutdown();
         return;
@@ -2428,8 +2428,6 @@ void AccessibilityLinuxShutdown() {
     gA11y.ready = false;
     StrFree(gA11y.busName);
     gA11y.busName = {};
-    StrFree(gA11y.busAddress);
-    gA11y.busAddress = {};
     StrFree(gA11y.desktopBusName);
     gA11y.desktopBusName = {};
     StrFree(gA11y.desktopPath);
