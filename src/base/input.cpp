@@ -1363,7 +1363,7 @@ static void WrapLineFragments(void* user, Str slice, int base,
         bool fast = measure != &WrapShapedWidth;
         if (!fast || !range.Fits(measure(data, slice), u->width, 0)) {
             MeasuredWrap(slice, u->width, u->wrappingIndent, measure, data, out,
-                         &range, &wm->scratch, fast);
+                         &range, &wm->scratch, measure == &WrapAsciiWidth);
         }
         if (u->valid) {
             u->valid->Intersect(range);

@@ -7,7 +7,7 @@
    not a document node. The value stays plain text; the token's id names
    the resource and may occur more than once. */
 
-#include "gpui/gpui.h"
+#include "base/text_boundary.h"
 
 namespace gpui {
 
@@ -229,11 +229,6 @@ InlineTokenError InputReplaceRangeWithToken(InputState* s, App* app,
                                             InlineToken token);
 InlineTokenError InputReplaceWithToken(InputState* s, App* app, Window* win,
                                        InlineToken token);
-// Whether `off` is where a grapheme cluster starts or ends in `text`: the
-// subset of UAX #29 this tree carries in place of a segmenter — a character
-// boundary that is not inside CR LF, not before an extend character and not
-// after a ZWJ.
-bool TextIsGraphemeBoundary(Str text, int off);
 int InputPreviousStartOfWordAt(const InputState* s, int offset);
 int InputNextEndOfWordAt(const InputState* s, int offset);
 

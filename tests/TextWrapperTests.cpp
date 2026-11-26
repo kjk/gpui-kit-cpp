@@ -366,6 +366,12 @@ static void MeasuredWrapPreservesWordsGraphemesAndIndentation() {
         "a\xF0\x9F\x91\xA9\xE2\x80\x8D\xF0\x9F\x92\xBB"
         "b";
     utassert(MeasuredIxsAre(emoji, 2, WrappingIndent::None, {12}));
+    utassert(MeasuredIxsAre("a\U0001f1fa\U0001f1f8\U0001f1e8\U0001f1e6b", 1,
+                            WrappingIndent::None, {1, 9, 17}));
+    utassert(MeasuredIxsAre("a\u0915\u094d\u0937\u0915\u0903b", 1,
+                            WrappingIndent::None, {1, 10, 16}));
+    // ZWJ joins to the character before it, but does not join these letters.
+    utassert(MeasuredIxsAre("a\u200db", 1, WrappingIndent::None, {4}));
     utassert(MeasuredIxsAre("  abcdefgh", 5, WrappingIndent::Same, {5, 8}));
     utassert(MeasuredIxsAre("  abcdefgh", 5, WrappingIndent::None, {2, 7}));
     utassert(MeasuredIxsAre("", 0, WrappingIndent::None, {}));

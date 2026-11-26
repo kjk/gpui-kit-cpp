@@ -3522,10 +3522,15 @@ static int WrapLineScan(Str text, WrappingIndent indentMode, Vec<int>* ends,
         }
     }
     for (int at = 0; at < n;) {
-        uint32_t c = 0;
-        int bytes = Utf8At(text, at, &c);
-        at += bytes > 0 ? bytes : 1;
-        if (scalarBoundaries || TextIsGraphemeBoundary(text, at)) {
+        if (scalarBoundaries) {
+            uint32_t c = 0;
+            at += Utf8At(text, at, &c);
+        } else {
+            // Start from a known cluster boundary so a run of flag emoji
+            // does not rescan its entire regional-indicator prefix.
+            at += TextNextGraphemeBoundary(Str(text.s + at, n - at), 0);
+        }
+        if (scalarBoundaries || Utf8IsCharBoundary(text, at)) {
             VecAppend(*ends, at);
         }
     }
@@ -3535,9 +3540,14 @@ static int WrapLineScan(Str text, WrappingIndent indentMode, Vec<int>* ends,
     LineBreakOpportunities(text, opportunities);
     if (!scalarBoundaries) {
         int count = 0;
+        int cluster = 0;
         for (int offset : *opportunities) {
-            if (TextIsGraphemeBoundary(text, offset))
+            while (cluster < len(*ends) && (*ends)[cluster] < offset) {
+                cluster++;
+            }
+            if (cluster < len(*ends) && (*ends)[cluster] == offset) {
                 (*opportunities)[count++] = offset;
+            }
         }
         VecResize(*opportunities, count);
     }

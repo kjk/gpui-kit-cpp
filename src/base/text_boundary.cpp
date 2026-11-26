@@ -128,6 +128,10 @@ static bool GraphemeBreakAt(Str text, int offset) {
     return true;
 }
 
+bool TextIsGraphemeBoundary(Str text, int offset) {
+    return Utf8IsCharBoundary(text, offset) && GraphemeBreakAt(text, offset);
+}
+
 int TextPreviousGraphemeBoundary(Str text, int offset) {
     offset = std::min(std::max(offset, 0), len(text));
     while (!Utf8IsCharBoundary(text, offset)) {

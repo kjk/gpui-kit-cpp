@@ -462,8 +462,9 @@ The current update target is
   opportunities come from the full `unicode-linebreak` 0.1.5 port (Unicode
   15.0), matching Rust. `MeasuredWrapBoundaries` starts each row's search
   from the cached character widths rather than from one grapheme, changing
-  how many prefixes are shaped, not which one is chosen. Grapheme filtering
-  still uses this tree's UAX #29 subset (`src/base/input_editor.cpp`).
+  how many prefixes are shaped, not which one is chosen. Wrapping, token
+  validation and caret motion share Unicode 17 extended grapheme boundaries
+  (`src/base/text_boundary.cpp`, `src/base/input_editor.cpp`).
 - **A token's hover exit is reconciled as the field builds, not at
   prepaint.** Rust's `prepaint_tokens` compares the retained hover against
   the token elements it has just placed. The rows here are elements built

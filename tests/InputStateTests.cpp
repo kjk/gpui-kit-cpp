@@ -6539,6 +6539,13 @@ static void InlineTokenTextareaImeAndModes() {
     utassert(combining
                  .WithToken(0, 1, InlineToken::New(StrL("bad"), StrL("a"))) ==
              InlineTokenError::InvalidBoundary);
+    InputContent flag = InputContent::New(StrL("\U0001f1fa\U0001f1f8"));
+    utassert(flag.WithToken(
+                 0, 4, InlineToken::New(StrL("flag"), StrL("\U0001f1fa"))) ==
+             InlineTokenError::InvalidBoundary);
+    InputContent joiner = InputContent::New(StrL("a\u200db"));
+    utassert(joiner.WithToken(4, 5, InlineToken::New(StrL("b"), StrL("b"))) ==
+             InlineTokenError::Ok);
     InputContent twice = InputContent::New(StrL("@a@a"));
     utassert(twice.WithToken(0, 2, InlineToken::New(StrL("a"), StrL("@a"))) ==
              InlineTokenError::Ok);

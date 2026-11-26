@@ -26,6 +26,7 @@ int Utf8ClipLeft(Str s, int off);
 
 // Unicode 17 extended grapheme boundaries, as used for caret movement in
 // crates/base/src/input/base/rope_ext.rs. Offsets are UTF-8 byte positions.
+bool TextIsGraphemeBoundary(Str text, int offset);
 int TextPreviousGraphemeBoundary(Str text, int offset);
 int TextNextGraphemeBoundary(Str text, int offset);
 
