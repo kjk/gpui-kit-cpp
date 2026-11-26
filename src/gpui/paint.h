@@ -76,6 +76,14 @@ uint8_t FontFamilyIntern(Str name);
 // The name an id was interned from; empty for 0 or an id never handed out.
 // Safe from any thread once the id is in hand.
 Str FontFamilyName(uint8_t id);
+struct FontFallbackList {
+    const Str* families = nullptr;
+    int count = 0;
+};
+// An empty list gets its own ID so a child can clear inherited fallbacks.
+// The registry copies the input names, in priority order.
+uint8_t FontFallbacksIntern(const Str* families, int count);
+FontFallbackList FontFamilyFallbacks(uint8_t family);
 inline uint16_t FontFamilyBits(uint8_t id) {
     return (uint16_t)((uint16_t)(id & 0x7F) << kFontFamilyShift);
 }

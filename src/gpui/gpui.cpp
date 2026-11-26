@@ -1656,6 +1656,9 @@ void StyleApplyFields(Style* into, const Style& over, uint32_t fields) {
     if (fields & StyleFieldFontFamily) {
         into->fontFamily = over.fontFamily;
     }
+    if (fields & StyleFieldFontFallbacks) {
+        into->fontFallbacks = over.fontFallbacks;
+    }
     if (fields & StyleFieldFontFeatures) {
         into->fontFeatures = over.fontFeatures;
     }
@@ -2476,6 +2479,10 @@ El* El::FontFamilyId(uint8_t family) {
     style.fontFamily = family;
     return this;
 }
+El* El::FontFallbacks(const Str* families, int count) {
+    style.fontFallbacks = FontFallbacksIntern(families, count);
+    return this;
+}
 El* El::Underline() {
     style.underline = true;
     return this;
@@ -2961,30 +2968,63 @@ static bool TextMeasKeyEq(const TextMeasSlot* sl, uint32_t hash, Str s,
 // the id is part of the weight word every shaped-text cache keys on, and a
 // family means the same face whichever window draws it. Ids are handed out
 // once and never reused, so a reader holding one never sees it change.
-static Str gFontFamilies[128];
+struct RegisteredFontFamily {
+    Str name;
+    uint8_t fallbacks = 0;
+};
+static RegisteredFontFamily gFontFamilies[128];
 static int gFontFamilyCount = 1; // id 0 is "unset"
+static FontFallbackList gFontFallbacks[256];
+static int gFontFallbackCount = 2; // unset, then explicitly empty
 
-uint8_t FontFamilyIntern(Str name) {
-    if (!name.s || len(name) <= 0) {
-        return 0;
-    }
+static uint8_t RegisterFontFamily(Str name, uint8_t fallbacks,
+                                  uint8_t defaultId) {
+    if (!len(name) && !fallbacks) return 0;
     for (int i = 1; i < gFontFamilyCount; i++) {
-        if (StrEq(gFontFamilies[i], name)) {
+        const auto& family = gFontFamilies[i];
+        if (family.fallbacks == fallbacks && StrEq(family.name, name)) {
             return (uint8_t)i;
         }
     }
-    if (gFontFamilyCount >= dimofi(gFontFamilies)) {
-        return 0;
-    }
-    gFontFamilies[gFontFamilyCount] = StrDup(name);
+    if (gFontFamilyCount >= dimofi(gFontFamilies)) return defaultId;
+    if (!defaultId && len(name)) name = StrDup(name);
+    gFontFamilies[gFontFamilyCount] = {name, fallbacks};
     return (uint8_t)gFontFamilyCount++;
+}
+
+uint8_t FontFamilyIntern(Str name) {
+    return RegisterFontFamily(name, 0, 0);
 }
 
 Str FontFamilyName(uint8_t id) {
     if (id == 0 || id >= gFontFamilyCount) {
         return {};
     }
-    return gFontFamilies[id];
+    return gFontFamilies[id].name;
+}
+
+uint8_t FontFallbacksIntern(const Str* families, int count) {
+    if (!families || count <= 0) return 1;
+    for (int i = 2; i < gFontFallbackCount; i++) {
+        const auto& list = gFontFallbacks[i];
+        if (list.count != count) continue;
+        int j = 0;
+        while (j < count && StrEq(list.families[j], families[j])) j++;
+        if (j == count) return (uint8_t)i;
+    }
+    if (gFontFallbackCount >= dimofi(gFontFallbacks) ||
+        count > INT_MAX / (int)sizeof(Str))
+        return 0;
+    auto* copy = AllocArray<Str>(count);
+    if (!copy) return 0;
+    for (int i = 0; i < count; i++) copy[i] = StrDup(families[i]);
+    gFontFallbacks[gFontFallbackCount] = {copy, count};
+    return (uint8_t)gFontFallbackCount++;
+}
+
+FontFallbackList FontFamilyFallbacks(uint8_t family) {
+    if (!family || family >= gFontFamilyCount) return {};
+    return gFontFallbacks[gFontFamilies[family].fallbacks];
 }
 
 uint8_t FontWeightBits(FontWeight weight, uint8_t unknown) {
@@ -3048,7 +3088,12 @@ uint16_t ElTextWeight(const El* e) {
             .fontFeatures == 1 + (uint8_t)gpui::FontFeatures::TabularFigures) {
         w |= kFontTabularNums;
     }
-    w |= FontFamilyBits(e->style.fontFamily);
+    uint8_t family = e->style.fontFamily;
+    uint8_t fallbacks = e->style.fontFallbacks;
+    if (fallbacks >= 2 && fallbacks < gFontFallbackCount) {
+        family = RegisterFontFamily(FontFamilyName(family), fallbacks, family);
+    }
+    w |= FontFamilyBits(family);
     return w;
 }
 
@@ -5031,10 +5076,13 @@ static void PrepareEl(PaintCtx* ctx, El* e, float inheritFont, Rgba inheritFg,
     }
     // font_family names a face rather than the flag fontMono is, and
     // cascades the same way.
-    if (e->style.fontFamily) {
+    if (e->style.fontFamily || e->style.fontFallbacks) {
         for (El* c = e->first; c; c = c->next) {
             if (!c->style.fontFamily) {
                 c->style.fontFamily = e->style.fontFamily;
+            }
+            if (!c->style.fontFallbacks) {
+                c->style.fontFallbacks = e->style.fontFallbacks;
             }
         }
     }

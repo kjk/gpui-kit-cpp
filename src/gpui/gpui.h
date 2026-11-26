@@ -2328,6 +2328,8 @@ struct Style {
     // (inherit, and the default face at the root). The spare byte of this
     // unit.
     uint8_t fontFamily = 0;
+    // Interned ordered fallback list. Zero inherits from the parent.
+    uint8_t fontFallbacks = 0;
 
     // El::TipShowDelay. -1 uses TooltipDefaults; zero shows at once. The
     // delay had no room in the unit above, so it opens the next one and
@@ -3645,6 +3647,7 @@ struct El {
     El* FontFamily(Str name);
     // The same with an id FontFamilyIntern already handed out.
     El* FontFamilyId(uint8_t family);
+    El* FontFallbacks(const Str* families, int count);
     El* Underline();
     El* Strikethrough();
     El* Italic();
@@ -4215,7 +4218,8 @@ enum StyleField : uint32_t {
     StyleFieldFontFeatures = 1u << 27,
     StyleFieldItalic = 1u << 28,
     StyleFieldUnderline = 1u << 29,
-    StyleFieldStrike = 1u << 30
+    StyleFieldStrike = 1u << 30,
+    StyleFieldFontFallbacks = 1u << 31
 };
 
 // StyleRefinement::refine, over the fields `fields` names and no others. The

@@ -10417,6 +10417,10 @@ static void InlineCodeRefinesItsFontAndDecorations() {
     }
     Style style;
     style.fontFamily = FontFamilyIntern(StrL("Georgia"));
+    char firstFamily[] = "Courier New";
+    Str families[] = {Str(firstFamily), StrL("Arial")};
+    style.fontFallbacks = FontFallbacksIntern(families, dimofi(families));
+    firstFamily[0] = 'X';
     style.italic = true;
     style.underline = true;
     style.strike = true;
@@ -10425,7 +10429,7 @@ static void InlineCodeRefinesItsFontAndDecorations() {
                    ->InlineCodeStyle(
                        style, StyleFieldFontFamily | StyleFieldFontFeatures |
                                   StyleFieldItalic | StyleFieldUnderline |
-                                  StyleFieldStrike)
+                                  StyleFieldStrike | StyleFieldFontFallbacks)
                    ->IntoEl();
     LayoutEl(&host.win->paint, root, 0, 0, 320, 200, 14, Rgba{});
     const El* code = FindTextEl(root, "123");
@@ -10433,6 +10437,26 @@ static void InlineCodeRefinesItsFontAndDecorations() {
              code->style.italic && code->style.underline &&
              code->style.strike &&
              code->style.fontFeatures == style.fontFeatures);
+    if (code) {
+        uint8_t profile = FontFamilyOf(ElTextWeight(code));
+        utassert(profile != style.fontFamily &&
+                 StrEq(FontFamilyName(profile), "Georgia"));
+        FontFallbackList listed = FontFamilyFallbacks(profile);
+        utassert(listed.count == 2);
+        if (listed.count == 2) {
+            utassert(StrEq(listed.families[0], "Courier New") &&
+                     StrEq(listed.families[1], "Arial"));
+        }
+        Style cleared = style;
+        cleared.fontFallbacks = FontFallbacksIntern(nullptr, 0);
+        El* child = TextEl(host.a, StrL("cleared"));
+        StyleApplyFields(&child->style, cleared, StyleFieldFontFallbacks);
+        El* holder = Div(host.a)->FontFamilyId(style.fontFamily)->Child(child);
+        holder->style.fontFallbacks = style.fontFallbacks;
+        LayoutEl(&host.win->paint, holder, 0, 0, 320, 200, 14, Rgba{});
+        utassert(FontFamilyOf(ElTextWeight(child)) == style.fontFamily &&
+                 child->style.fontFallbacks == cleared.fontFallbacks);
+    }
     InlineImageClose(&host);
 }
 

@@ -296,10 +296,9 @@ The current update target is
   where GPUI Fast reuses the previous frame.
   Callers pass `WithDocumentOrder`. `begin_selection_frame` is a no-op
   and does not assign that order.
-- **Inline code uses platform font fallbacks.** The refinement supports
-  family, weight, italics, decorations and the runtime's font-feature
-  flag. The platform supplies fallbacks for that family. Rust's
-  refinement can also specify its own fallback list (`src/base/text.cpp`).
+- **Font families and fallback lists share a bounded registry.** The packed
+  text key can hold 127 distinct family and list combinations. Mobile hosts
+  read the list through `FontFamilyFallbacks` in `src/gpui/paint.h`.
 - **A dialog outside the window stack eases in on its own clock.**
   `Dialog::IntoEl` still runs the entrance when no window layer supplied
   a presence sample (`dialog.cpp`). Rust takes that clock only from the

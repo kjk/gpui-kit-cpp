@@ -672,6 +672,9 @@ static bool StyleFieldsEqual(const gpui::Style& a, const gpui::Style& b,
     if ((fields & StyleFieldFontMono) && a.fontMono != b.fontMono) return false;
     if ((fields & StyleFieldFontFamily) && a.fontFamily != b.fontFamily)
         return false;
+    if ((fields & StyleFieldFontFallbacks) &&
+        a.fontFallbacks != b.fontFallbacks)
+        return false;
     if ((fields & StyleFieldFontFeatures) && a.fontFeatures != b.fontFeatures)
         return false;
     if ((fields & StyleFieldItalic) && a.italic != b.italic) return false;

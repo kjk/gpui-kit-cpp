@@ -769,7 +769,8 @@ EM_JS(void, GpJsImageFree, (int id), {
 EM_JS(int, GpJsTextNew,
       (const uint8_t* ptr, int len, float fontSize, float maxW, int wrap,
        int weightBits, float lineH, int align, float* outSize,
-       const uint8_t* famPtr, int famLen, const TextFontRange* spanPtr, int spanCount), {
+       const uint8_t* famPtr, int famLen, const Str* fallbacks, int fallbackCount,
+       const TextFontRange* spanPtr, int spanCount), {
     const G = globalThis.__gpui;
     const text = G.str(ptr, len);
     if (text.length === 0) {
@@ -800,9 +801,16 @@ EM_JS(int, GpJsTextNew,
     // font_family: the named family first, quoted at run time, and the
     // run's default list after it for the browser to fall back on.
     const named = famLen > 0 ? G.str(famPtr, famLen) : "";
-    const family = named.length > 0
-        ? JSON.stringify(named) + ", " + fallback
-        : fallback;
+    let family = named.length > 0 ? JSON.stringify(named) + ", " : "";
+    // When the caller only names fallbacks, keep the ordinary primary face.
+    const defaultFace = fallback.slice(0, fallback.indexOf(","));
+    if (named.length === 0 && fallbackCount) family = defaultFace + ", ";
+    for (let i = 0; i < fallbackCount; i++) {
+        const p = (fallbacks >> 2) + 2 * i;
+        const bytes = HEAP32[p + 1];
+        if (bytes > 0) family += JSON.stringify(G.str(HEAPU32[p], bytes)) + ", ";
+    }
+    family += fallback;
     const font = (italic ? "italic " : "") + w + " " + fontSize + "px " + family;
     const spans = [];
     for (let i = 0; i < spanCount; i++) {
@@ -1544,12 +1552,16 @@ TextLayout* TextLayoutShape(PaintCtx* ctx, Str s, float fontSize, float maxW,
     static_assert(sizeof(TextFontRange) == 12);
     static_assert(offsetof(TextFontRange, weight) == 8 &&
                   offsetof(TextFontRange, style) == 10);
+    static_assert(sizeof(Str) == 8 && offsetof(Str, len) == 4);
     float size[3] = {0, 0, 0};
-    Str family = FontFamilyName(FontFamilyOf(weight));
-    int id = GpJsTextNew((const uint8_t*)s.s, len(s), fontSize, maxW,
-                         wrap ? 1 : 0, weight, lineH, (int)align, size,
-                         (const uint8_t*)family.s, len(family),
-                         ctx->textFontRanges.ranges, ctx->textFontRanges.count);
+    uint8_t idFamily = FontFamilyOf(weight);
+    Str family = FontFamilyName(idFamily);
+    FontFallbackList fallbacks = FontFamilyFallbacks(idFamily);
+    int id =
+        GpJsTextNew((const uint8_t*)s.s, len(s), fontSize, maxW, wrap ? 1 : 0,
+                    weight, lineH, (int)align, size, (const uint8_t*)family.s,
+                    len(family), fallbacks.families, fallbacks.count,
+                    ctx->textFontRanges.ranges, ctx->textFontRanges.count);
     if (!id) {
         return nullptr;
     }

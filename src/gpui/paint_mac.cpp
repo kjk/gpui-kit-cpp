@@ -915,6 +915,46 @@ static CTFontRef FontFor(PaintApp* pa, float fontSize, uint16_t weight) {
         return nullptr;
     }
     auto ct = (CTFontRef)CFBridgingRetain(font);
+    FontFallbackList list = FontFamilyFallbacks(FontFamilyOf(weight));
+    if (list.count) {
+        NSMutableArray* cascade = [NSMutableArray array];
+        for (int i = 0; i < list.count; i++) {
+            Str familyName = list.families[i];
+            if (!len(familyName)) continue;
+            NSString* name =
+                [[NSString alloc] initWithBytes:familyName.s
+                                         length:(NSUInteger)len(familyName)
+                                       encoding:NSUTF8StringEncoding];
+            if (name) {
+                [cascade addObject:[NSFontDescriptor
+                                       fontDescriptorWithFontAttributes:@{
+                                           (__bridge id)
+                                           kCTFontFamilyNameAttribute : name,
+                                       }]];
+            }
+        }
+        if (cascade.count) {
+            NSArray* system =
+                CFBridgingRelease(CTFontCopyDefaultCascadeListForLanguages(
+                    ct, (__bridge CFArrayRef)[NSLocale preferredLanguages]));
+            if (system) [cascade addObjectsFromArray:system];
+            NSDictionary* attributes = @{
+                (__bridge id)kCTFontCascadeListAttribute : cascade,
+            };
+            CTFontDescriptorRef descriptor =
+                CTFontDescriptorCreateWithAttributes(
+                    (__bridge CFDictionaryRef)attributes);
+            if (descriptor) {
+                CTFontRef refined =
+                    CTFontCreateCopyWithAttributes(ct, 0, nullptr, descriptor);
+                CFRelease(descriptor);
+                if (refined) {
+                    CFRelease(ct);
+                    ct = refined;
+                }
+            }
+        }
+    }
     if (pa->nFonts >= kFontCacheCap) {
         // The cache is a fixed set of sizes in practice; if it ever fills up,
         // drop the oldest rather than growing without bound.

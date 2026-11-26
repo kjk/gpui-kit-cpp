@@ -15,6 +15,7 @@
 #include <d2d1_2.h>
 #include <d3d11.h>
 #include <dwrite.h>
+#include <dwrite_2.h>
 #include <dxgi1_2.h>
 #include <dcomp.h>
 #include <math.h>
@@ -65,6 +66,7 @@ struct PaintApp {
     // collection: 0 not asked yet, 1 installed, -1 missing, which keeps the
     // run's default face.
     int8_t familyInstalled[128] = {};
+    IDWriteFontFallback* familyFallbacks[128] = {};
 };
 
 // The window target is a DXGI flip-model swap chain with a D2D device context
@@ -181,6 +183,7 @@ void PaintAppFree(PaintApp* pa) {
     Rel(&pa->font20);
     Rel(&pa->font24);
     Rel(&pa->fontMono);
+    for (auto& fallback : pa->familyFallbacks) Rel(&fallback);
     Rel(&pa->dwrite);
     Rel(&pa->d2dDevice);
     Rel(&pa->dxgiFactory);
@@ -1425,6 +1428,77 @@ static const WCHAR* InstalledFamily(PaintApp* pa, uint16_t weight) {
     return pa->familyInstalled[id] > 0 ? wname : nullptr;
 }
 
+static void AppendWinFallback(IDWriteFontFallbackBuilder* builder,
+                              IDWriteFontCollection* collection, Str name,
+                              Vec<DWRITE_UNICODE_RANGE>& ranges) {
+    const WCHAR* familyName = len(name) ? ToCWstrTemp(name) : nullptr;
+    if (!familyName) return;
+    UINT32 index = 0;
+    BOOL exists = FALSE;
+    if (FAILED(collection->FindFamilyName(familyName, &index, &exists)) ||
+        !exists)
+        return;
+    IDWriteFontFamily* family = nullptr;
+    if (FAILED(collection->GetFontFamily(index, &family)) || !family) return;
+    IDWriteFont* font = nullptr;
+    HRESULT hr = family->GetFirstMatchingFont(DWRITE_FONT_WEIGHT_NORMAL,
+                                              DWRITE_FONT_STRETCH_NORMAL,
+                                              DWRITE_FONT_STYLE_NORMAL, &font);
+    Rel(&family);
+    if (FAILED(hr) || !font) return;
+    IDWriteFontFace* face = nullptr;
+    hr = font->CreateFontFace(&face);
+    Rel(&font);
+    if (FAILED(hr) || !face) return;
+    IDWriteFontFace1* coverage = nullptr;
+    hr = face->QueryInterface(IID_PPV_ARGS(&coverage));
+    Rel(&face);
+    if (FAILED(hr) || !coverage) return;
+    UINT32 count = 0;
+    hr = coverage->GetUnicodeRanges(0, nullptr, &count);
+    VecClear(ranges);
+    if ((SUCCEEDED(hr) ||
+         hr == HRESULT_FROM_WIN32(ERROR_INSUFFICIENT_BUFFER)) &&
+        count > 0 &&
+        count <= (UINT32)(INT_MAX / sizeof(DWRITE_UNICODE_RANGE)) &&
+        VecAppendBlanks(ranges, (int)count) &&
+        SUCCEEDED(coverage->GetUnicodeRanges(count, ranges.els, &count))) {
+        if (FAILED(builder->AddMapping(ranges.els, count, &familyName, 1)))
+            logf("DirectWrite could not map fallback font %s\n", name);
+    }
+    Rel(&coverage);
+}
+
+static IDWriteFontFallback* WinFontFallbacks(PaintApp* pa, uint8_t id) {
+    FontFallbackList list = FontFamilyFallbacks(id);
+    if (!list.count) return nullptr;
+    auto& fallback = pa->familyFallbacks[id];
+    if (fallback) return fallback;
+    IDWriteFactory2* factory = nullptr;
+    if (FAILED(pa->dwrite->QueryInterface(IID_PPV_ARGS(&factory))) || !factory)
+        return nullptr;
+    IDWriteFontFallbackBuilder* builder = nullptr;
+    IDWriteFontCollection* collection = nullptr;
+    IDWriteFontFallback* system = nullptr;
+    if (SUCCEEDED(factory->CreateFontFallbackBuilder(&builder)) && builder &&
+        SUCCEEDED(pa->dwrite->GetSystemFontCollection(&collection)) &&
+        collection && SUCCEEDED(factory->GetSystemFontFallback(&system)) &&
+        system) {
+        Vec<DWRITE_UNICODE_RANGE> ranges;
+        for (int i = 0; i < list.count; i++) {
+            AppendWinFallback(builder, collection, list.families[i], ranges);
+        }
+        if (SUCCEEDED(builder->AddMappings(system)) &&
+            FAILED(builder->CreateFontFallback(&fallback)))
+            Rel(&fallback);
+    }
+    Rel(&system);
+    Rel(&collection);
+    Rel(&builder);
+    Rel(&factory);
+    return fallback;
+}
+
 static IDWriteInlineObject* EllipsisSign(PaintApp* pa, IDWriteTextFormat* fmt) {
     if (!pa || !fmt || !pa->dwrite) {
         return nullptr;
@@ -1886,6 +1960,13 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
     // the system collection has it.
     if (const WCHAR* family = InstalledFamily(ctx->pa, weight)) {
         layout->SetFontFamilyName(family, range);
+    }
+    if (auto* fallback = WinFontFallbacks(ctx->pa, FontFamilyOf(weight))) {
+        IDWriteTextLayout2* custom = nullptr;
+        if (SUCCEEDED(layout->QueryInterface(IID_PPV_ARGS(&custom))) &&
+            custom && FAILED(custom->SetFontFallback(fallback)))
+            logf("DirectWrite could not apply the font fallback list\n");
+        Rel(&custom);
     }
     if (weight & kFontWeightMask) {
         layout->SetFontWeight(DwriteWeight(weight), range);

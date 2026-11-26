@@ -947,18 +947,25 @@ TextLayout* TextLayoutShape(PaintCtx* ctx, Str s, float fontSize, float maxW,
         return nullptr;
     }
     PangoFontDescription* fd = pango_font_description_new();
-    const char* face = (weight & kFontMono) ? kMono : kSans;
-    // font_family: Pango takes a comma-separated family list, so the named
-    // family goes first and the run's default face after it, which is what
-    // fontconfig falls back to when the family is not installed.
-    Str family = FontFamilyName(FontFamilyOf(weight));
-    char families[160];
-    if (len(family) > 0 && len(family) < 120) {
-        snprintf(families, sizeof(families), "%.*s,%s", len(family), family.s,
-                 face);
-        face = families;
+    Str face((weight & kFontMono) ? kMono : kSans);
+    uint8_t id = FontFamilyOf(weight);
+    Str family = FontFamilyName(id);
+    FontFallbackList list = FontFamilyFallbacks(id);
+    StrBuilder families;
+    if (len(family) || list.count) {
+        families.Append(len(family) ? family : face);
+        for (int i = 0; i < list.count; i++) {
+            if (!len(list.families[i])) continue;
+            families.AppendChar(',');
+            families.Append(list.families[i]);
+        }
+        if (len(family)) {
+            families.AppendChar(',');
+            families.Append(face);
+        }
+        if (families.els) face = Str(families.els, len(families));
     }
-    pango_font_description_set_family(fd, face);
+    pango_font_description_set_family(fd, face.s);
     pango_font_description_set_weight(fd, PangoWeightFor(weight, fontSize));
     if (weight & kFontItalic) {
         pango_font_description_set_style(fd, PANGO_STYLE_ITALIC);
