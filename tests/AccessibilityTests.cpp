@@ -932,9 +932,10 @@ static void TablesKeepCountsAndOneBasedIndices() {
     row->Child(cell);
     body->Child(row);
     table->Child(body);
-    table->Child(TableHeader::New(&f.cx, StrL("header"))
-                     ->Child(TableHead::New(&f.cx, StrL("name"), 2)
-                                 ->AriaLabel(StrL("Name"))));
+    El* headerRow = TableRow::New(&f.cx, StrL("header-row"), 1)
+                        ->Child(TableHead::New(&f.cx, StrL("name"), 2)
+                                    ->AriaLabel(StrL("Name")));
+    table->Child(TableHeader::New(&f.cx, StrL("header"))->Child(headerRow));
     AccessibilityCollect(table, &f.win->accessibility);
 
     const AccessibilityNode* tableNode =
@@ -945,6 +946,8 @@ static void TablesKeepCountsAndOneBasedIndices() {
         RoleNode(f.win->accessibility, AccessibilityRole::Row);
     const AccessibilityNode* cellNode =
         RoleNode(f.win->accessibility, AccessibilityRole::Cell);
+    const AccessibilityNode* headerNode =
+        RoleNode(f.win->accessibility, AccessibilityRole::ColumnHeader);
     utassert(tableNode && tableNode->info.rowCount == 12 &&
              tableNode->info.columnCount == 4);
     utassert(tableNode &&
@@ -954,13 +957,18 @@ static void TablesKeepCountsAndOneBasedIndices() {
     utassert(cellNode && cellNode->parent == 2 &&
              cellNode->info.columnIndex == 2);
     utassert(cellNode && base::StrEq(cellNode->info.label, StrL("Ada")));
+    utassert(headerNode && headerNode->info.columnIndex == 2 &&
+             headerNode->parent >= 0 &&
+             f.win->accessibility[headerNode->parent].info.rowIndex == 1);
 #if GPUI_OS_WINDOWS
-    if (tableNode && cellNode) {
+    if (tableNode && cellNode && headerNode) {
         utassert(AccessibilityWinSmokeTest(f.win, tableNode->id));
         utassert(AccessibilityWinSmokeTest(f.win, cellNode->id));
+        utassert(AccessibilityWinSmokeTest(f.win, headerNode->id));
     }
     table->Role(AccessibilityRole::Grid);
     table->accessibility.zeroBasedGridIndices = true;
+    headerRow->AriaRowIndex(0);
     cell->Role(AccessibilityRole::GridCell)->AriaSelected(true);
     AccessibilityCollect(table, &f.win->accessibility);
     const auto* gridNode =

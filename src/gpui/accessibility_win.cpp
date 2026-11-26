@@ -262,6 +262,11 @@ static bool AccessibilityCellRole(AccessibilityRole role) {
            role == AccessibilityRole::GridCell;
 }
 
+static bool AccessibilityGridItemRole(AccessibilityRole role) {
+    return AccessibilityCellRole(role) ||
+           role == AccessibilityRole::ColumnHeader;
+}
+
 static bool AccessibilityGridPattern(const AccessibilityInfo& info) {
     return AccessibilityGridRole(info.role) && info.hasRowCount &&
            info.hasColumnCount;
@@ -472,8 +477,7 @@ struct WinAccessibilityNode
         *index = root->NodeIndex(id);
         return root->win && *index >= 0 ? S_OK : UIA_E_ELEMENTNOTAVAILABLE;
     }
-    // A cell's index and its table's.
-    HRESULT CellTable(int* index, int* table) const;
+    HRESULT GridItemTable(int* index, int* table) const;
 
     WIN_UIA_FRAGMENT_METHODS
     HRESULT STDMETHODCALLTYPE Invoke() override;
@@ -730,17 +734,18 @@ static WinNodeProperties WinProperties(const WinAccessibility* root,
                                        int index) {
     const AccessibilityNode& node = root->win->accessibility[index];
     WinNodeProperties props(node);
-    if (node.info.hasRowIndex || AccessibilityCellRole(node.info.role)) {
+    if (node.info.hasRowIndex || AccessibilityGridItemRole(node.info.role)) {
         props.gridRow = AccessibilityGridRow(root, index);
     }
     props.gridColumn = AccessibilityGridColumn(root, index);
     return props;
 }
 
-HRESULT WinAccessibilityNode::CellTable(int* index, int* table) const {
+HRESULT WinAccessibilityNode::GridItemTable(int* index, int* table) const {
     const AccessibilityNode* node = Node();
     if (!node) return UIA_E_ELEMENTNOTAVAILABLE;
-    if (!AccessibilityCellRole(node->info.role)) return UIA_E_INVALIDOPERATION;
+    if (!AccessibilityGridItemRole(node->info.role))
+        return UIA_E_INVALIDOPERATION;
     *index = root->NodeIndex(id);
     *table = AccessibilityContainingGrid(root, *index);
     return *table >= 0 ? S_OK : UIA_E_INVALIDOPERATION;
@@ -750,7 +755,7 @@ static bool AccessibilityGridItemPattern(const WinAccessibility* root,
                                          int index) {
     if (index < 0) return false;
     const auto& info = root->win->accessibility[index].info;
-    return AccessibilityCellRole(info.role) && info.hasColumnIndex &&
+    return AccessibilityGridItemRole(info.role) && info.hasColumnIndex &&
            AccessibilityContainingGrid(root, index) >= 0 &&
            AccessibilityGridRow(root, index) >= 0;
 }
@@ -1110,6 +1115,7 @@ HRESULT WinAccessibilityNode::GetPatternProvider(PATTERNID pattern,
         return QueryInterface(__uuidof(IGridItemProvider), (void**)out);
     }
     if (pattern == UIA_TableItemPatternId &&
+        AccessibilityCellRole(node->info.role) &&
         AccessibilityGridItemPattern(root, root->NodeIndex(id))) {
         return QueryInterface(__uuidof(ITableItemProvider), (void**)out);
     }
@@ -1950,7 +1956,7 @@ HRESULT WinAccessibilityNode::GetItem(int row, int column,
     }
     for (int i = 0; i < len(root->win->accessibility); i++) {
         const AccessibilityNode& candidate = root->win->accessibility[i];
-        if (AccessibilityCellRole(candidate.info.role) &&
+        if (AccessibilityGridItemRole(candidate.info.role) &&
             AccessibilityContainingGrid(root, i) == tableIndex &&
             AccessibilityGridRow(root, i) == row &&
             AccessibilityGridColumn(root, i) == column) {
@@ -2015,7 +2021,7 @@ HRESULT WinAccessibilityNode::get_ColumnSpan(int* out) {
         return E_INVALIDARG;
     }
     int index = -1, table = -1;
-    if (HRESULT hr = CellTable(&index, &table); FAILED(hr)) return hr;
+    if (HRESULT hr = GridItemTable(&index, &table); FAILED(hr)) return hr;
     // The pinned semantic table API records one row and column index per cell
     // and no span, so one is the only value the portable tree can promise for
     // either span.
@@ -2027,7 +2033,7 @@ HRESULT WinAccessibilityNode::get_ContainingGrid(
     IRawElementProviderSimple** out) {
     int index = -1;
     int table = -1;
-    if (HRESULT hr = CellTable(&index, &table); FAILED(hr)) {
+    if (HRESULT hr = GridItemTable(&index, &table); FAILED(hr)) {
         return hr;
     }
     return AccessibilitySimpleAt(root, table, out);
@@ -2038,9 +2044,6 @@ HRESULT WinAccessibilityNode::GetRowHeaders(SAFEARRAY** out) {
     if (HRESULT hr = GridNode(&node); FAILED(hr)) {
         return hr;
     }
-    // AccessKit's role set used by these crates has ColumnHeader but no row
-    // header role, so an honest empty provider array is preferable to treating
-    // the first data cell as a header.
     return AccessibilityEmptyProviderArray(out);
 }
 
@@ -2065,14 +2068,14 @@ HRESULT WinAccessibilityNode::get_RowOrColumnMajor(RowOrColumnMajor* out) {
 
 HRESULT WinAccessibilityNode::GetRowHeaderItems(SAFEARRAY** out) {
     int index = -1, table = -1;
-    if (HRESULT hr = CellTable(&index, &table); FAILED(hr)) return hr;
+    if (HRESULT hr = GridItemTable(&index, &table); FAILED(hr)) return hr;
     return AccessibilityEmptyProviderArray(out);
 }
 
 HRESULT WinAccessibilityNode::GetColumnHeaderItems(SAFEARRAY** out) {
     int index = -1;
     int table = -1;
-    if (HRESULT hr = CellTable(&index, &table); FAILED(hr)) {
+    if (HRESULT hr = GridItemTable(&index, &table); FAILED(hr)) {
         return hr;
     }
     int column = AccessibilityGridColumn(root, index);
@@ -3310,7 +3313,8 @@ bool AccessibilityWinSmokeTest(Window* win, uint32_t nodeId) {
         {UIA_GridPatternId, AccessibilityGridPattern(expected->info)},
         {UIA_TablePatternId, AccessibilityGridPattern(expected->info)},
         {UIA_GridItemPatternId, AccessibilityGridItemPattern(root, index)},
-        {UIA_TableItemPatternId, AccessibilityGridItemPattern(root, index)},
+        {UIA_TableItemPatternId, AccessibilityCellRole(expected->info.role) &&
+                                     AccessibilityGridItemPattern(root, index)},
     };
     for (const PatternExpectation& pattern : patterns) {
         IUnknown* provider = nullptr;
@@ -3410,6 +3414,25 @@ bool AccessibilityWinSmokeTest(Window* win, uint32_t nodeId) {
         if (item) {
             item->Release();
         }
+        for (int i = 0; ok && i < len(root->win->accessibility); i++) {
+            if (root->win->accessibility[i]
+                        .info.role != AccessibilityRole::ColumnHeader ||
+                AccessibilityContainingGrid(root, i) != index ||
+                !AccessibilityGridItemPattern(root, i)) {
+                continue;
+            }
+            IRawElementProviderSimple* header = nullptr;
+            VARIANT type = {};
+            ok = SUCCEEDED(grid->GetItem(AccessibilityGridRow(root, i),
+                                         AccessibilityGridColumn(root, i),
+                                         &header)) &&
+                 header &&
+                 SUCCEEDED(header->GetPropertyValue(UIA_ControlTypePropertyId,
+                                                    &type)) &&
+                 type.vt == VT_I4 && type.lVal == UIA_HeaderItemControlTypeId;
+            if (header) header->Release();
+            VariantClear(&type);
+        }
         if (grid) {
             grid->Release();
         }
@@ -3433,7 +3456,6 @@ bool AccessibilityWinSmokeTest(Window* win, uint32_t nodeId) {
     }
     if (ok && AccessibilityGridItemPattern(root, index)) {
         IGridItemProvider* gridItem = nullptr;
-        ITableItemProvider* tableItem = nullptr;
         int row = -1;
         int column = -1;
         IRawElementProviderSimple* containing = nullptr;
@@ -3450,6 +3472,10 @@ bool AccessibilityWinSmokeTest(Window* win, uint32_t nodeId) {
         if (gridItem) {
             gridItem->Release();
         }
+    }
+    if (ok && AccessibilityCellRole(expected->info.role) &&
+        AccessibilityGridItemPattern(root, index)) {
+        ITableItemProvider* tableItem = nullptr;
         SAFEARRAY* headers = nullptr;
         ok = ok &&
              SUCCEEDED(simple->QueryInterface(__uuidof(ITableItemProvider),
