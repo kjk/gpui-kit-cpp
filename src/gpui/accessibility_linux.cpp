@@ -23,6 +23,9 @@ namespace gpui {
 
 static constexpr const char* kRootPath = "/org/a11y/atspi/accessible/root";
 static constexpr const char* kNullPath = "/org/a11y/atspi/null";
+static constexpr const char* kCachePath = "/org/a11y/atspi/cache";
+static constexpr const char* kCache = "org.a11y.atspi.Cache";
+#define GPUI_ATSPI_CACHE_ITEM "((so)(so)(so)iiassusau)"
 static constexpr const char* kAccessible = "org.a11y.atspi.Accessible";
 static constexpr const char* kApplication = "org.a11y.atspi.Application";
 static constexpr const char* kComponent = "org.a11y.atspi.Component";
@@ -174,6 +177,7 @@ struct LinuxNodeSnapshot {
     int selectionParent = -1;
     bool selectionContainer = false;
     bool selectionChanged = false;
+    uint8_t interfaces = 0;
 };
 
 struct LinuxNodeHistory {
@@ -526,6 +530,14 @@ static const AccessibilityNode* ElementNode(const LinuxAccessible& object) {
     if (object.root || !object.win || object.nodeIndex < 0 || object.part >= 0)
         return nullptr;
     return &object.win->accessibility[object.nodeIndex];
+}
+
+static TempStr ElementPathForTemp(Window* win, int wi, int index) {
+    const auto* history = LinuxHistory(win);
+    uint32_t wireId = history && index < len(history->wireIds)
+                          ? history->wireIds[index]
+                          : win->accessibility[index].id;
+    return WirePathForTemp(wi, wireId);
 }
 
 // The document node that owns a part.
@@ -961,7 +973,27 @@ static bool ParseIncoming(const uint8_t* data, int size, Incoming* in,
     return true;
 }
 
-static void PutInterfaces(DbusWriter* body, const LinuxAccessible& object) {
+enum LinuxOptionalInterface : uint8_t {
+    kLinuxAction = 1 << 0,
+    kLinuxValue = 1 << 1,
+    kLinuxSelection = 1 << 2,
+    kLinuxText = 1 << 3,
+    kLinuxEditable = 1 << 4,
+};
+
+static uint8_t LinuxNodeInterfaces(const AccessibilityNode& node) {
+    uint8_t interfaces = 0;
+    if (ActionCount(node)) interfaces |= kLinuxAction;
+    if (node.info.hasNumericValue) interfaces |= kLinuxValue;
+    if (IsSelectionRole(node.info.role)) interfaces |= kLinuxSelection;
+    if (WindowAccessibilityHasText(node)) interfaces |= kLinuxText;
+    if (node.input && (node.actions & AccessibilityActionSetValue))
+        interfaces |= kLinuxEditable;
+    return interfaces;
+}
+
+static void PutInterfaces(DbusWriter* body, const LinuxAccessible& object,
+                          uint8_t interfaces) {
     int lengthAt = 0;
     int contentsAt = 0;
     ArrayBegin(body, 4, &lengthAt, &contentsAt);
@@ -971,17 +1003,13 @@ static void PutInterfaces(DbusWriter* body, const LinuxAccessible& object) {
     } else if (object.part >= 0) {
         PutString(body, kComponent);
         PutString(body, kText);
-    } else if (object.win && object.nodeIndex >= 0) {
+    } else {
         PutString(body, kComponent);
-        const AccessibilityNode& node = object.win
-                                            ->accessibility[object.nodeIndex];
-        if (ActionCount(node)) PutString(body, kAction);
-        if (node.info.hasNumericValue) PutString(body, kValue);
-        if (IsSelectionRole(node.info.role)) PutString(body, kSelection);
-        if (WindowAccessibilityHasText(node)) PutString(body, kText);
-        if (node.input && (node.actions & AccessibilityActionSetValue)) {
-            PutString(body, kEditableText);
-        }
+        if (interfaces & kLinuxAction) PutString(body, kAction);
+        if (interfaces & kLinuxValue) PutString(body, kValue);
+        if (interfaces & kLinuxSelection) PutString(body, kSelection);
+        if (interfaces & kLinuxText) PutString(body, kText);
+        if (interfaces & kLinuxEditable) PutString(body, kEditableText);
     }
     ArrayEnd(body, lengthAt, contentsAt);
 }
@@ -1117,9 +1145,8 @@ static void PutParent(DbusWriter* body, const LinuxAccessible& object) {
     } else if (node.parent < 0) {
         PutObjectRef(body, Str(kRootPath));
     } else {
-        PutObjectRef(body,
-                     PathForTemp(object.windowIndex,
-                                 object.win->accessibility[node.parent].id));
+        PutObjectRef(body, ElementPathForTemp(object.win, object.windowIndex,
+                                              node.parent));
     }
 }
 
@@ -1414,6 +1441,89 @@ static bool SendHandledReply(const Incoming& in, const char* signature,
     return true;
 }
 
+static void PutCacheItem(DbusWriter* body, const LinuxAccessible& object,
+                         int index, int children, uint8_t interfaces) {
+    Str path = object.root
+                   ? Str(kRootPath)
+                   : (Str)ElementPathForTemp(object.win, object.windowIndex,
+                                             object.nodeIndex);
+    const auto* node = ElementNode(object);
+    PutObjectRef(body, path);
+    PutObjectRef(body, Str(kRootPath));
+    PutParent(body, object);
+    PutI32(body, index);
+    // Keep synthetic document pages on demand. A negative count tells
+    // clients to query the document's children through Accessible.
+    PutI32(body, node && node->document.partCount ? -1 : children);
+    PutInterfaces(body, object, interfaces);
+    PutString(body, ObjectName(object));
+    PutU32(body, node ? AtspiRole(node->info.role) : 75);
+    PutString(body, node ? LinuxNodeDescription(node->info) : Str{});
+    PutStates(body, object);
+}
+
+static bool HandleLinuxCache(const Incoming& in) {
+    DbusWriter body;
+    if (StrIs(in.interfaceName, kCache) && StrIs(in.member, "GetItems")) {
+        int lengthAt = 0;
+        int contentsAt = 0;
+        ArrayBegin(&body, 8, &lengthAt, &contentsAt);
+        int rootChildren = 0;
+        if (gA11y.app) {
+            for (auto* win : gA11y.app->windows) {
+                if (!win || !win->plat || !LinuxHistory(win)) continue;
+                for (const auto& node : win->accessibility)
+                    rootChildren += node.parent < 0;
+            }
+        }
+        LinuxAccessible root;
+        root.root = true;
+        PutCacheItem(&body, root, -1, rootChildren, 0);
+        Vec<int> childCounts;
+        Vec<int> siblingIndices;
+        int rootIndex = 0;
+        for (int wi = 0; gA11y.app && wi < len(gA11y.app->windows); wi++) {
+            Window* win = gA11y.app->windows[wi];
+            if (!win || !win->plat || !LinuxHistory(win)) continue;
+            int count = len(win->accessibility);
+            if (!VecResize(childCounts, count) ||
+                !VecResize(siblingIndices, count)) {
+                SendError(in.serial, in.sender,
+                          "org.freedesktop.DBus.Error.NoMemory",
+                          "could not gather the accessibility tree");
+                return true;
+            }
+            if (count) memset(childCounts.els, 0, count * sizeof(int));
+            for (int i = 0; i < count; i++) {
+                int parent = win->accessibility[i].parent;
+                siblingIndices[i] =
+                    parent < 0 ? rootIndex++ : childCounts[parent]++;
+            }
+            for (int i = 0; i < count; i++) {
+                LinuxAccessible object{win, wi, i};
+                PutCacheItem(&body, object, siblingIndices[i], childCounts[i],
+                             LinuxNodeInterfaces(win->accessibility[i]));
+            }
+        }
+        ArrayEnd(&body, lengthAt, contentsAt);
+        return SendHandledReply(in, "a" GPUI_ATSPI_CACHE_ITEM, &body);
+    }
+    if (StrIs(in.interfaceName, "org.freedesktop.DBus.Introspectable") &&
+        StrIs(in.member, "Introspect")) {
+        PutString(
+            &body,
+            "<node><interface name='org.a11y.atspi.Cache'>"
+            "<method name='GetItems'><arg type='a" GPUI_ATSPI_CACHE_ITEM
+            "' direction='out'/></method>"
+            "<signal name='AddAccessible'><arg type='" GPUI_ATSPI_CACHE_ITEM
+            "'/></signal>"
+            "<signal name='RemoveAccessible'><arg type='(so)'/></signal>"
+            "</interface></node>");
+        return SendHandledReply(in, "s", &body);
+    }
+    return false;
+}
+
 static bool HandleAccessible(const Incoming& in,
                              const LinuxAccessible& object) {
     if (!StrIs(in.interfaceName, kAccessible)) return false;
@@ -1461,7 +1571,7 @@ static bool HandleAccessible(const Incoming& in,
         PutStates(&body, object);
         signature = "au";
     } else if (StrIs(in.member, "GetInterfaces")) {
-        PutInterfaces(&body, object);
+        PutInterfaces(&body, object, node ? LinuxNodeInterfaces(*node) : 0);
         signature = "as";
     } else if (StrIs(in.member, "GetAttributes")) {
         PutEmptyStringDict(&body);
@@ -2217,6 +2327,13 @@ static void HandleReply(const Incoming& in) {
 }
 
 static void HandleMethod(const Incoming& in) {
+    if (StrIs(in.path, kCachePath)) {
+        if (!HandleLinuxCache(in))
+            SendError(in.serial, in.sender,
+                      "org.freedesktop.DBus.Error.UnknownMethod",
+                      "unsupported AT-SPI cache method");
+        return;
+    }
     LinuxAccessible object = AccessibleForPath(in.path);
     if (!object.root && (!object.win || object.nodeIndex < 0)) {
         SendError(in.serial, in.sender,
@@ -2445,12 +2562,34 @@ static void SendEvent(Window* win, uint32_t nodeId, const char* member,
         SendWireEvent(win, wireId, member, detail, detail1, payload, detail2);
 }
 
+static void SendCacheSignal(const char* member, const char* signature,
+                            DbusWriter* body) {
+    DbusWriter fields;
+    PutHeaderString(&fields, 1, "o", Str(kCachePath));
+    PutHeaderString(&fields, 2, "s", Str(kCache));
+    PutHeaderString(&fields, 3, "s", Str(member));
+    PutHeaderString(&fields, 8, "g", Str(signature));
+    SendMessage(4, 0, &fields, body);
+}
+
+static void RemoveCacheItem(int windowIndex, uint32_t wireId) {
+    DbusWriter body;
+    PutObjectRef(&body, WirePathForTemp(windowIndex, wireId));
+    SendCacheSignal("RemoveAccessible", "(so)", &body);
+}
+
 static void RemoveLinuxRootChildren(Window* win,
                                     const LinuxNodeHistory& history) {
     for (const auto& node : history.frames[history.frame]) {
         if (node.parentIndex < 0 && node.wireId)
             SendWireEvent(win, 0, "ChildrenChanged", "remove", -1,
                           AtspiEventValue::Object(node.wireId));
+    }
+    int wi = 0;
+    while (wi < len(gA11y.app->windows) && gA11y.app->windows[wi] != win) wi++;
+    if (wi == len(gA11y.app->windows)) return;
+    for (const auto& node : history.frames[history.frame]) {
+        if (node.wireId) RemoveCacheItem(wi, node.wireId);
     }
 }
 
@@ -2645,10 +2784,10 @@ static uint32_t LinuxParentWireId(const Vec<LinuxNodeSnapshot>& frame,
     return node.parentIndex < 0 ? 0 : frame[node.parentIndex].wireId;
 }
 
-static int LinuxRootChildOffset(Window* win) {
+static int LinuxRootChildOffset(int windowIndex) {
     int count = 0;
-    for (Window* window : gA11y.app->windows) {
-        if (window == win) break;
+    for (int wi = 0; wi < windowIndex; wi++) {
+        Window* window = gA11y.app->windows[wi];
         if (!window || !window->plat) continue;
         for (const auto& node : window->accessibility) count += node.parent < 0;
     }
@@ -2657,11 +2796,12 @@ static int LinuxRootChildOffset(Window* win) {
 
 static void SendLinuxChildrenChanges(Window* win, LinuxNodeHistory* history,
                                      const Vec<LinuxNodeSnapshot>& previous,
-                                     Vec<LinuxNodeSnapshot>& next) {
+                                     Vec<LinuxNodeSnapshot>& next,
+                                     int windowIndex) {
     auto& childCounts = history->childCounts;
     auto& lastRetainedChild = history->lastRetainedChild;
     int rootSlot = len(next);
-    childCounts[rootSlot] = LinuxRootChildOffset(win);
+    childCounts[rootSlot] = LinuxRootChildOffset(windowIndex);
     for (int index : history->treeOrder) {
         auto& child = next[index];
         int parent = win->accessibility[child.index].parent;
@@ -2724,6 +2864,32 @@ static void SendLinuxChildrenChanges(Window* win, LinuxNodeHistory* history,
     }
 }
 
+static void SendLinuxCacheChanges(Window* win, int wi,
+                                  const LinuxNodeHistory& history,
+                                  const Vec<LinuxNodeSnapshot>& previous,
+                                  const Vec<LinuxNodeSnapshot>& next) {
+    for (const auto& node : previous) {
+        if (node.nextIndex < 0 && node.wireId) RemoveCacheItem(wi, node.wireId);
+    }
+    for (int index : history.treeOrder) {
+        const auto& node = next[index];
+        if (!node.wireId) continue;
+        int slot = node.parentIndex < 0 ? len(next) : node.parentIndex;
+        if (node.previousIndex >= 0 && history.lastRetainedChild[slot] != -2) {
+            const auto& old = previous[node.previousIndex];
+            if (old.interfaces == node.interfaces &&
+                LinuxParentWireId(previous, old) ==
+                    LinuxParentWireId(next, node))
+                continue;
+        }
+        DbusWriter body;
+        LinuxAccessible object{win, wi, node.index};
+        PutCacheItem(&body, object, node.siblingIndex,
+                     history.childCounts[index], node.interfaces);
+        SendCacheSignal("AddAccessible", GPUI_ATSPI_CACHE_ITEM, &body);
+    }
+}
+
 static uint32_t LinuxSelectionOwner(const Vec<LinuxNodeSnapshot>& frame,
                                     const LinuxNodeSnapshot& item) {
     if (!(item.state & AtspiBit(kAtspiSelected)) || item.selectionParent < 0)
@@ -2759,6 +2925,12 @@ static void SendLinuxSelectionChanges(Window* win,
 }
 
 static void TrackLinuxNodes(Window* win) {
+    int windowIndex = 0;
+    if (!gA11y.app) return;
+    while (windowIndex < len(gA11y.app->windows) &&
+           gA11y.app->windows[windowIndex] != win)
+        windowIndex++;
+    if (windowIndex == len(gA11y.app->windows)) return;
     LinuxNodeHistory* history = LinuxHistory(win);
     if (!history) {
         history = new LinuxNodeHistory;
@@ -2800,6 +2972,7 @@ static void TrackLinuxNodes(Window* win) {
                    (bool)info.hasNumericValue,
                    node.bounds};
         next[i].selectionContainer = IsSelectionRole(info.role);
+        next[i].interfaces = LinuxNodeInterfaces(node);
     }
     if (len(next) > 1)
         qsort(next.els, (size_t)len(next), sizeof(next[0]), CompareLinuxNode);
@@ -2834,7 +3007,8 @@ static void TrackLinuxNodes(Window* win) {
         history->treeOrder[current.index] = sortedIndex;
     }
     history->frame = 1 - history->frame;
-    SendLinuxChildrenChanges(win, history, previous, next);
+    SendLinuxChildrenChanges(win, history, previous, next, windowIndex);
+    SendLinuxCacheChanges(win, windowIndex, *history, previous, next);
     for (const auto& current : next) {
         if (current.previousIndex >= 0)
             SendLinuxNodeChanges(win, previous[current.previousIndex], current);
@@ -3151,17 +3325,32 @@ struct LinuxSmokeEvent {
 };
 
 static bool LinuxSmokeEvents(int fd, const LinuxSmokeEvent* expected, int count,
-                             bool checkChildren = false) {
-    uint8_t buffer[4096];
+                             bool checkChildren = false, int cacheAdds = -1,
+                             int cacheRemoves = -1) {
+    uint8_t buffer[16384];
     int size = (int)recv(fd, buffer, sizeof(buffer), MSG_DONTWAIT);
     int seen = 0;
+    int adds = 0;
+    int removes = 0;
     for (int offset = 0; offset < size;) {
         int bytes = 0;
         Incoming in;
         if (!ParseIncoming(buffer + offset, size - offset, &in, &bytes) ||
-            in.type != 4 || !StrIs(in.signature, "siiva{sv}"))
+            in.type != 4)
             return false;
         offset += bytes;
+        if (StrIs(in.path, kCachePath)) {
+            bool add = StrIs(in.member, "AddAccessible") &&
+                       StrIs(in.signature, GPUI_ATSPI_CACHE_ITEM);
+            bool remove = StrIs(in.member, "RemoveAccessible") &&
+                          StrIs(in.signature, "(so)");
+            if (!StrIs(in.interfaceName, kCache) || !(add || remove))
+                return false;
+            adds += add;
+            removes += remove;
+            continue;
+        }
+        if (!StrIs(in.signature, "siiva{sv}")) return false;
         if (!checkChildren && StrIs(in.member, "ChildrenChanged")) continue;
         if (seen >= count) return false;
         const auto& event = expected[seen++];
@@ -3207,7 +3396,8 @@ static bool LinuxSmokeEvents(int fd, const LinuxSmokeEvent* expected, int count,
             return false;
         }
     }
-    return seen == count;
+    return seen == count && (cacheAdds < 0 || adds == cacheAdds) &&
+           (cacheRemoves < 0 || removes == cacheRemoves);
 }
 
 static bool LinuxSmokeChildChanges(Window* win, int fd) {
@@ -3230,7 +3420,7 @@ static bool LinuxSmokeChildChanges(Window* win, int fd) {
     const LinuxSmokeEvent opened[] = {
         {"ChildrenChanged", "add", 0, 0, AtspiEventValue::Object(1)},
     };
-    bool ok = LinuxSmokeEvents(fd, opened, dimofi(opened), true);
+    bool ok = LinuxSmokeEvents(fd, opened, dimofi(opened), true, 3, 0);
 
     const uint32_t inserted[] = {100, 150, 200, 300};
     const int insertedParents[] = {-1, 0, 0, 0};
@@ -3238,14 +3428,14 @@ static bool LinuxSmokeChildChanges(Window* win, int fd) {
     const LinuxSmokeEvent added[] = {
         {"ChildrenChanged", "add", 0, 0, AtspiEventValue::Object(4), 1},
     };
-    ok = LinuxSmokeEvents(fd, added, dimofi(added), true) && ok;
+    ok = LinuxSmokeEvents(fd, added, dimofi(added), true, 1, 0) && ok;
     ok = LinuxWireId(win, 3) == 2 && LinuxWireId(win, 4) == 3 && ok;
 
     setTree(original, siblings, dimofi(original));
     const LinuxSmokeEvent removed[] = {
         {"ChildrenChanged", "remove", -1, 0, AtspiEventValue::Object(4), 1},
     };
-    ok = LinuxSmokeEvents(fd, removed, dimofi(removed), true) && ok;
+    ok = LinuxSmokeEvents(fd, removed, dimofi(removed), true, 0, 1) && ok;
     ok = LinuxNodeIndexForWire(win, 4) < 0 && ok;
 
     const uint32_t reordered[] = {100, 300, 200};
@@ -3253,7 +3443,8 @@ static bool LinuxSmokeChildChanges(Window* win, int fd) {
     const LinuxSmokeEvent orderChanged[] = {
         {"ChildrenChanged", "invalidate", 0, 0, {}, 1},
     };
-    ok = LinuxSmokeEvents(fd, orderChanged, dimofi(orderChanged), true) && ok;
+    ok = LinuxSmokeEvents(fd, orderChanged, dimofi(orderChanged), true, 2, 0) &&
+         ok;
 
     const int reparented[] = {-1, 0, 1};
     setTree(original, reparented, dimofi(original));
@@ -3263,7 +3454,7 @@ static bool LinuxSmokeChildChanges(Window* win, int fd) {
         {"PropertyChange", "accessible-parent", 0, 0,
          AtspiEventValue::Object(2), 3},
     };
-    ok = LinuxSmokeEvents(fd, moved, dimofi(moved), true) && ok;
+    ok = LinuxSmokeEvents(fd, moved, dimofi(moved), true, 1, 0) && ok;
     AccessibilityLinuxTreeChanged(win);
     ok = LinuxSmokeEvents(fd, nullptr, 0, true) && ok;
 
@@ -3281,7 +3472,7 @@ static bool LinuxSmokeChildChanges(Window* win, int fd) {
     const LinuxSmokeEvent closed[] = {
         {"ChildrenChanged", "remove", -1, 0, AtspiEventValue::Object(1)},
     };
-    return LinuxSmokeEvents(fd, closed, dimofi(closed), true) && ok;
+    return LinuxSmokeEvents(fd, closed, dimofi(closed), true, 0, 3) && ok;
 }
 
 static bool LinuxSmokeSelectionChanges(Window* win, int fd) {
@@ -3519,5 +3710,6 @@ bool AccessibilityLinuxEventSmokeTest() {
 
 } // namespace gpui
 
+#undef GPUI_ATSPI_CACHE_ITEM
 #pragma pop_macro("True")
 #pragma pop_macro("Status")

@@ -276,6 +276,9 @@ The current update target is
   role, numeric-value and window-relative bounds changes.
   Selection containers report changes to their selected descendants once per
   tree update.
+  AT-SPI clients can read the current tree in a single cache request and
+  receive cache updates for structural changes. Synthetic document pages
+  are still queried on demand.
   AT-SPI object paths survive recollection for nodes with a unique element
   path. Nodes that share a path are matched by their collection position.
   Focus follows X11 activation and the retained widget focus handle. An
