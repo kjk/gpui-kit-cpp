@@ -241,6 +241,8 @@ The current update target is
   test windows always collect; wasm never does (`src/gpui/window_common.cpp`).
 - **Linux still broadcasts tree invalidations.** Retained nodes also send
   individual state, name, description, role and numeric-value changes.
+  Focus follows X11 activation and the retained widget focus handle. An
+  exposed text field reports its caret and selection when it gains focus.
   Child-list changes use the blanket invalidation instead of AccessKit's
   per-child events (`src/gpui/accessibility_linux.cpp`).
 - **A document's text can be read on demand.** Local addition for large

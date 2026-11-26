@@ -76,6 +76,7 @@ static int gNativeOverlaySelectionEvent = 0;
 
 struct PlatWindow {
     XWindow xwin = 0;
+    bool accessibilityFocused = false;
     cairo_surface_t* surf = nullptr; // the window itself
     cairo_surface_t* back = nullptr; // what a frame is drawn into
 #if defined(GPUI_HAVE_X11_NATIVE_OVERLAY)
@@ -1340,8 +1341,12 @@ void PlatAccessibilityTreeChanged(Window* win) {
     AccessibilityLinuxTreeChanged(win);
 }
 
-void PlatAccessibilityFocusChanged(Window* win, int focusId) {
-    AccessibilityLinuxFocusChanged(win, focusId);
+void PlatAccessibilityFocusChanged(Window* win, int) {
+    AccessibilityLinuxFocusChanged(win);
+}
+
+bool AccessibilityLinuxWindowFocused(const Window* win) {
+    return win->plat ? win->plat->accessibilityFocused : win->active;
 }
 
 bool PlatAccessibilityWanted(Window* win) {
@@ -2147,6 +2152,8 @@ static void DestroyPlatWindow(Window* win) {
     }
     // While the PlatWindow is still there to give the grab back.
     WindowModalRelease(win);
+    pw->accessibilityFocused = false;
+    AccessibilityLinuxFocusChanged(win);
     AccessibilityLinuxForgetWindow(win);
 #if defined(GPUI_HAVE_X11_NATIVE_OVERLAY)
     DestroyNativeOverlay(pw->nativeOverlay);
@@ -2996,6 +3003,8 @@ static void HandleEvent(App* app, XEvent* ev) {
             break;
         }
         case FocusIn:
+            pw->accessibilityFocused = true;
+            AccessibilityLinuxFocusChanged(win);
             WindowSetActive(win, true);
             break;
         case FocusOut:
@@ -3003,6 +3012,8 @@ static void HandleEvent(App* app, XEvent* ev) {
             // webview (src/wry/wry_linux.cpp) — and this window, still the
             // active one, only stopped being where the keys go.
             if (ev->xfocus.detail != NotifyInferior) {
+                pw->accessibilityFocused = false;
+                AccessibilityLinuxFocusChanged(win);
                 WindowSetActive(win, false);
             }
             break;
