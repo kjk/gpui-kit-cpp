@@ -11,6 +11,11 @@
 namespace gpui {
 
 static bool AppHasWindow(App* app, Window* win);
+static void MatchWebViewScale(WebView* self, wry::WebView* raw, float scale);
+
+static float WebViewScale(const PaintCtx* paint) {
+    return paint && paint->dpi > 0 ? paint->dpi / 96.f : 1.f;
+}
 
 #if GPUI_WRY_SNAPSHOT
 struct WebViewSnapshotRequest;
@@ -147,7 +152,8 @@ static void WryLoopDispatch() {
     wry::EventLoopDispatch();
 }
 
-Entity<WebView> WebViewNew(Ctx* cx, const wry::WebViewAttributes* attrs) {
+static Entity<WebView> CreateWebViewEntity(Ctx* cx) {
+    if (!cx || !cx->app) return {};
     PlatAddLoopSource(WryLoopPrepare, WryLoopDispatch);
     // `EntityNewState`, not `EntityNew`: a `WebView` has no Render of its
     // own here, since `WebViewEl` hands the element to whoever wants it.
@@ -160,28 +166,63 @@ Entity<WebView> WebViewNew(Ctx* cx, const wry::WebViewAttributes* attrs) {
     self->app = cx->app;
     self->selfId = handle.id;
     self->focus = FocusHandleNew(cx);
+    self->visible = false;
+    return handle;
+}
+
+void WebView::AttachNative(wry::WebView* raw) {
+    auto* state = new WebViewHandleState();
+    state->raw = raw;
+    owned = WebViewHandle(state);
+    visible = true;
+    // Linux forwards presses on the page and compensates for the difference
+    // between the GPUI and GTK scale. Other backends use the parent scale.
+    wry::WebViewSetPageClick(raw, &WebView::OnPageClick, this);
+    MatchWebViewScale(this, raw, WebViewScale(&window->paint));
+}
+
+static wry::Rect EmptyWebViewBounds() {
+    return {wry::LogicalPosition(0, 0), wry::LogicalSize(0, 0)};
+}
+
+Entity<WebView> WebViewNew(Ctx* cx, const wry::WebViewAttributes* attrs) {
+    Entity<WebView> handle = CreateWebViewEntity(cx);
+    if (!handle.IsValid()) return handle;
+    App* app = cx->app;
     void* window = PlatWindowHandle(cx->win);
     if (!window) {
-        self->visible = false;
-        self->nativeShown = false;
         logf(
             "webview: this window has no OS handle to parent a webview into\n");
         return handle;
     }
-    wry::WebViewAttributes copy = *attrs;
+    wry::WebViewAttributes copy = attrs ? *attrs : wry::WebViewAttributes{};
     // `WebView::new` starts it at nothing and lets the element place it.
-    copy.bounds = wry::Rect{wry::LogicalPosition(0, 0), wry::LogicalSize(0, 0)};
+    copy.bounds = EmptyWebViewBounds();
     copy.visible = false;
     wry::WebView* raw = wry::WebViewNew(window, &copy, /*asChild=*/true);
     if (raw) {
-        WebViewHandleState* state = new WebViewHandleState();
-        state->raw = raw;
-        self->owned = WebViewHandle(state);
-        // Linux forwards presses on the page. Other backends leave the
-        // callback unset.
-        wry::WebViewSetPageClick(raw, &WebView::OnPageClick, self);
+        if (WebView* self = handle.Get(app);
+            self && AppHasWindow(app, self->window)) {
+            self->AttachNative(raw);
+        } else {
+            wry::WebViewFree(raw);
+        }
     }
-    self->visible = raw != nullptr;
+    return handle;
+}
+
+Entity<WebView> WebViewAdopt(Ctx* cx, wry::WebView* raw) {
+    Entity<WebView> handle = CreateWebViewEntity(cx);
+    if (!raw) return handle;
+    WebView* self = handle.IsValid() ? handle.Get(cx->app) : nullptr;
+    if (!self || !PlatWindowHandle(self->window)) {
+        wry::WebViewFree(raw);
+        return handle;
+    }
+    // Keep the loaded control and let the GPUI element place it.
+    wry::WebViewSetBounds(raw, EmptyWebViewBounds());
+    wry::WebViewSetVisible(raw, false);
+    self->AttachNative(raw);
     return handle;
 }
 
@@ -764,10 +805,6 @@ static bool ClearWebViewOverlay(WebView* self, wry::WebView* raw) {
     DropWebViewBackdrop(self);
 #endif
     return true;
-}
-
-static float WebViewScale(const PaintCtx* paint) {
-    return paint && paint->dpi > 0 ? paint->dpi / 96.f : 1.f;
 }
 
 bool WebViewSetBounds(WebView* self, wry::Rect bounds) {

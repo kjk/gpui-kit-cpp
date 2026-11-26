@@ -68,12 +68,14 @@ struct WebViewFocusProbe {
     FocusHandle parent = {};
     Entity<WebView> web;
     bool omitWebView = false;
+    bool adopt = false;
 
     static El* Render(WebViewFocusProbe* self, Ctx* cx) {
         if (!self->web.IsValid()) {
             self->parent = FocusHandleNew(cx);
             wry::WebViewAttributes attrs = {};
-            self->web = WebViewNew(cx, &attrs);
+            self->web = self->adopt ? WebViewAdopt(cx, nullptr)
+                                    : WebViewNew(cx, &attrs);
         }
         El* root =
             Div(cx->a)->SizeFull()->TrackFocus(self->parent)->TabStop(false);
@@ -83,9 +85,10 @@ struct WebViewFocusProbe {
 };
 
 // crates/webview/src/lib.rs: Focusable and Render's track_focus.
-static void WebViewTracksFocusWithoutATabStop() {
+static void WebViewTracksFocusWithoutATabStop(bool adopt) {
     App* app = TestAppNew();
     auto view = EntityNew<WebViewFocusProbe>(app);
+    view.Get(app)->adopt = adopt;
     Window* win = TestWindowOpen(app, view, 240, 120, 1);
     auto* self = view.Get(app);
     FocusHandle focus = WebViewFocusHandle(self->web.Get(app));
@@ -357,7 +360,8 @@ void TestWryUri() {
     MediaPermissionsRespectEachRequestedDevice();
     TestSuite("wry_uri");
     MissingNativeWebViewLeavesThePointerTargetReachable();
-    WebViewTracksFocusWithoutATabStop();
+    WebViewTracksFocusWithoutATabStop(false);
+    WebViewTracksFocusWithoutATabStop(true);
     FractionalDocumentCoversTheClipWithoutMovingItsTopEdge();
     FractionalDpiKeepsTheDocumentSizeAndFullyVisibleEdge();
     WebViewRegionExcludesOverlappingOverlayBoxes();

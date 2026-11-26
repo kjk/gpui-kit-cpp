@@ -65,8 +65,7 @@ struct WebViewHandle {
     WebViewHandleState* state = nullptr;
 
     explicit WebViewHandle(WebViewHandleState* state);
-    friend Entity<WebView> WebViewNew(Ctx* cx,
-                                      const wry::WebViewAttributes* attrs);
+    friend struct WebView;
 };
 
 /** `gpui_webview::WebView`. */
@@ -125,6 +124,11 @@ struct WebView {
     // coordinates; the body posts a GPUI press.
     static void OnPageClick(void* user, int button, float x, float y,
                             float gdkScale);
+
+  private:
+    void AttachNative(wry::WebView* raw);
+    friend Entity<WebView> WebViewNew(Ctx*, const wry::WebViewAttributes*);
+    friend Entity<WebView> WebViewAdopt(Ctx*, wry::WebView*);
 };
 
 /** `cx.new(|cx| WebView::new(wry::WebViewBuilder::new()…build_as_child(..)))`:
@@ -143,6 +147,11 @@ struct WebView {
     returns. Set whatever flag says "already started" *before* calling, the
     way examples/webview.cpp does, and the second pass will skip it. */
 Entity<WebView> WebViewNew(Ctx* cx, const wry::WebViewAttributes* attrs);
+
+/** `WebView::new`: take ownership of a wry webview already built as a
+    child of `cx->win`. The element positions it on the first frame. The
+    caller relinquishes the raw pointer even if adoption fails. */
+Entity<WebView> WebViewAdopt(Ctx* cx, wry::WebView* raw);
 
 /** Set native visibility immediately and preserve the loaded page.
     Hiding attempts to return focus to the parent first. A focus error
