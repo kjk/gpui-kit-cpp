@@ -1189,6 +1189,11 @@ EM_JS(int, GpJsTextNew,
         const last = parts[parts.length - 1];
         return last.x + last.width;
     };
+    // Layout returns widths to C++ as floats and can hand that same width
+    // back for paint. Compare at that precision so a line still fits.
+    const fits = function(s, start) {
+        return Math.fround(width(s, start)) <= maxW;
+    };
 
     // Greedy word wrap, falling back to breaking inside a word that will not
     // fit on a line of its own. Hard newlines break first, always.
@@ -1215,7 +1220,7 @@ EM_JS(int, GpJsTextNew,
     };
     for (let pi = 0; pi < paras.length; pi++) {
         const para = paras[pi];
-        if (!wrap || maxW <= 0 || width(para, at) <= maxW) {
+        if (!wrap || maxW <= 0 || fits(para, at)) {
             emit(para, false);
         } else {
             let line = "";
@@ -1224,17 +1229,17 @@ EM_JS(int, GpJsTextNew,
             const words = G.words(para);
             for (let i = 0; i < words.length; i++) {
                 let word = words[i];
-                if (line !== "" && width(line + word, at) > maxW) {
+                if (line !== "" && !fits(line + word, at)) {
                     emit(line, true);
                     line = "";
                 }
                 while (word.length > 1) {
                     const wordStart = at + (styled ? G.u8len(line) : 0);
-                    if (width(word, wordStart) <= maxW) break;
+                    if (fits(word, wordStart)) break;
                     let cut = 0;
                     for (const ch of word) {
                         const next = cut + ch.length;
-                        if (cut && width(word.slice(0, next), wordStart) > maxW) break;
+                        if (cut && !fits(word.slice(0, next), wordStart)) break;
                         cut = next;
                     }
                     if (cut >= word.length) break;
