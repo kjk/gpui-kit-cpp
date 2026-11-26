@@ -293,6 +293,8 @@ The current update target is
   the nearest enclosing `setsize`. A node's explicitly declared set size
   supplies the count when no ancestor declares one. The accessible
   description carries the node's supplementary description.
+  Toggled buttons, switches and disclosure controls use the AT-SPI
+  toggle-button role and report the pressed state and its transitions.
   AT-SPI clients can read the current tree in a single cache request and
   receive cache updates for structural changes. Synthetic document pages
   are still queried on demand.

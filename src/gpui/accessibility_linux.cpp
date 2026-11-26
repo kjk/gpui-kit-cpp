@@ -648,16 +648,19 @@ static Str ChildPathTemp(const LinuxAccessible& object, int wanted) {
 // ATSPI_ROLE_PAGE, a document part's role, as for Evince's pages. UIA has no
 // page control type, so Windows uses Custom.
 static constexpr uint32_t kRolePage = 84;
+static constexpr uint32_t kRoleToggleButton = 62;
 
-static uint32_t AtspiRole(AccessibilityRole role) {
-    switch (role) {
+static uint32_t AtspiRole(const AccessibilityInfo& info) {
+    switch (info.role) {
         case AccessibilityRole::Alert:
             return 2;
         case AccessibilityRole::Canvas:
             return 6;
         case AccessibilityRole::CheckBox:
-        case AccessibilityRole::Switch:
             return 7;
+        case AccessibilityRole::DisclosureTriangle:
+        case AccessibilityRole::Switch:
+            return kRoleToggleButton;
         case AccessibilityRole::ColumnHeader:
             return 10;
         case AccessibilityRole::ComboBox:
@@ -701,6 +704,9 @@ static uint32_t AtspiRole(AccessibilityRole role) {
         case AccessibilityRole::ProgressIndicator:
             return 42;
         case AccessibilityRole::Button:
+            return info.toggled == AccessibilityToggled::Unset
+                       ? 43
+                       : kRoleToggleButton;
         case AccessibilityRole::DefaultButton:
             return 43;
         case AccessibilityRole::RadioButton:
@@ -830,6 +836,8 @@ static const char* AtspiRoleName(uint32_t role) {
             return "table cell";
         case 61:
             return "text";
+        case kRoleToggleButton:
+            return "toggle button";
         case 65:
             return "tree";
         case 69:
@@ -1013,6 +1021,7 @@ enum AtspiStateBit {
     kAtspiFocused = 12,
     kAtspiHorizontal = 14,
     kAtspiMultiLine = 17,
+    kAtspiPressed = 20,
     kAtspiSelectable = 22,
     kAtspiSelected = 23,
     kAtspiSensitive = 24,
@@ -1055,10 +1064,11 @@ static uint64_t LinuxNodeStates(Window* win, const AccessibilityNode& node,
     if (focused) states |= AtspiBit(kAtspiFocused);
     if (&node == LinuxWindowRoot(win) && AccessibilityLinuxWindowFocused(win))
         states |= AtspiBit(kAtspiActive);
-    if (node.info.toggled != AccessibilityToggled::Unset)
+    bool toggleButton = AtspiRole(node.info) == kRoleToggleButton;
+    if (!toggleButton && node.info.toggled != AccessibilityToggled::Unset)
         states |= AtspiBit(kAtspiCheckable);
     if (node.info.toggled == AccessibilityToggled::True)
-        states |= AtspiBit(kAtspiChecked);
+        states |= AtspiBit(toggleButton ? kAtspiPressed : kAtspiChecked);
     if (node.info.toggled == AccessibilityToggled::Mixed)
         states |= AtspiBit(kAtspiIndeterminate);
     if (node.info.hasExpanded) {
@@ -1460,7 +1470,7 @@ static void PutCacheItem(DbusWriter* body, const LinuxAccessible& object,
     PutI32(body, node && node->document.partCount ? -1 : children);
     PutInterfaces(body, object, interfaces);
     PutString(body, ObjectName(object));
-    PutU32(body, node ? AtspiRole(node->info.role) : 75);
+    PutU32(body, node ? AtspiRole(node->info) : 75);
     PutString(body, node ? node->info.description : Str{});
     PutStates(body, state);
 }
@@ -1577,7 +1587,7 @@ static bool HandleAccessible(const Incoming& in,
     const char* signature = "";
     uint32_t role = object.root        ? 75
                     : object.part >= 0 ? kRolePage
-                                       : AtspiRole(node->info.role);
+                                       : AtspiRole(node->info);
     if (StrIs(in.member, "GetChildAtIndex")) {
         int at = 0;
         int wanted = (int)ReadU32(in.body, in.bodyLen, &at);
@@ -2788,6 +2798,7 @@ static void SendLinuxNodeChanges(Window* win, const LinuxNodeSnapshot& before,
         {kAtspiFocusable, "focusable"},
         {kAtspiHorizontal, "horizontal"},
         {kAtspiMultiLine, "multi-line"},
+        {kAtspiPressed, "pressed"},
         {kAtspiSelectable, "selectable"},
         {kAtspiSelected, "selected"},
         {kAtspiSensitive, "sensitive"},
@@ -3016,7 +3027,7 @@ static void TrackLinuxNodes(Window* win, int focused) {
                    0,
                    i,
                    -1,
-                   AtspiRole(info.role),
+                   AtspiRole(info),
                    LinuxNodeStates(win, node, i == focused),
                    LinuxPropertyHash(info.PlatformName()),
                    LinuxPropertyHash(info.description),
@@ -3744,6 +3755,56 @@ static bool LinuxSmokeAttributes(Window* win, int fd, int serverFd) {
     return ok;
 }
 
+static bool LinuxSmokeToggleButton(Window* win, int fd) {
+    VecClear(win->accessibility);
+    AccessibilityNode node;
+    node.id = 1;
+    node.info.role = AccessibilityRole::Button;
+    VecAppend(win->accessibility, node);
+    auto& button = win->accessibility[0].info;
+
+    auto check = [&](uint32_t role, uint64_t toggled) {
+        uint64_t state = LinuxObjectStates({win, 0, 0});
+        uint64_t mask = AtspiBit(kAtspiChecked) | AtspiBit(kAtspiCheckable) |
+                        AtspiBit(kAtspiPressed) | AtspiBit(kAtspiIndeterminate);
+        return AtspiRole(button) == role && (state & mask) == toggled;
+    };
+    AccessibilityLinuxTreeChanged(win);
+    bool ok = LinuxSmokeEvents(fd, nullptr, 0) && check(43, 0);
+    button.toggled = AccessibilityToggled::False;
+    AccessibilityLinuxTreeChanged(win);
+    const LinuxSmokeEvent roleChange[] = {
+        {"PropertyChange", "accessible-role", 0, 0,
+         AtspiEventValue(kRoleToggleButton)},
+    };
+    ok = LinuxSmokeEvents(fd, roleChange, dimofi(roleChange)) &&
+         check(kRoleToggleButton, 0) && ok;
+    ok &= StrEq(Str(AtspiRoleName(AtspiRole(button))), StrL("toggle button"));
+    const AtspiEventValue zero(uint32_t{0});
+    button.toggled = AccessibilityToggled::True;
+    AccessibilityLinuxTreeChanged(win);
+    const LinuxSmokeEvent pressed[] = {
+        {"StateChanged", "pressed", 1, 0, zero},
+    };
+    ok = LinuxSmokeEvents(fd, pressed, dimofi(pressed)) &&
+         check(kRoleToggleButton, AtspiBit(kAtspiPressed)) && ok;
+    button.role = AccessibilityRole::Switch;
+    AccessibilityLinuxTreeChanged(win);
+    ok = LinuxSmokeEvents(fd, nullptr, 0) &&
+         check(kRoleToggleButton, AtspiBit(kAtspiPressed)) && ok;
+    button.role = AccessibilityRole::DisclosureTriangle;
+    button.toggled = AccessibilityToggled::Mixed;
+    AccessibilityLinuxTreeChanged(win);
+    const LinuxSmokeEvent mixed[] = {
+        {"StateChanged", "pressed", 0, 0, zero},
+        {"StateChanged", "indeterminate", 1, 0, zero},
+    };
+    ok = LinuxSmokeEvents(fd, mixed, dimofi(mixed)) &&
+         check(kRoleToggleButton, AtspiBit(kAtspiIndeterminate)) && ok;
+    AccessibilityLinuxForgetWindow(win);
+    return ok;
+}
+
 bool AccessibilityLinuxEventSmokeTest() {
     int fds[2] = {-1, -1};
     if (socketpair(AF_UNIX, SOCK_STREAM, 0, fds) != 0) return false;
@@ -3889,7 +3950,7 @@ bool AccessibilityLinuxEventSmokeTest() {
         {"StateChanged", "indeterminate", 1, 0, zero},
         {"PropertyChange", "accessible-description", 0, 0, StrL("")},
         {"PropertyChange", "accessible-role", 0, 0,
-         AtspiEventValue(AtspiRole(AccessibilityRole::Slider))},
+         AtspiEventValue(AtspiRole(control.info))},
     };
     ok = LinuxSmokeEvents(fds[0], mixed, dimofi(mixed)) && ok;
     AccessibilityLinuxTreeChanged(&win);
@@ -3900,6 +3961,7 @@ bool AccessibilityLinuxEventSmokeTest() {
     ok = LinuxSmokeSelectionChanges(&win, fds[0]) && ok;
     ok = LinuxSmokeWindowActivation(&win, fds[0]) && ok;
     ok = LinuxSmokeAttributes(&win, fds[0], fds[1]) && ok;
+    ok = LinuxSmokeToggleButton(&win, fds[0]) && ok;
     close(fds[0]);
     close(fds[1]);
     gA11y = saved;
