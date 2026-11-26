@@ -5129,6 +5129,77 @@ static uint32_t Act(const char* name) {
     return ActionOf(Str(name));
 }
 
+enum class DiffScrollAction : int64_t {
+    Up,
+    Down,
+    Left,
+    Right,
+    PageUp,
+    PageDown,
+    First,
+    Last
+};
+
+static constexpr struct {
+    const char* key;
+    const char* action;
+    DiffScrollAction direction;
+} kDiffScrollBindings[] = {
+    {"up", "diff::ScrollUp", DiffScrollAction::Up},
+    {"down", "diff::ScrollDown", DiffScrollAction::Down},
+    {"left", "diff::ScrollLeft", DiffScrollAction::Left},
+    {"right", "diff::ScrollRight", DiffScrollAction::Right},
+    {"pageup", "diff::PageUp", DiffScrollAction::PageUp},
+    {"pagedown", "diff::PageDown", DiffScrollAction::PageDown},
+    {"home", "diff::First", DiffScrollAction::First},
+    {"end", "diff::Last", DiffScrollAction::Last},
+};
+
+static void OnDiffScrollAction(DiffState* self, Ctx* cx, const ActionEvent* ev,
+                               int64_t direction) {
+    if (!FocusHandleIsFocused(cx->win, self->focus)) {
+        const_cast<ActionEvent*>(ev)->propagate = true;
+        return;
+    }
+    auto action = (DiffScrollAction)direction;
+    if (action == DiffScrollAction::Left || action == DiffScrollAction::Right) {
+        float dx = Rems(cx, action == DiffScrollAction::Left ? -3.f : 3.f);
+        self->horizontalScrollX = std::max(
+            0.f,
+            std::min(self->horizontalScrollX + dx, self->horizontalScrollMax));
+    } else {
+        auto& scroll = self->listScroll;
+        if (action == DiffScrollAction::Last) {
+            VirtualListScrollToBottomDeferred(&scroll);
+        } else {
+            float offset = scroll.offset;
+            switch (action) {
+                case DiffScrollAction::Up:
+                    offset -= Rems(cx, 1.5f);
+                    break;
+                case DiffScrollAction::Down:
+                    offset += Rems(cx, 1.5f);
+                    break;
+                case DiffScrollAction::PageUp:
+                    offset -= scroll.viewport * .9f;
+                    break;
+                case DiffScrollAction::PageDown:
+                    offset += scroll.viewport * .9f;
+                    break;
+                case DiffScrollAction::First:
+                    offset = 0.f;
+                    break;
+                default:
+                    break;
+            }
+            scroll.pending = false;
+            scroll.offset = std::max(
+                0.f, std::min(offset, scroll.contentSize - scroll.viewport));
+        }
+    }
+    Notify(cx);
+}
+
 static int ActiveDiffSide(const DiffState* self, DiffSide* side) {
     if (self->hasSelection && self->hasCursor) {
         *side = self->cursor.side;
@@ -5149,13 +5220,13 @@ static int ActiveDiffSide(const DiffState* self, DiffSide* side) {
 }
 
 static void OnDiffAction(DiffState* self, Ctx* cx, const ActionEvent* ev) {
+    if (!FocusHandleIsFocused(cx->win, self->focus)) {
+        const_cast<ActionEvent*>(ev)->propagate = true;
+        return;
+    }
     bool all = ev->action == input::SelectAll();
-    bool extend = ev->action == Act("diff::ExtendUp") ||
-                  ev->action == Act("diff::ExtendDown");
-    bool up = ev->action == Act("diff::ScrollUp") ||
-              ev->action == Act("diff::ExtendUp");
-    bool down = ev->action == Act("diff::ScrollDown") ||
-                ev->action == Act("diff::ExtendDown");
+    bool up = ev->action == Act("diff::ExtendUp");
+    bool down = ev->action == Act("diff::ExtendDown");
     if (all || up || down) {
         DiffSide side;
         int file = ActiveDiffSide(self, &side);
@@ -5175,8 +5246,7 @@ static void OnDiffAction(DiffState* self, Ctx* cx, const ActionEvent* ev) {
         DiffLinePosition anchor = cursor;
         if (all) {
             anchor.line = doc->LineNumber(side, 0);
-        } else if (extend && self->hasAnchor &&
-                   CanExtend(self, self->anchor, cursor)) {
+        } else if (self->hasAnchor && CanExtend(self, self->anchor, cursor)) {
             anchor = self->anchor;
         }
         DiffLineRange range = Between(anchor, cursor);
@@ -5215,9 +5285,11 @@ void DiffInitKeys() {
     static uint32_t generation = 0;
     if (generation == KeymapGeneration()) return;
     generation = KeymapGeneration();
+    for (const auto& binding : kDiffScrollBindings) {
+        KeyBinding key{binding.key, Act(binding.action), "Diff"};
+        KeymapBind(&key, 1);
+    }
     KeyBinding bindings[] = {
-        {"up", Act("diff::ScrollUp"), "Diff"},
-        {"down", Act("diff::ScrollDown"), "Diff"},
         {"shift-up", Act("diff::ExtendUp"), "Diff"},
         {"shift-down", Act("diff::ExtendDown"), "Diff"},
         {"secondary-c", input::Copy(), "Diff"},
@@ -5477,6 +5549,7 @@ static void RecordDiffScrollRange(PaintCtx* paint, El* box, void* data) {
         AppInvalidate(paint->window);
     }
     float max = std::max(0.f, box->contentW - box->w);
+    state->horizontalScrollMax = max;
     if (state->horizontalScrollX > max) {
         state->horizontalScrollX = max;
         AppInvalidate(paint->window);
@@ -5568,8 +5641,11 @@ El* Diff::IntoEl() {
                    ->OnMouseDownOut(ListenTo(state, &OnDiffSelectionOutside));
     root->prePaint = &RecordDiffScrollRange;
     root->customUser = st;
-    root->OnAction(Act("diff::ScrollUp"), ListenTo(state, &OnDiffAction));
-    root->OnAction(Act("diff::ScrollDown"), ListenTo(state, &OnDiffAction));
+    for (const auto& binding : kDiffScrollBindings) {
+        root->OnAction(
+            Act(binding.action),
+            ListenTo(state, &OnDiffScrollAction, (int64_t)binding.direction));
+    }
     root->OnAction(Act("diff::ExtendUp"), ListenTo(state, &OnDiffAction));
     root->OnAction(Act("diff::ExtendDown"), ListenTo(state, &OnDiffAction));
     root->OnAction(input::Copy(), ListenTo(state, &OnDiffAction));

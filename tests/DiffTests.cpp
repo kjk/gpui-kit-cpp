@@ -2253,15 +2253,21 @@ static void SplitCodeSelectionKeepsTheSourceSideAndTabs() {
     TestAppFree(stage.app);
 }
 
-// Up/down choose a source line. Shift keeps the anchor while the cursor moves.
+// Rust's unmodified arrows only scroll. Shift keeps the review anchor while
+// the cursor moves.
 static void DiffKeyboardSelectsAndExtendsSourceLines() {
     PointerStage stage = StagePointer(false);
     DiffState* state = stage.host->state.Get(stage.app);
     TestFocus(stage.win, state->focus);
     TestSimulateKeystrokes(stage.win, "down");
+    utassert(!state->HasSelectedLines());
+    TestSimulateKeystrokes(stage.win, "shift-down");
     utassert(state->HasSelectedLines() && state->SelectedLines().start == 1 &&
              state->SelectedLines().end == 1);
     TestSimulateKeystrokes(stage.win, "shift-down");
+    utassert(state->SelectedLines().start == 1 && state->SelectedLines()
+                                                          .end == 2);
+    TestSimulateKeystrokes(stage.win, "down");
     utassert(state->SelectedLines().start == 1 && state->SelectedLines()
                                                           .end == 2);
     TestSimulateKeystrokes(stage.win, "shift-up");
@@ -2275,6 +2281,46 @@ static void DiffKeyboardSelectsAndExtendsSourceLines() {
     utassert(StrEq(TestReadFromClipboard(a), "fn place() {}\nfn other() {}\n"));
     ArenaDelete(a);
     TestAppFree(stage.app);
+}
+
+static void DiffKeyboardScrollsBothAxesAndReachesEitherEnd() {
+    App* app = nullptr;
+    Window* win = nullptr;
+    DiffState* state = nullptr;
+    OpenLongDiff(&app, &win, &state);
+    TestFocus(win, state->focus);
+    TestSimulateKeystrokes(win, "down");
+    utassert(TestNear(state->listScroll.offset, 24.f));
+    TestSimulateKeystrokes(win, "up");
+    utassert(TestNear(state->listScroll.offset, 0.f));
+    TestSimulateKeystrokes(win, "pagedown");
+    utassert(
+        TestNear(state->listScroll.offset, state->listScroll.viewport * .9f));
+    TestSimulateKeystrokes(win, "pageup");
+    utassert(TestNear(state->listScroll.offset, 0.f));
+    TestSimulateKeystrokes(win, "end");
+    TestDraw(win);
+    utassert(
+        TestNear(state->listScroll.offset,
+                 state->listScroll.contentSize - state->listScroll.viewport));
+    TestSimulateKeystrokes(win, "home");
+    utassert(TestNear(state->listScroll.offset, 0.f));
+    utassert(!state->HasSelectedLines());
+    TestAppFree(app);
+
+    app = TestAppNew();
+    Init(app);
+    auto view = LongLineDiff(app, DiffMode::Split);
+    state = view.Get(app)->state.Get(app);
+    win = TestWindowOpen(app, view, 360, 180);
+    TestDraw(win);
+    TestFocus(win, state->focus);
+    utassert(state->horizontalScrollMax > 48.f);
+    TestSimulateKeystrokes(win, "right");
+    utassert(TestNear(state->horizontalScrollX, 48.f));
+    TestSimulateKeystrokes(win, "left");
+    utassert(TestNear(state->horizontalScrollX, 0.f));
+    TestAppFree(app);
 }
 
 static void DiffMeasuresWrappedLinesAndChangingAnnotations() {
@@ -2572,6 +2618,7 @@ void TestDiff() {
     CodeSelectionCopiesCharactersAndWords();
     SplitCodeSelectionKeepsTheSourceSideAndTabs();
     DiffKeyboardSelectsAndExtendsSourceLines();
+    DiffKeyboardScrollsBothAxesAndReachesEitherEnd();
     DiffMeasuresWrappedLinesAndChangingAnnotations();
     AnnotationButtonPassesTheSelectedRange();
     TouchHandlesExtendAndCopyTheDiffSourceRange();

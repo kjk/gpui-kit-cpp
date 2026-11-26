@@ -617,6 +617,8 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   The window's touch handles extend the diff's retained source-byte selection.
   Rebuilding a disclosure preserves measured heights before and after the
   changed rows. Switching display modes measures the new column geometry.
+  The diff body handles arrow, page and endpoint scrolling independently
+  of the Shift-arrow review selection.
   Inline emphasis and built-in syntax scanning are prepared one file at a
   time on the background executor.
   Character and word comparisons use Unicode 17 grapheme and word boundaries
