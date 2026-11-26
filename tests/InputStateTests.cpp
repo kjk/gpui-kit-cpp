@@ -13076,6 +13076,27 @@ static void HorizontalScrollExtentExcludesPlaceholder() {
     TestAppFree(d.app);
 }
 
+// element.rs horizontal_scroll_is_clamped_before_text_and_caret_layout.
+static void HorizontalScrollClampsInTheFrameThatShortensTheLine() {
+    DecorationEditor d = DecorationEditorOpen("short", false);
+    TestDraw(d.win);
+    float baseline = d.editor->caretWinX;
+    Str wide = RepeatChar('W', 300);
+    InputSetValue(d.editor, wide);
+    StrFree(wide);
+    TestDraw(d.win);
+    Point end = {d.editor->contentW, 0};
+    utassert(InputUpdateScrollOffset(d.editor, d.app, d.win, &end));
+    TestDraw(d.win);
+    utassert(d.editor->scrollX > 100.f);
+
+    InputSetValue(d.editor, StrL("short"));
+    TestDraw(d.win);
+    utassertnear(d.editor->scrollX, 0.f);
+    utassertnear(d.editor->caretWinX, baseline);
+    TestAppFree(d.app);
+}
+
 static void HorizontalScrollExtentCoversTheWidestLaidOutLine() {
     Str text = NarrowThenWide(300);
     DecorationEditor d = DecorationEditorOpen("", false);
@@ -13738,6 +13759,7 @@ static void RunElementWindowTests() {
     OverviewRulerMarksFollowEditsFoldsAndNewDecorations();
     TheInsetsFollowTheSize();
     HorizontalScrollExtentExcludesPlaceholder();
+    HorizontalScrollClampsInTheFrameThatShortensTheLine();
     HorizontalScrollExtentCoversTheWidestLaidOutLine();
     EditorLineNumberGutterResizesWithDocumentLines();
     AFoldedLineShowsItsPlaceholderRightAfterTheTextAndUnfoldsOnClick();

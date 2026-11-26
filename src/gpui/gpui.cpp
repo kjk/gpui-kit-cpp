@@ -5739,6 +5739,19 @@ static void WriteBackEl(LayoutCache* lc, PaintCtx* ctx, El* e, float originX,
     }
     ResolveRelLengths(e, l);
 
+    // Use the new scroll extent before positioning rows and carets. A stale
+    // offset can point beyond the last glyph after an edit or a resize.
+    if (e->input && e->style.overflowX == Overflow::Scroll &&
+        InputIsMultiLine(e->input) && !LayoutInScratchPass()) {
+        float padding = e->style.pad.HorizontalAxisSum();
+        float viewW = e->w - padding;
+        float contentW = e->contentW - padding;
+        e->scrollX = InputClampHorizontalScrollOffset(e->input, e->scrollX,
+                                                      contentW, viewW);
+        e->input->contentW = contentW;
+        e->input->scrollX = e->scrollX;
+    }
+
     // The shaped run paint wants, taken from the text cache at the size
     // layout settled on. Releasing our reference is safe because a cached run
     // belongs to the cache until TextMeasEndFrame, well after paint.
@@ -9386,14 +9399,6 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
                 ctx->scrolls[scrollSlot].contentH = (float)e->input->contentH;
                 ctx->scrolls[scrollSlot].scrollY = (float)e->input->scrollY;
                 ctx->scrolls[scrollSlot].viewportH = e->input->viewH;
-            }
-            // scroll_size.width: how wide the longest row came out, which is
-            // what a sideways scroll clamps against. Only a box that scrolls
-            // that way reports it — a field that clips instead never moves
-            // sideways, and a stale width would leave its caret arithmetic
-            // scrolling text that cannot move.
-            if (e->style.overflowX == Overflow::Scroll) {
-                e->input->contentW = e->contentW;
             }
             VecAppend(ctx->inputs, e->input);
         }

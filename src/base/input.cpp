@@ -6853,8 +6853,8 @@ void InputScrollToCursor(InputState* s, InputMoveDir dir) {
     InputScrollToCaretF64(s, s->caretX, caretY, dir);
 }
 
-static bool InputApplyScrollOffset(InputState* s, App* app, Window* win,
-                                   float wantX, double wantY) {
+float InputClampHorizontalScrollOffset(const InputState* s, float offset,
+                                       float contentW, float viewW) {
     // Rust keeps the offset negative-down on its ScrollHandle; the state here
     // keeps it positive, so each range is Rust's negated.
     // A right- or centre-aligned run keeps a caret's width spare on the
@@ -6862,14 +6862,16 @@ static bool InputApplyScrollOffset(InputState* s, App* app, Window* win,
     // blink_cursor.rs CURSOR_WIDTH: one logical pixel on every platform.
     // Paint snaps that width onto the device pixel grid.
     float safeX = s->align == 0 ? 0.f : base::PlatCaretWidth();
-    float mostX = s->contentW - s->viewW + safeX;
-    if (mostX < safeX) {
-        mostX = safeX;
-    }
+    float mostX = std::max(0.f, contentW - viewW) + safeX;
+    return std::max(0.f, std::min(offset, mostX));
+}
+
+static bool InputApplyScrollOffset(InputState* s, App* app, Window* win,
+                                   float wantX, double wantY) {
     double y = InputIsSingleLine(s) ? 0.
                                     : InputClampVerticalScrollOffsetF64(
                                           wantY, s->contentH, s->viewH);
-    float x = std::max(0.f, std::min(wantX, mostX));
+    float x = InputClampHorizontalScrollOffset(s, wantX, s->contentW, s->viewW);
     if (x == s->scrollX && y == s->scrollY) {
         return false;
     }
