@@ -500,6 +500,7 @@ struct DiffCodeRunGeometry {
 // horizontal scrolling, syntax boundaries, and display-only tab expansion.
 struct DiffTextSelection {
     int file = -1;
+    int cursorFile = -1;
     DiffSide side = DiffSide::Original;
     int anchor = 0;
     int cursor = 0;
@@ -507,6 +508,10 @@ struct DiffTextSelection {
     int clicks = 1;
     bool dragging = false;
     bool hitText = false;
+
+    bool HasSourceRange() const {
+        return file >= 0 && cursorFile == file && hitText && anchor != cursor;
+    }
 };
 
 struct DiffPresentationJob;

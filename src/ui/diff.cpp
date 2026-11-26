@@ -3347,9 +3347,7 @@ void DiffState::SetSelectedLines(bool has, DiffLineRange range, Ctx* cx) {
 }
 
 Str DiffState::SelectedText(Arena* a) const {
-    if (textSelection.hitText && textSelection.file >= 0 &&
-        textSelection.file < len(files) &&
-        textSelection.anchor != textSelection.cursor) {
+    if (textSelection.HasSourceRange() && textSelection.file < len(files)) {
         Str source = files[textSelection.file]->Source(textSelection.side);
         return Own(
             a, Slice(source, IMin(textSelection.anchor, textSelection.cursor),
@@ -4039,8 +4037,8 @@ static El* CodeTextRuns(Ctx* cx, const DiffState* state, int fileIx,
     const DiffTextSelection& selection = state->textSelection;
     int selectionLo = 0;
     int selectionHi = 0;
-    if (selection.hitText && selection.anchor != selection.cursor &&
-        selection.file == fileIx && selection.side == side) {
+    if (selection.HasSourceRange() && selection.file == fileIx &&
+        selection.side == side) {
         int start =
             IMax(line.sourceStart, IMin(selection.anchor, selection.cursor));
         int end =
@@ -4158,7 +4156,7 @@ static const DiffCodeRunGeometry* DiffSelectionRun(const DiffState* self,
     float bestX = 0;
     bool bestRow = false;
     for (const DiffCodeRunGeometry& run : self->codeRuns) {
-        if (run.file != file || run.side != side) continue;
+        if ((file >= 0 && run.file != file) || run.side != side) continue;
         Bounds b = run.visible;
         bool inRow = at.y >= b.y && at.y < b.Bottom();
         float y = std::max(0.f, std::max(b.y - at.y, at.y - b.Bottom()));
@@ -4271,9 +4269,7 @@ static bool DiffTouchSnapshot(void* user, const Window*,
                               TouchSelectionSnapshot* out) {
     auto* state = static_cast<DiffState*>(user);
     const DiffTextSelection& sel = state->textSelection;
-    if (!sel.hitText || sel.anchor == sel.cursor || sel.file < 0 ||
-        sel.file >= len(state->files))
-        return false;
+    if (!sel.HasSourceRange() || sel.file >= len(state->files)) return false;
     if (out) {
         Bounds start;
         Bounds end;
@@ -4373,7 +4369,7 @@ static void OnDiffCodeLongPress(DiffState* state, Ctx* cx,
     state->hasAnchor = state->hasCursor = false;
     DiffTextSelection& selection = state->textSelection;
     selection = {};
-    selection.file = run->file;
+    selection.file = selection.cursorFile = run->file;
     selection.side = run->side;
     selection.anchor = word.start;
     selection.cursor = word.end;
@@ -4395,15 +4391,19 @@ static bool UpdateDiffTextEndpoint(DiffState* self, PaintCtx* paint,
     int anchor = sel.anchor;
     int cursor = unit.end;
     if (sel.clicks > 1) {
-        bool backwards = unit.start < sel.unit.start;
+        bool sameFile = run.file == sel.file;
+        bool backwards =
+            sameFile ? unit.start < sel.unit.start : run.file < sel.file;
         anchor = backwards ? sel.unit.end : sel.unit.start;
-        cursor = backwards ? unit.start : std::max(unit.end, sel.unit.end);
+        cursor = backwards ? unit.start : unit.end;
+        if (sameFile && !backwards) cursor = std::max(cursor, sel.unit.end);
     }
-    bool changed =
-        hit != sel.hitText || anchor != sel.anchor || cursor != sel.cursor;
+    bool changed = hit != sel.hitText || anchor != sel.anchor ||
+                   cursor != sel.cursor || run.file != sel.cursorFile;
     sel.hitText = hit;
     sel.anchor = anchor;
     sel.cursor = cursor;
+    sel.cursorFile = run.file;
     return changed;
 }
 
@@ -4419,11 +4419,11 @@ static void OnDiffCodeDown(DiffState* self, Ctx* cx, const MouseDownEvent* ev,
     ClearDiffReviewSelection(self, cx);
     self->hasAnchor = self->hasCursor = false;
     DiffTextSelection& sel = self->textSelection;
-    bool extend = ev->modifiers.shift && sel.file == run->file &&
+    bool extend = ev->modifiers.shift && sel.file >= 0 &&
                   sel.side == run->side && sel.hitText;
     if (!extend) {
         sel = {};
-        sel.file = run->file;
+        sel.file = sel.cursorFile = run->file;
         sel.side = run->side;
         sel.hitText = len(run->text) > 0 && run->visible.Contains(at);
         sel.clicks = sel.hitText ? ev->clickCount : 1;
@@ -4440,7 +4440,7 @@ static void OnDiffCodeDown(DiffState* self, Ctx* cx, const MouseDownEvent* ev,
 static void ExtendDiffTextSelection(DiffState* self, Ctx* cx, Point at) {
     DiffTextSelection& sel = self->textSelection;
     if (!sel.dragging) return;
-    const auto* run = DiffSelectionRun(self, at, sel.file, sel.side);
+    const auto* run = DiffSelectionRun(self, at, -1, sel.side);
     if (!run) return;
     if (UpdateDiffTextEndpoint(self, &cx->win->paint, *run, at)) {
         Notify(cx);
@@ -4688,9 +4688,7 @@ static void OnDiffModifiersChanged(DiffState* self, Ctx* cx,
 static void OnDiffTextClick(DiffState* self, Ctx* cx, const ClickEvent* ev,
                             int64_t arg) {
     const DiffTextSelection& selection = self->textSelection;
-    if (ev->clickCount == 1 && selection.hitText &&
-        selection.anchor != selection.cursor)
-        return;
+    if (ev->clickCount == 1 && selection.HasSourceRange()) return;
     const auto* run = (const DiffTextRun*)(intptr_t)arg;
     if (!run || run->file < 0 || run->file >= len(self->files)) return;
     const DiffFile* file = self->files[run->file];
@@ -5297,7 +5295,7 @@ static int ActiveDiffSide(const DiffState* self, DiffSide* side) {
         return FileIx(self, self->cursor.path);
     }
     const DiffTextSelection& text = self->textSelection;
-    if (text.hitText && text.anchor != text.cursor) {
+    if (text.HasSourceRange()) {
         *side = text.side;
         return text.file;
     }

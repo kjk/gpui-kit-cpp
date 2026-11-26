@@ -2548,6 +2548,56 @@ static void DiffShiftClickKeepsTheSelectedWordOrLineUnit() {
     TestAppFree(stage.app);
 }
 
+// selection.rs selected_source_range requires endpoints in the same file.
+static void DiffDragAcrossFilesKeepsTheAnchorWithoutCopyingTheWrongFile() {
+    PointerStage stage = StagePointer(false, StrL("diff --git a/a.txt b/a.txt\n"
+                                                  "--- /dev/null\n"
+                                                  "+++ b/a.txt\n"
+                                                  "@@ -0,0 +1 @@\n"
+                                                  "+alpha bridge\n"
+                                                  "diff --git a/b.txt b/b.txt\n"
+                                                  "--- /dev/null\n"
+                                                  "+++ b/b.txt\n"
+                                                  "@@ -0,0 +1 @@\n"
+                                                  "+bravo bridge\n"));
+    auto* state = stage.host->state.Get(stage.app);
+    Bounds rows[2] = {};
+    for (const DiffCodeRunGeometry& run : state->codeRuns) {
+        if (run.side == DiffSide::Modified && run.line == 0 && run.file >= 0 &&
+            run.file < dimofi(rows)) {
+            rows[run.file] = run.visible;
+        }
+    }
+    utassert(rows[0].w > 0 && rows[1].w > 0);
+    float cell = MeasureText(&stage.win->paint, StrL("a"),
+                             ThemeFontSize(stage.app), 0, false, kFontMono)
+                     .w;
+    Point anchor = {rows[0].x + 0.1f, rows[0].CenterY()};
+    Point inFile = {rows[0].x + cell * 4.1f, rows[0].CenterY()};
+    Point otherFile = {rows[1].x + cell * 4.1f, rows[1].CenterY()};
+    Arena* a = ArenaNew();
+    TestSimulateMouseDown(stage.win, anchor);
+    TestSimulateMouseMove(stage.win, inFile, true);
+    utassert(StrEq(state->SelectedText(a), "alph"));
+    TestSimulateMouseMove(stage.win, otherFile, true);
+    utassert(state->textSelection.file == 0 && state->textSelection
+                                                       .cursorFile == 1);
+    utassert(len(state->SelectedText(a)) == 0);
+    TestSimulateMouseMove(stage.win, inFile, true);
+    TestSimulateMouseUp(stage.win, inFile);
+    utassert(StrEq(state->SelectedText(a), "alph"));
+
+    Modifiers shift;
+    shift.shift = true;
+    TestSimulateMouseDown(stage.win, otherFile, MouseButton::Left, shift);
+    TestSimulateMouseUp(stage.win, otherFile, MouseButton::Left, shift);
+    utassert(state->textSelection.file == 0 && state->textSelection
+                                                       .cursorFile == 1);
+    utassert(len(state->SelectedText(a)) == 0);
+    ArenaDelete(a);
+    TestAppFree(stage.app);
+}
+
 static void SplitCodeSelectionKeepsTheSourceSideAndTabs() {
     PointerStage stage = StagePointer(false,
                                       StrL("--- a/file.txt\n+++ b/file.txt\n"
@@ -2948,6 +2998,7 @@ void TestDiff() {
     AClaimedTextClickKeepsTheLineHandlerQuiet();
     CodeSelectionCopiesCharactersAndWords();
     DiffShiftClickKeepsTheSelectedWordOrLineUnit();
+    DiffDragAcrossFilesKeepsTheAnchorWithoutCopyingTheWrongFile();
     SplitCodeSelectionKeepsTheSourceSideAndTabs();
     DiffKeyboardSelectsAndExtendsSourceLines();
     DiffKeyboardScrollsBothAxesAndReachesEitherEnd();
