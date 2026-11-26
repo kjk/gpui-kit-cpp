@@ -1447,7 +1447,8 @@ static Bounds TouchEndpointCaret(PaintCtx* paint, const TextHit& hit,
 static const TextHit* RestoreSourcePoint(const PaintCtx& paint,
                                          const TextSelectionReflow& old,
                                          const TextSelectionSourcePoint& key,
-                                         bool trailing, int* offset);
+                                         bool trailing, int* offset,
+                                         EntityId owner = {});
 
 static TouchSelectionSnapshot PaintedTouchGeometry(
     PaintCtx* paint, const WindowSelection& selection, EntityId owner,
@@ -1463,11 +1464,12 @@ static TouchSelectionSnapshot PaintedTouchGeometry(
     Bounds carets[2] = {};
     bool visible[2] = {};
     for (int i = 0; i < 2; i++) {
+        int endpoint = i == 0 ? first : 1 - first;
         const TextHit* hit =
             reflow ? RestoreSourcePoint(
-                         *paint, *reflow,
-                         reflow->endpoints[i == 0 ? first : 1 - first], i == 1,
-                         &offsets[i])
+                         *paint, *reflow, reflow->endpoints[endpoint], i == 1,
+                         &offsets[i],
+                         endpoint == 1 ? reflow->cursorOwner : EntityId{})
                    : TouchEndpointHit(paint, selection, offsets[i], i == 1);
         if (!hit || (owner.IsValid() && hit->owner != owner)) continue;
         carets[i] = TouchEndpointCaret(paint, *hit, offsets[i], i == 1);
@@ -1606,7 +1608,8 @@ static void WindowSelectionDragAt(Window* win, float x, float y) {
     WindowSelection* s = win ? win->sel : nullptr;
     if (!s || !s->gesture.selecting) return;
     if (AwaitingSelectionReflow(s)) {
-        if (s->hasTouchEdgeDrag && !s->hasAnchorCell) {
+        if (s->hasTouchEdgeDrag && !s->hasAnchorCell &&
+            !s->pendingReflow.cursorOwner.IsValid()) {
             DragPendingTouchEdge(win, {x, y});
         } else if (!s->pendingReflow.virtualDrag ||
                    !DragPendingVirtualSelection(win, {x, y})) {
@@ -1698,6 +1701,7 @@ static const TextViewState* TextViewForSelectionOwner(App* app,
 static const TextViewState* RetainedSelectionView(const Window* win) {
     const WindowSelection* selection = win ? win->sel : nullptr;
     if (!selection || !AwaitingSelectionReflow(selection)) return nullptr;
+    if (selection->pendingReflow.cursorOwner.IsValid()) return nullptr;
     EntityId owner = selection->pendingReflow.owner;
     if (selection->copyProjection.owner != owner) return nullptr;
     const TextViewState* view = TextViewForSelectionOwner(win->app, owner);
@@ -2166,16 +2170,18 @@ static bool ExtendUnpaintedSelection(Window* win, Point point) {
 static const TextHit* RestoreSourcePoint(const PaintCtx& paint,
                                          const TextSelectionReflow& old,
                                          const TextSelectionSourcePoint& key,
-                                         bool trailing, int* offset) {
+                                         bool trailing, int* offset,
+                                         EntityId owner) {
+    if (!owner.IsValid()) owner = old.owner;
     if (key.source < 0 && key.block >= 0) {
         for (const auto& block : paint.selectionSourceBlocks) {
-            if (block.owner != old.owner || block.scope != old.scope ||
+            if (block.owner != owner || block.scope != old.scope ||
                 block.index != key.block)
                 continue;
             int at = block.start + key.blockByte;
             for (int i = block.firstHit; i < block.endHit; i++) {
                 const TextHit& hit = paint.texts[i];
-                if (hit.owner == old.owner && hit.scope == old.scope &&
+                if (hit.owner == owner && hit.scope == old.scope &&
                     at >= hit.docOff && at <= hit.docOff + len(hit.text)) {
                     *offset = at;
                     return &hit;
@@ -2188,7 +2194,7 @@ static const TextHit* RestoreSourcePoint(const PaintCtx& paint,
     const TextHit* fallback = nullptr;
     for (const TextHit& hit : paint.texts) {
         const SelSourceMap* map = hit.map;
-        if (hit.owner != old.owner || hit.scope != old.scope || !map ||
+        if (hit.owner != owner || hit.scope != old.scope || !map ||
             map->atomic || hit.atom || hit.blockPlugin)
             continue;
         for (int i = FirstMapSegmentAt(*map, map->offset); i < map->count;
@@ -2232,7 +2238,8 @@ bool WindowSelectionBlockRange(const PaintCtx* paint, EntityId owner, int block,
                                int scope, int* start, int* end) {
     if (!paint->paintVirtualSelection || block < 0) return false;
     const TextSelectionReflow* selection = paint->selectionReflow;
-    if (!selection || selection->owner != owner || selection->scope != scope)
+    if (!selection || selection->owner != owner || selection->scope != scope ||
+        selection->cursorOwner.IsValid())
         return false;
     int first = selection->offsets[0] <= selection->offsets[1] ? 0 : 1;
     const auto& lo = selection->endpoints[first];
@@ -2265,13 +2272,21 @@ TextSelectionReflow WindowSelectionCaptureReflow(Window* win) {
         if (!endpoints[i]) return {};
         out.bounds[i] = endpoints[i]->bounds;
     }
-    if (endpoints[0]->owner != endpoints[1]->owner) return {};
     const TextViewState* view =
         TextViewForSelectionOwner(win->app, endpoints[0]->owner);
     if (!view || !view->CopyDocumentReady()) return {};
     out.owner = view->self;
     out.replacement = view->fullUpdateRevision;
-    if (!selectingCaret) CaptureSelectionCopy(win, view, out);
+    if (endpoints[1]->owner != out.owner) {
+        const auto* cursor =
+            TextViewForSelectionOwner(win->app, endpoints[1]->owner);
+        if (!cursor || !cursor->CopyDocumentReady()) return {};
+        out.cursorOwner = cursor->self;
+        out.cursorReplacement = cursor->fullUpdateRevision;
+        ClearCopyProjection(&s->copyProjection);
+    } else if (!selectingCaret) {
+        CaptureSelectionCopy(win, view, out);
+    }
     if (s->unitHeld) {
         const TextHit* start = CaptureSourcePoint(
             win->paint, s->unitStart, s->scope, false, &out.unit[0], cell);
@@ -2281,7 +2296,8 @@ TextSelectionReflow WindowSelectionCaptureReflow(Window* win) {
             end->owner != out.owner)
             out.unit[0] = {};
     }
-    if (s->gesture.selecting && !s->hasAnchorCell && !s->touchActive &&
+    if (!out.cursorOwner.IsValid() && s->gesture.selecting &&
+        !s->hasAnchorCell && !s->touchActive &&
         view->SelectionBlockText(out.endpoints[0].block,
                                  SelectionFormat::Source)
             .s) {
@@ -2307,15 +2323,24 @@ void WindowSelectionRestoreReflow(Window* win, const TextSelectionReflow& old) {
     const TextViewState* view = TextViewForSelectionOwner(win->app, old.owner);
     bool wasPending = AwaitingSelectionReflow(s);
     if (!view || view->fullUpdateRevision != old.replacement) {
-        if (wasPending) WindowSelectionClear(win);
+        if (wasPending || old.cursorOwner.IsValid()) WindowSelectionClear(win);
         return;
+    }
+    if (old.cursorOwner.IsValid()) {
+        const auto* cursor =
+            TextViewForSelectionOwner(win->app, old.cursorOwner);
+        if (!cursor || cursor->fullUpdateRevision != old.cursorReplacement) {
+            WindowSelectionClear(win);
+            return;
+        }
     }
     int offsets[2] = {};
     const TextHit* endpoints[2] = {};
     for (int i = 0; i < 2; i++) {
-        endpoints[i] = RestoreSourcePoint(win->paint, old, old.endpoints[i],
-                                          old.offsets[i] > old.offsets[1 - i],
-                                          &offsets[i]);
+        endpoints[i] =
+            RestoreSourcePoint(win->paint, old, old.endpoints[i],
+                               old.offsets[i] > old.offsets[1 - i], &offsets[i],
+                               i == 1 ? old.cursorOwner : EntityId{});
         if (!endpoints[i]) {
             // The offsets from the old frame could now name a different
             // run. Keep the source endpoints until their geometry returns.

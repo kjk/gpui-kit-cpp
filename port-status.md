@@ -540,6 +540,8 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
 - **TextView selection mapping uses painted runs.** The window owns selection
   rather than each parsed inline node. A selection within one view uses its
   format. Selections spanning separate views use the window's fallback.
+  Endpoints in separate managed views reattach to their own documents when
+  a layout change shifts the window's text offsets.
   Source mapping includes images when a selected run reaches their boundary.
   Mapped Markdown text endpoints survive reflow and can reattach after an
   enclosing virtual list omits their row. A selected TextView retains its last

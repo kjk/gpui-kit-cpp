@@ -9621,6 +9621,58 @@ static void BackwardWordDragKeepsAnOffscreenAnchor() {
     ArenaDelete(a);
 }
 
+static void CrossViewSelectionKeepsItsEndpointsAfterEarlierTextAppears() {
+    struct View {
+        Entity<TextViewState> first;
+        Entity<TextViewState> last;
+        bool showPrefix = false;
+
+        static El* Render(View* self, Ctx* cx) {
+            return Div(cx->a)
+                ->FlexCol()
+                ->Child(TextEl(cx->a, self->showPrefix
+                                          ? StrL("Earlier selectable text")
+                                          : Str{})
+                            ->Selectable())
+                ->Child(TextView::New(cx, self->first)->Selectable()->IntoEl())
+                ->Child(TextView::New(cx, self->last)->Selectable()->IntoEl());
+        }
+    };
+    App* app = TestAppNew();
+    auto view = EntityNew<View>(app);
+    View* host = view.Get(app);
+    host->first = TextViewState::Markdown(app, StrL("**alpha one**"));
+    host->last = TextViewState::Markdown(app, StrL("`beta two`"));
+    Window* win = TestWindowOpen(app, view, 320, 200);
+    TestRunUntilParked(app);
+    TestDraw(win);
+    const TextHit* first = HitContaining(win, "alpha");
+    const TextHit* last = HitContaining(win, "beta");
+    utassert(first && last);
+    if (first && last) {
+        Point start = TextHitCaretPoint(&win->paint, *first, 2, false);
+        Point end = TextHitCaretPoint(&win->paint, *last, 4, true);
+        start.x += 0.1f;
+        end.x -= 0.1f;
+        RawMouse(win, PlatformInputKind::MouseDown, start, false);
+        RawMouse(win, PlatformInputKind::MouseMove, end, true);
+        TestDraw(win);
+        char text[128];
+        int count = WindowSelectionText(win, text, dimofi(text));
+        Str before = StrDup(Str(text, count));
+        utassert(StrStartsWith(StrTrimAscii(before), "pha one"));
+        utassert(StrEndsWith(StrTrimAscii(before), "beta"));
+
+        host->showPrefix = true;
+        TestDraw(win);
+        count = WindowSelectionText(win, text, dimofi(text));
+        utassert(StrEq(Str(text, count), before));
+        RawMouse(win, PlatformInputKind::MouseUp, end, false);
+        StrFree(before);
+    }
+    TestAppFree(app);
+}
+
 static void SelectionStartsInAnIdleVirtualizedTextView() {
     Arena* a = ArenaNew();
     TswView view = TswOpen(TswParagraphs(a, 120).s, TswContainer::Scrollable);
@@ -10041,6 +10093,7 @@ static void TestTextStateWindow() {
     ScrollingKeepsAnInlineCodeSelectionAnchor();
     BackwardWordDragKeepsAnOffscreenAnchor();
     SelectionStartsInAnIdleVirtualizedTextView();
+    CrossViewSelectionKeepsItsEndpointsAfterEarlierTextAppears();
     DragAfterViewportShrinksRestoresItsAnchor();
     FinishedMultiClickSelectionStaysVirtualized();
     FinishedTouchSelectionKeepsOnlyVisibleHandles();

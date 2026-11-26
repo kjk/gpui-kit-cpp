@@ -347,6 +347,9 @@ enum class TextSelectionDeferredGesture : uint8_t {
 struct TextSelectionReflow {
     EntityId owner = {};
     uint64_t replacement = 0;
+    // Only set when the moving endpoint belongs to a different document.
+    EntityId cursorOwner = {};
+    uint64_t cursorReplacement = 0;
     int scope = 0;
     int offsets[2] = {-1, -1};
     TextSelectionSourcePoint endpoints[2];

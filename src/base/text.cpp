@@ -9565,14 +9565,15 @@ El* TextView::IntoEl() {
     bool partialSelection =
         selectable && selection && !selection->selectAllOwner.IsValid() &&
         (selection->gesture.selecting || WindowSelectionHas(cx->win) ||
-         (managed && selection->pendingReflow.owner == managed->self));
+         (managed && (selection->pendingReflow.owner == managed->self ||
+                      selection->pendingReflow.cursorOwner == managed->self)));
     const TextSelectionReflow* reflow =
         cx->win ? cx->win->paint.selectionReflow : nullptr;
     bool dragging = selection && selection->gesture.selecting;
     bool projectSelection =
         managed && selection && reflow &&
         reflow->deferredGesture == TextSelectionDeferredGesture::None &&
-        reflow->owner == managed->self &&
+        reflow->owner == managed->self && !reflow->cursorOwner.IsValid() &&
         (!selection->unitHeld ||
          (reflow->unit[0].block >= 0 && reflow->unit[1].block >= 0)) &&
         (selection->copyProjection.owner == managed->self ||
