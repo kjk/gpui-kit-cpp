@@ -595,13 +595,20 @@ static void VirtualListPrePaint(PaintCtx* ctx, El* e, void* user) {
         rowCx.win = paint->win;
         rowCx.a = paint->a;
         rowCx.self = o.view;
+        bool measureAll = axis == Axis::Vertical && o.measureAllWidth;
+        if (measureAll && *o.measureAllWidth != cross) {
+            for (int ix = 0; ix < o.count; ix++) o.needsMeasure[ix] = 1;
+            *o.measureAllWidth = cross;
+        }
         // A newly measured group can shrink enough to expose more rows.
         // Continue until the entire visible range has measured extents.
         for (int pass = 0; pass < o.count; pass++) {
-            VirtualRange range = VirtualListVisibleRangeFromLayout(
-                layout.origins.els, layout.sizes.els, o.count,
-                offset > o.overdraw ? offset - o.overdraw : 0,
-                viewport + o.overdraw * 2);
+            VirtualRange range =
+                measureAll ? VirtualRange{0, o.count}
+                           : VirtualListVisibleRangeFromLayout(
+                                 layout.origins.els, layout.sizes.els, o.count,
+                                 offset > o.overdraw ? offset - o.overdraw : 0,
+                                 viewport + o.overdraw * 2);
             int anchor =
                 VirtualListVisibleRangeFromLayout(
                     layout.origins.els, layout.sizes.els, o.count, offset, 0)
@@ -612,9 +619,8 @@ static void VirtualListPrePaint(PaintCtx* ctx, El* e, void* user) {
             for (int ix = range.first; ix < range.end; ix++) {
                 if (!o.needsMeasure[ix]) continue;
                 El* row = o.row(o.user, &rowCx, ix);
-                if (!row) continue;
                 Size measured = MeasureElAtWidth(ctx, row, cross);
-                if (measured.h <= 0) continue;
+                if (!measureAll && measured.h <= 0) continue;
                 const_cast<float*>(o.sizes)[ix] = measured.h;
                 o.needsMeasure[ix] = 0;
                 changed = true;
@@ -640,6 +646,7 @@ static void VirtualListPrePaint(PaintCtx* ctx, El* e, void* user) {
                 else
                     e->scrollY = offset;
             }
+            if (measureAll) break;
         }
     }
     float content =

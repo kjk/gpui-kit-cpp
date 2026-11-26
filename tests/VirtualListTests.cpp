@@ -395,6 +395,59 @@ static void VisibleRowsUseTheirRenderedHeights() {
     ArenaDelete(arena);
 }
 
+struct MeasureAllRows {
+    float tailHeight = 50;
+    int tailBuilds = 0;
+
+    static El* Row(void* user, Ctx* cx, int ix) {
+        auto* rows = (MeasureAllRows*)user;
+        if (ix == 8) return nullptr;
+        if (ix == 9) rows->tailBuilds++;
+        return Div(cx->a)->W(kFill)->H(ix == 9 ? rows->tailHeight : 50);
+    }
+};
+
+// gpui-pre elements/list.rs test_measure_all_after_width_change.
+static void MeasureAllRefreshesTheOffscreenRowsOnWidthChange() {
+    App app;
+    Window* win = new Window();
+    Arena* arena = ArenaNew();
+    win->app = &app;
+    Ctx cx = {&app, win, arena, {}};
+    float sizes[10] = {};
+    uint8_t dirty[10] = {};
+    float width = -1.f;
+    MeasureAllRows rows;
+    VirtualListScrollHandle handle;
+    VirtualListOpts opts;
+    opts.count = dimofi(sizes);
+    opts.sizes = sizes;
+    opts.needsMeasure = dirty;
+    opts.measureAllWidth = &width;
+    opts.handle = &handle;
+    opts.row = &MeasureAllRows::Row;
+    opts.user = &rows;
+    El* root = v_virtual_list(&cx, StrL("measure-all"), opts);
+    root->w = 100;
+    root->h = 200;
+    InvokePrePaint(root, &app, win);
+    utassertnear(width, 100.f);
+    utassertnear(root->contentH, 450.f);
+    utassert(rows.tailBuilds == 1 && sizes[8] == 0 && dirty[8] == 0);
+
+    InvokePrePaint(root, &app, win);
+    utassert(rows.tailBuilds == 1);
+
+    root->w = 200;
+    rows.tailHeight = 90;
+    InvokePrePaint(root, &app, win);
+    utassertnear(width, 200.f);
+    utassertnear(root->contentH, 490.f);
+    utassert(rows.tailBuilds == 2 && sizes[9] == 90 && dirty[9] == 0);
+    delete win;
+    ArenaDelete(arena);
+}
+
 static void LogicalOffsetIgnoresUnmeasuredItems() {
     const float sizes[] = {20, 30, 0, 40};
     utassertnear(VirtualListPixelFromLogical(sizes, 4, 2, 0), 50.f);
@@ -489,5 +542,6 @@ void TestVirtualList() {
     HorizontalConstructorUsesXAxisEndToEnd();
     PrePaintUsesTheLaidOutBoxNotViewH();
     VisibleRowsUseTheirRenderedHeights();
+    MeasureAllRefreshesTheOffscreenRowsOnWidthChange();
     LogicalOffsetIgnoresUnmeasuredItems();
 }

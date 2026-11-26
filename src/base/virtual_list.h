@@ -212,6 +212,11 @@ struct VirtualListOpts {
     // Rows flagged here are measured at the viewport width before placement.
     // The size array supplies a provisional extent only to find the range.
     uint8_t* needsMeasure = nullptr;
+    // GPUI ListState::measure_all. A vertical list with a writable size
+    // array and measurement flags can retain the width it measured at.
+    // Measure every dirty row, including offscreen rows, and invalidate all
+    // measurements when the width changes. Initialize the width to -1.
+    float* measureAllWidth = nullptr;
     // The offsets, for a list without a handle. A list with one reads its
     // offset from the handle instead — `track_scroll(&handle)`.
     float scrollY = 0;
