@@ -1648,10 +1648,11 @@ static void LiveRegionAnnouncesChangesAndKeepsTheSameNodeIdentity() {
     utassert(StrEq(status().info.value, host->text));
     utassert(status().liveChanged && !win->focusId);
     uint32_t path = status().elementPath;
+    uint32_t id = status().id;
     host->sibling = true;
     TestDraw(win);
     utassert(len(win->accessibility) == 2 && !status().liveChanged);
-    utassert(status().elementPath == path);
+    utassert(status().elementPath == path && status().id == id);
     host->text = StrL("Could not save");
     TestDraw(win);
     utassert(status().liveChanged);
@@ -1664,13 +1665,79 @@ static void LiveRegionAnnouncesChangesAndKeepsTheSameNodeIdentity() {
     utassert(status().liveChanged);
     host->id = StrL("new-status");
     TestDraw(win);
-    utassert(status().elementPath != path && status().liveChanged);
+    utassert(status().elementPath != path && status().id != id &&
+             status().liveChanged);
     host->show = false;
     TestDraw(win);
     utassert(len(win->accessibility) == 1);
     host->show = true;
     TestDraw(win);
     utassert(status().liveChanged && !win->focusId);
+    TestAppFree(app);
+}
+
+static void RetainedAccessibilityActionsFollowNamedControls() {
+    struct Host {
+        bool showTarget = true;
+        bool insertSibling = false;
+        int activated = 0;
+
+        static void Activate(Host* self, Ctx*, const ClickEvent*,
+                             int64_t which) {
+            self->activated = (int)which;
+        }
+
+        static El* Control(Ctx* cx, Str id, Str label, int which) {
+            return Div(cx->a)
+                ->PathClick(id)
+                ->Role(AccessibilityRole::Button)
+                ->OnAccessibilityDefault(Listen(cx, &Activate, which))
+                ->Child(TextEl(cx->a, label)->Role(AccessibilityRole::Label));
+        }
+
+        static El* Render(Host* self, Ctx* cx) {
+            El* root = Div(cx->a)->SizeFull();
+            if (self->insertSibling) {
+                root->Child(Control(cx, StrL("other"), StrL("Other"), 2));
+            }
+            if (self->showTarget) {
+                root->Child(Control(cx, StrL("target"), StrL("Target"), 1));
+            }
+            return root;
+        }
+    };
+    App* app = TestAppNew();
+    auto entity = EntityNew<Host>(app);
+    auto* host = entity.Get(app);
+    Window* win = TestWindowOpen(app, entity, 240, 140);
+    utassert(len(win->accessibility) == 2);
+    uint32_t target = win->accessibility[0].id;
+    uint32_t label = win->accessibility[1].id;
+
+    host->insertSibling = true;
+    TestDraw(win);
+    int index = WindowAccessibilityNodeIndex(win, target);
+    const auto* child = WindowAccessibilityNode(win, label);
+    utassert(index == 2 && child && child->parent == index);
+    utassert(
+        WindowAccessibilityPerform(win, target, AccessibilityAction::Default));
+    utassert(host->activated == 1);
+#if GPUI_OS_WINDOWS
+    utassert(AccessibilityWinSmokeTest(win, target));
+#endif
+
+    host->showTarget = false;
+    TestDraw(win);
+    utassert(!WindowAccessibilityNode(win, target));
+    utassert(!WindowAccessibilityNode(win, label));
+    utassert(
+        !WindowAccessibilityPerform(win, target, AccessibilityAction::Default));
+    utassert(host->activated == 1);
+
+    host->showTarget = true;
+    TestDraw(win);
+    utassert(WindowAccessibilityNodeIndex(win, target) == -1);
+    utassert(win->accessibility[2].id != target);
     TestAppFree(app);
 }
 
@@ -1743,4 +1810,5 @@ void TestAccessibility() {
     DocumentRevisionsTrackTextAndSelectionWithoutReadingTheSource();
     ADocumentSourceEnumeratesItsPartsOnDemand();
     LiveRegionAnnouncesChangesAndKeepsTheSameNodeIdentity();
+    RetainedAccessibilityActionsFollowNamedControls();
 }

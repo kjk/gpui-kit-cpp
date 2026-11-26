@@ -240,7 +240,13 @@ The current update target is
   accessibility nodes only while `PlatAccessibilityWanted` says something
   reads it: on Windows a UIA client is listening or has asked the window
   (WM_GETOBJECT); on Linux the AT-SPI bridge is ready; macOS and headless
-  test windows always collect; wasm never does (`src/gpui/window_common.cpp`).
+  test windows always collect; wasm collects for live announcements
+  (`src/gpui/window_common.cpp`).
+- **Accessibility identity follows the element path.** A named control
+  retains its ID across sibling edits. Unnamed elements fall back to their
+  author ID, focus handle or position under the nearest named ancestor.
+  Removed IDs are retired so a cached platform provider cannot activate a
+  later control at the same index (`src/gpui/window_common.cpp`).
 - **Linux invalidates a child list when its retained children reorder.**
   Insertions and removals report individual child references, and reparented
   nodes also report the new parent. Lazy document revisions invalidate their

@@ -11467,11 +11467,21 @@ static void AccessibilityCaptureInputText(Arena* a, AccessibilityNode* node) {
     node->textExcerptStart = start;
 }
 
+static constexpr uint64_t kAccessibilityIdentitySeed = 0xcbf29ce484222325ull;
+
 static void AccessibilityCollectNode(El* e, Vec<AccessibilityNode>* out,
-                                     int semanticParent, uint32_t* nextId) {
+                                     int semanticParent, uint32_t* nextId,
+                                     uint64_t parentKey, int position) {
     if (!e || !out || !nextId) {
         return;
     }
+    // A named element anchors its subtree to the same path when siblings
+    // are moved. Unnamed siblings inherit the anchor and use their order
+    // among other unnamed siblings.
+    bool named = len(e->id) && e->pathId;
+    uint64_t key = named ? Fnv1a64(kAccessibilityIdentitySeed, &e->pathId,
+                                   sizeof(e->pathId))
+                         : Fnv1a64(parentKey, &position, sizeof(position));
     int childParent = semanticParent;
     if (e->accessibility.role != AccessibilityRole::None) {
         AccessibilityNode node;
@@ -11537,6 +11547,20 @@ static void AccessibilityCollectNode(El* e, Vec<AccessibilityNode>* out,
                     ? AccessibilityInputFocus(e, node.input)
                     : AccessibilityVisualFocus(e);
         }
+        uint64_t semanticKey = key;
+        if (!named && len(node.info.authorId)) {
+            semanticKey = Fnv1a64(kAccessibilityIdentitySeed ^ 1, &e->pathId,
+                                  sizeof(e->pathId));
+            semanticKey = Fnv1a64(semanticKey, node.info.authorId.s,
+                                  (size_t)len(node.info.authorId));
+        } else if (!named && node.focusId) {
+            semanticKey = Fnv1a64(kAccessibilityIdentitySeed ^ 2, &node.focusId,
+                                  sizeof(node.focusId));
+        } else if (!named) {
+            semanticKey =
+                Fnv1a64(semanticKey, &node.info.role, sizeof(node.info.role));
+        }
+        node.identity = semanticKey;
         if (!node.info.disabled &&
             (node.onClick.IsValid() || node.listener.IsValid() ||
              node.accessibilityDefault.IsValid() || node.clickAction)) {
@@ -11569,6 +11593,7 @@ static void AccessibilityCollectNode(El* e, Vec<AccessibilityNode>* out,
                 run.id = (*nextId)++;
                 run.parent = childParent;
                 run.info.role = AccessibilityRole::TextRun;
+                run.identity = Fnv1a64(node.identity ^ 3, &i, sizeof(i));
                 run.info.value = Str(
                     node.info.value.s + (line.s - document.text.s), len(line));
                 run.info.label = run.info.value;
@@ -11576,8 +11601,10 @@ static void AccessibilityCollectNode(El* e, Vec<AccessibilityNode>* out,
             }
         }
     }
+    int unnamed = 0;
     for (El* child = e->first; child; child = child->next) {
-        AccessibilityCollectNode(child, out, childParent, nextId);
+        int at = len(child->id) && child->pathId ? 0 : unnamed++;
+        AccessibilityCollectNode(child, out, childParent, nextId, key, at);
     }
 }
 
@@ -11587,7 +11614,8 @@ void AccessibilityCollect(El* root, Vec<AccessibilityNode>* out) {
     }
     VecClear(*out);
     uint32_t nextId = 1;
-    AccessibilityCollectNode(root, out, -1, &nextId);
+    AccessibilityCollectNode(root, out, -1, &nextId, kAccessibilityIdentitySeed,
+                             0);
 }
 
 void FocusCollect(Window* win, El* root) {

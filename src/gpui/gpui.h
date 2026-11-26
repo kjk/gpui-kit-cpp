@@ -3981,6 +3981,7 @@ struct HitRect {
 struct AccessibilityNode {
     uint32_t id = 0;
     uint32_t elementPath = 0;
+    uint64_t identity = 0;
     bool liveChanged = false;
     int parent = -1;
     Bounds bounds = {};
@@ -4011,8 +4012,14 @@ struct AccessibilityNode {
 };
 
 struct AccessibilityLiveSnapshot {
-    uint32_t path = 0;
+    uint32_t id = 0;
     uint64_t textHash = 0;
+};
+
+struct AccessibilityIdentity {
+    uint64_t key = 0;
+    uint32_t id = 0;
+    int index = 0;
 };
 
 struct AccessibilityDocumentRevision {
@@ -7879,6 +7886,9 @@ struct Window {
     // Rebuilt after layout from the frame's element tree. Platform adapters
     // read this; it owns no strings or callbacks beyond the frame arena.
     Vec<AccessibilityNode> accessibility;
+    Vec<AccessibilityIdentity> accessibilityIdentities[2];
+    int accessibilityIdentityFrame = 0;
+    uint64_t accessibilityNextId = 1;
     Vec<AccessibilityLiveSnapshot> accessibilityLive[2];
     int accessibilityLiveFrame = 0;
     Vec<AccessibilityDocumentRevision> accessibilityDocuments[2];

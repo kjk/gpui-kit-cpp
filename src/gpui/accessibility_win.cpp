@@ -1215,7 +1215,7 @@ HRESULT WinAccessibilityNode::GetEmbeddedFragmentRoots(SAFEARRAY** out) {
 }
 
 HRESULT WinAccessibilityNode::SetFocus() {
-    if (!root->win || !root->hwnd) {
+    if (!Node() || !root->hwnd) {
         return UIA_E_ELEMENTNOTAVAILABLE;
     }
     ::SetFocus(root->hwnd);
@@ -1239,15 +1239,17 @@ HRESULT WinAccessibilityNode::get_FragmentRoot(
 }
 
 HRESULT WinAccessibilityNode::Invoke() {
-    return root->win && WindowAccessibilityPerform(root->win, id,
-                                                   AccessibilityAction::Default)
+    if (!Node()) return UIA_E_ELEMENTNOTAVAILABLE;
+    return WindowAccessibilityPerform(root->win, id,
+                                      AccessibilityAction::Default)
                ? S_OK
                : UIA_E_INVALIDOPERATION;
 }
 
 HRESULT WinAccessibilityNode::Toggle() {
     const AccessibilityNode* node = Node();
-    return node && node->info.toggled != AccessibilityToggled::Unset &&
+    if (!node) return UIA_E_ELEMENTNOTAVAILABLE;
+    return node->info.toggled != AccessibilityToggled::Unset &&
                    WindowAccessibilityPerform(root->win, id,
                                               AccessibilityAction::Default)
                ? S_OK

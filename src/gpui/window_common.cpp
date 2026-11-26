@@ -316,6 +316,40 @@ static uint64_t AccessibilityHashStr(uint64_t hash, Str value) {
                : hash;
 }
 
+static int CompareAccessibilityIdentities(const void* a, const void* b) {
+    const auto& left = *static_cast<const AccessibilityIdentity*>(a);
+    const auto& right = *static_cast<const AccessibilityIdentity*>(b);
+    if (left.key != right.key) return left.key < right.key ? -1 : 1;
+    return left.index - right.index;
+}
+
+static void AccessibilityRetainIds(Window* win) {
+    int previous = win->accessibilityIdentityFrame;
+    auto& last = win->accessibilityIdentities[previous];
+    auto& current = win->accessibilityIdentities[1 - previous];
+    auto& nodes = win->accessibility;
+    if (!VecResize(current, len(nodes))) {
+        // The frame-local numbers may name unrelated existing providers.
+        VecClear(nodes);
+        VecClear(current);
+    }
+    for (int i = 0; i < len(nodes); i++) current[i] = {nodes[i].identity, 0, i};
+    if (len(current) > 1)
+        qsort(current.els, (size_t)len(current), sizeof(current[0]),
+              CompareAccessibilityIdentities);
+    int before = 0;
+    for (auto& item : current) {
+        while (before < len(last) && last[before].key < item.key) before++;
+        if (before < len(last) && last[before].key == item.key) {
+            item.id = last[before++].id;
+        } else if (win->accessibilityNextId <= UINT32_MAX) {
+            item.id = (uint32_t)win->accessibilityNextId++;
+        }
+        nodes[item.index].id = item.id;
+    }
+    win->accessibilityIdentityFrame = 1 - previous;
+}
+
 static bool AccessibilityTrackLiveRegions(Window* win) {
     int previous = win->accessibilityLiveFrame;
     win->accessibilityLiveFrame = 1 - previous;
@@ -329,17 +363,16 @@ static bool AccessibilityTrackLiveRegions(Window* win) {
         if (node.info.live == AccessibilityLive::Off || len(text) == 0) {
             continue;
         }
-        uint32_t path = node.elementPath ? node.elementPath : node.id;
         uint64_t textHash = AccessibilityHashStr(0xcbf29ce484222325ull, text);
         node.liveChanged = true;
         for (int j = 0; j < len(last); j++) {
-            if (last[j].path == path) {
+            if (last[j].id == node.id) {
                 node.liveChanged = last[j].textHash != textHash;
                 break;
             }
         }
         announce |= node.liveChanged;
-        VecAppend(current, AccessibilityLiveSnapshot{path, textHash});
+        VecAppend(current, AccessibilityLiveSnapshot{node.id, textHash});
     }
     return announce;
 }
@@ -453,6 +486,27 @@ static uint64_t AccessibilityTreeHash(const Vec<AccessibilityNode>& nodes) {
     }
 #undef GPUI_A11Y_HASH
     return hash;
+}
+
+static void AccessibilityProject(Window* win, El* root, bool headless) {
+    // Tests and native readers see the tree after layout. Retain only the
+    // numeric identities across arena resets, never frame-owned callbacks.
+    if (headless || PlatAccessibilityWanted(win)) {
+        AccessibilityCollect(root, &win->accessibility);
+        AccessibilityRetainIds(win);
+        uint64_t hash = AccessibilityTreeHash(win->accessibility);
+        bool announce = AccessibilityTrackLiveRegions(win);
+        if (announce || hash != win->accessibilityHash) {
+            AccessibilityTrackDocuments(win);
+            win->accessibilityHash = hash;
+            PlatAccessibilityTreeChanged(win);
+        }
+        return;
+    }
+    win->accessibilityHash = 0;
+    VecClear(win->accessibilityIdentities[win->accessibilityIdentityFrame]);
+    VecClear(win->accessibilityLive[win->accessibilityLiveFrame]);
+    VecClear(win->accessibilityDocuments[win->accessibilityDocumentFrame]);
 }
 
 // The hit rects under a point, innermost first; defined with the dispatch.
@@ -738,8 +792,8 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
                 win->paint.transparent ? RgbaTransparent() : th.background);
     gFrameLayoutSecs = 0;
     gFramePaintSecs = 0;
+    double tLay0 = TimeNow();
     if (root) {
-        double tLay0 = TimeNow();
         if (!win->layout) {
             win->layout = LayoutCacheNew();
         }
@@ -747,27 +801,9 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
         LayoutEl(&win->paint, root, 0, 0, dipW, dipH, WindowRemSize(win),
                  th.foreground, win->layout);
         FocusCollect(win, root);
-        // The semantic tree is a walk of every element, building a string
-        // for each node with a role, and a hash of the result: only while
-        // something would read it. A headless window is a test's, and tests
-        // read the tree directly. The hash is zeroed otherwise, so the first
-        // collection a client sees announces itself as a change.
-        if (headless || PlatAccessibilityWanted(win)) {
-            AccessibilityCollect(root, &win->accessibility);
-            uint64_t accessibilityHash =
-                AccessibilityTreeHash(win->accessibility);
-            bool announce = AccessibilityTrackLiveRegions(win);
-            if (announce || accessibilityHash != win->accessibilityHash) {
-                AccessibilityTrackDocuments(win);
-                win->accessibilityHash = accessibilityHash;
-                PlatAccessibilityTreeChanged(win);
-            }
-        } else {
-            win->accessibilityHash = 0;
-            VecClear(win->accessibilityLive[win->accessibilityLiveFrame]);
-            VecClear(
-                win->accessibilityDocuments[win->accessibilityDocumentFrame]);
-        }
+    }
+    AccessibilityProject(win, root, headless);
+    if (root) {
         // A dialog that has just opened takes focus into itself, which is what
         // Rust gets from tracking focus on the trap container.
         FocusTrapApplyPending(win);
@@ -5420,6 +5456,7 @@ static void WindowReleaseResources(Window* w) {
     PaintTargetFree(&w->paint);
     VecReset(w->timers);
     VecReset(w->rendered);
+    for (auto& identities : w->accessibilityIdentities) VecReset(identities);
     VecReset(w->paintedNativeSurfaces);
     VecReset(w->imageCacheStack);
     VecReset(w->plotAppearScopes);
