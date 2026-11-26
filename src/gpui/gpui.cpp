@@ -10541,7 +10541,17 @@ static int CopyTextHitsFiltered(PaintCtx* ctx, int a, int b, int scope,
     // been emitted yet" is what keeps a drag that ends exactly at the start of
     // the next run reaching into it.
     bool sep = false;
+    bool afterSourcePlugin = false;
+    auto sourceBlockBreak = [&]() {
+        while (o.n > 0 && out[o.n - 1] == '\n') o.n--;
+        CopyPut(&o, StrL("\n\n"));
+    };
     auto emit = [&](Str piece, const SelSource* s, bool join) {
+        if (afterSourcePlugin) {
+            sourceBlockBreak();
+            afterSourcePlugin = false;
+            sep = false;
+        }
         // A selection confined to one table cell only copies that cell's
         // source. The pipes and the delimiter row stay on the block.
         const SelBlock* want = (cell || !s) ? nullptr : s->block;
@@ -10591,6 +10601,13 @@ static int CopyTextHitsFiltered(PaintCtx* ctx, int a, int b, int scope,
             if (!BlockPluginHitSelected(ctx, t, a, b)) {
                 continue;
             }
+            Str piece = src && t.src ? t.src->pre : t.text;
+            if (src) {
+                int end = len(piece);
+                while (end > 0 && piece.s[end - 1] == '\n') end--;
+                piece = Str(piece.s, end);
+            }
+            if (!len(piece)) continue;
             if (src && grp) {
                 CopyPut(&o, grp->post);
                 grp = nullptr;
@@ -10600,14 +10617,18 @@ static int CopyTextHitsFiltered(PaintCtx* ctx, int a, int b, int scope,
                 blk = nullptr;
             }
             if (any) {
-                CopyPut(&o, src ? StrL("\n\n") : StrL("\n"));
+                if (src) {
+                    sourceBlockBreak();
+                } else if (o.n > 0 && out[o.n - 1] != '\n') {
+                    CopyPut(&o, StrL("\n"));
+                }
             }
-            Str piece = src && t.src ? t.src->pre : t.text;
             CopyPut(&o, piece);
-            if (!src && len(piece) > 0 && piece.s[len(piece) - 1] != '\n') {
+            if (!src && piece.s[len(piece) - 1] != '\n') {
                 CopyPut(&o, StrL("\n"));
             }
             any = true;
+            afterSourcePlugin = src;
             sep = false;
             continue;
         }

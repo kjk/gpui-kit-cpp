@@ -9375,6 +9375,26 @@ static void BlockPluginSelectionCopiesBothFormats() {
     utassert(n == 0);
     utassert(TextHitsSourceRange(&ctx, 0, 1, 0, {})
                  .kind == SourceRangeSelection::Unselected);
+    VecClear(ctx.texts);
+
+    ctx.selPoints = false;
+    TextHit before{};
+    before.text = StrL("before");
+    TextHit after{};
+    after.text = StrL("after");
+    hit.docOff = len(before.text) + 1;
+    after.docOff = hit.docOff + 1;
+    source.pre = StrL("$$\nx\n$$\n");
+    VecAppend(ctx.texts, before);
+    VecAppend(ctx.texts, hit);
+    VecAppend(ctx.texts, after);
+    int end = after.docOff + len(after.text);
+    n = CopyTextHitsIn(&ctx, 0, end, -1, buf, dimofi(buf),
+                       SelectionFormat::Source);
+    utassert(StrEq(Str(buf, n), "before\n\n$$\nx\n$$\n\nafter"));
+    n = CopyTextHitsIn(&ctx, 0, end, -1, buf, dimofi(buf),
+                       SelectionFormat::Plain);
+    utassert(StrEq(Str(buf, n), "before\nx\nafter"));
     VecReset(ctx.texts);
 }
 
