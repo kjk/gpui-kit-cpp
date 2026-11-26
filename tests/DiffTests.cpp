@@ -2311,6 +2311,25 @@ static void DiffViewportHasALocalizedDocumentName() {
     TestAppFree(stage.app);
 }
 
+static void DiffLineNumberButtonsNameTheirSideAndLine() {
+    PointerStage stage = StagePointer(false, {}, DiffMode::Split);
+    Str priorLocale = LocaleNow();
+    LocaleSet(StrL("en"));
+    TestDraw(stage.win);
+    bool original = false;
+    bool modified = false;
+    for (const auto& node : stage.win->accessibility) {
+        if (node.info.role != AccessibilityRole::Button) continue;
+        original |=
+            StrEq(node.info.PlatformName(), StrL("Select Original line 1"));
+        modified |=
+            StrEq(node.info.PlatformName(), StrL("Select Modified line 2"));
+    }
+    utassert(original && modified);
+    LocaleSet(priorLocale);
+    TestAppFree(stage.app);
+}
+
 // A point inside the painted run of the modified side's `lineIx`, `inset`
 // from its left edge, and one past the run's right edge.
 static bool PointerPoints(Window* win, int lineIx, float inset, Point* onText,
@@ -3142,6 +3161,7 @@ void TestDiff() {
     OwnedDiffHighlighterPreparesOnTheExecutorAndDisposesOnce();
     GutterMarkersActivateWithoutSelectingLines();
     DiffViewportHasALocalizedDocumentName();
+    DiffLineNumberButtonsNameTheirSideAndLine();
     TextHoverReportsTheCharacterAndOnlyChanges();
     TextHitsUsePaintedSyntaxRunsAndSourceOffsets();
     AModifierAloneReportsTheCharacterAgain();

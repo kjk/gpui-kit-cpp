@@ -5020,6 +5020,16 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
         float annotationLeft = 8.f;
         if (diff->onAddAnnotation) box->Group();
         size_t number = SideOf(file, side)->lines[line].lineNumber;
+        bool exposeSource = WindowAccessibilityActive(cx->win);
+        Str numberLabel =
+            diff->lineNumber || exposeSource ? fmt("%zu", number) : Str{};
+        const TrArg lineArgs[] = {
+            {"side", exposeSource
+                         ? Tr(side == DiffSide::Original ? "Diff.Original"
+                                                         : "Diff.Modified")
+                         : Str{}},
+            {"line", numberLabel},
+        };
         bool selected = lineSelected(side, line);
         Rgba bg = changed ? (side == DiffSide::Original ? theme.danger
                                                         : theme.success)
@@ -5047,7 +5057,7 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
             auto* pos = ArenaNew<DiffLinePosition>(cx->a);
             *pos = DiffLinePosition::New(file->path, side, number);
             auto arg = (int64_t)(intptr_t)pos;
-            box->Child(
+            El* gutter =
                 Div(cx->a)
                     ->PathClick(side == DiffSide::Original
                                     ? StrL("original-line-number")
@@ -5060,8 +5070,14 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
                     ->SuppressTextSelection()
                     ->OnMouseDown(ListenTo(diff->state, &OnDiffGutterDown, arg))
                     ->OnMouseMove(ListenTo(diff->state, &OnDiffGutterMove, arg))
-                    ->Child(TextEl(cx->a, fmt("%zu", number))
-                                ->Fg(theme.mutedFg)));
+                    ->Child(TextEl(cx->a, numberLabel)->Fg(theme.mutedFg));
+            if (exposeSource) {
+                gutter->Role(AccessibilityRole::Button)
+                    ->AriaLabel(
+                        StrDup(cx->a, TrFmtTemp("Diff.SelectLine", lineArgs,
+                                                dimofi(lineArgs))));
+            }
+            box->Child(gutter);
         }
         if (markerLane) {
             annotationLeft += 24.f;
@@ -5100,20 +5116,15 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
                                       state->syntaxMaxLineLength,
                               changed && !selected);
         const auto& sourceLine = SideOf(file, side)->lines[line];
-        if (WindowAccessibilityActive(cx->win)) {
+        if (exposeSource) {
             const char* description = !changed ? "Diff.SourceLine"
                                       : side == DiffSide::Original
                                           ? "Diff.RemovedLine"
                                           : "Diff.AddedLine";
-            const TrArg args[] = {
-                {"side", Tr(side == DiffSide::Original ? "Diff.Original"
-                                                       : "Diff.Modified")},
-                {"line", fmt("%zu", number)},
-            };
             source->Role(AccessibilityRole::Label)
                 ->AriaValue(sourceLine.text)
-                ->AriaDescription(
-                    StrDup(cx->a, TrFmtTemp(description, args, 2)));
+                ->AriaDescription(StrDup(
+                    cx->a, TrFmtTemp(description, lineArgs, dimofi(lineArgs))));
         }
         bool hover = diff->onTextHover != nullptr;
         bool click = diff->onLineClick || diff->onTextClick;
