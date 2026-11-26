@@ -7606,6 +7606,29 @@ static void CustomBlockFallbackKeepsAtomicSelection() {
     ArenaDelete(ext);
 }
 
+// node.rs document_selected_source_slices_covered_blocks_from_the_source.
+static void EnclosedBlocksKeepTheirOriginalMarkdown() {
+    TswView v = TswOpen("start\n\n3. _one_\n4. two\n\n---\n\nend",
+                        TswContainer::Window);
+    const TextHit* first = HitContaining(v.win, "start");
+    const TextHit* last = HitContaining(v.win, "end");
+    utassert(first && last);
+    if (first && last) {
+        char copy[96];
+        int size = CopyTextHitsIn(&v.win->paint, first->docOff + 1,
+                                  last->docOff + 2, first->scope, copy,
+                                  dimofi(copy), SelectionFormat::Source);
+        utassert(
+            StrEq(Str(copy, size), "tart\n\n3. _one_\n4. two\n\n---\n\nen"));
+        size = CopyTextHitsIn(
+            &v.win->paint, first->docOff + 1, last->docOff + 2, first->scope,
+            copy, dimofi(copy), SelectionFormat::SourceAcrossStyles);
+        utassert(
+            StrEq(Str(copy, size), "tart\n\n3. _one_\n4. two\n\n---\n\nen"));
+    }
+    TswClose(&v);
+}
+
 // `leaf_nodes`: the blocks holding text, the way the index builder walks
 // them.
 static void RfsLeafNodes(const MdNode* n, Vec<const MdNode*>& leaves) {
@@ -9238,6 +9261,7 @@ static void TestTextStateWindow() {
     HtmlTextConvertsNothing();
     CustomBlocksConvertWhole();
     CustomBlockFallbackKeepsAtomicSelection();
+    EnclosedBlocksKeepTheirOriginalMarkdown();
     SelectionsRoundTripThroughSourceRanges();
     SourceRangesHighlightTheTextRenderedFromThem();
     SelectAllConvertsToEveryRenderedCharacter();

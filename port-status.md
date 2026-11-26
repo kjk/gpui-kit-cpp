@@ -518,9 +518,11 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   rather than each parsed inline node. Source mapping includes images when a
   selected run reaches their boundary, and Select All follows committed
   appends until the selection moves. A painted block plugin is included whole
-  when the drag starts or ends inside its box or covers it. An unpainted
-  plugin inside a selection is not copied: Rust still emits one unless its
-  node has observed an empty selection. Under `-markdown=mini` the parser
+  when the drag starts or ends inside its box or covers it. Enclosed
+  top-level Markdown blocks copy their original source spans, including
+  rules that have no text hit. This relies on the frame registering the
+  block's position. Rust also covers blocks omitted by virtualization.
+  Under `-markdown=mini` the parser
   keeps no positions, so source mapping is unavailable (`src/base/text.cpp`,
   `CopyTextHitsFiltered` in `src/gpui/gpui.cpp`).
 - **The window's selection of painted text needs no layer.** A participant

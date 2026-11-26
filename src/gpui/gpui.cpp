@@ -8807,6 +8807,17 @@ static void PaintElNode(PaintCtx* ctx, El* e, bool skipOverlay) {
     if (selectionScope) {
         VecAppend(ctx->window->textSelectionScopes, e->selectionScope);
     }
+    int sourceBlock = -1;
+    if (e->lifecycle && e->lifecycle->selectionBlockSource.s) {
+        int index = len(ctx->selectionSourceBlocks);
+        if (VecAppend(ctx->selectionSourceBlocks,
+                      SelectionSourceBlock{
+                          e->lifecycle->selectionBlockSource, e->selectionOwner,
+                          ElSelectionScope(ctx, e), len(ctx->texts),
+                          len(ctx->texts), ctx->textDocLen, ctx->textDocLen})) {
+            sourceBlock = index;
+        }
+    }
 #ifndef NDEBUG
     // debug_below sets DebugBelow for as long as the element and what it
     // holds paint, and takes it away again after.
@@ -8856,6 +8867,11 @@ static void PaintElNode(PaintCtx* ctx, El* e, bool skipOverlay) {
         CanvasPopClip(ctx);
         ctx->hitMask = previousMask;
         ctx->hasHitMask = hadMask;
+    }
+    if (sourceBlock >= 0) {
+        auto& block = ctx->selectionSourceBlocks[sourceBlock];
+        block.endHit = len(ctx->texts);
+        block.end = ctx->textDocLen;
     }
 #ifndef NDEBUG
     if (e->debugBelow) {
@@ -10541,15 +10557,15 @@ static int CopyTextHitsFiltered(PaintCtx* ctx, int a, int b, int scope,
     // been emitted yet" is what keeps a drag that ends exactly at the start of
     // the next run reaching into it.
     bool sep = false;
-    bool afterSourcePlugin = false;
+    bool afterSourceBlock = false;
     auto sourceBlockBreak = [&]() {
         while (o.n > 0 && out[o.n - 1] == '\n') o.n--;
         CopyPut(&o, StrL("\n\n"));
     };
     auto emit = [&](Str piece, const SelSource* s, bool join) {
-        if (afterSourcePlugin) {
+        if (afterSourceBlock) {
             sourceBlockBreak();
-            afterSourcePlugin = false;
+            afterSourceBlock = false;
             sep = false;
         }
         // A selection confined to one table cell only copies that cell's
@@ -10591,7 +10607,35 @@ static int CopyTextHitsFiltered(PaintCtx* ctx, int a, int b, int scope,
         CopyPutLines(&o, piece, (src && blk) ? blk->linePre : Str{});
         any = true;
     };
+    auto emitSourceBlock = [&](Str piece) {
+        int end = len(piece);
+        while (end > 0 && piece.s[end - 1] == '\n') end--;
+        if (!end) return;
+        if (grp) CopyPut(&o, grp->post);
+        if (blk) CopyPut(&o, blk->post);
+        grp = nullptr;
+        blk = nullptr;
+        if (any) sourceBlockBreak();
+        CopyPut(&o, Str(piece.s, end));
+        any = true;
+        afterSourceBlock = true;
+        sep = false;
+    };
+    int blockIx = 0;
     for (int i = 0; i < len(ctx->texts) && o.n < cap - 1; i++) {
+        while (src && !cell && blockIx < len(ctx->selectionSourceBlocks)) {
+            const auto& block = ctx->selectionSourceBlocks[blockIx];
+            if (block.firstHit > i) break;
+            blockIx++;
+            if (block.firstHit != i || block.start <= a || block.end >= b ||
+                (scope >= 0 && block.scope != scope) ||
+                (owner.IsValid() && block.owner != owner)) {
+                continue;
+            }
+            emitSourceBlock(block.source);
+            i = block.endHit;
+        }
+        if (i >= len(ctx->texts) || o.n >= cap - 1) break;
         const TextHit& t = ctx->texts[i];
         if ((scope >= 0 && t.scope != scope) ||
             !TextHitOwnerMatches(t, owner) || !TextHitInCell(t, cell)) {
@@ -10603,32 +10647,16 @@ static int CopyTextHitsFiltered(PaintCtx* ctx, int a, int b, int scope,
             }
             Str piece = src && t.src ? t.src->pre : t.text;
             if (src) {
-                int end = len(piece);
-                while (end > 0 && piece.s[end - 1] == '\n') end--;
-                piece = Str(piece.s, end);
+                emitSourceBlock(piece);
+                continue;
             }
             if (!len(piece)) continue;
-            if (src && grp) {
-                CopyPut(&o, grp->post);
-                grp = nullptr;
-            }
-            if (src && blk) {
-                CopyPut(&o, blk->post);
-                blk = nullptr;
-            }
-            if (any) {
-                if (src) {
-                    sourceBlockBreak();
-                } else if (o.n > 0 && out[o.n - 1] != '\n') {
-                    CopyPut(&o, StrL("\n"));
-                }
-            }
+            if (any && o.n > 0 && out[o.n - 1] != '\n') CopyPut(&o, StrL("\n"));
             CopyPut(&o, piece);
-            if (!src && piece.s[len(piece) - 1] != '\n') {
+            if (piece.s[len(piece) - 1] != '\n') {
                 CopyPut(&o, StrL("\n"));
             }
             any = true;
-            afterSourcePlugin = src;
             sep = false;
             continue;
         }

@@ -2566,10 +2566,11 @@ static void MdBlockChildren(MdBuild* b, const md::Node* n) {
         MdBlockNode(b, child);
         Span span;
         if (top && MdNodeSpan(b, child, &span)) {
-            for (MdNode* c = before ? before->next : parent->first; c;
-                 c = c->next) {
+            MdNode* first = before ? before->next : parent->first;
+            for (MdNode* c = first; c; c = c->next) {
                 c->blockStart = span.start;
             }
+            if (first && first == parent->last) first->blockEnd = span.end;
         }
     }
 }
@@ -8553,8 +8554,13 @@ static bool MdDrawsNothing(const MdNode* n) {
 El* TextView::Blocks(El* into, MdNode* n, int depth, bool inList,
                      El* continuation) {
     bool outer = blockDepth++ == 0;
+    Str documentSource;
     if (outer) {
         flowPrev = 0;
+        if (selectable && !html && n->kind == MdKind::Doc) {
+            TextViewState* managed = state.Get(cx->app);
+            documentSource = managed ? managed->Source() : source;
+        }
     }
     int blockIx = 0;
     for (MdNode* c = n->first; c; c = c->next, blockIx++) {
@@ -8581,6 +8587,17 @@ El* TextView::Blocks(El* into, MdNode* n, int depth, bool inList,
             revealOut = nullptr;
         }
         if (e) {
+            if (documentSource.s && c->blockStart >= 0 &&
+                c->blockEnd > c->blockStart &&
+                c->blockEnd <= len(documentSource)) {
+                if (!e->lifecycle) e->lifecycle = ArenaNew<ElLifecycle>(a);
+                if (e->lifecycle) {
+                    e->lifecycle->selectionBlockSource =
+                        Str(documentSource.s + c->blockStart,
+                            c->blockEnd - c->blockStart);
+                    e->SelectionOwner(state.id);
+                }
+            }
             bool indented = continuation && (blockIx > 0 || n->runFirst ||
                                              c->kind == MdKind::List);
             (indented ? continuation : into)->Child(e);

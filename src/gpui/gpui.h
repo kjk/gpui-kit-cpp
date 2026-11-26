@@ -2909,6 +2909,7 @@ struct ElLifecycle {
     void* user = nullptr;
     const LinkTooltipTarget* linkTooltip = nullptr;
     const InlineTextFragment* inlineTextFragment = nullptr;
+    Str selectionBlockSource;
     const TextSpan* strikes = nullptr;
     int strikeCount = 0;
     bool inlineTextGroup = false;
@@ -4332,6 +4333,18 @@ struct NamedGroupFrame {
     bool active = false;
 };
 
+// A top-level block can contribute exact Markdown when a selection extends
+// into the blocks on both sides, even if this block painted no text hits.
+struct SelectionSourceBlock {
+    Str source;
+    EntityId owner;
+    int scope;
+    int firstHit;
+    int endHit;
+    int start;
+    int end;
+};
+
 struct PaintCtx {
     App* app = nullptr;
     Window* window = nullptr;
@@ -4449,6 +4462,7 @@ struct PaintCtx {
     const PaintDismissScope* popupDismissScope = nullptr;
     Vec<ScrollRect> scrolls;
     Vec<TextHit> texts;
+    Vec<SelectionSourceBlock> selectionSourceBlocks;
     const El* selectionParagraph = nullptr;
     // Markdown table cells painted this frame, innermost last while painting.
     Vec<Bounds> tableCells;

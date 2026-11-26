@@ -643,6 +643,7 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     }
     VecClear(win->paint.scrolls);
     VecClear(win->paint.texts);
+    VecClear(win->paint.selectionSourceBlocks);
     VecClear(win->paint.tableCells);
     win->paint.tableCellDepth = 0;
     VecClear(win->paint.inputs);

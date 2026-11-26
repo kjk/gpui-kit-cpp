@@ -426,6 +426,7 @@ struct MdNode {
     // A top-level block's source start (BlockNode::span), what an append
     // parses again from; -1 for a block whose source is not known.
     int blockStart = -1;
+    int blockEnd = -1;
     MarkdownNode custom = {};
 };
 
