@@ -233,13 +233,29 @@ static const wchar_t* AccessibilityRoleName(AccessibilityRole role) {
     }
 }
 
+static bool AccessibilityRadioItem(AccessibilityRole role) {
+    return role == AccessibilityRole::RadioButton ||
+           role == AccessibilityRole::MenuItemRadio;
+}
+
 static bool AccessibilitySelectionItem(const AccessibilityInfo& info) {
-    auto role = info.role;
+    AccessibilityRole role = info.role;
+    if (AccessibilityRadioItem(role)) {
+        return info.toggled == AccessibilityToggled::True ||
+               info.toggled == AccessibilityToggled::False;
+    }
     return role == AccessibilityRole::GridCell ||
            (info.hasSelected && (role == AccessibilityRole::ListBoxOption ||
-                                 role == AccessibilityRole::RadioButton ||
+                                 role == AccessibilityRole::ListItem ||
+                                 role == AccessibilityRole::MenuListOption ||
                                  role == AccessibilityRole::Tab ||
                                  role == AccessibilityRole::TreeItem));
+}
+
+static bool AccessibilityItemSelected(const AccessibilityInfo& info) {
+    return AccessibilityRadioItem(info.role)
+               ? info.toggled == AccessibilityToggled::True
+               : info.hasSelected && info.selected;
 }
 
 static bool AccessibilitySelectionContainerRole(AccessibilityRole role) {
@@ -367,7 +383,8 @@ struct WinNodeSnapshot {
 
     bool IsSelectedItem() const {
         const auto& info = properties.info;
-        return info.selected && AccessibilitySelectionItem(info);
+        return AccessibilitySelectionItem(info) &&
+               AccessibilityItemSelected(info);
     }
 };
 
@@ -494,6 +511,7 @@ struct WinAccessibilityNode
         return root->win && *index >= 0 ? S_OK : UIA_E_ELEMENTNOTAVAILABLE;
     }
     HRESULT GridItemTable(int* index, int* table) const;
+    HRESULT SetSelected(bool selected);
 
     WIN_UIA_FRAGMENT_METHODS
     HRESULT STDMETHODCALLTYPE Invoke() override;
@@ -1239,8 +1257,8 @@ static WinPropertyValue WinSemanticProperty(const WinNodeProperties& node,
     } else if (property == UIA_LevelPropertyId && info.hasLevel) {
         return info.level;
     } else if (property == UIA_SelectionItemIsSelectedPropertyId &&
-               info.hasSelected) {
-        return (bool)info.selected;
+               AccessibilitySelectionItem(info)) {
+        return AccessibilityItemSelected(info);
     } else if (property == UIA_GridRowCountPropertyId && info.hasRowCount) {
         return info.rowCount;
     } else if (property == UIA_GridColumnCountPropertyId &&
@@ -1661,7 +1679,8 @@ HRESULT WinAccessibilityNode::GetSelection(SAFEARRAY** out) {
     int count = 0;
     for (int i = 0; i < len(root->win->accessibility); i++) {
         const AccessibilityNode& candidate = root->win->accessibility[i];
-        if (candidate.info.hasSelected && candidate.info.selected &&
+        if (AccessibilitySelectionItem(candidate.info) &&
+            AccessibilityItemSelected(candidate.info) &&
             AccessibilityDescendsFrom(root->win, i, ancestor)) {
             count++;
         }
@@ -1673,7 +1692,8 @@ HRESULT WinAccessibilityNode::GetSelection(SAFEARRAY** out) {
     LONG at = 0;
     for (int i = 0; i < len(root->win->accessibility); i++) {
         const AccessibilityNode& candidate = root->win->accessibility[i];
-        if (!candidate.info.hasSelected || !candidate.info.selected ||
+        if (!AccessibilitySelectionItem(candidate.info) ||
+            !AccessibilityItemSelected(candidate.info) ||
             !AccessibilityDescendsFrom(root->win, i, ancestor)) {
             continue;
         }
@@ -1718,12 +1738,19 @@ HRESULT WinAccessibilityNode::get_IsSelectionRequired(BOOL* out) {
     return get_CanSelectMultiple(out);
 }
 
-HRESULT WinAccessibilityNode::Select() {
+HRESULT WinAccessibilityNode::SetSelected(bool selected) {
     const AccessibilityNode* node = Node();
     if (!node) {
         return UIA_E_ELEMENTNOTAVAILABLE;
     }
-    if (node->info.selected) {
+    if (!AccessibilitySelectionItem(node->info)) {
+        return UIA_E_INVALIDOPERATION;
+    }
+    if (node->info.disabled) {
+        return UIA_E_ELEMENTNOTENABLED;
+    }
+    // AccessKit's set_selected issues Click only to change an item's state.
+    if (AccessibilityItemSelected(node->info) == selected) {
         return S_OK;
     }
     return WindowAccessibilityPerform(root->win, id,
@@ -1732,19 +1759,16 @@ HRESULT WinAccessibilityNode::Select() {
                : UIA_E_INVALIDOPERATION;
 }
 
+HRESULT WinAccessibilityNode::Select() {
+    return SetSelected(true);
+}
+
 HRESULT WinAccessibilityNode::AddToSelection() {
-    return Select();
+    return SetSelected(true);
 }
 
 HRESULT WinAccessibilityNode::RemoveFromSelection() {
-    // The semantic record does not say whether its container allows an empty
-    // or multiple selection. Rust keeps that policy in the widget, so asking
-    // the item to remove itself cannot safely be translated into a toggle.
-    const AccessibilityNode* node = Node();
-    if (!node) {
-        return UIA_E_ELEMENTNOTAVAILABLE;
-    }
-    return node->info.selected ? UIA_E_INVALIDOPERATION : S_OK;
+    return SetSelected(false);
 }
 
 HRESULT WinAccessibilityNode::get_IsSelected(BOOL* out) {
@@ -1755,7 +1779,7 @@ HRESULT WinAccessibilityNode::get_IsSelected(BOOL* out) {
     if (!node) {
         return UIA_E_ELEMENTNOTAVAILABLE;
     }
-    *out = node->info.selected ? TRUE : FALSE;
+    *out = AccessibilityItemSelected(node->info) ? TRUE : FALSE;
     return S_OK;
 }
 
@@ -3254,6 +3278,63 @@ bool AccessibilityWinSelectionEventsSmokeTest() {
           events[0].event == UIA_Selection_InvalidatedEventId && !len(changes);
     for (auto& change : changes) ClearWinPropertyChange(&change);
     AccessibilityWinClose(root);
+    return ok;
+}
+
+bool AccessibilityWinSelectionItemActionsSmokeTest() {
+    Window win;
+    AccessibilityNode item;
+    item.id = 1;
+    item.info.role = AccessibilityRole::ListItem;
+    item.info.hasSelected = true;
+    item.info.selected = true;
+    item.actions = AccessibilityActionDefault;
+    int clicks = 0;
+    item.onClick = MkFunc0(+[](int* count) { ++*count; }, &clicks);
+    VecAppend(win.accessibility, item);
+    WinAccessibility* root = AccessibilityWinNew(&win, GetDesktopWindow());
+    if (!root) return false;
+    IRawElementProviderSimple* provider = nullptr;
+    IUnknown* pattern = nullptr;
+    ISelectionItemProvider* selection = nullptr;
+    bool ok = SUCCEEDED(AccessibilitySimpleAt(root, 0, &provider)) &&
+              provider &&
+              SUCCEEDED(provider->GetPatternProvider(UIA_SelectionItemPatternId,
+                                                     &pattern)) &&
+              pattern &&
+              SUCCEEDED(pattern->QueryInterface(
+                  __uuidof(ISelectionItemProvider), (void**)&selection)) &&
+              selection;
+    if (ok) {
+        BOOL selected = FALSE;
+        ok = SUCCEEDED(selection->get_IsSelected(&selected)) && selected &&
+             SUCCEEDED(selection->Select()) && clicks == 0 &&
+             SUCCEEDED(selection->RemoveFromSelection()) && clicks == 1;
+
+        AccessibilityInfo& info = win.accessibility[0].info;
+        info.selected = false;
+        ok &= SUCCEEDED(selection->RemoveFromSelection()) && clicks == 1 &&
+              SUCCEEDED(selection->AddToSelection()) && clicks == 2;
+
+        info.role = AccessibilityRole::RadioButton;
+        info.hasSelected = false;
+        info.toggled = AccessibilityToggled::True;
+        VARIANT value = {};
+        ok &= SUCCEEDED(provider->GetPropertyValue(
+                  UIA_SelectionItemIsSelectedPropertyId, &value)) &&
+              value.vt == VT_BOOL && value.boolVal == VARIANT_TRUE;
+        VariantClear(&value);
+        info.disabled = true;
+        ok &= selection->Select() == (HRESULT)UIA_E_ELEMENTNOTENABLED &&
+              selection->RemoveFromSelection() ==
+                  (HRESULT)UIA_E_ELEMENTNOTENABLED &&
+              clicks == 2;
+    }
+    if (selection) selection->Release();
+    if (pattern) pattern->Release();
+    if (provider) provider->Release();
+    AccessibilityWinClose(root);
+    VecReset(win.accessibility);
     return ok;
 }
 
