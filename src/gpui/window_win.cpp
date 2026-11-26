@@ -552,7 +552,9 @@ static LRESULT CALLBACK NativeOverlayProc(HWND hwnd, UINT msg, WPARAM wp,
     auto* win = (Window*)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
     HWND owner = Hwnd(win);
     if (!owner) return DefWindowProcW(hwnd, msg, wp, lp);
-    if (msg == WM_NCHITTEST && !IsWindowEnabled(owner)) return HTTRANSPARENT;
+    if (msg == WM_NCHITTEST &&
+        (!IsWindowEnabled(owner) || win->plat->clickThrough))
+        return HTTRANSPARENT;
 
     switch (msg) {
         case WM_MOUSEACTIVATE:
@@ -615,8 +617,7 @@ void WinWindowHideNativeOverlay(Window* win) {
 bool WinWindowPrepareNativeOverlay(PaintCtx* ctx) {
     Window* win = ctx->window;
     HWND owner = Hwnd(win);
-    if (!owner || win->plat->clickThrough || win->plat->opacity != 100)
-        return false;
+    if (!owner || win->plat->opacity != 100) return false;
     PlatWindow* plat = win->plat;
     static const wchar_t* name = L"GpuiNativeOverlay";
     static ATOM type = 0;
@@ -638,7 +639,10 @@ bool WinWindowPrepareNativeOverlay(PaintCtx* ctx) {
                             0, 1, 1, owner, nullptr, instance, nullptr);
     }
     if (!plat->nativeOverlay) return false;
-    plat->nativeOverlayWantsInput = len(ctx->nativeOverlayBounds) != 0;
+    // The visual HWND is already layered and hit-transparent. Click-through
+    // only suppresses the companion HWND that receives GPUI overlay input.
+    plat->nativeOverlayWantsInput =
+        !plat->clickThrough && len(ctx->nativeOverlayBounds) != 0;
     if (!plat->nativeOverlayWantsInput) return true;
     if (!plat->nativeOverlayInput) {
         HWND input = CreateWindowExW(noFocus, name, L"", WS_POPUP, 0, 0, 1, 1,
@@ -694,7 +698,7 @@ bool WinWindowPresentNativeOverlay(Window* win, HDC dc, int width, int height) {
     ShowWindow(plat->nativeOverlay, SW_SHOWNOACTIVATE);
     HWND input = plat->nativeOverlayInput;
     if (input) {
-        if (plat->nativeOverlayWantsInput) {
+        if (!plat->clickThrough && plat->nativeOverlayWantsInput) {
             return SetWindowPos(
                        input, nullptr, origin.x, origin.y, width, height,
                        SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW) != FALSE;
@@ -3130,9 +3134,10 @@ void AppWindowSetClickThrough(Window* win, bool on) {
         return;
     }
     pw->clickThrough = on;
+    if (on && pw->nativeOverlayInput)
+        ShowWindow(pw->nativeOverlayInput, SW_HIDE);
     ApplyLayered(hwnd, pw);
     if (pw->nativeOverlay) {
-        if (on) WinWindowHideNativeOverlay(win);
         InvalidateRect(hwnd, nullptr, FALSE);
     }
 }

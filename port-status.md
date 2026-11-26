@@ -643,9 +643,9 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   blends them in an ARGB X11 window when a compositor is available.
   Windows uses a layered overlay with a separate input region above
   WebView2. Uncomposited X11 and windows with scene recording disabled
-  use drawing and input cutouts with asynchronous snapshots. Windows
-  also uses the snapshot path for host opacity and click-through settings
-  (`src/webview/webview.cpp`).
+  use drawing and input cutouts with asynchronous snapshots. Windows keeps
+  live blending in click-through mode and uses snapshots for host opacity
+  below 100 percent (`src/webview/webview.cpp`).
 - **Linux webview bounds stay logical.** Upstream `device_bounds` passes
   physical pixels because Wry then scales by GDK. `WebViewSetBounds`
   in `wry_linux.cpp` already multiplies a logical rect by that factor
