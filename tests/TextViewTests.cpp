@@ -6863,6 +6863,40 @@ static void SelectAllClipboardUsesTheCommittedDocument() {
     ArenaDelete(arena);
 }
 
+static void PartialSourceCopyKeepsLargeEnclosedBlocks() {
+    if (!TestMarkdownIsFull()) return;
+    Arena* arena = ArenaNew();
+    StrBuilder source(arena);
+    source.Append(StrL("abc\n\n<!--"));
+    for (int i = 0; i < 68 * 1024; i++) source.AppendChar('x');
+    source.Append(StrL("-->\n\ndef"));
+    Str markdown = source.TakeStr();
+    TswView v = TswOpen(markdown.s, TswContainer::Window);
+    v.State()->SetSelectionFormat(SelectionFormat::Source, v.app, v.win);
+    TswFlush(v);
+    TestDraw(v.win);
+    const TextHit* first = HitContaining(v.win, "abc");
+    const TextHit* last = HitContaining(v.win, "def");
+    utassert(first && last);
+    if (first && last) {
+        WindowSelection* selection = WindowSelectionOf(v.win);
+        selection->anchor = first->docOff + 1;
+        selection->cursor = last->docOff + 2;
+        selection->scope = first->scope;
+        TextSelectionBegin(&selection->gesture, true);
+        TextSelectionEnd(&selection->gesture);
+        char bounded[32];
+        int n =
+            TextSelection::SelectedText(v.win, v.app, bounded, dimofi(bounded));
+        utassert(n == dimofi(bounded) - 1 && bounded[n] == 0);
+        utassert(WindowSelectionCopy(v.win));
+        utassert(StrEq(TestReadFromClipboard(arena),
+                       Str(markdown.s + 1, len(markdown) - 2)));
+    }
+    TswClose(&v);
+    ArenaDelete(arena);
+}
+
 static void ShapedTextCopiesAcrossMarkdownStyleBoundaries() {
     TswView v = TswOpen("Some words pre**fix**", TswContainer::Window);
     v.State()
@@ -9327,6 +9361,7 @@ static void TestTextStateWindow() {
     SelectAllReturnsRenderedText();
     SelectAllInSourceFormatReturnsSource();
     SelectAllClipboardUsesTheCommittedDocument();
+    PartialSourceCopyKeepsLargeEnclosedBlocks();
     ShapedTextCopiesAcrossMarkdownStyleBoundaries();
     WrappedLinksUseSharedTextGeometry();
     InlineObjectsShareRowsWithShapedProse();

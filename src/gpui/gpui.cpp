@@ -10374,22 +10374,38 @@ int CopyTextHits(PaintCtx* ctx, int a, int b, char* out, int cap) {
 }
 
 // The copier's output cursor. Every piece goes through Put, so the cap is
-// checked in one place and a document longer than the buffer stops cleanly
-// rather than at a half-written affix.
+// shared by fixed-buffer callers and the growing clipboard writer.
 struct CopyOut {
     char* buf = nullptr;
     int cap = 0;
     int n = 0;
+    StrBuilder* grow = nullptr;
+    bool failed = false;
+
+    bool Full() const { return failed || (!grow && n >= cap - 1); }
+
+    void TrimNewlines() {
+        while (n > 0 && buf[n - 1] == '\n') {
+            n--;
+            if (grow) grow->RemoveLast();
+        }
+    }
 };
 
 static void CopyPut(CopyOut* o, Str s) {
     if (len(s) <= 0 || !s.s) {
         return;
     }
-    int take = len(s);
-    if (o->n + take > o->cap - 1) {
-        take = o->cap - 1 - o->n;
+    if (o->grow) {
+        if (o->failed || len(s) > INT_MAX - 1 - o->n || !o->grow->Append(s)) {
+            o->failed = true;
+        } else {
+            o->buf = o->grow->els;
+            o->n = len(*o->grow);
+        }
+        return;
     }
+    int take = std::min(len(s), o->cap - 1 - o->n);
     if (take <= 0) {
         return;
     }
@@ -10581,11 +10597,15 @@ static bool AcrossStylesUsesSource(PaintCtx* ctx, int a, int b, int scope,
 
 static int CopyTextHitsFiltered(PaintCtx* ctx, int a, int b, int scope,
                                 EntityId owner, char* out, int cap,
-                                SelectionFormat fmt, const Bounds* cell) {
-    if (!out || cap <= 0) {
+                                SelectionFormat fmt, const Bounds* cell,
+                                StrBuilder* grow = nullptr) {
+    if (!grow && (!out || cap <= 0)) {
         return 0;
     }
-    out[0] = 0;
+    if (grow)
+        grow->Reset();
+    else
+        out[0] = 0;
     if (!ctx || a < 0 || b < 0 || a == b) {
         return 0;
     }
@@ -10600,7 +10620,7 @@ static int CopyTextHitsFiltered(PaintCtx* ctx, int a, int b, int scope,
                   : SelectionFormat::Plain;
     }
     bool src = fmt == SelectionFormat::Source;
-    CopyOut o = {out, cap, 0};
+    CopyOut o = {out, cap, 0, grow};
     // The block the selection is inside right now, so entering and leaving
     // one can emit its fences, and the mark group whose closing affix is
     // still owed. Both null until the first run that names one.
@@ -10614,7 +10634,7 @@ static int CopyTextHitsFiltered(PaintCtx* ctx, int a, int b, int scope,
     bool sep = false;
     bool afterSourceBlock = false;
     auto sourceBlockBreak = [&]() {
-        while (o.n > 0 && out[o.n - 1] == '\n') o.n--;
+        o.TrimNewlines();
         CopyPut(&o, StrL("\n\n"));
     };
     auto emit = [&](Str piece, const SelSource* s, bool join) {
@@ -10677,7 +10697,7 @@ static int CopyTextHitsFiltered(PaintCtx* ctx, int a, int b, int scope,
         sep = false;
     };
     int blockIx = 0;
-    for (int i = 0; i < len(ctx->texts) && o.n < cap - 1; i++) {
+    for (int i = 0; i < len(ctx->texts) && !o.Full(); i++) {
         while (src && !cell && blockIx < len(ctx->selectionSourceBlocks)) {
             const auto& block = ctx->selectionSourceBlocks[blockIx];
             if (block.firstHit > i) break;
@@ -10690,7 +10710,7 @@ static int CopyTextHitsFiltered(PaintCtx* ctx, int a, int b, int scope,
             emitSourceBlock(block.source);
             i = block.endHit;
         }
-        if (i >= len(ctx->texts) || o.n >= cap - 1) break;
+        if (i >= len(ctx->texts) || o.Full()) break;
         const TextHit& t = ctx->texts[i];
         if ((scope >= 0 && t.scope != scope) ||
             !TextHitOwnerMatches(t, owner) || !TextHitInCell(t, cell)) {
@@ -10706,7 +10726,8 @@ static int CopyTextHitsFiltered(PaintCtx* ctx, int a, int b, int scope,
                 continue;
             }
             if (!len(piece)) continue;
-            if (any && o.n > 0 && out[o.n - 1] != '\n') CopyPut(&o, StrL("\n"));
+            if (any && o.n > 0 && o.buf[o.n - 1] != '\n')
+                CopyPut(&o, StrL("\n"));
             CopyPut(&o, piece);
             if (piece.s[len(piece) - 1] != '\n') {
                 CopyPut(&o, StrL("\n"));
@@ -10744,7 +10765,7 @@ static int CopyTextHitsFiltered(PaintCtx* ctx, int a, int b, int scope,
         }
         if (src && t.map && t.map->spans) {
             bool join = t.join;
-            for (int j = 0; j < t.map->spanCount && o.n < cap - 1; j++) {
+            for (int j = 0; j < t.map->spanCount && !o.Full(); j++) {
                 const SelSourceSpan& span = t.map->spans[j];
                 int start = std::max(lo - pos, span.start);
                 int end = std::min(hi - pos, span.end);
@@ -10769,16 +10790,26 @@ static int CopyTextHitsFiltered(PaintCtx* ctx, int a, int b, int scope,
         CopyPut(&o, Str("\n", 1));
     }
     if (cell && fmt == SelectionFormat::Source && any && o.n > 0 &&
-        out[o.n - 1] != '\n') {
+        o.buf[o.n - 1] != '\n') {
         CopyPut(&o, Str("\n", 1));
     }
-    out[o.n] = 0;
+    if (o.failed) {
+        grow->Reset();
+        return 0;
+    }
+    if (!grow) out[o.n] = 0;
     return o.n;
 }
 
 int CopyTextHitsIn(PaintCtx* ctx, int a, int b, int scope, char* out, int cap,
                    SelectionFormat fmt, const Bounds* cell) {
     return CopyTextHitsFiltered(ctx, a, b, scope, {}, out, cap, fmt, cell);
+}
+
+int CopyTextHitsIn(PaintCtx* ctx, int a, int b, int scope, StrBuilder* out,
+                   SelectionFormat fmt, const Bounds* cell) {
+    return CopyTextHitsFiltered(ctx, a, b, scope, {}, nullptr, 0, fmt, cell,
+                                out);
 }
 
 int CopyTextHitsInEntity(PaintCtx* ctx, int a, int b, int scope, EntityId owner,

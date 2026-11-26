@@ -1643,7 +1643,8 @@ static int CopyParticipantItem(const ParticipantCopyItem& item, App* app,
     return StrCopyCapped(out, cap, item.text);
 }
 
-int TextSelection::SelectedText(Window* window, App* app, char* out, int cap) {
+static int SelectedTextInto(Window* window, App* app, char* out, int cap,
+                            StrBuilder* paintedText) {
     if (!out || cap <= 0) return 0;
     out[0] = 0;
     WindowSelection* selection = window ? window->sel : nullptr;
@@ -1727,7 +1728,18 @@ int TextSelection::SelectedText(Window* window, App* app, char* out, int cap) {
             }
         }
     }
+    if (paintedText && !selection->touchSource.copy &&
+        !selection->selectAllOwner.IsValid() && WindowSelectionHas(window)) {
+        return CopyTextHitsIn(&window->paint, selection->anchor,
+                              selection->cursor, selection->scope, paintedText,
+                              WindowSelectionFormat(window),
+                              AnchorCellOf(selection));
+    }
     return WindowSelectionText(window, out, cap);
+}
+
+int TextSelection::SelectedText(Window* window, App* app, char* out, int cap) {
+    return SelectedTextInto(window, app, out, cap, nullptr);
 }
 
 bool TextSelection::HasSelection(Window* window, const App* app) {
@@ -1786,18 +1798,22 @@ bool WindowSelectionCopy(Window* win) {
         ClipboardSetText(win, text);
         return true;
     }
-    // One frame's worth of selectable text; a document longer than this
-    // copies its first 64 KB rather than nothing.
-    const int kCap = 64 * 1024;
-    char* buf = (char*)Alloc(nullptr, kCap);
+    // Participant and touch copy callbacks use the bounded copy API.
+    const WindowSelection* selection = win->sel;
+    bool usesCallbacks =
+        len(selection->participants) > 0 || selection->touchSource.copy;
+    int cap = usesCallbacks ? 64 * 1024 : 1;
+    char scratch[1];
+    char* buf = usesCallbacks ? (char*)Alloc(nullptr, cap) : scratch;
     if (!buf) {
         return false;
     }
-    int n = TextSelection::SelectedText(win, win->app, buf, kCap);
+    StrBuilder paintedText;
+    int n = SelectedTextInto(win, win->app, buf, cap, &paintedText);
     if (n > 0) {
-        ClipboardSetText(win, Str(buf, n));
+        ClipboardSetText(win, Str(len(paintedText) ? paintedText.els : buf, n));
     }
-    Free(nullptr, buf);
+    if (usesCallbacks) Free(nullptr, buf);
     return n > 0;
 }
 

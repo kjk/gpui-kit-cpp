@@ -528,6 +528,7 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   rules and link definitions that have no text hit. This relies on the
   frame registering the block's position. Rust also covers blocks omitted
   by virtualization for partial selections.
+  Participant and touch copy callbacks receive a 64 KiB buffer.
   Under `-markdown=mini` the parser
   keeps no positions, so source mapping is unavailable (`src/base/text.cpp`,
   `CopyTextHitsFiltered` in `src/gpui/gpui.cpp`).

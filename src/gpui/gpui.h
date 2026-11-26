@@ -7434,6 +7434,8 @@ bool CustomBlockIsSelected(Bounds bounds, Point start, Point end);
 int CopyTextHitsIn(PaintCtx* ctx, int selA, int selB, int scope, char* out,
                    int cap, SelectionFormat fmt = SelectionFormat::Plain,
                    const Bounds* cell = nullptr);
+int CopyTextHitsIn(PaintCtx* ctx, int selA, int selB, int scope,
+                   StrBuilder* out, SelectionFormat fmt, const Bounds* cell);
 int CopyTextHitsInEntity(PaintCtx* ctx, int selA, int selB, int scope,
                          EntityId owner, char* out, int cap,
                          SelectionFormat fmt = SelectionFormat::Plain,
