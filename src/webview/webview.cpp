@@ -459,6 +459,16 @@ static void ShowNative(WebView* self, wry::WebView* raw) {
         ListenTo(owner, &WebView::OnWindowMouseDown));
 }
 
+static wry::Rect NativeWebViewRect(Bounds box, float scale) {
+#if GPUI_WEBVIEW_DEVICE_GEOMETRY
+    return {wry::PhysicalPosition(box.x * scale, box.y * scale),
+            wry::PhysicalSize(box.w * scale, box.h * scale)};
+#else
+    (void)scale;
+    return {wry::LogicalPosition(box.x, box.y), wry::LogicalSize(box.w, box.h)};
+#endif
+}
+
 // Keep the hitbox in paint order, but leave it empty until the platform
 // has placed and shown the surface.
 static int ReserveWebViewHit(PaintCtx* ctx) {
@@ -587,9 +597,7 @@ static void FinishNativeWebView(void* user, const Bounds* overlays, int count) {
         Vec<wry::Rect> pieces;
         if (shaped) {
             for (const Bounds& piece : region) {
-                VecAppend(pieces,
-                          wry::Rect{wry::LogicalPosition(piece.x, piece.y),
-                                    wry::LogicalSize(piece.w, piece.h)});
+                VecAppend(pieces, NativeWebViewRect(piece, self->appliedScale));
             }
         }
         wry::Rect empty = {};
@@ -640,7 +648,7 @@ static void FinishNativeWebView(void* user, const Bounds* overlays, int count) {
 // native view and leaves the page loaded. Each desktop backend clips the
 // native child while keeping the page at the full document dimensions.
 static bool ApplyGeometry(WebView* self, wry::WebView* raw, Bounds document,
-                          Bounds visible) {
+                          Bounds visible, float scale) {
 #if GPUI_WEBVIEW_NATIVE_CLIP
     if (!BoundsSame(visible, document)) {
         return WebViewNativeClipSet(self, raw, document, visible);
@@ -653,21 +661,16 @@ static bool ApplyGeometry(WebView* self, wry::WebView* raw, Bounds document,
     (void)self;
     (void)visible;
 #endif
-    // Logical DIPs. Upstream Linux passes device pixels because lb-wry
-    // then multiplies by GDK's factor. `WebViewSetBounds` on Linux
-    // already does that conversion for the X11 child, so doing it here
-    // would double it.
+    // X11 takes the device-pixel box of the GPUI parent. The other
+    // backends take their window's logical coordinates.
     Bounds frame = document;
 #if GPUI_WEBVIEW_WHOLE_POINT_FRAME
     frame = WebViewDocumentFrame(document);
 #endif
-    wry::Rect r;
-    r.position = wry::LogicalPosition(frame.x, frame.y);
-    r.size = wry::LogicalSize(frame.w, frame.h);
+    wry::Rect r = NativeWebViewRect(frame, scale);
 #if GPUI_WRY_CLIPPED_CHILD
-    wry::Rect viewport = {wry::LogicalPosition(visible.x, visible.y),
-                          wry::LogicalSize(visible.w, visible.h)};
-    return wry::WebViewSetClippedBounds(raw, r, viewport);
+    return wry::WebViewSetClippedBounds(raw, r,
+                                        NativeWebViewRect(visible, scale));
 #else
     return wry::WebViewSetBounds(raw, r);
 #endif
@@ -682,7 +685,7 @@ static bool UpdateWebViewGeometry(WebView* self, wry::WebView* raw,
                 self->appliedScale == scale;
     if (unchanged) *unchanged = same;
     if (same) return true;
-    if (!ApplyGeometry(self, raw, document, visible)) {
+    if (!ApplyGeometry(self, raw, document, visible, scale)) {
         if (!self->geometryFailed) logf("WebView geometry update failed\n");
         self->geometryFailed = true;
         return false;

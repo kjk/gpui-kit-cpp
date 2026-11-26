@@ -746,11 +746,10 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   Windows uses the Shell item array when `CF_HDROP` is unavailable, including
   for long paths, and copies the paths before releasing their native storage
   (`src/wry/wry_win.cpp`).
-- **Linux webview bounds stay logical.** Upstream `device_bounds` passes
-  physical pixels because Wry then scales by GDK. `WebViewSetBounds`
-  in `wry_linux.cpp` already multiplies a logical rect by that factor
-  for the X11 child, so the kit conversion is not applied again. Page
-  zoom is `WebViewMatchPageScale`, which multiplies the script's zoom
+- **Linux webviews use the GPUI scale for X11 geometry.** The wrapper
+  sends device-pixel bounds and overlay regions to the X11 child. GTK's
+  own scale converts those bounds to its widget allocation. Page zoom
+  is `WebViewMatchPageScale`, which multiplies the script's zoom
   so a later scale match does not reset it. Wayland is unsupported here
   as upstream: the window is X11, which is the backend WebKitGTK can
   embed into. A failed create whose reason names X11 tells the script

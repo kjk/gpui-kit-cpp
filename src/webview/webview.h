@@ -185,6 +185,12 @@ El* WebViewEl(Entity<WebView> view, Ctx* cx);
 #define GPUI_WEBVIEW_WHOLE_POINT_FRAME 0
 #endif
 
+#if GPUI_OS_LINUX
+#define GPUI_WEBVIEW_DEVICE_GEOMETRY 1
+#else
+#define GPUI_WEBVIEW_DEVICE_GEOMETRY 0
+#endif
+
 /** `composition::document_frame`: the document box with its width and
     height rounded up to whole points, its left and top edges in place so
     the page does not shift. The clip and hit box stay the unrounded box.

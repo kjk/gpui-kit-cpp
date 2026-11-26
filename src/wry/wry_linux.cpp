@@ -1229,6 +1229,10 @@ static int ToLogical(double v, bool logical, double scale) {
     return (int)lround(logical ? v : v / scale);
 }
 
+static int ToDevice(double v, bool logical, double scale) {
+    return (int)lround(logical ? v * scale : v);
+}
+
 // `create_container_x11_window`.
 static ::Window CreateContainer(::Display* xdpy, ::Window parent,
                                 const WebViewAttributes* attrs, bool asChild) {
@@ -1308,18 +1312,18 @@ static void ResizeClippedContainer(WebView* wv, int x, int y, int w, int h,
         XFlush(wv->xdisplay);
     }
     // `window.resize` and `size_allocate`, as Rust's set_bounds does.
-    gtk_window_resize(GTK_WINDOW(wv->gtkWindow), w, h);
-    GtkAllocation a = {0, 0, w, h};
+    GtkWidget* page = GTK_WIDGET(wv->webview);
+    int scale = std::max(1, gtk_widget_get_scale_factor(page));
+    int logicalW = std::max(ToLogical(w, false, scale), 1);
+    int logicalH = std::max(ToLogical(h, false, scale), 1);
+    gtk_window_resize(GTK_WINDOW(wv->gtkWindow), logicalW, logicalH);
+    GtkAllocation a = {0, 0, logicalW, logicalH};
     gtk_widget_size_allocate(wv->gtkWindow, &a);
     if (!gtk_widget_get_visible(wv->gtkWindow)) {
         // GTK skips allocation for the hidden plug. Allocate the page in
         // logical pixels so WebKit can lay it out before the plug maps.
-        GtkWidget* page = GTK_WIDGET(wv->webview);
-        int scale = std::max(1, gtk_widget_get_scale_factor(page));
-        GtkAllocation pageBounds = {0, 0, std::max(w / scale, 1),
-                                    std::max(h / scale, 1)};
         gtk_widget_show(page);
-        gtk_widget_size_allocate(page, &pageBounds);
+        gtk_widget_size_allocate(page, &a);
     }
 }
 
@@ -1618,8 +1622,8 @@ bool WebViewBounds(WebView* wv, Rect* out) {
                     a.height = child.height;
                 }
             }
-            out->position = LogicalPosition(a.x, a.y);
-            out->size = LogicalSize(a.width, a.height);
+            out->position = PhysicalPosition(a.x, a.y);
+            out->size = PhysicalSize(a.width, a.height);
         }
         return true;
     }
@@ -1638,19 +1642,18 @@ bool WebViewSetClippedBounds(WebView* wv, Rect bounds, Rect visible) {
         return false;
     }
     double scale = gtk_widget_get_scale_factor(GTK_WIDGET(wv->webview));
-    int w = ToLogical(bounds.size.width, bounds.size.logical, scale);
-    int h = ToLogical(bounds.size.height, bounds.size.logical, scale);
-    int x = ToLogical(bounds.position.x, bounds.position.logical, scale);
-    int y = ToLogical(bounds.position.y, bounds.position.logical, scale);
     if (wv->hasX11 && !wv->followsParent) {
-        // GTK moves and sizes in logical pixels and X in device pixels.
-        int s = (int)scale;
-        int vx = ToLogical(visible.position.x, visible.position.logical, scale);
-        int vy = ToLogical(visible.position.y, visible.position.logical, scale);
-        int vw = ToLogical(visible.size.width, visible.size.logical, scale);
-        int vh = ToLogical(visible.size.height, visible.size.logical, scale);
-        ResizeClippedContainer(wv, x * s, y * s, w * s, h * s, vx * s, vy * s,
-                               vw * s, vh * s);
+        // GPUI supplies the parent's device bounds. A raw wry caller can
+        // still pass logical GTK coordinates.
+        int x = ToDevice(bounds.position.x, bounds.position.logical, scale);
+        int y = ToDevice(bounds.position.y, bounds.position.logical, scale);
+        int w = ToDevice(bounds.size.width, bounds.size.logical, scale);
+        int h = ToDevice(bounds.size.height, bounds.size.logical, scale);
+        int vx = ToDevice(visible.position.x, visible.position.logical, scale);
+        int vy = ToDevice(visible.position.y, visible.position.logical, scale);
+        int vw = ToDevice(visible.size.width, visible.size.logical, scale);
+        int vh = ToDevice(visible.size.height, visible.size.logical, scale);
+        ResizeClippedContainer(wv, x, y, w, h, vx, vy, vw, vh);
     }
     return true;
 }
@@ -1659,9 +1662,44 @@ static bool LinuxWebViewSetRegion(WebView* wv, const Rect* pieces, int count,
                                   bool clipDrawing) {
     if (!wv || !wv->hasX11 || !wv->isChild) return false;
     bool inputShapes = gdk_display_supports_input_shapes(wv->display);
+    bool drawingShapes = gdk_display_supports_shapes(wv->display);
     if (!clipDrawing && !inputShapes) return false;
+    if (clipDrawing && pieces && !drawingShapes) return false;
+#if defined(GPUI_HAVE_X11_SHAPE)
+    // Shape the X11 window directly. GDK rounds foreign window regions
+    // to GTK's logical pixels, which can shift an overlay edge.
+    Vec<XRectangle> rectangles;
+    double scale = gtk_widget_get_scale_factor(GTK_WIDGET(wv->webview));
+    for (int i = 0; pieces && i < count; i++) {
+        const Rect& part = pieces[i];
+        double x = part.position.x * (part.position.logical ? scale : 1);
+        double y = part.position.y * (part.position.logical ? scale : 1);
+        int left = (int)lround(x);
+        int top = (int)lround(y);
+        int right =
+            (int)lround(x + part.size.width * (part.size.logical ? scale : 1));
+        int bottom =
+            (int)lround(y + part.size.height * (part.size.logical ? scale : 1));
+        if (right <= left || bottom <= top) continue;
+        XRectangle rect{(short)left, (short)top, (unsigned short)(right - left),
+                        (unsigned short)(bottom - top)};
+        if (!VecAppend(rectangles, rect)) return false;
+    }
+    XTrap trap(wv->display);
+    auto setShape = [&](int kind, bool shaped) {
+        if (shaped) {
+            XShapeCombineRectangles(wv->xdisplay, wv->x11Window, kind, 0, 0,
+                                    rectangles.els, len(rectangles), ShapeSet,
+                                    Unsorted);
+        } else {
+            XShapeCombineMask(wv->xdisplay, wv->x11Window, kind, 0, 0, None,
+                              ShapeSet);
+        }
+    };
+    if (drawingShapes) setShape(ShapeBounding, clipDrawing && pieces);
+    if (inputShapes) setShape(ShapeInput, pieces != nullptr);
+#else
     if (!wv->clipWindow && pieces) {
-        if (!gdk_display_supports_shapes(wv->display)) return false;
         wv->clipWindow =
             gdk_x11_window_foreign_new_for_display(wv->display, wv->x11Window);
         if (!wv->clipWindow) return false;
@@ -1678,37 +1716,13 @@ static bool LinuxWebViewSetRegion(WebView* wv, const Rect* pieces, int count,
         const cairo_rectangle_int_t rect = {x, y, w, h};
         cairo_region_union_rectangle(region, &rect);
     }
-#if defined(GPUI_HAVE_X11_SHAPE)
-    // GDK's drawing shape is ineffective for this foreign window. Apply
-    // ShapeBounding to the X11 container so it clips the embedded GtkPlug.
-    XTrap trap(wv->display);
-    if (clipDrawing && region) {
-        Vec<XRectangle> rectangles;
-        int s = (int)scale;
-        int n = cairo_region_num_rectangles(region);
-        for (int i = 0; i < n; i++) {
-            cairo_rectangle_int_t rect = {};
-            cairo_region_get_rectangle(region, i, &rect);
-            VecAppend(rectangles,
-                      XRectangle{(short)(rect.x * s), (short)(rect.y * s),
-                                 (unsigned short)(rect.width * s),
-                                 (unsigned short)(rect.height * s)});
-        }
-        XShapeCombineRectangles(wv->xdisplay, wv->x11Window, ShapeBounding, 0,
-                                0, rectangles.els, len(rectangles), ShapeSet,
-                                Unsorted);
-    } else {
-        XShapeCombineMask(wv->xdisplay, wv->x11Window, ShapeBounding, 0, 0,
-                          None, ShapeSet);
-    }
-#else
     gdk_window_shape_combine_region(wv->clipWindow,
                                     clipDrawing ? region : nullptr, 0, 0);
-#endif
     if (inputShapes) {
         gdk_window_input_shape_combine_region(wv->clipWindow, region, 0, 0);
     }
     if (region) cairo_region_destroy(region);
+#endif
     XFlush(wv->xdisplay);
     return true;
 }
