@@ -23,6 +23,14 @@ static void ClearCopyProjection(TextSelectionCopyProjection* copy) {
     *copy = {};
 }
 
+static void ClearAnchorCopy(TextSelectionAnchorCopy* copy) {
+    for (int i = 0; i < 2; i++) {
+        StrFree(copy->plain[i]);
+        StrFree(copy->source[i]);
+    }
+    *copy = {};
+}
+
 struct TextSelectionParticipantState {
     Entity<TextSelectionParticipantState> self = {};
     Str fallbackCopyText = {};
@@ -1061,6 +1069,7 @@ void WindowSelectionClear(Window* win) {
     s->cursor = -1;
     s->pendingReflow = {};
     ClearCopyProjection(&s->copyProjection);
+    for (auto& copy : s->anchorCopies) ClearAnchorCopy(&copy);
     s->selectAllOwner = {};
     s->scope = 0;
     s->hasWindowPoints = false;
@@ -1591,6 +1600,7 @@ bool WindowSelectionTouchUiContains(const Window* win, Point at) {
 }
 
 static void DragPendingTouchEdge(Window* win, Point point);
+static bool DragPendingVirtualSelection(Window* win, Point point);
 
 static void WindowSelectionDragAt(Window* win, float x, float y) {
     WindowSelection* s = win ? win->sel : nullptr;
@@ -1598,7 +1608,8 @@ static void WindowSelectionDragAt(Window* win, float x, float y) {
     if (AwaitingSelectionReflow(s)) {
         if (s->hasTouchEdgeDrag && !s->hasAnchorCell) {
             DragPendingTouchEdge(win, {x, y});
-        } else {
+        } else if (!s->pendingReflow.virtualDrag ||
+                   !DragPendingVirtualSelection(win, {x, y})) {
             auto& reflow = s->pendingReflow;
             if (reflow.deferredGesture == TextSelectionDeferredGesture::None)
                 reflow.deferredGesture = TextSelectionDeferredGesture::Drag;
@@ -1698,15 +1709,7 @@ static const TextViewState* RetainedSelectionView(const Window* win) {
                : nullptr;
 }
 
-static Str RetainedSelectionText(const WindowSelection* selection,
-                                 SelectionFormat format) {
-    const TextSelectionCopyProjection& copy = selection->copyProjection;
-    return format == SelectionFormat::Source ||
-                   (format == SelectionFormat::SourceAcrossStyles &&
-                    copy.mixedStyles)
-               ? copy.source
-               : copy.plain;
-}
+static Str RetainedSelectionText(Window* win, SelectionFormat format);
 
 static const TextViewState* SelectAllTextView(Window* win) {
     if (!win || !win->sel || win->sel->touchSource.copy) return nullptr;
@@ -1852,6 +1855,168 @@ static bool BlockPointBefore(const TextSelectionSourcePoint& a,
            (a.block == b.block && a.blockByte < b.blockByte);
 }
 
+static bool AnchorCopyMatches(const TextSelectionAnchorCopy& copy,
+                              const TextViewState* view,
+                              const TextSelectionSourcePoint& point) {
+    return copy.owner == view->self &&
+           copy.revision == view->committedRevision &&
+           copy.selectionRevision == view->selectionRevision &&
+           SameSourcePoint(copy.point, point);
+}
+
+static bool CaptureAnchorCopy(Window* win, const TextViewState* view,
+                              const TextSelectionReflow& selection,
+                              const TextSelectionSourcePoint& point, int offset,
+                              TextSelectionAnchorCopy* copy) {
+    if (point.block < 0) return false;
+    if (AnchorCopyMatches(*copy, view, point)) return true;
+    for (const auto& block : win->paint.selectionSourceBlocks) {
+        if (block.owner != view->self || block.scope != selection.scope ||
+            block.index != point.block || offset < block.start ||
+            offset > block.end) {
+            continue;
+        }
+        ClearAnchorCopy(copy);
+        copy->owner = view->self;
+        copy->revision = view->committedRevision;
+        copy->selectionRevision = view->selectionRevision;
+        copy->point = point;
+        const int offsets[] = {block.start, offset, block.end};
+        for (int i = 0; i < 2; i++) {
+            StrBuilder text;
+            CopyTextHitsIn(&win->paint, offsets[i], offsets[i + 1],
+                           selection.scope, &text, SelectionFormat::Plain,
+                           nullptr);
+            copy->plain[i] = text.TakeStr();
+            CopyTextHitsIn(&win->paint, offsets[i], offsets[i + 1],
+                           selection.scope, &text, SelectionFormat::Source,
+                           nullptr);
+            copy->source[i] = text.TakeStr();
+            Span range;
+            if (TextHitsSourceRange(&win->paint, offsets[i], offsets[i + 1],
+                                    selection.scope, view->self)
+                    .IntoRange(&range)) {
+                copy->sourceStart[i] = range.start;
+                copy->sourceEnd[i] = range.end;
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+static void AppendSelectionBlock(StrBuilder* out, Str block, bool source) {
+    int count = len(block);
+    if (source)
+        while (count && block.s[count - 1] == '\n') count--;
+    if (!count) return;
+    if (len(*out)) {
+        if (source) {
+            out->Append(StrL("\n\n"));
+        } else if (out->LastChar() != '\n') {
+            out->AppendChar('\n');
+        }
+    }
+    out->Append(Str(block.s, count));
+}
+
+static Str RetainedSelectionText(Window* win, SelectionFormat format) {
+    WindowSelection* selection = win->sel;
+    auto& copy = selection->copyProjection;
+    bool source =
+        format == SelectionFormat::Source ||
+        (format == SelectionFormat::SourceAcrossStyles && copy.mixedStyles);
+    Str& result = source ? copy.source : copy.plain;
+    if (!copy.virtualRange || result.s) return result;
+    const auto* view = RetainedSelectionView(win);
+    if (!view) return {};
+    const TextSelectionAnchorCopy* edges[2] = {};
+    for (const auto& edge : selection->anchorCopies) {
+        if (edge.owner != copy.owner || edge.revision != copy.revision ||
+            edge.selectionRevision != copy.selectionRevision)
+            continue;
+        for (int i = 0; i < 2; i++) {
+            if (SameSourcePoint(edge.point, copy.endpoints[i]))
+                edges[i] = &edge;
+        }
+    }
+    if (!edges[0] || !edges[1]) return {};
+    bool backwards = BlockPointBefore(edges[1]->point, edges[0]->point);
+    const auto& first = *edges[backwards ? 1 : 0];
+    const auto& last = *edges[backwards ? 0 : 1];
+    StrBuilder text;
+    AppendSelectionBlock(&text, source ? first.source[1] : first.plain[1],
+                         source);
+    auto wholeFormat =
+        source ? SelectionFormat::Source : SelectionFormat::Plain;
+    for (int i = first.point.block + 1; i < last.point.block; i++)
+        AppendSelectionBlock(&text, view->SelectionBlockText(i, wholeFormat),
+                             source);
+    AppendSelectionBlock(&text, source ? last.source[0] : last.plain[0],
+                         source);
+    result = text.TakeStr();
+    return result;
+}
+
+static bool CopyVirtualDrag(Window* win, const TextViewState* view,
+                            TextSelectionReflow* selection, int cursorOffset) {
+    auto& saved = win->sel->copyProjection;
+    const auto& anchor = selection->endpoints[0];
+    const auto& cursor = selection->endpoints[1];
+    if (anchor.block == cursor.block) {
+        int anchorOffset = -1;
+        if (!RestoreSourcePoint(win->paint, *selection, anchor, false,
+                                &anchorOffset))
+            return false;
+        selection->offsets[0] = anchorOffset;
+        selection->offsets[1] = cursorOffset;
+        if (anchorOffset == cursorOffset)
+            ClearCopyProjection(&saved);
+        else
+            CaptureSelectionCopy(win, view, *selection);
+        return true;
+    }
+    const TextSelectionAnchorCopy* held = nullptr;
+    for (int i = 0; i < 3; i++) {
+        const auto& copy = win->sel->anchorCopies[i];
+        if (AnchorCopyMatches(copy, view, anchor)) {
+            held = &copy;
+            break;
+        }
+    }
+    if (!held) return false;
+    auto& moving = win->sel->anchorCopies[3];
+    if (!CaptureAnchorCopy(win, view, *selection, cursor, cursorOffset,
+                           &moving))
+        return false;
+    bool backwards = BlockPointBefore(cursor, anchor);
+    const auto& first = backwards ? moving : *held;
+    const auto& last = backwards ? *held : moving;
+    if (saved.virtualRange && saved.revision == view->committedRevision &&
+        saved.selectionRevision == view->selectionRevision &&
+        SameSourcePoint(saved.endpoints[0], anchor) &&
+        SameSourcePoint(saved.endpoints[1], cursor)) {
+        selection->offsets[0] = backwards ? 1 : 0;
+        selection->offsets[1] = backwards ? 0 : 1;
+        return true;
+    }
+    ClearCopyProjection(&saved);
+    saved.owner = view->self;
+    saved.revision = view->committedRevision;
+    saved.selectionRevision = view->selectionRevision;
+    saved.endpoints[0] = anchor;
+    saved.endpoints[1] = cursor;
+    saved.virtualRange = true;
+    saved.mixedStyles = true;
+    if (first.sourceStart[1] >= 0 && last.sourceEnd[0] >= 0) {
+        saved.sourceStart = first.sourceStart[1];
+        saved.sourceEnd = last.sourceEnd[0];
+    }
+    selection->offsets[0] = backwards ? 1 : 0;
+    selection->offsets[1] = backwards ? 0 : 1;
+    return true;
+}
+
 static void DragPendingTouchEdge(Window* win, Point point) {
     auto* selection = win->sel;
     auto& reflow = selection->pendingReflow;
@@ -1884,13 +2049,79 @@ static void DragPendingTouchEdge(Window* win, Point point) {
     WindowRequestAnimationFrame(win);
 }
 
-static bool ExtendUnpaintedSelection(Window* win, Point point) {
-    const TextViewState* view = RetainedSelectionView(win);
-    if (!view) return false;
+static bool ResolveUnpaintedEndpoint(Window* win, Point point,
+                                     TextSelectionReflow* reflow,
+                                     int* cursorOffset) {
+    WindowSelection* selection = win->sel;
+    auto anchor = reflow->endpoints[0];
+    if (anchor.block < 0) return false;
+    int offset = TextHitOffsetIn(&win->paint, point.x, point.y, true,
+                                 reflow->scope, nullptr);
+    TextSelectionSourcePoint cursor;
+    const TextHit* hit =
+        CaptureSourcePoint(win->paint, offset, reflow->scope, false, &cursor);
+    if (!hit || hit->owner != reflow->owner || cursor.block < 0) return false;
+    if (selection->unitHeld) {
+        const auto& first = reflow->unit[0];
+        const auto& last = reflow->unit[1];
+        if (first.block < 0 || last.block < 0) return false;
+        bool before = BlockPointBefore(cursor, first);
+        anchor = before ? last : first;
+        if (!before && BlockPointBefore(cursor, last)) {
+            cursor = last;
+            hit =
+                RestoreSourcePoint(win->paint, *reflow, cursor, true, &offset);
+            if (!hit) return false;
+        } else {
+            int start = 0;
+            int end = 0;
+            if (TextMultiClickRangeIn(&win->paint, point.x, point.y,
+                                      selection->unitClickCount, reflow->scope,
+                                      &start, &end, nullptr)) {
+                TextSelectionSourcePoint snapped;
+                int target = before ? start : end;
+                const TextHit* edge = CaptureSourcePoint(
+                    win->paint, target, reflow->scope, !before, &snapped);
+                if (edge && edge->owner == reflow->owner &&
+                    snapped.block >= 0) {
+                    hit = edge;
+                    cursor = snapped;
+                    offset = target;
+                }
+            }
+        }
+    }
+    reflow->endpoints[0] = anchor;
+    reflow->endpoints[1] = cursor;
+    reflow->bounds[1] = hit->bounds;
+    *cursorOffset = offset;
+    return true;
+}
+
+static bool DragPendingVirtualSelection(Window* win, Point point) {
     WindowSelection* selection = win->sel;
     TextSelectionReflow reflow = selection->pendingReflow;
-    auto anchor = reflow.endpoints[0];
-    if (anchor.block < 0) return false;
+    const auto* view = TextViewForSelectionOwner(win->app, reflow.owner);
+    if (!view || !view->CopyDocumentReady() ||
+        view->fullUpdateRevision != reflow.replacement)
+        return false;
+    int offset = -1;
+    if (!ResolveUnpaintedEndpoint(win, point, &reflow, &offset) ||
+        !CopyVirtualDrag(win, view, &reflow, offset))
+        return false;
+    selection->anchor = reflow.offsets[0];
+    selection->cursor = reflow.offsets[1];
+    selection->cursorPoint = point;
+    selection->hasWindowPoints = true;
+    selection->pendingReflow = reflow;
+    TextSelectionExtend(&selection->gesture, true);
+    WindowRequestAnimationFrame(win);
+    return true;
+}
+
+static bool ExtendUnpaintedSelection(Window* win, Point point) {
+    if (!RetainedSelectionView(win)) return false;
+    WindowSelection* selection = win->sel;
     if (selection->hasAnchorCell) {
         selection->pendingReflow
             .deferredGesture = TextSelectionDeferredGesture::ExtendCell;
@@ -1899,49 +2130,24 @@ static bool ExtendUnpaintedSelection(Window* win, Point point) {
         WindowRequestAnimationFrame(win);
         return true;
     }
-    int offset = TextHitOffsetIn(&win->paint, point.x, point.y, true,
-                                 reflow.scope, nullptr);
-    TextSelectionSourcePoint cursor;
-    const TextHit* hit =
-        CaptureSourcePoint(win->paint, offset, reflow.scope, false, &cursor);
-    if (!hit || hit->owner != view->self || cursor.block < 0) return false;
-    bool unitHeld = selection->unitHeld;
-    int unitClickCount = selection->unitClickCount;
-    if (unitHeld) {
-        const auto& first = reflow.unit[0];
-        const auto& last = reflow.unit[1];
-        if (first.block < 0 || last.block < 0) return false;
-        bool before = BlockPointBefore(cursor, first);
-        anchor = before ? last : first;
-        if (!before && BlockPointBefore(cursor, last)) {
-            cursor = last;
-        } else {
-            int start = 0;
-            int end = 0;
-            if (TextMultiClickRangeIn(&win->paint, point.x, point.y,
-                                      unitClickCount, reflow.scope, &start,
-                                      &end, nullptr)) {
-                TextSelectionSourcePoint snapped;
-                const TextHit* edge =
-                    CaptureSourcePoint(win->paint, before ? start : end,
-                                       reflow.scope, !before, &snapped);
-                if (edge && edge->owner == view->self && snapped.block >= 0) {
-                    hit = edge;
-                    cursor = snapped;
-                }
-            }
-        }
+    if (selection->pendingReflow.virtualDrag &&
+        DragPendingVirtualSelection(win, point)) {
+        TextSelectionBegin(&selection->gesture, true);
+        return true;
     }
-    bool backwards = BlockPointBefore(cursor, anchor);
-    reflow.endpoints[0] = anchor;
-    reflow.endpoints[1] = cursor;
-    reflow.bounds[1] = hit->bounds;
+    TextSelectionReflow reflow = selection->pendingReflow;
+    int offset = -1;
+    if (!ResolveUnpaintedEndpoint(win, point, &reflow, &offset)) return false;
+    bool backwards = BlockPointBefore(reflow.endpoints[1], reflow.endpoints[0]);
     // The real offsets are assigned when both blocks next lay out. Until
     // then the order carries each endpoint's boundary affinity.
     reflow.offsets[0] = backwards ? 1 : 0;
     reflow.offsets[1] = backwards ? 0 : 1;
     Point anchorPoint = selection->anchorPoint;
+    bool unitHeld = selection->unitHeld;
+    int unitClickCount = selection->unitClickCount;
     WindowSelectionClear(win);
+    reflow.virtualDrag = false;
     selection->anchor = reflow.offsets[0];
     selection->cursor = reflow.offsets[1];
     selection->scope = reflow.scope;
@@ -2040,7 +2246,7 @@ bool WindowSelectionBlockRange(const PaintCtx* paint, EntityId owner, int block,
 
 TextSelectionReflow WindowSelectionCaptureReflow(Window* win) {
     TextSelectionReflow out;
-    const WindowSelection* s = win->sel;
+    WindowSelection* s = win->sel;
     if (!s || s->touchSource.entity.IsValid() || s->selectAllOwner.IsValid())
         return out;
     if (AwaitingSelectionReflow(s)) return s->pendingReflow;
@@ -2074,6 +2280,20 @@ TextSelectionReflow WindowSelectionCaptureReflow(Window* win) {
         if (!start || !end || start->owner != out.owner ||
             end->owner != out.owner)
             out.unit[0] = {};
+    }
+    if (s->gesture.selecting && !s->hasAnchorCell && !s->touchActive &&
+        view->SelectionBlockText(out.endpoints[0].block,
+                                 SelectionFormat::Source)
+            .s) {
+        out.virtualDrag = CaptureAnchorCopy(win, view, out, out.endpoints[0],
+                                            s->anchor, &s->anchorCopies[0]);
+        if (out.virtualDrag && s->unitHeld) {
+            out.virtualDrag =
+                CaptureAnchorCopy(win, view, out, out.unit[0], s->unitStart,
+                                  &s->anchorCopies[1]) &&
+                CaptureAnchorCopy(win, view, out, out.unit[1], s->unitEnd,
+                                  &s->anchorCopies[2]);
+        }
     }
     return out;
 }
@@ -2163,7 +2383,7 @@ int WindowSelectionTextAs(Window* win, char* out, int cap,
         return StrCopyCapped(out, cap, view->SelectAllText(fmt));
     }
     if (RetainedSelectionView(win)) {
-        return StrCopyCapped(out, cap, RetainedSelectionText(win->sel, fmt));
+        return StrCopyCapped(out, cap, RetainedSelectionText(win, fmt));
     }
     if (!WindowSelectionHas(win)) {
         if (out && cap > 0) {
@@ -2222,7 +2442,7 @@ int WindowSelectionTextForEntity(Window* win, EntityId owner, char* out,
     if (!WindowSelectionHasEntity(win, owner)) return 0;
     WindowSelection* selection = win->sel;
     if (AwaitingSelectionReflow(selection))
-        return StrCopyCapped(out, cap, RetainedSelectionText(selection, fmt));
+        return StrCopyCapped(out, cap, RetainedSelectionText(win, fmt));
     return CopyTextHitsInEntity(&win->paint, selection->anchor,
                                 selection->cursor, selection->scope, owner, out,
                                 cap, fmt, AnchorCellOf(selection));
@@ -2549,7 +2769,7 @@ bool WindowSelectionCopy(Window* win, bool trim) {
         return write(view->SelectAllText(view->selectionFormat));
     }
     if (const TextViewState* view = RetainedSelectionView(win)) {
-        return write(RetainedSelectionText(selection, view->selectionFormat));
+        return write(RetainedSelectionText(win, view->selectionFormat));
     }
     int cap = ParticipantClipboardCapacity(win);
     char scratch[1];

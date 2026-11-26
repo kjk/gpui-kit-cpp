@@ -6962,6 +6962,7 @@ struct RenderedIndex {
     Vec<SurfaceCustomSpan> surfaceCustoms;
     // Where the text of each top-level block sits, in document order.
     Vec<Span> blocks;
+    Vec<Span> blockSources;
     // Where the pieces of `text` came from in the source, with the rendered
     // half in offsets of `text`, in the order of `text`. Text the parser
     // recorded no source position for is in none.
@@ -7145,6 +7146,7 @@ RenderedIndex* RenderedIndexNew(const MdNode* doc, Str source) {
         int start = len(builder.text);
         builder.PushBlock(c, false);
         VecAppend(index->blocks, Span{start, len(builder.text)});
+        VecAppend(index->blockSources, Span{c->blockStart, c->blockEnd});
     }
     index->text = builder.text.TakeStr();
     index->source = StrDup(source);
@@ -7161,6 +7163,24 @@ Str RenderedIndexText(const RenderedIndex* index) {
 
 Str RenderedIndexSource(const RenderedIndex* index) {
     return index ? index->source : Str{};
+}
+
+Str TextViewState::SelectionBlockText(int index,
+                                      gpui::SelectionFormat selection) const {
+    const RenderedIndex* document = renderedIndex;
+    if (!document || index < 0 || index >= len(document->blocks)) return {};
+    Span bounds = document->blocks[index];
+    Str value = document->text;
+    if (selection == gpui::SelectionFormat::Source &&
+        format == TextViewFormat::Markdown) {
+        if (index >= len(document->blockSources)) return {};
+        bounds = document->blockSources[index];
+        value = document->source;
+    }
+    if (!value.s || bounds.start < 0 || bounds.end < bounds.start ||
+        bounds.end > len(value))
+        return {};
+    return Str(value.s + bounds.start, bounds.end - bounds.start);
 }
 
 int RenderedIndexLeafCount(const RenderedIndex* index) {
@@ -9564,7 +9584,8 @@ El* TextView::IntoEl() {
         virtualList = VirtualBlocks(
             managed, doc, TextViewScrollKey(state),
             ListenTo(state, &TextViewState::OnScroll), &virtualFrame,
-            dragging && projectSelection ? reflow : nullptr);
+            dragging && projectSelection && !reflow->virtualDrag ? reflow
+                                                                 : nullptr);
         if (virtualFrame) virtualFrame->projectSelection = projectSelection;
     }
     El* element =

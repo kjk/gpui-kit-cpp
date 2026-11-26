@@ -9525,7 +9525,8 @@ static void ScrollingBeforePaintKeepsTheCompletedFrame() {
 static void ScrollingKeepsAnInlineCodeSelectionAnchor() {
     Arena* a = ArenaNew();
     Str tail = TswJoin(a, "row %03d caf\u00e9", 180, "\n\n");
-    Str markdown = StrDup(a, fmt("PREFIX `code` suffix\n\n%s", tail));
+    Str middle = StrL("## Unseen *middle*\n\n---\n\n");
+    Str markdown = StrDup(a, fmt("PREFIX `code` suffix\n\n%s%s", middle, tail));
     const gpui::SelectionFormat formats[] = {gpui::SelectionFormat::Plain,
                                              gpui::SelectionFormat::Source};
     for (gpui::SelectionFormat format : formats) {
@@ -9547,7 +9548,8 @@ static void ScrollingKeepsAnInlineCodeSelectionAnchor() {
             utassert(!HitContaining(v.win, "row 179"));
             TswReveal(v, "row 179");
             code = HitContaining(v.win, "code");
-            utassert(code && code->bounds.Bottom() < code->contentMask.y);
+            utassert(!code);
+            utassert(!HitContaining(v.win, "row 090"));
             const TextHit* last = HitContaining(v.win, "row 179");
             utassert(last && last->contentMask
                                  .Contains({last->bounds.CenterX(),
@@ -9559,15 +9561,63 @@ static void ScrollingKeepsAnInlineCodeSelectionAnchor() {
                 RawMouse(v.win, PlatformInputKind::MouseMove, end, true);
                 Str expected =
                     format == gpui::SelectionFormat::Source
-                        ? Str(fmt("`code` suffix\n\n%s", tail))
-                        : Str(fmt("code suffix\n%s",
+                        ? Str(fmt("`code` suffix\n\n%s%s", middle, tail))
+                        : Str(fmt("code suffix\nUnseen middle\n%s",
                                   TswJoin(a, "row %03d caf\u00e9", 180, "\n")));
                 Str copy = StrTrimAscii(TswCopy(a, v));
                 utassert(StrEq(copy, expected));
+                TestDraw(v.win);
+                utassert(!HitContaining(v.win, "row 090"));
+                utassert(StrEq(StrTrimAscii(TswCopy(a, v)), expected));
+                TswReveal(v, "PREFIX");
+                suffix = HitContaining(v.win, "suffix");
+                utassert(suffix && !HitContaining(v.win, "row 179"));
+                if (suffix) {
+                    end = TextHitCaretPoint(&v.win->paint, *suffix,
+                                            len(suffix->text), true);
+                    end.x -= 0.1f;
+                    RawMouse(v.win, PlatformInputKind::MouseMove, end, true);
+                    utassert(StrEq(StrTrimAscii(TswCopy(a, v)),
+                                   format == gpui::SelectionFormat::Source
+                                       ? StrL("`code` suffix")
+                                       : StrL("code suffix")));
+                }
             }
         }
         TswClose(&v);
     }
+    ArenaDelete(a);
+}
+
+static void BackwardWordDragKeepsAnOffscreenAnchor() {
+    Arena* a = ArenaNew();
+    Str markdown = TswJoin(a, "item %03d suffix", 120, "\n\n");
+    TswView view = TswOpen(markdown.s, TswContainer::Scrollable);
+    TswReveal(view, "item 119");
+    const TextHit* last = HitContaining(view.win, "item 119");
+    utassert(last);
+    if (last) {
+        Point anchor = TextHitCaretPoint(&view.win->paint, *last,
+                                         len(StrL("item 119 su")), false);
+        anchor.x += 0.1f;
+        TestSimulateMouseDown(view.win, anchor, MouseButton::Left, {}, 2);
+        utassert(StrEq(StrTrimAscii(TswCopy(a, view)), "suffix"));
+        TswReveal(view, "item 000");
+        const TextHit* first = HitContaining(view.win, "item 000");
+        utassert(first && !HitContaining(view.win, "item 119"));
+        if (first) {
+            Point end = TextHitCaretPoint(&view.win->paint, *first, 2, false);
+            end.x += 0.1f;
+            RawMouse(view.win, PlatformInputKind::MouseMove, end, true);
+            Str expected = TswJoin(a, "item %03d suffix", 120, "\n");
+            utassert(StrEq(StrTrimAscii(TswCopy(a, view)), expected));
+            RawMouse(view.win, PlatformInputKind::MouseUp, end, false);
+            TestDraw(view.win);
+            utassert(!HitContaining(view.win, "item 060"));
+            utassert(StrEq(StrTrimAscii(TswCopy(a, view)), expected));
+        }
+    }
+    TswClose(&view);
     ArenaDelete(a);
 }
 
@@ -9989,6 +10039,7 @@ static void TestTextStateWindow() {
     ReplacingSourceCannotReprojectOldContent();
     ScrollingBeforePaintKeepsTheCompletedFrame();
     ScrollingKeepsAnInlineCodeSelectionAnchor();
+    BackwardWordDragKeepsAnOffscreenAnchor();
     SelectionStartsInAnIdleVirtualizedTextView();
     DragAfterViewportShrinksRestoresItsAnchor();
     FinishedMultiClickSelectionStaysVirtualized();

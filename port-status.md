@@ -554,11 +554,12 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   when the other endpoint is offscreen. Finished table-cell selections also
   keep their range and source copy in a virtualized block. Shift extension
   first resolves an offscreen anchor cell's bounds, then clamps the target
-  to that cell. Active drags stay virtualized while both endpoints' blocks
-  fit in the viewport. Drags reaching offscreen anchors still expand the
-  full layout.
-  Rust virtualizes the blocks and resolves the same range from the document
-  even when the anchor and intervening blocks have no painted runs.
+  to that cell. Active mouse drags in source-mapped text keep a virtualized
+  layout when the anchor goes offscreen. They keep fragments of the anchor
+  block and only assemble the intervening blocks when copying. Gestures
+  that need offscreen table-cell geometry or cross into another view still
+  expand the layout, as do active drags through Markdown without source
+  positions.
   Clipboard copy sizes the buffer from the selected participants' text.
   Callers using the C++ bounded copy callback receive 64 KiB per participant.
   Under `-markdown=mini` the parser

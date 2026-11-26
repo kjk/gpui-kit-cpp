@@ -1130,6 +1130,7 @@ struct TextViewState {
     int SelectedText(Window* window, char* out, int cap) const;
     // Clipboard contents for an explicit Select All, from the committed doc.
     Str SelectAllText(gpui::SelectionFormat format) const;
+    Str SelectionBlockText(int index, gpui::SelectionFormat format) const;
     // A full replacement keeps the previous document on screen until its
     // parse commits. That document must not supply the clipboard.
     bool CopyDocumentReady() const {

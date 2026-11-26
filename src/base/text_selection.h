@@ -352,6 +352,7 @@ struct TextSelectionReflow {
     TextSelectionSourcePoint endpoints[2];
     Bounds bounds[2];
     TextSelectionSourcePoint unit[2];
+    bool virtualDrag = false;
     // Pointer input received while the relevant block has no painted geometry.
     Point deferredPoint = {};
     TextSelectionDeferredGesture deferredGesture =
@@ -365,9 +366,23 @@ struct TextSelectionCopyProjection {
     uint64_t selectionRevision = 0;
     Str plain;
     Str source;
+    bool virtualRange = false;
     bool mixedStyles = false;
     int sourceStart = -1;
     int sourceEnd = -1;
+};
+
+// The pieces on either side of a fixed endpoint, reconstructed while its
+// block is laid out. Offscreen drags can join these to a newly hit endpoint.
+struct TextSelectionAnchorCopy {
+    EntityId owner = {};
+    uint64_t revision = 0;
+    uint64_t selectionRevision = 0;
+    TextSelectionSourcePoint point;
+    Str plain[2];
+    Str source[2];
+    int sourceStart[2] = {-1, -1};
+    int sourceEnd[2] = {-1, -1};
 };
 
 //
@@ -381,6 +396,7 @@ struct WindowSelection {
     // A source range awaiting projection because an endpoint didn't paint.
     TextSelectionReflow pendingReflow;
     TextSelectionCopyProjection copyProjection;
+    TextSelectionAnchorCopy anchorCopies[4];
     // A TextView's explicit Select All owns the document as its runs move.
     EntityId selectAllOwner = {};
     // TextSelectionScopeId: the trap the gesture began in. Extending stays
