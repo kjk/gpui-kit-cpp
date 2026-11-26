@@ -9666,7 +9666,12 @@ bool InputAcceptInlineCompletion(InputState* s, App* app, Window* win) {
         return false;
     }
     InputClearInlineCompletion(s);
-    InputInsert(s, app, win, keep);
+    if (InputIsEditable(s)) {
+        bool wasSilent = s->silentReplace;
+        s->silentReplace = true;
+        InputInsert(s, app, win, keep);
+        s->silentReplace = wasSilent;
+    }
     StrFree(keep);
     return true;
 }

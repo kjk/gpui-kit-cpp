@@ -1139,11 +1139,16 @@ static void TabAcceptsAndEscapeDeclines() {
     s.inlineCompletion.dueAt = 0;
     InputUpdateInlineCompletion(&s, false);
     utassert(InputHasInlineCompletion(&s));
-    utassert(InputAcceptInlineCompletion(&s, nullptr, nullptr));
+    utassert(
+        InputPerform(&s, nullptr, nullptr, InputAction::IndentInline, false));
     utassert(ValueIs(s, "hello! world"));
     utassert(!InputHasInlineCompletion(&s));
-    // Accepting is an edit, which schedules the next question.
-    utassert(!s.inlineCompletion.asked);
+    // Accepting records an edit, without triggering another suggestion.
+    s.inlineCompletion.dueAt = 0;
+    utassert(!InputUpdateInlineCompletion(&s, false));
+    utassert(gInlineCalls == 1);
+    utassert(InputPerform(&s, nullptr, nullptr, InputAction::Undo, false));
+    utassert(ValueIs(s, "hello!"));
 }
 
 // Accepting clears the suggestion arena before it edits the document. A long
