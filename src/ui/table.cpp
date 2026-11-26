@@ -1123,6 +1123,7 @@ El* DataTable::BuildEl() {
             ->AriaColumnCount(nColumns)
             ->FlexCol()
             ->W(kFill);
+    box->accessibility.zeroBasedGridIndices = true;
     if (len(accessibilityLabel) > 0) {
         box->AriaLabel(accessibilityLabel);
     }
@@ -1596,6 +1597,7 @@ El* DataTable::BuildEl() {
     }
     bool a11yActive = WindowAccessibilityActive(cx->win);
     for (int r = range.first; r < range.end; r++) {
+        bool rowSelected = s && TableSelectedRow(s) == r;
         El* rowFixed =
             gpui::TableRow::New(cx, StrDup(a, fmt("row-fixed-%d", r)), r + 1)
                 ->FlexRow()
@@ -1619,6 +1621,7 @@ El* DataTable::BuildEl() {
         rowScroll->PathClick(ElementIdNamed(a, StrL("row"), (uint64_t)r))
             ->Role(AccessibilityRole::Row)
             ->AriaRowIndex(r + 1)
+            ->AriaSelected(rowSelected)
             ->FlexRow()
             ->Shrink0()
             ->BorderB(1, th.tableRowBorder);
@@ -1649,7 +1652,7 @@ El* DataTable::BuildEl() {
             if (stripe && (r % 2) == 1) {
                 row->Bg(th.tokens.tableEven);
             }
-            if (s && TableSelectedRow(s) == r) {
+            if (rowSelected) {
                 // state.rs paints the selected row the same way a list item
                 // does, off the table's own pair of colors.
                 ListActiveStyle sel = ListActiveStyleOf(
@@ -1662,8 +1665,7 @@ El* DataTable::BuildEl() {
         }
         // While the table has focus, the selected row is the focused node
         // for assistive technology. The pinned pane is not its own row.
-        if (s && TableSelectedRow(s) == r &&
-            FocusHandleIsFocused(cx->win, s->focus)) {
+        if (rowSelected && FocusHandleIsFocused(cx->win, s->focus)) {
             rowScroll->AriaActiveDescendant();
         }
         if (rowHeaderOn) {

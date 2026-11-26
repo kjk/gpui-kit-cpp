@@ -483,6 +483,7 @@ static uint64_t AccessibilityTreeHash(const Vec<AccessibilityNode>& nodes) {
         GPUI_A11Y_HASH(info.expanded);
         GPUI_A11Y_HASH(info.hasExpanded);
         GPUI_A11Y_HASH(info.disabled);
+        GPUI_A11Y_HASH(info.zeroBasedGridIndices);
     }
 #undef GPUI_A11Y_HASH
     return hash;

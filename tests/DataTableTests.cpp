@@ -2079,6 +2079,10 @@ static void TableExposesItsHeaderAndCellsToAssistiveTechnology() {
     FindDataRows(idleRows, &idleSelected, &idleNeighbor);
     utassert(idleSelected && !idleSelected->accessibility.activeDescendant);
     utassert(idleNeighbor && !idleNeighbor->accessibility.activeDescendant);
+    utassert(idleSelected && idleSelected->accessibility.hasSelected &&
+             idleSelected->accessibility.selected);
+    utassert(idleNeighbor && idleNeighbor->accessibility.hasSelected &&
+             !idleNeighbor->accessibility.selected);
     FocusHandleFocus(win, st->focus);
     El* liveRows = component::DataTable::New(&cx, StrL("rows-focus"), state)
                        ->Columns(kA11yColumns, 2)

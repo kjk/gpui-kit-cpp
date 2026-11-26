@@ -927,8 +927,9 @@ static void TablesKeepCountsAndOneBasedIndices() {
     El* table = Table::New(&f.cx, StrL("table"), 12, 4, StrL("Open positions"));
     El* body = TableBody::New(&f.cx, StrL("body"));
     El* row = TableRow::New(&f.cx, StrL("row"), 3);
-    row->Child(TableCell::New(&f.cx, StrL("cell"), 2)
-                   ->Child(TextEl(f.arena, StrL("Ada"))));
+    El* cell = TableCell::New(&f.cx, StrL("cell"), 2)
+                   ->Child(TextEl(f.arena, StrL("Ada")));
+    row->Child(cell);
     body->Child(row);
     table->Child(body);
     table->Child(TableHeader::New(&f.cx, StrL("header"))
@@ -957,6 +958,20 @@ static void TablesKeepCountsAndOneBasedIndices() {
     if (tableNode && cellNode) {
         utassert(AccessibilityWinSmokeTest(f.win, tableNode->id));
         utassert(AccessibilityWinSmokeTest(f.win, cellNode->id));
+    }
+    table->Role(AccessibilityRole::Grid);
+    table->accessibility.zeroBasedGridIndices = true;
+    cell->Role(AccessibilityRole::GridCell)->AriaSelected(true);
+    AccessibilityCollect(table, &f.win->accessibility);
+    const auto* gridNode =
+        RoleNode(f.win->accessibility, AccessibilityRole::Grid);
+    const auto* itemNode =
+        RoleNode(f.win->accessibility, AccessibilityRole::GridCell);
+    if (gridNode && itemNode) {
+        utassert(AccessibilityWinSmokeTest(f.win, gridNode->id));
+        utassert(AccessibilityWinSmokeTest(f.win, itemNode->id));
+    } else {
+        utassert(false);
     }
 #endif
     FreeAccessibilityFrame(&f);

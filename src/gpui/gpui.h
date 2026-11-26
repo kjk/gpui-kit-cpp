@@ -2784,6 +2784,9 @@ struct AccessibilityInfo {
     unsigned int hasExpanded : 1 = false;
     unsigned int activeDescendant : 1 = false;
     unsigned int disabled : 1 = false;
+    // DataTable uses the upstream zero-based grid coordinates. Plain
+    // tables can keep their existing one-based ARIA coordinates.
+    unsigned int zeroBasedGridIndices : 1 = false;
 
     // Windows and Linux expose static text through their Name property.
     Str PlatformName() const {

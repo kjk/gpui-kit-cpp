@@ -76,6 +76,7 @@ static int AccessibilityControlType(AccessibilityRole role) {
         case AccessibilityRole::Button:
             return UIA_ButtonControlTypeId;
         case AccessibilityRole::Cell:
+        case AccessibilityRole::GridCell:
         case AccessibilityRole::Row:
             return UIA_DataItemControlTypeId;
         case AccessibilityRole::CheckBox:
@@ -111,8 +112,11 @@ static int AccessibilityControlType(AccessibilityRole role) {
             return UIA_StatusBarControlTypeId;
         case AccessibilityRole::Tab:
             return UIA_TabItemControlTypeId;
-        case AccessibilityRole::Table:
+        case AccessibilityRole::Grid:
+        case AccessibilityRole::TreeGrid:
             return UIA_DataGridControlTypeId;
+        case AccessibilityRole::Table:
+            return UIA_TableControlTypeId;
         case AccessibilityRole::TabList:
             return UIA_TabControlTypeId;
         case AccessibilityRole::Tree:
@@ -162,6 +166,10 @@ static const wchar_t* AccessibilityRoleName(AccessibilityRole role) {
             return L"dialog";
         case AccessibilityRole::Document:
             return L"document";
+        case AccessibilityRole::Grid:
+            return L"grid";
+        case AccessibilityRole::GridCell:
+            return L"gridcell";
         case AccessibilityRole::Heading:
             return L"heading";
         case AccessibilityRole::Link:
@@ -210,6 +218,8 @@ static const wchar_t* AccessibilityRoleName(AccessibilityRole role) {
             return L"tablist";
         case AccessibilityRole::Tree:
             return L"tree";
+        case AccessibilityRole::TreeGrid:
+            return L"treegrid";
         case AccessibilityRole::TreeItem:
             return L"treeitem";
         case AccessibilityRole::Toolbar:
@@ -223,18 +233,38 @@ static const wchar_t* AccessibilityRoleName(AccessibilityRole role) {
     }
 }
 
-static bool AccessibilitySelectionItemRole(AccessibilityRole role) {
-    return role == AccessibilityRole::ListBoxOption ||
-           role == AccessibilityRole::RadioButton ||
-           role == AccessibilityRole::Tab ||
-           role == AccessibilityRole::TreeItem;
+static bool AccessibilitySelectionItem(const AccessibilityInfo& info) {
+    auto role = info.role;
+    return role == AccessibilityRole::GridCell ||
+           (info.hasSelected && (role == AccessibilityRole::ListBoxOption ||
+                                 role == AccessibilityRole::RadioButton ||
+                                 role == AccessibilityRole::Tab ||
+                                 role == AccessibilityRole::TreeItem));
 }
 
 static bool AccessibilitySelectionContainerRole(AccessibilityRole role) {
-    return role == AccessibilityRole::ListBox ||
+    return role == AccessibilityRole::Grid ||
+           role == AccessibilityRole::TreeGrid ||
+           role == AccessibilityRole::ListBox ||
            role == AccessibilityRole::RadioGroup ||
            role == AccessibilityRole::TabList ||
            role == AccessibilityRole::Tree;
+}
+
+static bool AccessibilityGridRole(AccessibilityRole role) {
+    return role == AccessibilityRole::Table ||
+           role == AccessibilityRole::Grid ||
+           role == AccessibilityRole::TreeGrid;
+}
+
+static bool AccessibilityCellRole(AccessibilityRole role) {
+    return role == AccessibilityRole::Cell ||
+           role == AccessibilityRole::GridCell;
+}
+
+static bool AccessibilityGridPattern(const AccessibilityInfo& info) {
+    return AccessibilityGridRole(info.role) && info.hasRowCount &&
+           info.hasColumnCount;
 }
 
 static bool AccessibilityTextPattern(const AccessibilityNode& node) {
@@ -253,9 +283,7 @@ static bool AccessibilityInvokePattern(const AccessibilityNode& node) {
     // Controls with a more specific UIA action pattern should not also claim
     // Invoke merely because both route to the same portable Default action.
     return node.info.toggled == AccessibilityToggled::Unset &&
-           !node.info.hasExpanded &&
-           !(node.info.hasSelected &&
-             AccessibilitySelectionItemRole(node.info.role));
+           !node.info.hasExpanded && !AccessibilitySelectionItem(node.info);
 }
 
 // Node bounds are DIPs; UI Automation speaks physical screen pixels.
@@ -292,6 +320,8 @@ struct WinNodeProperties {
     double value;
     double minimum;
     double maximum;
+    int gridRow = -1;
+    int gridColumn = -1;
 
     explicit WinNodeProperties(const AccessibilityNode& node)
         : info(node.info),
@@ -322,8 +352,7 @@ struct WinNodeSnapshot {
 
     bool IsSelectedItem() const {
         const auto& info = properties.info;
-        return info.hasSelected && info.selected &&
-               AccessibilitySelectionItemRole(info.role);
+        return info.selected && AccessibilitySelectionItem(info);
     }
 };
 
@@ -388,15 +417,13 @@ struct WinAccessibilityNode
     HRESULT Missing() const {
         return Node() ? S_OK : UIA_E_ELEMENTNOTAVAILABLE;
     }
-    // The node, for a pattern only a node of `role` supports: gone is
-    // ELEMENTNOTAVAILABLE, another role INVALIDOPERATION.
-    HRESULT NodeOfRole(AccessibilityRole role,
-                       const AccessibilityNode** out) const {
+    HRESULT GridNode(const AccessibilityNode** out) const {
         *out = Node();
         if (!*out) {
             return UIA_E_ELEMENTNOTAVAILABLE;
         }
-        return (*out)->info.role == role ? S_OK : UIA_E_INVALIDOPERATION;
+        return AccessibilityGridPattern((*out)->info) ? S_OK
+                                                      : UIA_E_INVALIDOPERATION;
     }
     // The node, for a pattern only a text input supports.
     HRESULT TextNode(const AccessibilityNode** out) const {
@@ -646,20 +673,30 @@ static void AccessibilityScreenRect(const WinAccessibility* root,
     out->height = b.h * scale;
 }
 
-static int AccessibilityAncestor(const WinAccessibility* root, int index,
-                                 AccessibilityRole role, bool includeSelf) {
+static int AccessibilityContainingGrid(const WinAccessibility* root,
+                                       int index) {
     if (!root || !root->win || index < 0 ||
         index >= len(root->win->accessibility)) {
         return -1;
     }
-    int at = includeSelf ? index : root->win->accessibility[index].parent;
+    int at = root->win->accessibility[index].parent;
     while (at >= 0 && at < len(root->win->accessibility)) {
-        if (root->win->accessibility[at].info.role == role) {
+        if (AccessibilityGridRole(root->win->accessibility[at].info.role)) {
             return at;
         }
         at = root->win->accessibility[at].parent;
     }
     return -1;
+}
+
+static int AccessibilityGridIndex(const WinAccessibility* root, int index,
+                                  int authored) {
+    int table = AccessibilityContainingGrid(root, index);
+    int first = table >= 0 && root->win->accessibility[table]
+                                  .info.zeroBasedGridIndices
+                    ? 0
+                    : 1;
+    return std::max(first, authored) - first;
 }
 
 static int AccessibilityGridRow(const WinAccessibility* root, int index) {
@@ -669,8 +706,9 @@ static int AccessibilityGridRow(const WinAccessibility* root, int index) {
     int at = index;
     while (at >= 0 && at < len(root->win->accessibility)) {
         const AccessibilityInfo& info = root->win->accessibility[at].info;
+        if (AccessibilityGridRole(info.role)) break;
         if (info.hasRowIndex) {
-            return std::max(0, info.rowIndex - 1);
+            return AccessibilityGridIndex(root, at, info.rowIndex);
         }
         at = root->win->accessibility[at].parent;
     }
@@ -683,18 +721,38 @@ static int AccessibilityGridColumn(const WinAccessibility* root, int index) {
         return -1;
     }
     const AccessibilityInfo& info = root->win->accessibility[index].info;
-    return info.hasColumnIndex ? std::max(0, info.columnIndex - 1) : -1;
+    return info.hasColumnIndex
+               ? AccessibilityGridIndex(root, index, info.columnIndex)
+               : -1;
+}
+
+static WinNodeProperties WinProperties(const WinAccessibility* root,
+                                       int index) {
+    const AccessibilityNode& node = root->win->accessibility[index];
+    WinNodeProperties props(node);
+    if (node.info.hasRowIndex || AccessibilityCellRole(node.info.role)) {
+        props.gridRow = AccessibilityGridRow(root, index);
+    }
+    props.gridColumn = AccessibilityGridColumn(root, index);
+    return props;
 }
 
 HRESULT WinAccessibilityNode::CellTable(int* index, int* table) const {
-    const AccessibilityNode* node = nullptr;
-    if (HRESULT hr = NodeOfRole(AccessibilityRole::Cell, &node); FAILED(hr)) {
-        return hr;
-    }
+    const AccessibilityNode* node = Node();
+    if (!node) return UIA_E_ELEMENTNOTAVAILABLE;
+    if (!AccessibilityCellRole(node->info.role)) return UIA_E_INVALIDOPERATION;
     *index = root->NodeIndex(id);
-    *table =
-        AccessibilityAncestor(root, *index, AccessibilityRole::Table, false);
-    return S_OK;
+    *table = AccessibilityContainingGrid(root, *index);
+    return *table >= 0 ? S_OK : UIA_E_INVALIDOPERATION;
+}
+
+static bool AccessibilityGridItemPattern(const WinAccessibility* root,
+                                         int index) {
+    if (index < 0) return false;
+    const auto& info = root->win->accessibility[index].info;
+    return AccessibilityCellRole(info.role) && info.hasColumnIndex &&
+           AccessibilityContainingGrid(root, index) >= 0 &&
+           AccessibilityGridRow(root, index) >= 0;
 }
 
 static HRESULT AccessibilitySimpleAt(WinAccessibility* root, int index,
@@ -729,8 +787,7 @@ static HRESULT AccessibilityProviderArray(WinAccessibility* root,
     for (int i = 0; i < len(root->win->accessibility); i++) {
         const AccessibilityNode& node = root->win->accessibility[i];
         if (node.info.role == role &&
-            AccessibilityAncestor(root, i, AccessibilityRole::Table, false) ==
-                tableIndex &&
+            AccessibilityContainingGrid(root, i) == tableIndex &&
             (column < 0 || AccessibilityGridColumn(root, i) == column)) {
             count++;
         }
@@ -743,8 +800,7 @@ static HRESULT AccessibilityProviderArray(WinAccessibility* root,
     for (int i = 0; i < len(root->win->accessibility); i++) {
         const AccessibilityNode& node = root->win->accessibility[i];
         if (node.info.role != role ||
-            AccessibilityAncestor(root, i, AccessibilityRole::Table, false) !=
-                tableIndex ||
+            AccessibilityContainingGrid(root, i) != tableIndex ||
             (column >= 0 && AccessibilityGridColumn(root, i) != column)) {
             continue;
         }
@@ -1032,8 +1088,8 @@ HRESULT WinAccessibilityNode::GetPatternProvider(PATTERNID pattern,
         AccessibilitySelectionContainerRole(node->info.role)) {
         return QueryInterface(__uuidof(ISelectionProvider), (void**)out);
     }
-    if (pattern == UIA_SelectionItemPatternId && node->info.hasSelected &&
-        AccessibilitySelectionItemRole(node->info.role)) {
+    if (pattern == UIA_SelectionItemPatternId &&
+        AccessibilitySelectionItem(node->info)) {
         return QueryInterface(__uuidof(ISelectionItemProvider), (void**)out);
     }
     if (pattern == UIA_TextPatternId && AccessibilityTextPattern(*node)) {
@@ -1043,26 +1099,18 @@ HRESULT WinAccessibilityNode::GetPatternProvider(PATTERNID pattern,
         AccessibilityIsDialog(node->info.role)) {
         return QueryInterface(__uuidof(IWindowProvider), (void**)out);
     }
-    if (pattern == UIA_GridPatternId &&
-        node->info.role == AccessibilityRole::Table && node->info.hasRowCount &&
-        node->info.hasColumnCount) {
+    if (pattern == UIA_GridPatternId && AccessibilityGridPattern(node->info)) {
         return QueryInterface(__uuidof(IGridProvider), (void**)out);
     }
-    if (pattern == UIA_TablePatternId &&
-        node->info.role == AccessibilityRole::Table && node->info.hasRowCount &&
-        node->info.hasColumnCount) {
+    if (pattern == UIA_TablePatternId && AccessibilityGridPattern(node->info)) {
         return QueryInterface(__uuidof(ITableProvider), (void**)out);
     }
     if (pattern == UIA_GridItemPatternId &&
-        node->info.role == AccessibilityRole::Cell &&
-        node->info.hasColumnIndex &&
-        AccessibilityGridRow(root, root->NodeIndex(id)) >= 0) {
+        AccessibilityGridItemPattern(root, root->NodeIndex(id))) {
         return QueryInterface(__uuidof(IGridItemProvider), (void**)out);
     }
     if (pattern == UIA_TableItemPatternId &&
-        node->info.role == AccessibilityRole::Cell &&
-        node->info.hasColumnIndex &&
-        AccessibilityGridRow(root, root->NodeIndex(id)) >= 0) {
+        AccessibilityGridItemPattern(root, root->NodeIndex(id))) {
         return QueryInterface(__uuidof(ITableItemProvider), (void**)out);
     }
     return S_OK;
@@ -1177,11 +1225,11 @@ static WinPropertyValue WinSemanticProperty(const WinNodeProperties& node,
     } else if (property == UIA_GridColumnCountPropertyId &&
                info.hasColumnCount) {
         return info.columnCount;
-    } else if (property == UIA_GridItemRowPropertyId && info.hasRowIndex) {
-        return std::max(0, info.rowIndex - 1);
+    } else if (property == UIA_GridItemRowPropertyId && node.gridRow >= 0) {
+        return node.gridRow;
     } else if (property == UIA_GridItemColumnPropertyId &&
-               info.hasColumnIndex) {
-        return std::max(0, info.columnIndex - 1);
+               node.gridColumn >= 0) {
+        return node.gridColumn;
     } else if (property == UIA_ToggleToggleStatePropertyId &&
                info.toggled != AccessibilityToggled::Unset) {
         return (int)WinToggleState(info.toggled);
@@ -1222,7 +1270,8 @@ HRESULT WinAccessibilityNode::GetPropertyValue(PROPERTYID property,
                    node->bounds.y * scale >= (float)client.bottom;
         VariantBool(out, off);
     } else {
-        WinSemanticProperty(WinNodeProperties(*node), property).ToVariant(out);
+        WinSemanticProperty(WinProperties(root, root->NodeIndex(id)), property)
+            .ToVariant(out);
     }
     return S_OK;
 }
@@ -1893,20 +1942,16 @@ HRESULT WinAccessibilityNode::GetItem(int row, int column,
     }
     *out = nullptr;
     int tableIndex = root->NodeIndex(id);
-    const AccessibilityNode* table = Node();
-    if (!table || table->info.role != AccessibilityRole::Table ||
-        !table->info.hasRowCount || !table->info.hasColumnCount) {
-        return UIA_E_INVALIDOPERATION;
-    }
+    const AccessibilityNode* table = nullptr;
+    if (HRESULT hr = GridNode(&table); FAILED(hr)) return hr;
     if (row < 0 || column < 0 || row >= table->info.rowCount ||
         column >= table->info.columnCount) {
         return E_INVALIDARG;
     }
     for (int i = 0; i < len(root->win->accessibility); i++) {
         const AccessibilityNode& candidate = root->win->accessibility[i];
-        if (candidate.info.role == AccessibilityRole::Cell &&
-            AccessibilityAncestor(root, i, AccessibilityRole::Table, false) ==
-                tableIndex &&
+        if (AccessibilityCellRole(candidate.info.role) &&
+            AccessibilityContainingGrid(root, i) == tableIndex &&
             AccessibilityGridRow(root, i) == row &&
             AccessibilityGridColumn(root, i) == column) {
             return AccessibilitySimpleAt(root, i, out);
@@ -1921,11 +1966,8 @@ HRESULT WinAccessibilityNode::get_RowCount(int* out) {
     if (!out) {
         return E_INVALIDARG;
     }
-    const AccessibilityNode* node = Node();
-    if (!node || node->info.role != AccessibilityRole::Table ||
-        !node->info.hasRowCount) {
-        return UIA_E_INVALIDOPERATION;
-    }
+    const AccessibilityNode* node = nullptr;
+    if (HRESULT hr = GridNode(&node); FAILED(hr)) return hr;
     *out = node->info.rowCount;
     return S_OK;
 }
@@ -1934,11 +1976,8 @@ HRESULT WinAccessibilityNode::get_ColumnCount(int* out) {
     if (!out) {
         return E_INVALIDARG;
     }
-    const AccessibilityNode* node = Node();
-    if (!node || node->info.role != AccessibilityRole::Table ||
-        !node->info.hasColumnCount) {
-        return UIA_E_INVALIDOPERATION;
-    }
+    const AccessibilityNode* node = nullptr;
+    if (HRESULT hr = GridNode(&node); FAILED(hr)) return hr;
     *out = node->info.columnCount;
     return S_OK;
 }
@@ -1975,10 +2014,8 @@ HRESULT WinAccessibilityNode::get_ColumnSpan(int* out) {
     if (!out) {
         return E_INVALIDARG;
     }
-    const AccessibilityNode* node = nullptr;
-    if (HRESULT hr = NodeOfRole(AccessibilityRole::Cell, &node); FAILED(hr)) {
-        return hr;
-    }
+    int index = -1, table = -1;
+    if (HRESULT hr = CellTable(&index, &table); FAILED(hr)) return hr;
     // The pinned semantic table API records one row and column index per cell
     // and no span, so one is the only value the portable tree can promise for
     // either span.
@@ -1998,7 +2035,7 @@ HRESULT WinAccessibilityNode::get_ContainingGrid(
 
 HRESULT WinAccessibilityNode::GetRowHeaders(SAFEARRAY** out) {
     const AccessibilityNode* node = nullptr;
-    if (HRESULT hr = NodeOfRole(AccessibilityRole::Table, &node); FAILED(hr)) {
+    if (HRESULT hr = GridNode(&node); FAILED(hr)) {
         return hr;
     }
     // AccessKit's role set used by these crates has ColumnHeader but no row
@@ -2009,7 +2046,7 @@ HRESULT WinAccessibilityNode::GetRowHeaders(SAFEARRAY** out) {
 
 HRESULT WinAccessibilityNode::GetColumnHeaders(SAFEARRAY** out) {
     const AccessibilityNode* node = nullptr;
-    if (HRESULT hr = NodeOfRole(AccessibilityRole::Table, &node); FAILED(hr)) {
+    if (HRESULT hr = GridNode(&node); FAILED(hr)) {
         return hr;
     }
     return AccessibilityProviderArray(root, root->NodeIndex(id),
@@ -2020,19 +2057,15 @@ HRESULT WinAccessibilityNode::get_RowOrColumnMajor(RowOrColumnMajor* out) {
     if (!out) {
         return E_INVALIDARG;
     }
-    const AccessibilityNode* node = Node();
-    if (!node || node->info.role != AccessibilityRole::Table) {
-        return UIA_E_INVALIDOPERATION;
-    }
+    const AccessibilityNode* node = nullptr;
+    if (HRESULT hr = GridNode(&node); FAILED(hr)) return hr;
     *out = RowOrColumnMajor_RowMajor;
     return S_OK;
 }
 
 HRESULT WinAccessibilityNode::GetRowHeaderItems(SAFEARRAY** out) {
-    const AccessibilityNode* node = nullptr;
-    if (HRESULT hr = NodeOfRole(AccessibilityRole::Cell, &node); FAILED(hr)) {
-        return hr;
-    }
+    int index = -1, table = -1;
+    if (HRESULT hr = CellTable(&index, &table); FAILED(hr)) return hr;
     return AccessibilityEmptyProviderArray(out);
 }
 
@@ -2822,7 +2855,7 @@ static bool WinSnapshotChanges(WinAccessibility* root,
     for (int i = 0; i < len(nodes); i++) {
         const auto& node = nodes[i];
         uint32_t parent = node.parent < 0 ? 0 : nodes[node.parent].id;
-        next[i] = {node.id, parent, i, WinNodeProperties(node)};
+        next[i] = {node.id, parent, i, WinProperties(root, i)};
         auto& snapshot = next[i];
         auto& info = snapshot.properties.info;
         if (node.parent >= 0) {
@@ -3271,24 +3304,13 @@ bool AccessibilityWinSmokeTest(Window* win, uint32_t nodeId) {
         {UIA_SelectionPatternId,
          AccessibilitySelectionContainerRole(expected->info.role)},
         {UIA_SelectionItemPatternId,
-         expected->info.hasSelected &&
-             AccessibilitySelectionItemRole(expected->info.role)},
+         AccessibilitySelectionItem(expected->info)},
         {UIA_TextPatternId, AccessibilityTextPattern(*expected)},
         {UIA_WindowPatternId, dialog},
-        {UIA_GridPatternId, expected->info.role == AccessibilityRole::Table &&
-                                expected->info.hasRowCount &&
-                                expected->info.hasColumnCount},
-        {UIA_TablePatternId, expected->info.role == AccessibilityRole::Table &&
-                                 expected->info.hasRowCount &&
-                                 expected->info.hasColumnCount},
-        {UIA_GridItemPatternId, expected->info
-                                            .role == AccessibilityRole::Cell &&
-                                    expected->info.hasColumnIndex &&
-                                    AccessibilityGridRow(root, index) >= 0},
-        {UIA_TableItemPatternId, expected->info
-                                             .role == AccessibilityRole::Cell &&
-                                     expected->info.hasColumnIndex &&
-                                     AccessibilityGridRow(root, index) >= 0},
+        {UIA_GridPatternId, AccessibilityGridPattern(expected->info)},
+        {UIA_TablePatternId, AccessibilityGridPattern(expected->info)},
+        {UIA_GridItemPatternId, AccessibilityGridItemPattern(root, index)},
+        {UIA_TableItemPatternId, AccessibilityGridItemPattern(root, index)},
     };
     for (const PatternExpectation& pattern : patterns) {
         IUnknown* provider = nullptr;
@@ -3360,7 +3382,7 @@ bool AccessibilityWinSmokeTest(Window* win, uint32_t nodeId) {
             selection->Release();
         }
     }
-    if (ok && expected->info.role == AccessibilityRole::Table) {
+    if (ok && AccessibilityGridPattern(expected->info)) {
         IGridProvider* grid = nullptr;
         ITableProvider* table = nullptr;
         int rows = -1;
@@ -3373,10 +3395,8 @@ bool AccessibilityWinSmokeTest(Window* win, uint32_t nodeId) {
              columns == expected->info.columnCount;
         int cellIndex = -1;
         for (int i = 0; ok && i < len(root->win->accessibility); i++) {
-            if (root->win->accessibility[i]
-                        .info.role == AccessibilityRole::Cell &&
-                AccessibilityAncestor(root, i, AccessibilityRole::Table,
-                                      false) == index) {
+            if (AccessibilityCellRole(root->win->accessibility[i].info.role) &&
+                AccessibilityContainingGrid(root, i) == index) {
                 cellIndex = i;
                 break;
             }
@@ -3411,7 +3431,7 @@ bool AccessibilityWinSmokeTest(Window* win, uint32_t nodeId) {
             table->Release();
         }
     }
-    if (ok && expected->info.role == AccessibilityRole::Cell) {
+    if (ok && AccessibilityGridItemPattern(root, index)) {
         IGridItemProvider* gridItem = nullptr;
         ITableItemProvider* tableItem = nullptr;
         int row = -1;

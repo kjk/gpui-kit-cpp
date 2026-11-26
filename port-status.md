@@ -260,6 +260,10 @@ The current update target is
   sole selected item, a deselection, or container invalidation above
   AccessKit's 20-change threshold. The portable selection containers
   currently advertise single selection.
+- **Windows UIA exposes grid and table navigation.** The bridge reports
+  zero-based UIA cell coordinates for both the upstream data table and
+  callers of the one-based plain table API. Counts include virtualized
+  rows. Cell lookup is available for rows in the current frame.
 - **Linux invalidates a child list when its retained children reorder.**
   Insertions and removals report individual child references, and reparented
   nodes also report the new parent. Lazy document revisions invalidate their
