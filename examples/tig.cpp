@@ -831,6 +831,7 @@ El* Tig::Navigation(Ctx* cx, Tig* self, bool history) {
     }
     auto* handle = history ? &self->historyScroll : &self->filesScroll;
     El* list = component::VirtualList::New(cx, count)
+                   ->Id(history ? StrL("commits") : StrL("files"))
                    ->RowH(48)
                    ->Axis(ScrollAxis::Vertical)
                    ->Handle(handle)
