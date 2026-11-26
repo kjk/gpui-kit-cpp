@@ -59,6 +59,7 @@ struct WinRt {
     bool ok = false;
     HRESULT(WINAPI* getActivationFactory)(HSTRING, REFIID, void**) = nullptr;
     HRESULT(WINAPI* createString)(PCNZWCH, UINT32, HSTRING*) = nullptr;
+    HRESULT(WINAPI* duplicateString)(HSTRING, HSTRING*) = nullptr;
     HRESULT(WINAPI* deleteString)(HSTRING) = nullptr;
     PCWSTR(WINAPI* getStringRawBuffer)(HSTRING, UINT32*) = nullptr;
 };
@@ -78,13 +79,15 @@ static WinRt* WinRtGet() {
             mod, "RoGetActivationFactory");
     rt.createString = (decltype(rt.createString))(void*)GetProcAddress(
         mod, "WindowsCreateString");
+    rt.duplicateString = (decltype(rt.duplicateString))(void*)GetProcAddress(
+        mod, "WindowsDuplicateString");
     rt.deleteString = (decltype(rt.deleteString))(void*)GetProcAddress(
         mod, "WindowsDeleteString");
     rt.getStringRawBuffer =
         (decltype(rt.getStringRawBuffer))(void*)GetProcAddress(
             mod, "WindowsGetStringRawBuffer");
-    rt.ok = rt.getActivationFactory && rt.createString && rt.deleteString &&
-            rt.getStringRawBuffer;
+    rt.ok = rt.getActivationFactory && rt.createString && rt.duplicateString &&
+            rt.deleteString && rt.getStringRawBuffer;
     return rt.ok ? &rt : nullptr;
 }
 
@@ -242,18 +245,199 @@ static ILanguage* SupportedLanguage(Str locale) {
     return fallback;
 }
 
+// WinRT takes an IIterable<String> when constructing a list constraint.
+template <typename Interface>
+struct SpeechPhraseInspectable : ComObject<Interface, IAgileObject> {
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override {
+        return ComObject<Interface, IAgileObject>::QueryInterface(
+            iid == __uuidof(IInspectable) ? __uuidof(Interface) : iid, out);
+    }
+
+    HRESULT STDMETHODCALLTYPE GetIids(ULONG* count, IID** values) override {
+        if (!count || !values) return E_POINTER;
+        *count = 0;
+        *values = (IID*)CoTaskMemAlloc(sizeof(IID));
+        if (!*values) return E_OUTOFMEMORY;
+        **values = __uuidof(Interface);
+        *count = 1;
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE GetRuntimeClassName(HSTRING* out) override {
+        if (!out) return E_POINTER;
+        *out = nullptr;
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE GetTrustLevel(TrustLevel* out) override {
+        if (!out) return E_POINTER;
+        *out = BaseTrust;
+        return S_OK;
+    }
+};
+
+struct SpeechPhraseList final
+    : SpeechPhraseInspectable<Collections::IIterable<HSTRING>> {
+    WinRt* rt = nullptr;
+    Vec<HSTRING> values;
+
+    explicit SpeechPhraseList(WinRt* runtime) : rt(runtime) {}
+
+    ~SpeechPhraseList() override {
+        for (HSTRING value : values) rt->deleteString(value);
+    }
+
+    HRESULT Append(Str phrase) {
+        HSTRING value = nullptr;
+        HRESULT hr = S_OK;
+        if (len(phrase)) {
+            int units = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
+                                            phrase.s, len(phrase), nullptr, 0);
+            if (units <= 0) return HRESULT_FROM_WIN32(GetLastError());
+            hr = rt->createString(ToCWstrTemp(phrase), (UINT32)units, &value);
+            if (FAILED(hr)) return hr;
+        }
+        if (!VecAppend(values, value)) {
+            rt->deleteString(value);
+            return E_OUTOFMEMORY;
+        }
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE
+    First(Collections::IIterator<HSTRING>** out) override;
+};
+
+// The SDK's IIterator<HSTRING> base implements GetMany with a static WinRT
+// import even when overridden. Declare its ABI here so WinRT stays optional.
+struct __declspec(uuid("8c304ebb-6615-50a4-8829-879ecd443236"))
+SpeechPhraseIteratorAbi : IInspectable {
+    virtual HRESULT STDMETHODCALLTYPE get_Current(HSTRING*) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_HasCurrent(boolean*) = 0;
+    virtual HRESULT STDMETHODCALLTYPE MoveNext(boolean*) = 0;
+    virtual HRESULT STDMETHODCALLTYPE GetMany(UINT32, HSTRING*, UINT32*) = 0;
+};
+
+struct SpeechPhraseIterator final
+    : SpeechPhraseInspectable<SpeechPhraseIteratorAbi> {
+    SpeechPhraseList* list;
+    SRWLOCK lock = SRWLOCK_INIT;
+    int index = 0;
+
+    explicit SpeechPhraseIterator(SpeechPhraseList* owner) : list(owner) {
+        list->AddRef();
+    }
+    ~SpeechPhraseIterator() override { list->Release(); }
+
+    HRESULT STDMETHODCALLTYPE get_Current(HSTRING* out) override {
+        if (!out) return E_POINTER;
+        *out = nullptr;
+        AcquireSRWLockShared(&lock);
+        HRESULT hr = index < len(list->values)
+                         ? list->rt->duplicateString(list->values[index], out)
+                         : E_BOUNDS;
+        ReleaseSRWLockShared(&lock);
+        return hr;
+    }
+
+    HRESULT STDMETHODCALLTYPE get_HasCurrent(boolean* out) override {
+        if (!out) return E_POINTER;
+        AcquireSRWLockShared(&lock);
+        *out = index < len(list->values);
+        ReleaseSRWLockShared(&lock);
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE MoveNext(boolean* out) override {
+        if (!out) return E_POINTER;
+        AcquireSRWLockExclusive(&lock);
+        if (index < len(list->values)) ++index;
+        *out = index < len(list->values);
+        ReleaseSRWLockExclusive(&lock);
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE GetMany(UINT32 capacity, HSTRING* out,
+                                      UINT32* actual) override {
+        if (!actual || (capacity && !out)) return E_POINTER;
+        *actual = 0;
+        for (UINT32 i = 0; i < capacity; ++i) out[i] = nullptr;
+        AcquireSRWLockExclusive(&lock);
+        UINT32 count = std::min(capacity, (UINT32)(len(list->values) - index));
+        HRESULT hr = S_OK;
+        for (UINT32 i = 0; i < count; ++i) {
+            hr = list->rt
+                     ->duplicateString(list->values[index + (int)i], &out[i]);
+            if (FAILED(hr)) {
+                while (i > 0) {
+                    --i;
+                    list->rt->deleteString(out[i]);
+                    out[i] = nullptr;
+                }
+                break;
+            }
+        }
+        if (SUCCEEDED(hr)) {
+            index += (int)count;
+            *actual = count;
+        }
+        ReleaseSRWLockExclusive(&lock);
+        return hr;
+    }
+};
+
+HRESULT SpeechPhraseList::First(Collections::IIterator<HSTRING>** out) {
+    if (!out) return E_POINTER;
+    auto* abi =
+        static_cast<SpeechPhraseIteratorAbi*>(new SpeechPhraseIterator(this));
+    *out = reinterpret_cast<Collections::IIterator<HSTRING>*>(abi);
+    return S_OK;
+}
+
+static HRESULT AppendSpeechPhraseConstraint(
+    Collections::IVector<ISpeechRecognitionConstraint*>* constraints,
+    SpeechPhraseList* phrases) {
+    ISpeechRecognitionListConstraintFactory* factory = nullptr;
+    ISpeechRecognitionListConstraint* list = nullptr;
+    ISpeechRecognitionConstraint* constraint = nullptr;
+    HRESULT hr = ActivationFactory(
+        RuntimeClass_Windows_Media_SpeechRecognition_SpeechRecognitionListConstraint,
+        &factory);
+    if (SUCCEEDED(hr)) hr = factory->Create(phrases, &list);
+    if (SUCCEEDED(hr)) {
+        hr = list->QueryInterface(__uuidof(ISpeechRecognitionConstraint),
+                                  (void**)&constraint);
+    }
+    if (SUCCEEDED(hr)) hr = constraints->Append(constraint);
+    if (constraint) constraint->Release();
+    if (list) list->Release();
+    if (factory) factory->Release();
+    return hr;
+}
+
 struct SysSpeechRecognizer {
     // The dictation language, or null when the requested one is malformed
     // or has no speech pack installed.
     ILanguage* language = nullptr;
     Str separator = {};
+    SpeechPhraseList* expectedPhrases = nullptr;
+    HRESULT phraseStatus = S_OK;
 };
 
-SysSpeechRecognizer* SysSpeechRecognizerNew(Str locale) {
-    if (!WinRtGet()) {
+SysSpeechRecognizer* SysSpeechRecognizerNew(Str locale, const Str* phrases,
+                                            int count) {
+    WinRt* rt = WinRtGet();
+    if (!rt) {
         return nullptr;
     }
     SysSpeechRecognizer* r = new SysSpeechRecognizer();
+    if (phrases && count > 0) {
+        r->expectedPhrases = new SpeechPhraseList(rt);
+        for (int i = 0; i < count; ++i) {
+            r->phraseStatus = r->expectedPhrases->Append(phrases[i]);
+            if (FAILED(r->phraseStatus)) break;
+        }
+    }
     r->language = SupportedLanguage(locale);
     r->separator = StrL(" ");
     if (r->language) {
@@ -273,6 +457,7 @@ void SysSpeechRecognizerFree(SysSpeechRecognizer* r) {
     if (r->language) {
         r->language->Release();
     }
+    if (r->expectedPhrases) r->expectedPhrases->Release();
     delete r;
 }
 
@@ -756,6 +941,12 @@ SysSpeechSession* SysSpeechSessionStart(SysSpeechRecognizer* r,
     }
     if (SUCCEEDED(hr)) {
         hr = constraints->Append(constraint);
+    }
+    // Keep the list beside the dictation topic so other speech still works.
+    if (SUCCEEDED(hr) && r->expectedPhrases) {
+        hr = r->phraseStatus;
+        if (SUCCEEDED(hr))
+            hr = AppendSpeechPhraseConstraint(constraints, r->expectedPhrases);
     }
     if (constraints) constraints->Release();
     if (constraint) constraint->Release();

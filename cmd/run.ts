@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "72f28383c7b96090de4a2b0de72f92fccd8b4cba",
+  sha: "f807c1b2c49ef25ddfbe73e465e33b8a5fa5632e",
   date: "2026-11-26",
-  subject: "settings: Add SettingSection to group the sidebar's pages (#4146)",
+  subject: "speech: Add SystemRecognizer::expected_phrases to favor names and terms (#4143)",
   crates: {
     "gpui-kit": "0.11.0",
     "gpui-base": "0.11.0",

@@ -49,6 +49,7 @@ struct SysSpeechRecognizer {
     // nil when the locale has no recognizer or the application cannot ask
     // for access.
     SFSpeechRecognizer* recognizer = nil;
+    NSArray<NSString*>* expectedPhrases = nil;
 };
 
 static bool HasUsageDescription() {
@@ -61,7 +62,8 @@ static bool IsSpeechDenied(SFSpeechRecognizerAuthorizationStatus status) {
            status == SFSpeechRecognizerAuthorizationStatusRestricted;
 }
 
-SysSpeechRecognizer* SysSpeechRecognizerNew(Str locale) {
+SysSpeechRecognizer* SysSpeechRecognizerNew(Str locale, const Str* phrases,
+                                            int count) {
     SysSpeechRecognizer* r = new SysSpeechRecognizer();
     if (!HasUsageDescription()) {
         logf(
@@ -89,6 +91,18 @@ SysSpeechRecognizer* SysSpeechRecognizerNew(Str locale) {
             "speech recognition is unavailable: no recognizer for the "
             "locale\n");
     }
+    NSMutableArray<NSString*>* expected = [[NSMutableArray alloc] init];
+    for (int i = 0; i < count; ++i) {
+        Str phrase = phrases[i];
+        NSString* string =
+            len(phrase)
+                ? [[NSString alloc] initWithBytes:phrase.s
+                                           length:(NSUInteger)len(phrase)
+                                         encoding:NSUTF8StringEncoding]
+                : @"";
+        if (string) [expected addObject:string];
+    }
+    r->expectedPhrases = expected;
     return r;
 }
 
@@ -414,6 +428,7 @@ SysSpeechSession* SysSpeechSessionStart(SysSpeechRecognizer* r,
     SFSpeechAudioBufferRecognitionRequest* request =
         [[SFSpeechAudioBufferRecognitionRequest alloc] init];
     request.shouldReportPartialResults = YES;
+    request.contextualStrings = r->expectedPhrases;
     // Never send audio to Apple's servers.
     if (@available(macOS 10.15, *)) {
         request.requiresOnDeviceRecognition = YES;

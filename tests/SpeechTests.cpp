@@ -1006,6 +1006,25 @@ static void AlreadyDisclaimedKeepsRunning() {
 #endif
 }
 
+static void SystemRecognizerOwnsAndReplacesExpectedPhrases() {
+    component::SystemRecognizer system;
+    char mutablePhrase[] = "Product name";
+    Str phrases[] = {Str(mutablePhrase), StrL("caf\xc3\xa9")};
+    system.platformMade = true;
+    utassert(system.ExpectedPhrases(phrases, dimofi(phrases)) == &system);
+    mutablePhrase[0] = 'p';
+    utassert(!system.platformMade);
+    utassert(len(system.expectedPhrases) == 2);
+    if (len(system.expectedPhrases) == 2) {
+        utassert(StrEq(system.expectedPhrases[0], StrL("Product name")));
+        system.ExpectedPhrases(system.expectedPhrases.els + 1, 1);
+    }
+    utassert(len(system.expectedPhrases) == 1 &&
+             StrEq(system.expectedPhrases[0], StrL("caf\xc3\xa9")));
+    system.ExpectedPhrases(nullptr, 0);
+    utassert(len(system.expectedPhrases) == 0);
+}
+
 void TestSpeech() {
     TestSuite("speech");
     AlreadyDisclaimedKeepsRunning();
@@ -1027,6 +1046,7 @@ void TestSpeech() {
     PhrasesAreSpacedByScript();
     PhraseSeparatorFollowsTheLanguage();
     ASystemRecognizerWithoutAPlatformIsUnsupported();
+    SystemRecognizerOwnsAndReplacesExpectedPhrases();
     AShortHistoryGrowsFromTheTrailingEdge();
     ALongHistoryFillsTheWidth();
     NothingIsDrawnBeforeAnyAudio();

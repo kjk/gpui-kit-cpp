@@ -356,7 +356,8 @@ static void SystemSessionDrop(void* data) {
 static SysSpeechRecognizer* SystemPlatform(SystemRecognizer* r) {
     if (!r->platformMade) {
         r->platformMade = true;
-        r->platform = SysSpeechRecognizerNew(r->locale);
+        r->platform = SysSpeechRecognizerNew(r->locale, r->expectedPhrases.els,
+                                             len(r->expectedPhrases));
     }
     return r->platform;
 }
@@ -402,11 +403,36 @@ static bool SystemStart(void* data, SpeechSink sink, App* app,
 SystemRecognizer::~SystemRecognizer() {
     SysSpeechRecognizerFree(platform);
     StrFree(locale);
+    for (Str phrase : expectedPhrases) StrFree(phrase);
 }
 
 SystemRecognizer* SystemRecognizer::Locale(Str value) {
     StrFree(locale);
     locale = len(value) > 0 ? StrDup(value) : Str{};
+    SysSpeechRecognizerFree(platform);
+    platform = nullptr;
+    platformMade = false;
+    return this;
+}
+
+SystemRecognizer* SystemRecognizer::ExpectedPhrases(const Str* phrases,
+                                                    int count) {
+    Vec<Str> copies;
+    if (phrases && count > 0) {
+        if (!VecReserve(copies, count) || !VecReserve(expectedPhrases, count))
+            return this;
+        for (int i = 0; i < count; ++i) {
+            Str phrase = StrDup(phrases[i]);
+            if (len(phrases[i]) && !phrase.s) {
+                for (Str copy : copies) StrFree(copy);
+                return this;
+            }
+            VecAppend(copies, phrase);
+        }
+    }
+    for (Str phrase : expectedPhrases) StrFree(phrase);
+    VecClear(expectedPhrases);
+    for (Str copy : copies) VecAppend(expectedPhrases, copy);
     SysSpeechRecognizerFree(platform);
     platform = nullptr;
     platformMade = false;

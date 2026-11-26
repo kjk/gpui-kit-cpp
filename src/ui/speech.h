@@ -324,6 +324,7 @@ float SpeechLevelSmooth(float previous, float raw);
 struct SystemRecognizer {
     // Heap, owned. Empty is the system's current language.
     Str locale = {};
+    Vec<Str> expectedPhrases;
     // The platform recognizer, made on first use.
     SysSpeechRecognizer* platform = nullptr;
     bool platformMade = false;
@@ -336,6 +337,8 @@ struct SystemRecognizer {
     // Recognize `locale`, a BCP 47 language tag such as `en-US` or `zh-CN`,
     // instead of the system's language.
     SystemRecognizer* Locale(Str locale);
+    // Favor these names and terms in the next recognition session.
+    SystemRecognizer* ExpectedPhrases(const Str* phrases, int count);
     // Whether this platform has a recognizer for the language at all.
     bool IsSupported();
     // The SpeechRecognizer to hand SpeechState::Recognizer.

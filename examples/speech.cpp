@@ -158,6 +158,7 @@ struct SpeechApp {
     component::SystemRecognizer system;
     DemoRecognizer demo;
     InputState notes;
+    InputState expectedPhrases;
     Entity<component::SelectState> languageSelect = {};
     // input_device: empty is None.
     char inputDevice[256] = {};
@@ -194,7 +195,19 @@ struct SpeechApp {
         speech = component::SpeechStateNew(cx->app);
         component::SpeechState* state = speech.Get(cx->app);
         if (engine == Engine::System) {
-            system.Locale(Str(language));
+            Vec<Str> phrases;
+            Str remaining = InputValue(&expectedPhrases);
+            while (len(remaining) > 0) {
+                int newline = StrFind(remaining, StrL("\n"));
+                Str line = newline < 0 ? remaining : Str(remaining.s, newline);
+                Str phrase = StrTrim(line);
+                if (len(phrase)) VecAppend(phrases, phrase);
+                if (newline < 0) break;
+                remaining = Str(remaining.s + newline + 1,
+                                len(remaining) - newline - 1);
+            }
+            system.Locale(Str(language))
+                ->ExpectedPhrases(phrases.els, len(phrases));
             state->Recognizer(system.AsRecognizer());
         } else {
             demo.Language(Str(language));
@@ -203,7 +216,7 @@ struct SpeechApp {
         speechSubscription = Subscribe(cx, speech, &SpeechApp::OnSpeechEvent);
     }
 
-    // Recreate the speech state for the chosen engine and language.
+    // Recreate the speech state for the chosen engine, language and phrases.
     void RebuildSpeech(Ctx* cx) {
         if (component::SpeechState* state = speech.Get(cx->app)) {
             state->Cancel(cx);
@@ -317,6 +330,14 @@ struct SpeechApp {
                         cx);
     }
 
+    static void OnExpectedPhrases(SpeechApp* self, Ctx* cx,
+                                  const InputEvent* event) {
+        if (event->kind == InputEventKind::Change &&
+            self->engine == Engine::System) {
+            self->RebuildSpeech(cx);
+        }
+    }
+
     static void OnClearNotes(SpeechApp* self, Ctx* cx, const ClickEvent*) {
         InputSetValue(&self->notes, Str(""));
         Notify(cx);
@@ -353,6 +374,11 @@ struct SpeechApp {
         InputSetPlaceholder(
             &notes,
             StrL("Start typing, or dictate with the microphone below."));
+        expectedPhrases.kind = InputKind::Textarea;
+        TextareaSetAutoGrow(&expectedPhrases, 3, 8);
+        InputSetPlaceholder(&expectedPhrases,
+                            StrL("Names and terms, one per line"));
+        expectedPhrases.onChange = Listen(cx, &SpeechApp::OnExpectedPhrases);
 
         for (int ix = 0; ix < kNLanguages; ix++) {
             gLanguageItems[ix].title = Str(kLanguages[ix].name);
@@ -471,26 +497,39 @@ El* SpeechApp::RenderSidebar(Ctx* cx) {
         button->Flex1();
     }
 
-    return Div(a)
-        ->FlexCol()
-        ->W(272)
-        ->H(kFill)
-        ->Shrink(0)
-        ->Gap(24)
-        ->Pad(16)
-        ->Bg(th.tokens.sidebar)
-        ->Fg(th.sidebarFg)
-        ->BorderR(1, th.sidebarBorder)
-        ->Child(SidebarSection(cx, "Recognizer")
-                    ->Child(engines)
-                    ->Child(Caption(cx, engineNote)))
-        ->Child(SidebarSection(cx, "Language")
-                    ->Child(component::Select::New(cx, StrL("language"),
-                                                   languageSelect)
-                                ->Items(gLanguageItems, kNLanguages)
-                                ->WithSize(UiSize::Small)
-                                ->Disabled(active)
-                                ->IntoEl()))
+    El* sidebar =
+        Div(a)
+            ->FlexCol()
+            ->W(272)
+            ->H(kFill)
+            ->Shrink(0)
+            ->Gap(24)
+            ->Pad(16)
+            ->Bg(th.tokens.sidebar)
+            ->Fg(th.sidebarFg)
+            ->BorderR(1, th.sidebarBorder)
+            ->Child(SidebarSection(cx, "Recognizer")
+                        ->Child(engines)
+                        ->Child(Caption(cx, engineNote)))
+            ->Child(SidebarSection(cx, "Language")
+                        ->Child(component::Select::New(cx, StrL("language"),
+                                                       languageSelect)
+                                    ->Items(gLanguageItems, kNLanguages)
+                                    ->WithSize(UiSize::Small)
+                                    ->Disabled(active)
+                                    ->IntoEl()));
+    if (engine == Engine::System) {
+        sidebar->Child(
+            SidebarSection(cx, "Expected phrases")
+                ->Child(component::Textarea::New(cx, StrL("expected-phrases"),
+                                                 &expectedPhrases)
+                            ->WithSize(UiSize::Small)
+                            ->Disabled(active)
+                            ->IntoEl())
+                ->Child(Caption(cx, StrL("Names, product terms and jargon the "
+                                         "recognizer should favor."))));
+    }
+    return sidebar
         ->Child(SidebarSection(cx, "Checks")->Child(RenderChecks(cx)));
 }
 

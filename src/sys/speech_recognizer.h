@@ -60,7 +60,16 @@ struct SysSpeechSession;
 
 // A recognizer for `locale`, a BCP 47 language tag such as `en-US`, or for
 // the system's language when it is empty. Null when the platform has none.
+#if GPUI_OS_WINDOWS || GPUI_OS_MAC
+SysSpeechRecognizer* SysSpeechRecognizerNew(
+    Str locale, const Str* expectedPhrases = nullptr, int phraseCount = 0);
+#else
 SysSpeechRecognizer* SysSpeechRecognizerNew(Str locale);
+inline SysSpeechRecognizer* SysSpeechRecognizerNew(Str locale, const Str*,
+                                                   int) {
+    return SysSpeechRecognizerNew(locale);
+}
+#endif
 void SysSpeechRecognizerFree(SysSpeechRecognizer* recognizer);
 // Whether a session can start now. Cheap: it is asked on every render.
 bool SysSpeechRecognizerAvailable(const SysSpeechRecognizer* recognizer);

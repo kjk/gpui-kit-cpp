@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `72f28383c7b96090de4a2b0de72f92fccd8b4cba` (2026-11-26,
-settings: Add SettingSection to group the sidebar's pages (#4146)).
-Settings sidebar sections preserve page order and hide headings with no
-matching pages. The story groups its pages under Preferences and Application.
+Processed through `f807c1b2c49ef25ddfbe73e465e33b8a5fa5632e` (2026-11-26,
+speech: Add SystemRecognizer::expected_phrases to favor names and terms (#4143)).
+System speech recognition passes phrase hints to macOS and Windows. The
+speech example accepts one phrase per line for the system recognizer.
 The current update target is
 `f807c1b2c49ef25ddfbe73e465e33b8a5fa5632e`.
 
