@@ -753,7 +753,7 @@ static uint32_t AtspiRole(AccessibilityRole role) {
         case AccessibilityRole::TreeGrid:
             return 66;
         case AccessibilityRole::Window:
-            return 69;
+            return 23; // AT-SPI Frame, as in AccessKit.
         case AccessibilityRole::Header:
             return 71;
         case AccessibilityRole::Footer:
@@ -803,6 +803,8 @@ static uint32_t AtspiRole(AccessibilityRole role) {
 
 static const char* AtspiRoleName(uint32_t role) {
     switch (role) {
+        case 23:
+            return "frame";
         case 7:
             return "check box";
         case 10:

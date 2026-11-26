@@ -494,6 +494,7 @@ static void AccessibilityProject(Window* win, El* root, bool headless) {
     // numeric identities across arena resets, never frame-owned callbacks.
     if (headless || PlatAccessibilityWanted(win)) {
         AccessibilityCollect(root, &win->accessibility);
+        if (!headless) PlatAccessibilityAddWindowRoot(win);
         AccessibilityRetainIds(win);
         uint64_t hash = AccessibilityTreeHash(win->accessibility);
         bool announce = AccessibilityTrackLiveRegions(win);

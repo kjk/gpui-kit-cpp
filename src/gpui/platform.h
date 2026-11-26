@@ -591,8 +591,11 @@ void PlatAccessibilityTreeChanged(Window* win);
 void PlatAccessibilityFocusChanged(Window* win, int focusId);
 // AT-SPI emits per-object BoundsChanged on movement within the window.
 #if GPUI_OS_LINUX
+// AT-SPI exposes one named top-level object per native window.
+void PlatAccessibilityAddWindowRoot(Window* win);
 inline constexpr bool kPlatAccessibilityTracksBounds = true;
 #else
+inline void PlatAccessibilityAddWindowRoot(Window*) {}
 inline constexpr bool kPlatAccessibilityTracksBounds = false;
 #endif
 // Whether anything would read the portable tree: an automation client is

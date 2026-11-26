@@ -94,6 +94,7 @@ static int gOverlayDamageEvent = 0;
 struct PlatWindow {
     XWindow xwin = 0;
     bool accessibilityFocused = false;
+    Str accessibilityTitle;
     cairo_surface_t* surf = nullptr; // the window itself
     cairo_surface_t* back = nullptr; // what a frame is drawn into
 #if defined(GPUI_HAVE_X11_NATIVE_OVERLAY)
@@ -1516,6 +1517,17 @@ void PlatAccessibilityTreeChanged(Window* win) {
     AccessibilityLinuxTreeChanged(win);
 }
 
+void PlatAccessibilityAddWindowRoot(Window* win) {
+    AccessibilityNode root;
+    root.info.role = AccessibilityRole::Window;
+    root.info.label = StrDup(win->frameArena, win->plat->accessibilityTitle);
+    root.bounds = {0, 0, (float)win->plat->pxW, (float)win->plat->pxH};
+    if (!VecInsertAt(win->accessibility, 0, root)) return;
+    for (int i = 1; i < len(win->accessibility); i++) {
+        ++win->accessibility[i].parent;
+    }
+}
+
 void PlatAccessibilityFocusChanged(Window* win, int) {
     AccessibilityLinuxFocusChanged(win);
 }
@@ -2473,6 +2485,7 @@ static void DestroyPlatWindow(Window* win) {
     // goes through PlatSetTimer), so the PlatWindow outlives it, as on Windows
     // and macOS.
     WindowClosed(win);
+    StrFree(pw->accessibilityTitle);
     delete pw;
     if (xwin) {
         XDestroyWindow(gDpy, xwin);
@@ -3848,7 +3861,11 @@ void AppSetTitle(Window* win, Str title) {
     Str z = StrDup(title);
     if (z.s) {
         XStoreName(gDpy, xwin, z.s);
-        StrFree(z);
+        Str& previous = win->plat->accessibilityTitle;
+        bool changed = !StrEq(previous, z);
+        StrFree(previous);
+        previous = z;
+        if (changed && AccessibilityLinuxReady()) AppInvalidate(win);
     }
     XFlush(gDpy);
 }
