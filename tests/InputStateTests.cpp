@@ -8660,6 +8660,23 @@ static void TextareaDecorationWeightShapesCaretAndHitTesting() {
     utassert(InputLastCaretPoint(state, view.win, 6, &caret));
     utassert(InputIndexForPosition(state, &view.win->paint, caret.x,
                                    caret.y + state->lastLineH / 2) == 6);
+
+    // Changing only a decoration's weight must replace the stored span and
+    // invalidate shaping, even when the range and the other styles match.
+    decorations[0].style.fontWeight = FontWeight::Normal;
+    Ctx cx = {view.app, view.win, view.win->frameArena, view.root.id};
+    InputTextareaSetDecorations(state, decorations, 2, &cx);
+    TestDraw(view.win);
+    int count = 0;
+    const auto* updated = InputTextareaDecorations(state, &count);
+    utassert(count == 2 && updated &&
+             updated[0].style.fontWeight == FontWeight::Normal);
+    utassert(InputRangeToBounds(state, view.win, {0, len(value)}, &range));
+    weight = (state->lastFontWord & ~kFontWeightMask) | kFontWeightNormal;
+    expected =
+        MeasureText(&view.win->paint, value, state->lastFont, 0, false, weight)
+            .w;
+    utassertnear(range.w, expected);
     InputViewFree(&view);
 }
 
