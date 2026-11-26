@@ -1217,6 +1217,60 @@ static void TheWholePatchKeepsItsHeightAfterTheFirstLayout() {
     TestAppFree(app);
 }
 
+// Rust's DiffState::rebuild splices the changed middle of the row list.
+static void DisclosureKeepsUnchangedWrappedMeasurements() {
+    struct View {
+        Entity<DiffState> diff;
+        static El* Render(View* self, Ctx* cx) {
+            return Diff::New(cx, self->diff)->SoftWrap(true)->IntoEl();
+        }
+    };
+    App* app = TestAppNew();
+    Init(app);
+    auto view = EntityNew<View>(app);
+    auto* host = view.Get(app);
+    host->diff = EntityNew<DiffState>(app);
+    auto* state = host->diff.Get(app);
+    state->Bind(app, host->diff);
+    state->WithMode(DiffMode::Unified);
+    StrBuilder line;
+    for (int i = 0; i < 100; i++) line.Append(StrL("wrapped "));
+    Vec<DiffFile*> files;
+    utassert(DiffFile::Parse(
+        fmt("diff --git a/first.txt b/first.txt\n"
+            "--- a/first.txt\n+++ b/first.txt\n@@ -1 +1 @@\n-old\n+new\n"
+            "diff --git a/second.txt b/second.txt\n"
+            "--- a/second.txt\n+++ b/second.txt\n@@ -1 +1 @@\n-old\n+%s\n",
+            Str(line.els, len(line))),
+        &files, nullptr));
+    state->SetFiles(files.els, len(files), nullptr);
+    Window* win = TestWindowOpen(app, view, 360, 180);
+    Ctx cx{app, win, win->frameArena, host->diff.id};
+    auto target =
+        DiffLinePosition::New(StrL("second.txt"), DiffSide::Modified, 1);
+    state->ScrollToLine(target, &cx);
+    for (int i = 0; i < 3; i++) TestDraw(win);
+    int row = state->ScrollItem();
+    bool measured = row < len(state->rowHeights) &&
+                    state->rowHeights[row] > 24 && !state->rowNeedsMeasure[row];
+    utassert(measured);
+    if (measured) {
+        float height = state->rowHeights[row];
+        state->SetFileCollapsed(StrL("first.txt"), true, &cx);
+        int shifted = state->ScrollItem();
+        utassert(shifted < row && shifted < len(state->rowHeights) &&
+                 state->rowHeights[shifted] == height &&
+                 !state->rowNeedsMeasure[shifted]);
+        state->SetFileCollapsed(StrL("first.txt"), false, &cx);
+        utassert(state->ScrollItem() == row && row < len(state->rowHeights) &&
+                 state->rowHeights[row] == height &&
+                 !state->rowNeedsMeasure[row]);
+        state->SetMode(DiffMode::Split, &cx);
+        utassert(!len(state->rowHeights) && !len(state->rowNeedsMeasure));
+    }
+    TestAppFree(app);
+}
+
 static void TheWheelScrollsPastTheRowsRenderedSoFar() {
     App* app = nullptr;
     Window* win = nullptr;
@@ -2495,6 +2549,7 @@ void TestDiff() {
     WordRunsOfALargeFileAreOnTheirLines();
     TestDiffListFillsItsHeight();
     TheWholePatchKeepsItsHeightAfterTheFirstLayout();
+    DisclosureKeepsUnchangedWrappedMeasurements();
     ModeSwitchAtTheTopKeepsTheFileHeaderInView();
     SplitRatioSizesTheRenderedColumns();
     TheWheelScrollsPastTheRowsRenderedSoFar();

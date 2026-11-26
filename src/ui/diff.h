@@ -438,6 +438,7 @@ struct DiffRow {
     int original = -1;
     int modified = -1;
     bool changed = false;
+    bool operator==(const DiffRow&) const = default;
     int File() const { return file; }
 };
 

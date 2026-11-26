@@ -2354,7 +2354,63 @@ static bool DiffScrollSource(const DiffState* state, int top,
     return false;
 }
 
-static void Rebuild(DiffState* state, bool reset) {
+static constexpr uint64_t kDiffMeasureHeader = 2;
+
+static void InitDiffMeasurements(DiffState* state, int start, int end,
+                                 bool headerVisible) {
+    for (int i = start; i < end; i++) {
+        bool hidden = !headerVisible && state->rows[i]
+                                                .kind == DiffRowKind::File;
+        state->rowHeights[i] = hidden ? 0.f : 24.f;
+        state->rowNeedsMeasure[i] = hidden ? 0 : 1;
+    }
+}
+
+static void SpliceDiffMeasurements(DiffState* state,
+                                   const Vec<DiffRow>& previous) {
+    int before = len(previous);
+    int after = len(state->rows);
+    int common = std::min(before, after);
+    int first = 0;
+    while (first < common && previous[first] == state->rows[first]) first++;
+    int suffix = 0;
+    while (suffix < common - first &&
+           previous[before - 1 - suffix] == state->rows[after - 1 - suffix]) {
+        suffix++;
+    }
+    if (after > before && (!VecResize(state->rowHeights, after) ||
+                           !VecResize(state->rowNeedsMeasure, after))) {
+        VecClear(state->rowHeights);
+        VecClear(state->rowNeedsMeasure);
+        return;
+    }
+    if (suffix && before != after) {
+        memmove(state->rowHeights.els + after - suffix,
+                state->rowHeights.els + before - suffix,
+                (size_t)suffix * sizeof(float));
+        memmove(state->rowNeedsMeasure.els + after - suffix,
+                state->rowNeedsMeasure.els + before - suffix, (size_t)suffix);
+    }
+    if (after < before) {
+        VecResize(state->rowHeights, after);
+        VecResize(state->rowNeedsMeasure, after);
+    }
+    bool headerVisible = (state->rowMeasureStyle & kDiffMeasureHeader) != 0;
+    InitDiffMeasurements(state, first, after - suffix, headerVisible);
+    // An annotation may move or disappear when rows are rebuilt. Its old
+    // row still needs remeasurement if that row survived the splice.
+    for (int row : state->measuredAnnotations) {
+        if (row >= before - suffix)
+            row += after - before;
+        else if (row >= first)
+            continue;
+        if (headerVisible || state->rows[row].kind != DiffRowKind::File)
+            state->rowNeedsMeasure[row] = 1;
+    }
+}
+
+static void Rebuild(DiffState* state, bool reset,
+                    bool keepMeasurements = true) {
     VirtualListScrollHandle& scroll = state->listScroll;
     DiffLinePosition kept = {};
     int anchorFile = -1;
@@ -2377,9 +2433,17 @@ static void Rebuild(DiffState* state, bool reset) {
             hasKept = DiffScrollSource(state, top, &kept);
         }
     }
-    VecClear(state->rows);
-    VecClear(state->rowHeights);
-    VecClear(state->measuredAnnotations);
+    Vec<DiffRow> previous;
+    bool splice = !reset && keepMeasurements && before &&
+                  len(state->rowHeights) == before &&
+                  len(state->rowNeedsMeasure) == before;
+    if (splice) {
+        std::swap(*VecNT(previous), *VecNT(state->rows));
+    } else {
+        VecClear(state->rows);
+        VecClear(state->rowHeights);
+        VecClear(state->rowNeedsMeasure);
+    }
     VecClear(state->headerRows);
     VecClear(state->changeRows);
     for (int ix = 0; ix < len(state->files); ix++) {
@@ -2411,6 +2475,8 @@ static void Rebuild(DiffState* state, bool reset) {
             ProjectFile(state, ix);
         }
     }
+    if (splice) SpliceDiffMeasurements(state, previous);
+    VecClear(state->measuredAnnotations);
     int origTotal = 0;
     int modTotal = 0;
     for (int i = 0; i < len(state->files); i++) {
@@ -2992,7 +3058,7 @@ bool DiffState::IsFileCollapsed(Str path) const {
 void DiffState::SetMode(DiffMode next, Ctx* cx) {
     if (mode == next) return;
     mode = next;
-    Rebuild(this, false);
+    Rebuild(this, false, false);
     horizontalScrollX = 0.f;
     if (cx) Notify(cx);
 }
@@ -5429,7 +5495,8 @@ static bool PrepareDiffRowMeasurements(Ctx* cx, const Diff* diff,
     float width = state->selectionViewport.w;
     float font = ThemeFontSize(cx->app);
     uint64_t style =
-        (diff->softWrap ? 1 : 0) | (diff->headerVisible ? 2 : 0) |
+        (diff->softWrap ? 1 : 0) |
+        (diff->headerVisible ? kDiffMeasureHeader : 0) |
         (diff->lineNumber ? 4 : 0) | (diff->syntaxHighlight ? 8 : 0) |
         (diff->gutterMarkerContent && diff->gutterMarkerCount ? 16 : 0) |
         ((uint64_t)diff->hunkSeparator << 5) |
@@ -5440,12 +5507,7 @@ static bool PrepareDiffRowMeasurements(Ctx* cx, const Diff* diff,
         if (!VecResize(state->rowHeights, count) ||
             !VecResize(state->rowNeedsMeasure, count))
             return false;
-        for (int i = 0; i < count; i++) {
-            bool hidden = !diff->headerVisible &&
-                          state->rows[i].kind == DiffRowKind::File;
-            state->rowHeights[i] = hidden ? 0.f : 24.f;
-            state->rowNeedsMeasure[i] = hidden ? 0 : 1;
-        }
+        InitDiffMeasurements(state, 0, count, diff->headerVisible);
         state->rowMeasureWidth = width;
         state->rowMeasureFont = font;
         state->rowMeasureStyle = style;
