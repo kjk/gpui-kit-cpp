@@ -589,6 +589,8 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
         return;
     }
 
+    TextSelectionReflow selection = WindowSelectionCaptureReflow(win);
+
     // Accessibility strings and callbacks point into the frame arena. Drop
     // the old projection before that arena is reset, so no stale semantic
     // record survives while the next view tree is being built.
@@ -814,6 +816,7 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
         gFrameLayoutSecs = TimeNow() - tLay0;
         double tPaint0 = TimeNow();
         PaintEl(&win->paint, root);
+        WindowSelectionRestoreReflow(win, selection);
         gFramePaintSecs = TimeNow() - tPaint0;
     }
     // Native children are external to the scene and do not disappear by

@@ -451,6 +451,26 @@ SelectionFormat WindowSelectionFormat(Window* win);
 // else wants it.
 bool WindowSelectionCopy(Window* win);
 
+// Preserve Markdown caret positions across a frame that regroups paint runs.
+struct TextSelectionSourcePoint {
+    int source = -1;
+    int entityEnd = -1;
+    int entityByte = 0;
+};
+
+struct TextSelectionReflow {
+    EntityId owner = {};
+    uint64_t replacement = 0;
+    int scope = 0;
+    int offsets[2] = {-1, -1};
+    TextSelectionSourcePoint endpoints[2];
+    Bounds bounds[2];
+    TextSelectionSourcePoint unit[2];
+};
+
+TextSelectionReflow WindowSelectionCaptureReflow(Window* win);
+void WindowSelectionRestoreReflow(Window* win, const TextSelectionReflow& old);
+
 // Hand the range to the frame being built, which is what makes it paint.
 // The runtime calls this before the view renders.
 void WindowSelectionApply(Window* win);

@@ -818,8 +818,8 @@ static void ClearTextViewSelection(App* app, Window* window, EntityId owner) {
     int count = len(app->windows);
     for (int i = 0; i < count; i++) {
         Window* other = app->windows[i];
-        if (other != window && !other->closed && other->sel &&
-            other->sel->selectAllOwner == owner) {
+        if (other != window && !other->closed &&
+            WindowSelectionHasEntity(other, owner)) {
             WindowSelectionClear(other);
         }
     }

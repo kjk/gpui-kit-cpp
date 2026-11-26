@@ -10235,6 +10235,24 @@ static int TextHitLocal(PaintCtx* ctx, const TextHit* h, Point rel) {
     return local;
 }
 
+Point TextHitCaretPoint(PaintCtx* ctx, const TextHit& hit, int offset,
+                        bool trailing) {
+    TextLayout* layout =
+        hit.highlightedElement
+            ? ElTextLayout(ctx, hit.highlightedElement)
+            : TextMeasLayout(ctx, hit.text, hit.font,
+                             hit.maxW > 0 ? hit.maxW : hit.bounds.w, hit.wrap,
+                             0, 0, nullptr, nullptr, hit.align);
+    float x = 0, y = 0, height = 0;
+    bool measured =
+        layout && TextLayoutPointAt(layout, hit.text, hit.wrap, offset, &x, &y,
+                                    &height, trailing);
+    if (layout) TextLayoutRelease(layout);
+    if (measured) return {hit.bounds.x + x, hit.bounds.y + y + height * 0.5f};
+    float fraction = len(hit.text) ? (float)offset / len(hit.text) : 0;
+    return {hit.bounds.x + fraction * hit.bounds.w, hit.bounds.CenterY()};
+}
+
 bool TextTableCellAt(const PaintCtx* ctx, float x, float y, Bounds* out) {
     if (!ctx || !out) {
         return false;

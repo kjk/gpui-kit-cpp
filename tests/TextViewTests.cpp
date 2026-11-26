@@ -6948,6 +6948,64 @@ static void PartialCopyUsesTheSelectedTextViewFormat() {
     TestAppFree(app);
 }
 
+static void PartialSourceSelectionSurvivesInlineObjectReflow() {
+    if (!TestMarkdownIsFull()) return;
+    TswView v = TswOpen(
+        "prefix alpha beta ![preview](missing.png) "
+        "gamma delta epsilon zeta",
+        TswContainer::Window);
+    v.State()->SetSelectionFormat(SelectionFormat::Source, v.app, v.win);
+    TestDraw(v.win);
+    const TextHit* beta = HitContaining(v.win, "beta");
+    const TextHit* epsilon = HitContaining(v.win, "epsilon");
+    utassert(beta && epsilon);
+    if (beta && epsilon) {
+        WindowSelection* selection = WindowSelectionOf(v.win);
+        int start = beta->docOff + StrFind(beta->text, "beta") + 1;
+        int end = epsilon->docOff + StrFind(epsilon->text, "epsilon") + 3;
+        // Keep the backward drag direction across both successive resizes.
+        selection->anchor = end;
+        selection->cursor = start;
+        selection->scope = beta->scope;
+        selection->hasWindowPoints = true;
+        selection->anchorPoint = {epsilon->bounds.CenterX(), epsilon->bounds
+                                                                 .CenterY()};
+        selection
+            ->cursorPoint = {beta->bounds.CenterX(), beta->bounds.CenterY()};
+        Point wideAnchor = selection->anchorPoint;
+        TextSelectionBegin(&selection->gesture, true);
+        TextSelectionEnd(&selection->gesture);
+        Span before;
+        utassert(v.State()->SelectedSourceRange(v.win, &before));
+        char expected[256];
+        int expectedSize =
+            v.State()->SelectedText(v.win, expected, dimofi(expected));
+        utassert(expectedSize > 0);
+
+        v.win->paint.viewW = 112;
+        TestDraw(v.win);
+        Span narrow;
+        utassert(v.State()->SelectedSourceRange(v.win, &narrow));
+        utassert(narrow.start == before.start && narrow.end == before.end);
+        utassert(selection->anchor != end || selection->cursor != start);
+        utassert(selection->anchor > selection->cursor);
+        utassert(selection->anchorPoint.y > wideAnchor.y);
+        utassert(WindowSelectionCopy(v.win));
+        utassert(StrEq(TestReadFromClipboard(GetTempArena()),
+                       Str(expected, expectedSize)));
+
+        v.win->paint.viewW = 800;
+        TestDraw(v.win);
+        utassert(selection->anchor == end && selection->cursor == start);
+
+        v.State()
+            ->SetText(StrL("other document with different content"), v.app);
+        TestDraw(v.win);
+        utassert(!v.State()->HasSelection(v.win));
+    }
+    TswClose(&v);
+}
+
 static void ShapedTextCopiesAcrossMarkdownStyleBoundaries() {
     TswView v = TswOpen("Some words pre**fix**", TswContainer::Window);
     v.State()
@@ -9414,6 +9472,7 @@ static void TestTextStateWindow() {
     SelectAllClipboardUsesTheCommittedDocument();
     PartialSourceCopyKeepsLargeEnclosedBlocks();
     PartialCopyUsesTheSelectedTextViewFormat();
+    PartialSourceSelectionSurvivesInlineObjectReflow();
     ShapedTextCopiesAcrossMarkdownStyleBoundaries();
     WrappedLinksUseSharedTextGeometry();
     InlineObjectsShareRowsWithShapedProse();

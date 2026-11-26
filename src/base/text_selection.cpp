@@ -1481,6 +1481,187 @@ static bool SelectionContainsHit(const TextHit& hit, int lo, int hi,
            hit.docOff + size > lo;
 }
 
+static int FirstMapSegmentAt(const SelSourceMap& map, int offset) {
+    int lo = 0;
+    int hi = map.count;
+    while (lo < hi) {
+        int mid = lo + (hi - lo) / 2;
+        if (map.segments[mid].renderedEnd < offset)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    return lo;
+}
+
+static const TextHit* CaptureSourcePoint(const PaintCtx& paint, int offset,
+                                         int scope, bool trailing,
+                                         TextSelectionSourcePoint* out) {
+    for (const TextHit& hit : paint.texts) {
+        if (hit.docOff > offset) break;
+        const SelSourceMap* map = hit.map;
+        if (hit.scope != scope || !hit.owner.IsValid() || !map || map->atomic ||
+            hit.atom || hit.blockPlugin ||
+            offset > hit.docOff + len(hit.text)) {
+            continue;
+        }
+        int local = map->offset + offset - hit.docOff;
+        for (int i = FirstMapSegmentAt(*map, local); i < map->count; i++) {
+            const SourceSegment& segment = map->segments[i];
+            if (local < segment.renderedStart) break;
+            if (local > segment.renderedEnd) continue;
+            if (!trailing && local == segment.renderedEnd &&
+                i + 1 < map->count &&
+                map->segments[i + 1].renderedStart == local &&
+                offset < hit.docOff + len(hit.text)) {
+                continue;
+            }
+            if (segment.linear) {
+                out->source =
+                    segment.sourceStart + local - segment.renderedStart;
+            } else if (local == segment.renderedEnd) {
+                out->source = segment.sourceEnd;
+            } else {
+                out->source = segment.sourceStart;
+                if (local > segment.renderedStart) {
+                    out->entityEnd = segment.sourceEnd;
+                    out->entityByte = local - segment.renderedStart;
+                }
+            }
+            return &hit;
+        }
+    }
+    return nullptr;
+}
+
+static const TextHit* RestoreSourcePoint(const PaintCtx& paint,
+                                         const TextSelectionReflow& old,
+                                         const TextSelectionSourcePoint& key,
+                                         bool trailing, int* offset) {
+    const TextHit* fallback = nullptr;
+    for (const TextHit& hit : paint.texts) {
+        const SelSourceMap* map = hit.map;
+        if (hit.owner != old.owner || hit.scope != old.scope || !map ||
+            map->atomic || hit.atom || hit.blockPlugin)
+            continue;
+        for (int i = FirstMapSegmentAt(*map, map->offset); i < map->count;
+             i++) {
+            const SourceSegment& segment = map->segments[i];
+            if (segment.renderedStart > map->offset + len(hit.text)) break;
+            if (key.source < segment.sourceStart || key.source > segment
+                                                                     .sourceEnd)
+                continue;
+            int at = segment.renderedStart;
+            if (key.entityEnd >= 0) {
+                if (segment.linear || key.source != segment.sourceStart ||
+                    key.entityEnd != segment.sourceEnd ||
+                    key.entityByte >= segment.renderedEnd - at)
+                    continue;
+                at += key.entityByte;
+            } else if (segment.linear) {
+                at += key.source - segment.sourceStart;
+            } else if (key.source == segment.sourceEnd) {
+                at = segment.renderedEnd;
+            } else if (key.source != segment.sourceStart) {
+                continue;
+            }
+            int local = at - map->offset;
+            if (local < 0 || local > len(hit.text)) continue;
+            int absolute = hit.docOff + local;
+            if (trailing ? local > 0 : local < len(hit.text)) {
+                *offset = absolute;
+                return &hit;
+            }
+            if (!fallback) {
+                fallback = &hit;
+                *offset = absolute;
+            }
+        }
+    }
+    return fallback;
+}
+
+TextSelectionReflow WindowSelectionCaptureReflow(Window* win) {
+    TextSelectionReflow out;
+    const WindowSelection* s = win->sel;
+    if (!s || s->touchSource.entity.IsValid() || s->selectAllOwner.IsValid() ||
+        !WindowSelectionHas(win))
+        return out;
+    out.offsets[0] = s->anchor;
+    out.offsets[1] = s->cursor;
+    out.scope = s->scope;
+    const TextHit* endpoints[2] = {};
+    for (int i = 0; i < 2; i++) {
+        endpoints[i] = CaptureSourcePoint(win->paint, out.offsets[i], s->scope,
+                                          out.offsets[i] > out.offsets[1 - i],
+                                          &out.endpoints[i]);
+        if (!endpoints[i]) return {};
+        out.bounds[i] = endpoints[i]->bounds;
+    }
+    if (endpoints[0]->owner != endpoints[1]->owner) return {};
+    const TextViewState* view =
+        TextViewForSelectionOwner(win->app, endpoints[0]->owner);
+    if (!view || !view->CopyDocumentReady()) return {};
+    out.owner = view->self;
+    out.replacement = view->fullUpdateRevision;
+    if (s->unitHeld) {
+        const TextHit* start = CaptureSourcePoint(
+            win->paint, s->unitStart, s->scope, false, &out.unit[0]);
+        const TextHit* end = CaptureSourcePoint(win->paint, s->unitEnd,
+                                                s->scope, true, &out.unit[1]);
+        if (!start || !end || start->owner != out.owner ||
+            end->owner != out.owner)
+            out.unit[0] = {};
+    }
+    return out;
+}
+
+void WindowSelectionRestoreReflow(Window* win, const TextSelectionReflow& old) {
+    if (!old.owner.IsValid()) return;
+    WindowSelection* s = win->sel;
+    if (!s || s->scope != old.scope || s->anchor != old.offsets[0] ||
+        s->cursor != old.offsets[1] || s->selectAllOwner.IsValid())
+        return;
+    const TextViewState* view = TextViewForSelectionOwner(win->app, old.owner);
+    if (!view || view->fullUpdateRevision != old.replacement) return;
+    int offsets[2] = {};
+    const TextHit* endpoints[2] = {};
+    for (int i = 0; i < 2; i++) {
+        endpoints[i] = RestoreSourcePoint(win->paint, old, old.endpoints[i],
+                                          old.offsets[i] > old.offsets[1 - i],
+                                          &offsets[i]);
+        if (!endpoints[i]) return;
+    }
+    bool remapped = offsets[0] != s->anchor || offsets[1] != s->cursor;
+    s->anchor = offsets[0];
+    s->cursor = offsets[1];
+    if (s->hasAnchorCell && endpoints[0]->inCell)
+        s->anchorCell = endpoints[0]->cell;
+    if (s->hasWindowPoints) {
+        Point* points[] = {&s->anchorPoint, &s->cursorPoint};
+        for (int i = 0; i < 2; i++) {
+            const Bounds& now = endpoints[i]->bounds;
+            const Bounds& was = old.bounds[i];
+            if (remapped || now.x != was.x || now.y != was.y ||
+                now.w != was.w || now.h != was.h) {
+                *points[i] =
+                    TextHitCaretPoint(&win->paint, *endpoints[i],
+                                      offsets[i] - endpoints[i]->docOff,
+                                      offsets[i] > offsets[1 - i]);
+            }
+        }
+    }
+    if (remapped && s->unitHeld) {
+        s->unitHeld =
+            old.unit[0].source >= 0 &&
+            RestoreSourcePoint(win->paint, old, old.unit[0], false,
+                               &s->unitStart) &&
+            RestoreSourcePoint(win->paint, old, old.unit[1], true, &s->unitEnd);
+    }
+    WindowSelectionApply(win);
+    if (remapped) WindowRequestAnimationFrame(win);
+}
+
 int WindowSelectionTextAs(Window* win, char* out, int cap,
                           SelectionFormat fmt) {
     if (win && win->sel && win->sel->touchSource.copy && out && cap > 0) {
