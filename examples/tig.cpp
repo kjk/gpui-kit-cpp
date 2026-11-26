@@ -1179,13 +1179,16 @@ El* Tig::Render(Tig* self, Ctx* cx) {
                      : self->fileIx < 0 ? StrL("No file selected")
                                         : fmt("File %d of %d", self->fileIx + 1,
                                               len(self->files));
+    Str sidebarAction =
+        self->sidebar ? StrL("Hide sidebar") : StrL("Show sidebar");
     auto* status =
         component::StatusBar::New(cx)
             ->Left(TigButton(cx, TigSidebar)
                        ->Icon(self->sidebar ? IconName::PanelLeftClose
                                             : IconName::PanelLeftOpen)
-                       ->Tooltip(self->sidebar ? StrL("Hide sidebar")
-                                               : StrL("Show sidebar"))
+                       ->Toggled(self->sidebar)
+                       ->AccessibilityLabel(sidebarAction)
+                       ->Tooltip(sidebarAction)
                        ->IntoEl())
             ->Left(TextEl(cx->a, commitStatus)->Font(12)->Fg(th.mutedFg))
             ->Right(TextEl(cx->a, fileStatus)->Font(12)->Fg(th.mutedFg));
