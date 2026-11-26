@@ -22,6 +22,7 @@
 #import <objc/runtime.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
+#include <stdlib.h>
 #include <time.h>
 
 @class GpuiView;
@@ -46,6 +47,18 @@
 
 namespace gpui {
 
+enum class MacSelectionState : uint8_t {
+    Unset,
+    Unselected,
+    Selected
+};
+
+struct MacSelectionItem {
+    uint32_t id;
+    uint32_t container;
+    MacSelectionState state;
+};
+
 struct PlatWindow {
     NSWindow* window = nil;
     GpuiView* view = nil;
@@ -60,6 +73,8 @@ struct PlatWindow {
         accessibilityElements = nil;
     bool accessibilityAsked = false;
     uint32_t accessibilityFocusedId = 0;
+    Vec<MacSelectionItem> accessibilitySelection;
+    Vec<MacSelectionItem> accessibilitySelectionScratch;
     // Monotonic deadline for the next tick; 0 when the timer is off.
     double nextTick = 0;
     // Shown only after the first paint. Ordering front at creation puts an
@@ -81,6 +96,11 @@ struct PlatWindow {
     // installs it once, when the Root view is created; a Root here is built
     // every frame, so the window remembers instead.
     bool a11yInstalled = false;
+
+    ~PlatWindow() {
+        VecReset(accessibilitySelection);
+        VecReset(accessibilitySelectionScratch);
+    }
 };
 
 double TimeNow() {
@@ -388,10 +408,14 @@ static bool GpuiAccessibilitySelectionItem(gpui::AccessibilityRole role) {
     }
 }
 
+static bool GpuiAccessibilityMacItem(gpui::AccessibilityRole role) {
+    return role != gpui::AccessibilityRole::Tab &&
+           GpuiAccessibilitySelectionItem(role);
+}
+
 static bool GpuiAccessibilityMacSelectable(
     const gpui::AccessibilityNode* node) {
-    return node && node->info.role != gpui::AccessibilityRole::Tab &&
-           GpuiAccessibilitySelectionItem(node->info.role) &&
+    return node && GpuiAccessibilityMacItem(node->info.role) &&
            node->info.hasSelected && !node->info.disabled;
 }
 
@@ -2774,6 +2798,77 @@ void PlatInstallAccessibilityHitTest(Window* win) {
                     (IMP)GpuiAccessibilityHitTest, "@@:{CGPoint=dd}");
 }
 
+static uint32_t MacSelectionContainer(const Vec<AccessibilityNode>& nodes,
+                                      int parent) {
+    while (parent >= 0) {
+        const auto& node = nodes[parent];
+        if (AccessibilityRoleIsSelectionContainer(node.info.role))
+            return node.id;
+        parent = node.parent;
+    }
+    return 0;
+}
+
+static Vec<uint32_t> MacSelectionChanges(Window* win) {
+    auto& previous = win->plat->accessibilitySelection;
+    auto& current = win->plat->accessibilitySelectionScratch;
+    VecClear(current);
+    for (const auto& node : win->accessibility) {
+        if (!GpuiAccessibilityMacItem(node.info.role)) continue;
+        MacSelectionState state = MacSelectionState::Unset;
+        if (node.info.hasSelected) {
+            state = node.info.selected ? MacSelectionState::Selected
+                                       : MacSelectionState::Unselected;
+        }
+        uint32_t container =
+            MacSelectionContainer(win->accessibility, node.parent);
+        VecAppend(current, MacSelectionItem{node.id, container, state});
+    }
+    if (len(current) > 1) {
+        qsort(current.els, (size_t)len(current), sizeof(current[0]),
+              [](const void* a, const void* b) {
+                  auto x = ((const MacSelectionItem*)a)->id;
+                  auto y = ((const MacSelectionItem*)b)->id;
+                  return (x > y) - (x < y);
+              });
+    }
+    Vec<uint32_t> changed;
+    auto record = [&](uint32_t container) {
+        if (container) VecAppend(changed, container);
+    };
+    auto removed = [&](const MacSelectionItem& item) {
+        if (item.state == MacSelectionState::Selected) record(item.container);
+    };
+    int old = 0;
+    for (const auto& item : current) {
+        while (old < len(previous) && previous[old].id < item.id) {
+            removed(previous[old++]);
+        }
+        if (old < len(previous) && previous[old].id == item.id) {
+            if (previous[old++].state != item.state) record(item.container);
+        } else if (item.state == MacSelectionState::Selected) {
+            record(item.container);
+        }
+    }
+    while (old < len(previous)) removed(previous[old++]);
+    std::swap(previous, current);
+    if (len(changed) > 1) {
+        qsort(changed.els, (size_t)len(changed), sizeof(changed[0]),
+              [](const void* a, const void* b) {
+                  auto x = *(const uint32_t*)a;
+                  auto y = *(const uint32_t*)b;
+                  return (x > y) - (x < y);
+              });
+        int unique = 1;
+        for (int i = 1; i < len(changed); i++) {
+            if (changed[i] != changed[unique - 1])
+                changed[unique++] = changed[i];
+        }
+        VecResize(changed, unique);
+    }
+    return changed;
+}
+
 bool AccessibilityMacSelectionSmokeTest() {
     @autoreleasepool {
         Window win;
@@ -2844,6 +2939,22 @@ bool AccessibilityMacSelectionSmokeTest() {
                 isAccessibilitySelectorAllowed:@selector(
                                                    accessibilityPerformPick)] &&
             ![element accessibilityPerformPick] && clicks == 3;
+
+        auto selectionChanged = [&](uint32_t container) {
+            Vec<uint32_t> changed = MacSelectionChanges(&win);
+            bool matches = container
+                               ? len(changed) == 1 && changed[0] == container
+                               : len(changed) == 0;
+            VecReset(changed);
+            return matches;
+        };
+        ok &= selectionChanged(1) && selectionChanged(0);
+        option.info.selected = false;
+        win.accessibility[4].info.hasSelected = true;
+        win.accessibility[4].info.selected = true;
+        ok &= selectionChanged(1) && selectionChanged(0);
+        VecResize(win.accessibility, 4);
+        ok &= selectionChanged(1) && selectionChanged(0);
         VecReset(win.accessibility);
         return ok;
     }
@@ -2889,6 +3000,7 @@ void PlatAccessibilityTreeChanged(Window* win) {
     if (!win || !win->plat || !win->plat->view) {
         return;
     }
+    Vec<uint32_t> changedSelection = MacSelectionChanges(win);
     NSMutableArray<NSNumber*>* stale = [[NSMutableArray alloc] init];
     for (NSNumber* key in win->plat->accessibilityElements) {
         if (!WindowAccessibilityNode(win, [key unsignedIntValue])) {
@@ -2927,6 +3039,14 @@ void PlatAccessibilityTreeChanged(Window* win) {
                 NSAccessibilityPriorityKey : @(priority)
             });
     }
+    for (uint32_t id : changedSelection) {
+        if (WindowAccessibilityNode(win, id)) {
+            NSAccessibilityPostNotification(
+                GpuiAccessibilityElementFor(win, id),
+                NSAccessibilitySelectedRowsChangedNotification);
+        }
+    }
+    VecReset(changedSelection);
     PlatAccessibilityFocusChanged(win, win->focusId);
 }
 
