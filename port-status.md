@@ -514,10 +514,6 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   line before paint. An application handling `OnReveal` during paint applies
   its own offset on the following layout (`src/base/text.cpp`,
   `src/base/virtual_list.cpp`).
-- **A default `<mark>` paints near-black ink.** Rust leaves the foreground
-  alone (`html.rs`). `#fef08a` disappears on the dark theme's near-white
-  text, so that default wash pins the ink to `#0a0a0a` (`src/base/text.cpp`).
-  A tag that names another color keeps the run's own foreground.
 - **TextView selection mapping uses painted runs.** The window owns selection
   rather than each parsed inline node. Source mapping includes images when a
   selected run reaches their boundary, and Select All follows committed

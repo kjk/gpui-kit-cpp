@@ -2847,6 +2847,61 @@ static void MarkSetsAReadableTextColorWithItsBackground() {
     AppGlobalClear(&app);
 }
 
+// node.rs mark_highlight and inline_flow.rs code_background combine the
+// mark's colors with the code span's font and box refinement.
+static void MarkedInlineCodeRetainsItsBoxAndFont() {
+    App* app = TestAppNew();
+    Arena* arena = ArenaNew();
+    Ctx cx{app, nullptr, arena, {}};
+    Style code{};
+    code.color = RgbaHex(0x123456);
+    code.fontSize = 16.f;
+    code.pad = Edges::New(9.f, 11.f, 0.f, 0.f);
+    code.border = 1.f;
+    code.underline = true;
+    uint32_t fields = StyleFieldColor | StyleFieldFontSize | StyleFieldPad |
+                      StyleFieldBorder | StyleFieldUnderline;
+    Str html = StrL(
+        "<p><mark><code>marked</code></mark> "
+        "<mark color='#00000000'><code>clear</code></mark> "
+        "<a href='/go'><mark><code>linked</code></mark></a></p>");
+    for (bool explicitBackground : {false, true}) {
+        code.bg = Background(RgbaHex(0xabcdef));
+        El* root =
+            TextView::NewHtml(&cx, html)
+                ->InlineCodeStyle(
+                    code, fields | (explicitBackground ? StyleFieldBg : 0u))
+                ->IntoEl();
+        El* marked = FindWord(root, "marked");
+        El* clear = FindWord(root, "clear");
+        El* linked = FindWord(root, "linked");
+        utassert(marked && clear && linked);
+        if (marked && clear && linked) {
+            for (El* run : {marked, clear, linked}) {
+                utassert(run->style.fontMono && run->style.fontSize == 16.f);
+                utassert(run->style.pad.left == 9.f &&
+                         run->style.pad.right == 11.f &&
+                         run->style.border == 1.f);
+                utassert(run->lifecycle && run->lifecycle->inlineCodeBox);
+            }
+            utassert(RgbaEq(marked->style.color, RgbaHex(0x000000)));
+            utassert(RgbaEq(clear->style.color, code.color));
+            utassert(marked->style.underline && !linked->style.underline);
+            utassert(!RgbaEq(linked->style.color, marked->style.color) &&
+                     !RgbaEq(linked->style.color, code.color));
+            utassert(RgbaEq(marked->style.bg.color, explicitBackground
+                                                        ? code.bg.color
+                                                        : RgbaHex(0xfef08a)));
+            utassert(explicitBackground
+                         ? RgbaEq(clear->style.bg.color, code.bg.color)
+                         : clear->style.bg.color.a == 0);
+        }
+        arena->Reset();
+    }
+    ArenaDelete(arena);
+    TestAppFree(app);
+}
+
 static uint32_t HeadingOnePadded(uint8_t level, gpui::Style* out, void*) {
     if (level != 1) return 0;
     out->pad.bottom = 32; // pb(rems(2.))
@@ -11646,6 +11701,7 @@ void TestTextView() {
     if (TestMarkdownIsFull()) InlineHtmlFormattingTagsPairAcrossSiblings();
     if (TestMarkdownIsFull()) InlineHtmlMarkAppliesHighlightColors();
     MarkSetsAReadableTextColorWithItsBackground();
+    MarkedInlineCodeRetainsItsBoxAndFont();
     HeadingRefinementChangesRenderedHeadingGeometry();
     if (TestMarkdownIsFull()) FlowPositionSkipsBlocksThatRenderNothing();
     FlowPositionReportsThePreviousHeadingOrRule();

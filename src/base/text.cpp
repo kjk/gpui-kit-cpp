@@ -3851,10 +3851,7 @@ El* TextView::SrcImage(El* e, MdRun* r) {
     return e;
 }
 
-// `<mark>`: html.rs default_mark_color is #fef08a and leaves the ink alone.
-// That yellow disappears on the dark theme's near-white foreground, so the
-// default wash pins the ink to the light theme's near-black. A tag that
-// names another color keeps the run's own foreground.
+// html.rs default_mark_color.
 static const Rgba kMarkBg = {0xfe, 0xf0, 0x8a, 0xff};
 
 static float MarkSrgbChannel(float value) {
@@ -3988,6 +3985,8 @@ El* TextView::Word(Str w, float font, Rgba color, uint8_t marks, int weight,
     // a highlight stays the link color. MarkedRunColor does that.
     Rgba c = MarkedRunColor(this, color, marks, highlight, hasHighlight);
     Rgba markBg = hasHighlight ? highlight : kMarkBg;
+    bool code = (marks & MdCode) != 0;
+    bool marked = (marks & MdHighlight) != 0;
     El* t = TextEl(a, w)->Font(font);
     if (c.a) {
         t->Fg(c);
@@ -3996,13 +3995,29 @@ El* TextView::Word(Str w, float font, Rgba color, uint8_t marks, int weight,
     if (marks & MdItalic) {
         t->Italic();
     }
+    if (marks & MdDel) {
+        t->Strikethrough();
+    }
+    if (code) {
+        ApplyInlineCodeStyle(cx, t, textViewStyle, font);
+        // A mark replaces the code highlight's background and ink. The
+        // explicit code box background and the link's ink keep priority.
+        if (marked && !(textViewStyle.inlineCodeStyleFields & StyleFieldBg)) {
+            t->Bg(markBg);
+        }
+        if (((marks & MdLink) || (marked && markBg.a)) && c.a) {
+            t->Fg(c);
+        }
+    } else if (marked) {
+        t->Bg(markBg);
+    }
     // A link is always underlined. The rule does not remove the marks the
     // word already carries — bold stays bold.
-    bool explicitCodeUnderline = (marks & MdCode) && !(marks & MdHighlight) &&
-                                 ((textViewStyle.inlineCodeFields |
-                                   textViewStyle.inlineCodeStyleFields) &
-                                  StyleFieldUnderline);
-    if (!explicitCodeUnderline && ((marks & MdUnderline) || (marks & MdLink))) {
+    bool explicitCodeUnderline =
+        code && ((textViewStyle.inlineCodeFields | textViewStyle
+                                                       .inlineCodeStyleFields) &
+                 StyleFieldUnderline);
+    if ((marks & MdLink) || (!explicitCodeUnderline && (marks & MdUnderline))) {
         // Rust hands the run an `UnderlineStyle { thickness: px(1.) }`, which
         // GPUI draws as a quad under the whole run — the spaces inside it as
         // well. A shaper's own underline stops at the last glyph, so a word
@@ -4016,21 +4031,15 @@ El* TextView::Word(Str w, float font, Rgba color, uint8_t marks, int weight,
         // The rule takes the colour the glyphs will: a run that named none
         // draws in the theme's own foreground, and a span with no alpha is
         // not drawn at all.
-        sp->color = c.a ? c : textViewStyle.foreground;
+        sp->color =
+            t->style.hasColor ? t->style.color : textViewStyle.foreground;
         // link_underline: the rule is the link colour at 40% opacity.
         if (marks & MdLink) {
             sp->color.a = (uint8_t)((float)sp->color.a * 0.4f + 0.5f);
+            t->style.underline = false;
         }
         sp->underline = true;
         t->Underlines(sp, 1);
-    }
-    if (marks & MdDel) {
-        t->Strikethrough();
-    }
-    if (marks & MdHighlight) {
-        t->Bg(markBg);
-    } else if (marks & MdCode) {
-        ApplyInlineCodeStyle(cx, t, textViewStyle, font);
     }
     if (selectable) {
         t->Selectable()->GlyphSelection();
@@ -5389,16 +5398,17 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             // The text shaper wraps the span inside a single inset budget.
             w->Wrap()->MaxWFrac(1.f)->MinW(0);
         }
-        if ((marks & MdCode) && !(marks & MdHighlight)) {
+        bool code = (marks & MdCode) != 0;
+        bool markOver = (marks & MdHighlight) && !fragmentText && !code;
+        if (code) {
             if (!w->lifecycle) w->lifecycle = ArenaNew<ElLifecycle>(a);
             w->lifecycle->inlineCodeBox = true;
         }
         if (wordRun) {
             SrcMark(w, wordRun->marks, wordRun->href);
             SrcMap(w, wordRun->segments, wordRun->segmentCount, wordStart);
-            RangeWashes(
-                w, n, runOffset + wordStart, runOffset + wordStart + wordLen,
-                (marks & MdHighlight) && !fragmentText, (marks & MdCode) != 0);
+            RangeWashes(w, n, runOffset + wordStart,
+                        runOffset + wordStart + wordLen, markOver, code);
             // The word the reveal starts in, or, for a line break that lays
             // out no word, the first word after it.
             if (hasReveal && revealOut &&
@@ -5419,8 +5429,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             w->lifecycle->fontRanges =
                 SliceInlineFonts(a, advances->fonts, start, start + wordLen);
         }
-        reportPiece(w, wordLeaf, wordLeaf + wordLen, false,
-                    (marks & MdHighlight) && !fragmentText);
+        reportPiece(w, wordLeaf, wordLeaf + wordLen, false, markOver);
         bool joinsWord = pending && !startsAtBreak;
         if (hanging || joinsWord) {
             // A style boundary does not introduce a Unicode line break.
@@ -6257,7 +6266,7 @@ static float CellContentWidth(TextView* tv, MdNode* cell, bool head) {
             }
             if (i > start) {
                 Str seg(text.s + start, i - start);
-                if ((run->marks & MdCode) && !(run->marks & MdHighlight)) {
+                if (run->marks & MdCode) {
                     El* sample = ApplyWeight(
                         TextEl(tv->a, seg),
                         (run->marks & MdBold) ? std::max(2, weight) : weight);
