@@ -1255,7 +1255,7 @@ int GpuiMain(int argc, char** argv) {
     constexpr auto usage =
         "Usage: tig [--check] [--commit HASH] [--file PATH] [--line N] "
         "[repository]";
-    Str path, file, head = StrL("HEAD");
+    Str path, file, head;
     size_t line = 0;
     bool check = false;
     for (int i = 1; i < argc; i++) {
@@ -1280,12 +1280,6 @@ int GpuiMain(int argc, char** argv) {
             }
             if (commit) {
                 head = Str(argv[i]);
-                if (!ObjectId(head, 7)) {
-                    fprintf(stderr,
-                            "Commit must be a hexadecimal object ID of 7-64 "
-                            "characters.\n");
-                    return 2;
-                }
             } else if (chooseFile) {
                 file = Str(argv[i]);
             } else {
@@ -1312,6 +1306,12 @@ int GpuiMain(int argc, char** argv) {
         fprintf(stderr, "--line requires --file.\n");
         return 2;
     }
+    if (head.s && !ObjectId(head, 7)) {
+        fprintf(stderr,
+                "Commit must be a hexadecimal object ID of 7-64 characters.\n");
+        return 2;
+    }
+    if (!head.s) head = StrL("HEAD");
     if (!path.s) path = StrL(".");
     char canonical[kMaxPath];
     if (PlatCanonicalPath(path.s, canonical, dimofi(canonical))) {
@@ -1331,5 +1331,6 @@ int GpuiMain(int argc, char** argv) {
     WinOpts options;
     options.clientTitleBar = true;
     options.minSize = {1100, 640};
-    return KitRunView(StrL("Git history"), 1400, 860, view.id, app, options);
+    return KitRunView(StrL("Git history — GPUI Kit"), 1400, 860, view.id, app,
+                      options);
 }
