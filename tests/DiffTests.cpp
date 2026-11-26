@@ -1383,6 +1383,40 @@ static void ModeSwitchAtTheTopKeepsTheFileHeaderInView() {
     TestAppFree(app);
 }
 
+// state.rs set_mode restores the source anchor unless the list was exactly
+// at the top. The anchor and the selected range use source line numbers.
+static void ModeSwitchPreservesTheSourceAnchorAndSelection() {
+    App* app = nullptr;
+    Window* win = nullptr;
+    DiffState* state = nullptr;
+    OpenLongDiff(&app, &win, &state);
+    Ctx cx{app, win, win->frameArena, state->self.id};
+    state->listScroll.offset = 12.f;
+    state->SetMode(DiffMode::Split, &cx);
+    TestDraw(win);
+    int top = state->ScrollItem();
+    utassert(top > 0 && state->rows[top].kind == DiffRowKind::Code &&
+             state->rows[top].original == 0);
+    utassertnear(state->listScroll.offset, top * 24.f);
+
+    Str path = StrL("long.txt");
+    auto range = DiffLineRange::New(path, DiffSide::Modified, 43, 46);
+    state->SetSelectedLines(true, range, &cx);
+    state->ScrollToLine(DiffLinePosition::New(path, DiffSide::Modified, 45),
+                        &cx);
+    TestDraw(win);
+    top = state->ScrollItem();
+    state->SetMode(DiffMode::Unified, &cx);
+    TestDraw(win);
+    int unified = state->ScrollItem();
+    utassert(unified > top && state->rows[unified].kind == DiffRowKind::Code &&
+             state->rows[unified].modified == 44);
+    utassertnear(state->listScroll.offset, unified * 24.f);
+    utassert(state->HasSelectedLines() && state->SelectedLines().start == 43 &&
+             state->SelectedLines().end == 46);
+    TestAppFree(app);
+}
+
 static const El* FindSplitCells(const El* el) {
     const El* first = el->first;
     const El* last = el->last;
@@ -2670,6 +2704,7 @@ void TestDiff() {
     TheWholePatchKeepsItsHeightAfterTheFirstLayout();
     DisclosureKeepsUnchangedWrappedMeasurements();
     ModeSwitchAtTheTopKeepsTheFileHeaderInView();
+    ModeSwitchPreservesTheSourceAnchorAndSelection();
     SplitRatioSizesTheRenderedColumns();
     TheWheelScrollsPastTheRowsRenderedSoFar();
     SplitColumnsKeepTheirGuttersWhileCodeScrolls();

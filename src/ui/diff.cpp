@@ -2418,17 +2418,20 @@ static void Rebuild(DiffState* state, bool reset,
     int before = len(state->rows);
     if (!reset && before) {
         int top = 0;
+        float offsetInRow = 0.f;
         if (scroll.pending) {
             top = scroll.pendingIx;
-        } else {
+            offsetInRow = scroll.pendingInItem;
+        } else if (scroll.offset > 0.f) {
             const float* sizes = len(state->rowHeights) == before
                                      ? state->rowHeights.els
                                      : nullptr;
-            float offsetInRow = 0.f;
             VirtualListLogicalFromPixel(sizes, before, 24.f, scroll.offset,
                                         &top, &offsetInRow);
         }
-        if (top > 0 && top < before) {
+        // Keep the header at the very top. A header already clipped by
+        // scrolling anchors to the first source line of that file.
+        if (top < before && (top > 0 || offsetInRow > 0.f)) {
             anchorFile = state->rows[top].file;
             hasKept = DiffScrollSource(state, top, &kept);
         }
