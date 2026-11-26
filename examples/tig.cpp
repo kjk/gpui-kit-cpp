@@ -340,9 +340,7 @@ struct Tig {
             files[index] = nullptr;
             fileIx = index;
             state->SetFiles(&next, 1, cx);
-        }
-        DiffFile* file = File(fileIx, cx);
-        if (file) {
+        } else if (DiffFile* file = File(fileIx, cx)) {
             if (state->IsFileCollapsed(file->Path()))
                 state->ToggleFileCollapsed(0, cx);
             state->ScrollToFile(file->Path(), cx);
@@ -384,9 +382,6 @@ struct Tig {
                 }
             }
             self->SelectCommit(&cx, index);
-            if (window && !WindowFocused(window).IsValid()) {
-                FocusHandleFocus(window, self->historyFocus);
-            }
         } else if (!self->error.s) {
             self->message = job->message;
             job->message = {};
@@ -483,19 +478,22 @@ void Tig::Action(Ctx* cx, TigAction action) {
     switch (action) {
         case TigOlder:
         case TigNewer: {
-            int next = commitIx + (action == TigOlder ? 1 : -1);
-            if (!readingHistory && next >= 0 && next < len(commits))
-                SelectCommit(cx, next);
+            if (readingHistory || !len(commits)) break;
+            int next = std::max(0, commitIx) + (action == TigOlder ? 1 : -1);
+            next = std::max(0, std::min(next, len(commits) - 1));
+            if (next != commitIx) SelectCommit(cx, next);
             break;
         }
         case TigNextFile:
-            SelectFile(cx, fileIx + 1);
+        case TigPreviousFile: {
+            if (!len(files)) break;
+            int next = std::max(0, fileIx) + (action == TigNextFile ? 1 : -1);
+            SelectFile(cx, std::max(0, std::min(next, len(files) - 1)));
             break;
-        case TigPreviousFile:
-            SelectFile(cx, fileIx - 1);
-            break;
+        }
         case TigReadDiff:
-            FocusHandleFocus(cx->win, state->focus);
+            if (!readingHistory && !readingCommit && len(state->files))
+                FocusHandleFocus(cx->win, state->focus);
             break;
         case TigHistory:
             sidebar = true;
@@ -513,7 +511,10 @@ void Tig::Action(Ctx* cx, TigAction action) {
             break;
         case TigSidebar:
             sidebar = !sidebar;
-            FocusHandleFocus(cx->win, sidebar ? historyFocus : state->focus);
+            if (!sidebar && (FocusHandleIsFocused(cx->win, historyFocus) ||
+                             FocusHandleIsFocused(cx->win, filesFocus))) {
+                FocusHandleFocus(cx->win, state->focus);
+            }
             break;
         case TigNextChange:
             state->NextChange(cx);
@@ -941,6 +942,7 @@ El* Tig::Render(Tig* self, Ctx* cx) {
         self->diff.Get(cx)->WithMode(DiffMode::Split);
         self->historyFocus = FocusHandleNew(cx);
         self->filesFocus = FocusHandleNew(cx);
+        FocusHandleFocus(cx->win, self->historyFocus);
         self->Start(cx, true, {});
     }
     const Theme& th = ThemeNow(cx->app);
@@ -1012,6 +1014,21 @@ El* Tig::Render(Tig* self, Ctx* cx) {
                        ? fmt("%zu lines selected", hi - lo + 1)
                        : StrL("Source selected");
         status->Right(TextEl(cx->a, text)->Font(12)->Fg(th.mutedFg));
+    }
+    bool historyFocused = FocusHandleIsFocused(cx->win, self->historyFocus);
+    if (historyFocused || FocusHandleIsFocused(cx->win, self->filesFocus)) {
+        if (auto* key = component::Kbd::ForAction(
+                cx, TigKey(TigReadDiff),
+                historyFocused ? "TigHistory" : "TigFiles")) {
+            status->Right(Div(cx->a)
+                              ->FlexRow()
+                              ->ItemsCenter()
+                              ->Gap(4)
+                              ->Child(key->IntoEl())
+                              ->Child(TextEl(cx->a, StrL("Read diff"))
+                                          ->Font(12)
+                                          ->Fg(th.mutedFg)));
+        }
     }
     return root->Child(status->IntoEl());
 }
