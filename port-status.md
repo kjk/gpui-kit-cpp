@@ -602,12 +602,9 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   stays under the scanner gap above.
 - **`tig` uses the native process runner.** The desktop example captures Git
   output up to the representable string size (`examples/tig.cpp`).
-- **The Base showcase's editor is plain text with a gutter.** Upstream's
-  page installs its own syntect highlighter (`syntect_highlighter.rs`,
-  a third-party crate) for Rust, colours its captures through
-  `ShowcaseHighlightStyles`, and turns on folding; here the page draws the
-  same text with line numbers, whitespace markers and the showcase editor
-  style only (`examples/showcase/editor.cpp`).
+- **The Base showcase colors the Rust scanner's captures.** It uses the
+  showcase's syntax palette and brace folding rules. Syntect supplies
+  more detailed captures upstream (`examples/showcase/editor.cpp`).
 - **Process CPU %** is a Win32/procfs times delta, not `sysinfo`. First sample
   is 0; values are in the same ballpark, not bit-identical.
 - **The scene graph is still smaller than GPUI's.** `src/gpui/scene.h`
