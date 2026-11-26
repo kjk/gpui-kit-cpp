@@ -194,6 +194,73 @@ EM_JS(void, GpJsInit, (), {
         return [{start: 0, end: line.length, font: e.font, x: 0,
                  width: e.fullWidths[li]}];
     };
+    G.styledBidiLine = function(e, li) {
+        if (!e.parts || e.parts[li].length < 2) return false;
+        if (!e.styledBidi) e.styledBidi = [];
+        if (e.styledBidi[li] === undefined) {
+            let bidi = e.direction === "rtl";
+            if (!bidi) {
+                for (const ch of e.lines[li]) {
+                    const cp = ch.codePointAt(0);
+                    if (cp >= 0x590 && (_gpui_wasm_text_direction(cp) === 1 ||
+                        cp >= 0x202a && cp <= 0x202e ||
+                        cp >= 0x2066 && cp <= 0x2069)) {
+                        bidi = true;
+                        break;
+                    }
+                }
+            }
+            e.styledBidi[li] = bidi;
+        }
+        return e.styledBidi[li];
+    };
+    G.alignTextClusters = function(visual, left, right) {
+        // Browsers can round both edges of an individual DOM range outward.
+        // Give neighboring cells one shared boundary.
+        visual.sort((a, b) => (a.left + a.right) - (b.left + b.right));
+        let edge = left;
+        for (let i = 0; i < visual.length; i++) {
+            const g = visual[i];
+            g.left = edge;
+            edge = i + 1 === visual.length ? right :
+                Math.max(edge, Math.min(right, (g.right + visual[i + 1].left) * 0.5));
+            g.right = edge;
+        }
+    };
+    G.visualTextRuns = function(line, visual, parts, hasOverride) {
+        const runs = [];
+        const c = G.measurer();
+        const previousFont = c.font;
+        const previousDirection = c.direction;
+        for (let i = 0; i < visual.length;) {
+            const first = visual[i++];
+            let last = first;
+            const step = first.rtl ? -1 : 1;
+            while (i < visual.length && visual[i].part === first.part &&
+                   visual[i].rtl === first.rtl && visual[i].index === last.index + step) {
+                last = visual[i++];
+            }
+            const font = parts[first.part].font;
+            const direction = first.rtl ? "rtl" : "ltr";
+            const start = (first.rtl ? last : first).start;
+            const end = (first.rtl ? first : last).end;
+            let text = line.slice(start, end);
+            // The full line already resolved explicit overrides. When
+            // drawing their fragments alone, carry the resolved override.
+            if (hasOverride)
+                text = String.fromCharCode(first.rtl ? 0x202e : 0x202d) +
+                    text + String.fromCharCode(0x202c);
+            c.font = font;
+            c.direction = direction;
+            const width = c.measureText(text).width;
+            runs.push({text: text, font: font, x: first.left,
+                       direction: direction,
+                       scale: width > 0 ? (last.right - first.left) / width : 1});
+        }
+        c.font = previousFont;
+        c.direction = previousDirection;
+        return runs;
+    };
     G.textClusters = function(e, li) {
         if (typeof document === "undefined" || typeof Intl.Segmenter !== "function")
             return null;
@@ -208,48 +275,80 @@ EM_JS(void, GpJsInit, (), {
             const shadow = host.attachShadow({mode: "closed"});
             const span = document.createElement("span");
             span.style.cssText = "display:inline-block;white-space:pre";
-            span.appendChild(document.createTextNode(""));
             shadow.appendChild(span);
             (document.body || document.documentElement).appendChild(host);
             G.clusterText = span;
+            G.clusterNode = document.createTextNode("");
             G.clusterRange = document.createRange();
         }
         const span = G.clusterText;
-        const node = span.firstChild;
+        span.style.direction = e.direction === "rtl" ? "rtl" : "ltr";
         const range = G.clusterRange;
-        const caretX = function(at) {
+        const caretX = function(node, at) {
             range.setStart(node, at);
             range.collapse(true);
             const rects = range.getClientRects();
             return rects.length ? rects[0].left : null;
         };
-        const clusters = [];
-        let byte = 0;
-        for (const part of G.textParts(e, li)) {
-            const text = e.lines[li].slice(part.start, part.end);
-            const hasOverride = text.includes(String.fromCharCode(0x202d)) ||
-                                text.includes(String.fromCharCode(0x202e));
-            span.style.font = part.font;
-            span.style.direction = e.direction === "rtl" ? "rtl" : "ltr";
-            // Canvas replaces ASCII whitespace with spaces. Preserve UTF-16 offsets.
-            node.data = Array.from(text, function(ch) {
+        const normalized = function(text) {
+            // Canvas replaces ASCII whitespace with spaces.
+            return Array.from(text, function(ch) {
                 const code = ch.charCodeAt(0);
                 return code >= 9 && code <= 13 ? " " : ch;
             }).join("");
-            const box = span.getBoundingClientRect();
-            const scale = box.width > 0 ? part.width / box.width : 1;
-            const visual = [];
-            let start = caretX(0);
+        };
+        const line = e.lines[li];
+        const parts = G.textParts(e, li);
+        const shared = G.styledBidiLine(e, li);
+        const visualLine = [];
+        let box, lineWidth, nodes;
+        if (shared) {
+            // Inline font spans participate in one bidi paragraph. Canvas
+            // takes one font per call, so keep the resulting visual runs
+            // and use these same positions for paint and selection.
+            span.style.font = e.font;
+            nodes = parts.map(function(part) {
+                const face = document.createElement("span");
+                face.style.font = part.font;
+                face.textContent = normalized(line.slice(part.start, part.end));
+                span.appendChild(face);
+                return face.firstChild;
+            });
+            box = span.getBoundingClientRect();
+            const last = parts[parts.length - 1];
+            lineWidth = last.x + last.width;
+        } else {
+            span.appendChild(G.clusterNode);
+        }
+        const hasOverride = line.includes(String.fromCharCode(0x202d)) ||
+                            line.includes(String.fromCharCode(0x202e));
+        const clusters = [];
+        let byte = 0;
+        for (let p = 0; p < parts.length; p++) {
+            const part = parts[p];
+            const text = line.slice(part.start, part.end);
+            if (!text.length) continue;
+            const node = shared ? nodes[p] : G.clusterNode;
+            if (!shared) {
+                span.style.font = part.font;
+                node.data = normalized(text);
+                box = span.getBoundingClientRect();
+            }
+            const origin = shared ? 0 : part.x;
+            const width = shared ? lineWidth : part.width;
+            const scale = box.width > 0 ? width / box.width : 1;
+            const visual = shared ? visualLine : [];
+            let start = caretX(node, 0);
             for (const g of G.graphemes.segment(text)) {
                 const endAt = g.index + g.segment.length;
                 range.setStart(node, g.index);
                 range.setEnd(node, endAt);
                 const rect = range.getBoundingClientRect();
-                const end = caretX(endAt);
+                const end = caretX(node, endAt);
                 const lo = byte;
                 byte += G.u8len(g.segment);
                 const x = rect.width || start === null ? rect.left : start;
-                const left = part.x + (x - box.left) * scale;
+                const left = origin + (x - box.left) * scale;
                 const right = left + rect.width * scale;
                 // Match the two edges to native caret positions. At a
                 // direction change a caret can be at the adjacent run's
@@ -279,27 +378,25 @@ EM_JS(void, GpJsInit, (), {
                 const cluster = {lo: lo, hi: byte, left: left, right: right,
                     rtl: hint >= 0 ? hint === 1 :
                         rtl === ltr ? e.direction === "rtl" : rtl < ltr};
+                if (shared) {
+                    cluster.part = p;
+                    cluster.index = clusters.length;
+                    cluster.start = part.start + g.index;
+                    cluster.end = part.start + endAt;
+                }
                 clusters.push(cluster);
                 if (right > left) visual.push(cluster);
                 start = end;
             }
-            // Browsers can round both edges of an individual DOM range
-            // outward. Share one boundary between neighboring cells so hit
-            // testing, selection and the sum of advances agree.
-            if (visual.length) {
-                visual.sort((a, b) => a.left - b.left);
-                let edge = part.x;
-                const last = part.x + part.width;
-                for (let i = 0; i < visual.length; i++) {
-                    const g = visual[i];
-                    g.left = edge;
-                    edge = i + 1 === visual.length ? last :
-                        Math.max(edge, Math.min(last, (g.right + visual[i + 1].left) * 0.5));
-                    g.right = edge;
-                }
-            }
+            if (!shared) G.alignTextClusters(visual, part.x, part.x + part.width);
         }
-        node.data = "";
+        if (shared) {
+            G.alignTextClusters(visualLine, 0, lineWidth);
+            if (!e.visualParts) e.visualParts = [];
+            e.visualParts[li] = G.visualTextRuns(line, visualLine, parts, hasOverride);
+        }
+        span.replaceChildren();
+        G.clusterNode.data = "";
         e.clusters[li] = clusters;
         return clusters;
     };
@@ -1180,7 +1277,7 @@ EM_JS(void, GpJsTextDraw, (int id, float x, float y, int color, int clip), {
     }
     const pad = (e.box - e.natural) * 0.5;
     const previousDirection = c.direction;
-    c.direction = e.direction === "rtl" ? "rtl" : "ltr";
+    const direction = e.direction === "rtl" ? "rtl" : "ltr";
     c.font = e.font;
     c.textBaseline = "alphabetic";
     c.textAlign = "left";
@@ -1188,7 +1285,24 @@ EM_JS(void, GpJsTextDraw, (int id, float x, float y, int color, int clip), {
     for (let i = 0; i < e.lines.length; i++) {
         const base = y + pad + i * e.box + e.asc;
         const lx = x + e.dx[i];
-        if (e.parts) {
+        if (G.styledBidiLine(e, i)) G.textClusters(e, i);
+        const visual = e.visualParts && e.visualParts[i];
+        c.direction = direction;
+        if (visual) {
+            for (const run of visual) {
+                c.font = run.font;
+                c.direction = run.direction;
+                if (Math.abs(run.scale - 1) < 0.0001) {
+                    c.fillText(run.text, lx + run.x, base);
+                } else {
+                    c.save();
+                    c.translate(lx + run.x, base);
+                    c.scale(run.scale, 1);
+                    c.fillText(run.text, 0, 0);
+                    c.restore();
+                }
+            }
+        } else if (e.parts) {
             for (const part of e.parts[i]) {
                 c.font = part.font;
                 c.fillText(e.lines[i].slice(part.start, part.end), lx + part.x, base);

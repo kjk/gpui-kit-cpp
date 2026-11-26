@@ -38,7 +38,7 @@ The current update target is
   uses the shaped cluster advances in logical order. The browser measures
   in-context grapheme ranges and uses Canvas widths for each styled span.
   Link hit targets, selection rectangles and caret positions follow visual
-  order within each browser font run.
+  order across browser font runs.
   Mobile host layouts use caret geometry or isolated word widths
   (`src/base/text.cpp`, `src/gpui/gpui.cpp`).
 
@@ -192,9 +192,10 @@ The current update target is
   formula awaiting its image (`examples/markdown.cpp`).
 - **Selectable text highlight font ranges cross the mobile paint adapter.**
   iOS and Android hosts can read `PaintCtx::textFontRanges` when shaping
-  `TextLayoutNew`. On wasm the Canvas2D backend positions styled font runs
-  in logical order and relies on Canvas2D for shaping within each run. Core
-  Text uses the italic face for an oblique highlight. Highlight strokes use
+  `TextLayoutNew`. On wasm a styled bidi line gets its visual run order
+  from browser layout. Canvas2D reshapes those runs individually, so
+  contextual glyph forms can differ at their boundaries. Core Text uses
+  the italic face for an oblique highlight. Highlight strokes use
   the portable text decoration geometry (`src/gpui/gpui.cpp`).
 - **The legacy C++ reduced-motion setter treats same-value writes as explicit.**
   Calls without an app set a process default. Applications can set their own
