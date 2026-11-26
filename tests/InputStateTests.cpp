@@ -1118,6 +1118,34 @@ static void ASuggestionThatMissedItsMomentIsDropped() {
     utassert(gInlineCalls == 0);
 }
 
+// movement.rs move_to_with_affinity and state.rs select_to_with_affinity
+// clear the displayed suggestion before changing the caret or selection.
+static void MovingOrExtendingTheCaretDismissesInlineCompletion() {
+    InputState s;
+    s.kind = InputKind::Editor;
+    s.inlineCompletionProvider = &TestInlineCompletion;
+    Type(&s, "hello");
+    auto show = [&]() {
+        InputScheduleInlineCompletion(&s);
+        s.inlineCompletion.dueAt = 0.0;
+        InputUpdateInlineCompletion(&s, false);
+        utassert(InputHasInlineCompletion(&s));
+    };
+    show();
+    utassert(InputPerform(&s, nullptr, nullptr, InputAction::MoveLeft, false));
+    utassert(InputCursor(&s) == 4 && !InputHasInlineCompletion(&s));
+
+    show();
+    utassert(
+        InputPerform(&s, nullptr, nullptr, InputAction::SelectLeft, false));
+    utassert(s.selectedRange.start == 3 && s.selectedRange.end == 4);
+    utassert(!InputHasInlineCompletion(&s));
+
+    show();
+    InputSetSelectedRange(&s, nullptr, nullptr, 2, 2);
+    utassert(InputCursor(&s) == 2 && !InputHasInlineCompletion(&s));
+}
+
 // Tab writes it in, escape says no to it, and an edit asks again.
 static void TabAcceptsAndEscapeDeclines() {
     InputState s;
@@ -15451,6 +15479,7 @@ void TestInputState() {
     DocumentationIsResolvedOnce();
     TheSuggestionWaitsForTheDebounce();
     ASuggestionThatMissedItsMomentIsDropped();
+    MovingOrExtendingTheCaretDismissesInlineCompletion();
     TabAcceptsAndEscapeDeclines();
     ALongInlineCompletionSurvivesAcceptance();
     TheDeltaEncodingIsUnpacked();

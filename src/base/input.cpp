@@ -7163,6 +7163,7 @@ void InputMoveToWithAffinity(InputState* s, App* app, Window* win, int offset,
     UpdatePreferredColumn(s);
     // scroll_to: the caret takes the view with it.
     InputScrollToCursor(s, InputMoveDir::None);
+    InputClearInlineCompletion(s);
     Notify(app, win);
 }
 
@@ -7172,6 +7173,7 @@ void InputMoveTo(InputState* s, App* app, Window* win, int offset) {
 
 void InputSelectToWithAffinity(InputState* s, App* app, Window* win, int offset,
                                bool lineEndAffinity) {
+    InputClearInlineCompletion(s);
     offset = InputCursorBoundary(s, offset, Bias::Left);
     s->cursorLineEndAffinity = lineEndAffinity;
     if (s->selectionReversed) {
