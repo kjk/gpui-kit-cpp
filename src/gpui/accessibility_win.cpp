@@ -271,14 +271,6 @@ static float DipScale(const Window* win) {
     HRESULT STDMETHODCALLTYPE get_FragmentRoot(                                \
         IRawElementProviderFragmentRoot** out) override;
 
-// A document source's revisions as last announced, to tell a text change
-// from a selection change.
-struct WinDocumentRevision {
-    uint32_t id = 0;
-    uint64_t text = 0;
-    uint64_t selection = 0;
-};
-
 struct WinNodeProperties {
     AccessibilityInfo info;
     uint8_t actions;
@@ -301,6 +293,15 @@ struct WinNodeSnapshot {
     uint32_t parent;
     int index;
     WinNodeProperties properties;
+    // UIA's Text pattern uses the exposed value or excerpt. Lazy sources
+    // carry only their revision counters until a client asks for text.
+    Str text = {};
+    int textStart = 0;
+    Selection selection = {-1, -1};
+    int caret = -1;
+    bool lazyText = false;
+    uint64_t textRevision = 0;
+    uint64_t selectionRevision = 0;
 };
 
 struct WinAccessibility
@@ -308,7 +309,6 @@ struct WinAccessibility
                 IRawElementProviderFragmentRoot> {
     Window* win = nullptr;
     HWND hwnd = nullptr;
-    Vec<WinDocumentRevision> documents;
     Vec<WinNodeSnapshot> snapshots[2];
     Arena* snapshotStrings[2] = {};
     int snapshotFrame = 0;
@@ -2498,16 +2498,19 @@ HRESULT WinAccessibilityPart::get_IsReadOnly(BOOL* out) {
     return S_OK;
 }
 
-static void AccessibilityDocumentsChanged(WinAccessibility* root,
-                                          bool listening);
 struct WinPropertyChange {
     uint32_t id;
     PROPERTYID property;
     VARIANT before;
     VARIANT after;
 };
+struct WinNodeEvent {
+    uint32_t id;
+    EVENTID event;
+};
 static bool WinSnapshotChanges(WinAccessibility* root,
-                               Vec<WinPropertyChange>* changes);
+                               Vec<WinPropertyChange>* changes,
+                               Vec<WinNodeEvent>* events = nullptr);
 
 WinAccessibility* AccessibilityWinNew(Window* win, void* hwnd) {
     if (!win || !hwnd) {
@@ -2516,7 +2519,6 @@ WinAccessibility* AccessibilityWinNew(Window* win, void* hwnd) {
     auto* accessibility = new WinAccessibility(win, (HWND)hwnd);
     // The tree may have been collected before there was a provider to tell.
     WinSnapshotChanges(accessibility, nullptr);
-    AccessibilityDocumentsChanged(accessibility, false);
     return accessibility;
 }
 
@@ -2588,11 +2590,33 @@ static void ClearWinPropertyChange(WinPropertyChange* change) {
     VariantClear(&change->after);
 }
 
+static void WinTextChanges(const WinNodeSnapshot& before,
+                           const WinNodeSnapshot& next,
+                           Vec<WinNodeEvent>* events) {
+    if ((!before.text.s && !before.lazyText) ||
+        (!next.text.s && !next.lazyText))
+        return;
+    if (before.lazyText != next.lazyText ||
+        before.textStart != next.textStart ||
+        before.textRevision != next.textRevision ||
+        !StrEq(before.text, next.text)) {
+        VecAppend(*events, WinNodeEvent{next.id, UIA_Text_TextChangedEventId});
+    }
+    if (before.selectionRevision != next.selectionRevision ||
+        before.selection.start != next.selection.start ||
+        before.selection.end != next.selection.end ||
+        before.caret != next.caret) {
+        VecAppend(*events,
+                  WinNodeEvent{next.id, UIA_Text_TextSelectionChangedEventId});
+    }
+}
+
 // Match the same provider across frames even if its siblings moved. Old
 // strings belong to this snapshot arena, and queued variants own their
 // strings so the snapshot can be published before notifying native clients.
 static bool WinSnapshotChanges(WinAccessibility* root,
-                               Vec<WinPropertyChange>* changes) {
+                               Vec<WinPropertyChange>* changes,
+                               Vec<WinNodeEvent>* events) {
     int frame = 1 - root->snapshotFrame;
     const auto& last = root->snapshots[root->snapshotFrame];
     auto& next = root->snapshots[frame];
@@ -2607,12 +2631,29 @@ static bool WinSnapshotChanges(WinAccessibility* root,
         const auto& node = nodes[i];
         uint32_t parent = node.parent < 0 ? 0 : nodes[node.parent].id;
         next[i] = {node.id, parent, i, WinNodeProperties(node)};
-        auto& info = next[i].properties.info;
+        auto& snapshot = next[i];
+        auto& info = snapshot.properties.info;
         info.label = StrDup(strings, info.label);
         info.description = StrDup(strings, info.description);
         info.value = StrDup(strings, info.value);
         info.authorId = StrDup(strings, info.authorId);
         info.placeholder = StrDup(strings, info.placeholder);
+        if (node.document.text) {
+            snapshot.lazyText = true;
+            snapshot.textRevision = node.document.textRevision;
+            snapshot.selectionRevision = node.document.selectionRevision;
+        } else if (Str text = WindowAccessibilityTextValue(node); text.s) {
+            snapshot.text = info.value.s && StrEq(text, info.value)
+                                ? info.value
+                                : StrDup(strings, text);
+            snapshot.textStart = node.textExcerptStart;
+            WindowAccessibilityTextSelection(node, &snapshot.selection);
+            snapshot.caret = WindowAccessibilityTextCaret(node);
+        }
+        if (events && node.liveChanged) {
+            VecAppend(*events,
+                      WinNodeEvent{node.id, UIA_LiveRegionChangedEventId});
+        }
     }
     if (len(next) > 1)
         qsort(next.els, (size_t)len(next), sizeof(next[0]),
@@ -2630,6 +2671,7 @@ static bool WinSnapshotChanges(WinAccessibility* root,
         const auto& before = last[beforeIndex++];
         structureChanged |=
             before.parent != node.parent || before.index != node.index;
+        if (events) WinTextChanges(before, node, events);
         if (!changes) continue;
         for (PROPERTYID property : kWinTrackedProperties) {
             auto oldValue = WinSemanticProperty(before.properties, property);
@@ -2645,37 +2687,6 @@ static bool WinSnapshotChanges(WinAccessibility* root,
     return structureChanged;
 }
 
-// A screen reader follows a document's selection and edits by these events,
-// not by a structure change. A document first seen is announced by that. The
-// revisions are recorded while no one listens, so a listener that registers
-// later hears the next change.
-static void AccessibilityDocumentsChanged(WinAccessibility* root,
-                                          bool listening) {
-    Vec<WinDocumentRevision> now;
-    const Vec<AccessibilityNode>& nodes = root->win->accessibility;
-    for (int i = 0; i < len(nodes); i++) {
-        const AccessibilityNode& node = nodes[i];
-        if (!node.document.text) continue;
-        WinDocumentRevision seen = {node.id, node.document.textRevision,
-                                    node.document.selectionRevision};
-        VecAppend(now, seen);
-        for (const WinDocumentRevision& before : root->documents) {
-            if (!listening) break;
-            if (before.id != seen.id) continue;
-            if (before.text != seen.text) {
-                AccessibilityRaiseNodeEvent(root, i,
-                                            UIA_Text_TextChangedEventId);
-            }
-            if (before.selection != seen.selection) {
-                AccessibilityRaiseNodeEvent(
-                    root, i, UIA_Text_TextSelectionChangedEventId);
-            }
-            break;
-        }
-    }
-    root->documents = now;
-}
-
 void AccessibilityWinTreeChanged(WinAccessibility* accessibility) {
     if (!accessibility || !accessibility->win) {
         return;
@@ -2683,8 +2694,10 @@ void AccessibilityWinTreeChanged(WinAccessibility* accessibility) {
     accessibility->AddRef();
     bool listening = UiaClientsAreListening();
     Vec<WinPropertyChange> properties;
+    Vec<WinNodeEvent> events;
     bool structure =
-        WinSnapshotChanges(accessibility, listening ? &properties : nullptr);
+        WinSnapshotChanges(accessibility, listening ? &properties : nullptr,
+                           listening ? &events : nullptr);
     if (listening) {
         if (structure) {
             UiaRaiseStructureChangedEvent(
@@ -2703,18 +2716,11 @@ void AccessibilityWinTreeChanged(WinAccessibility* accessibility) {
             }
             ClearWinPropertyChange(&change);
         }
-        if (accessibility->win) {
-            const auto& nodes = accessibility->win->accessibility;
-            for (int i = 0; accessibility->win && i < len(nodes); i++) {
-                if (nodes[i].liveChanged) {
-                    AccessibilityRaiseNodeEvent(accessibility, i,
-                                                UIA_LiveRegionChangedEventId);
-                }
-            }
+        for (const auto& event : events) {
+            AccessibilityRaiseNodeEvent(
+                accessibility, accessibility->NodeIndex(event.id), event.event);
         }
     }
-    if (accessibility->win)
-        AccessibilityDocumentsChanged(accessibility, listening);
     accessibility->Release();
 }
 
@@ -2737,6 +2743,54 @@ void AccessibilityWinFocusChanged(WinAccessibility* accessibility,
 // Linked only by the repository test runner (it is deliberately absent from
 // accessibility_win.h). This exercises the COM projection itself without
 // opening a second native window or making the public API carry test types.
+bool AccessibilityWinTextChangesSmokeTest() {
+    Window win;
+    InputState input;
+    InputSetValue(&input, StrL("Before"));
+    AccessibilityNode editor;
+    editor.id = 1;
+    editor.input = &input;
+    editor.info.role = AccessibilityRole::TextInput;
+    editor.info.value = InputValue(&input);
+    AccessibilityNode document;
+    document.id = 2;
+    document.info.role = AccessibilityRole::Document;
+    int reads = 0;
+    document.document.data = &reads;
+    document.document.text = [](void* data) {
+        ++*static_cast<int*>(data);
+        return StrL("Lazy text");
+    };
+    VecAppend(win.accessibility, editor);
+    VecAppend(win.accessibility, document);
+    WinAccessibility* root = AccessibilityWinNew(&win, GetDesktopWindow());
+    if (!root) return false;
+    InputSetValue(&input, StrL("After"));
+    input.selectedRange = {0, 2};
+    win.accessibility[0].info.value = InputValue(&input);
+    win.accessibility[1].document.selectionRevision++;
+
+    Vec<WinNodeEvent> events;
+    bool ok = !WinSnapshotChanges(root, nullptr, &events) && len(events) == 3 &&
+              events[0].id == 1 &&
+              events[0].event == UIA_Text_TextChangedEventId &&
+              events[1].id == 1 &&
+              events[1].event == UIA_Text_TextSelectionChangedEventId &&
+              events[2].id == 2 &&
+              events[2].event == UIA_Text_TextSelectionChangedEventId;
+    VecClear(events);
+    input.selectedRange = {2, 2};
+    ok &= !WinSnapshotChanges(root, nullptr, &events) && len(events) == 1 &&
+          events[0].id == 1 &&
+          events[0].event == UIA_Text_TextSelectionChangedEventId;
+    VecClear(events);
+    win.accessibility[0].info.role = AccessibilityRole::PasswordInput;
+    ok &= !WinSnapshotChanges(root, nullptr, &events) && !len(events);
+    ok &= reads == 0;
+    AccessibilityWinClose(root);
+    return ok;
+}
+
 bool AccessibilityWinPropertyChangesSmokeTest() {
     Window win;
     char label[] = "Old";

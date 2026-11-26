@@ -11,6 +11,7 @@ namespace gpui {
 bool AccessibilityWinSmokeTest(Window* win, uint32_t nodeId);
 bool AccessibilityWinPartsSmokeTest(Window* win, uint32_t nodeId);
 bool AccessibilityWinPropertyChangesSmokeTest();
+bool AccessibilityWinTextChangesSmokeTest();
 } // namespace gpui
 #endif
 #if GPUI_OS_LINUX
@@ -1776,6 +1777,7 @@ void TestAccessibility() {
     TestSuite("accessibility");
 #if GPUI_OS_WINDOWS
     utassert(AccessibilityWinPropertyChangesSmokeTest());
+    utassert(AccessibilityWinTextChangesSmokeTest());
 #endif
     TheTreeSkipsVisualBoxesButKeepsSemanticParents();
     StyledButtonsCanReplaceTheirVisibleAccessibleName();

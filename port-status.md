@@ -249,7 +249,7 @@ The current update target is
   later control at the same index (`src/gpui/window_common.cpp`).
 - **Windows UIA invalidates the child list on structural changes.**
   Retained nodes report changes to their projected properties separately.
-  Focus, live announcements and document revisions have their own events
+  Focus, live announcements, text edits and selections have their own events
   (`src/gpui/accessibility_win.cpp`).
 - **Linux invalidates a child list when its retained children reorder.**
   Insertions and removals report individual child references, and reparented
