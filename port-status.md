@@ -239,6 +239,10 @@ The current update target is
   reads it: on Windows a UIA client is listening or has asked the window
   (WM_GETOBJECT); on Linux the AT-SPI bridge is ready; macOS and headless
   test windows always collect; wasm never does (`src/gpui/window_common.cpp`).
+- **Linux still broadcasts tree invalidations.** Retained nodes also send
+  individual state, name, description, role and numeric-value changes.
+  Child-list changes use the blanket invalidation instead of AccessKit's
+  per-child events (`src/gpui/accessibility_linux.cpp`).
 - **A document's text can be read on demand.** Local addition for large
   read-only documents (a PDF viewer's pages): `El::AccessibilityDocument`
   gives a Document node text and selection callbacks that the bridge calls

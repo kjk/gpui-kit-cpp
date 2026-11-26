@@ -157,6 +157,22 @@ struct LinuxTextSnapshot {
     uint64_t revision;
 };
 
+struct LinuxNodeSnapshot {
+    uint32_t path, id;
+    int index;
+    uint32_t role;
+    uint64_t state;
+    uint64_t name, description;
+    float value;
+    bool hasValue;
+};
+
+struct LinuxNodeHistory {
+    Window* window;
+    Vec<LinuxNodeSnapshot> frames[2];
+    int frame = 0;
+};
+
 struct AccessibilityLinuxState {
     App* app = nullptr;
     int fd = -1;
@@ -167,6 +183,7 @@ struct AccessibilityLinuxState {
     Str busAddress = {};
     Vec<uint8_t> rx;
     Vec<LinuxTextSnapshot> text;
+    Vec<LinuxNodeHistory*> nodes;
     uint64_t textRevision = 0;
     int32_t applicationId = 0;
     bool ready = false;
@@ -902,8 +919,72 @@ static void PutInterfaces(DbusWriter* body, const LinuxAccessible& object) {
     ArrayEnd(body, lengthAt, contentsAt);
 }
 
-static void SetStateBit(uint32_t state[2], int bit) {
-    state[bit / 32] |= 1u << (bit % 32);
+enum AtspiStateBit {
+    kAtspiChecked = 4,
+    kAtspiCollapsed = 5,
+    kAtspiEditable = 7,
+    kAtspiEnabled = 8,
+    kAtspiExpandable = 9,
+    kAtspiExpanded = 10,
+    kAtspiFocusable = 11,
+    kAtspiFocused = 12,
+    kAtspiHorizontal = 14,
+    kAtspiMultiLine = 17,
+    kAtspiSelectable = 22,
+    kAtspiSelected = 23,
+    kAtspiSensitive = 24,
+    kAtspiShowing = 25,
+    kAtspiSingleLine = 26,
+    kAtspiVertical = 29,
+    kAtspiVisible = 30,
+    kAtspiIndeterminate = 32,
+    kAtspiSelectableText = 38,
+    kAtspiDefault = 39,
+    kAtspiCheckable = 41,
+    kAtspiReadOnly = 43,
+};
+
+static constexpr uint64_t AtspiBit(AtspiStateBit bit) {
+    return uint64_t{1} << bit;
+}
+
+static uint64_t LinuxNodeStates(Window* win, const AccessibilityNode& node) {
+    uint64_t states = AtspiBit(kAtspiVisible) | AtspiBit(kAtspiShowing);
+    if (!node.info.disabled)
+        states |= AtspiBit(kAtspiEnabled) | AtspiBit(kAtspiSensitive);
+    if (node.actions & AccessibilityActionFocus)
+        states |= AtspiBit(kAtspiFocusable);
+    if (node.focusId && node.focusId == win->focusId)
+        states |= AtspiBit(kAtspiFocused);
+    if (node.info.toggled != AccessibilityToggled::Unset)
+        states |= AtspiBit(kAtspiCheckable);
+    if (node.info.toggled == AccessibilityToggled::True)
+        states |= AtspiBit(kAtspiChecked);
+    if (node.info.toggled == AccessibilityToggled::Mixed)
+        states |= AtspiBit(kAtspiIndeterminate);
+    if (node.info.hasExpanded) {
+        states |=
+            AtspiBit(kAtspiExpandable) |
+            AtspiBit(node.info.expanded ? kAtspiExpanded : kAtspiCollapsed);
+    }
+    if (node.info.hasSelected) {
+        states |= AtspiBit(kAtspiSelectable);
+        if (node.info.selected) states |= AtspiBit(kAtspiSelected);
+    }
+    if (node.input) {
+        states |= AtspiBit(kAtspiSelectableText) |
+                  AtspiBit(InputIsMultiLine(node.input) ? kAtspiMultiLine
+                                                        : kAtspiSingleLine) |
+                  AtspiBit(InputIsEditable(node.input) ? kAtspiEditable
+                                                       : kAtspiReadOnly);
+    }
+    if (node.info.orientation == AccessibilityOrientation::Horizontal)
+        states |= AtspiBit(kAtspiHorizontal);
+    if (node.info.orientation == AccessibilityOrientation::Vertical)
+        states |= AtspiBit(kAtspiVertical);
+    if (node.info.role == AccessibilityRole::DefaultButton)
+        states |= AtspiBit(kAtspiDefault);
+    return states;
 }
 
 // A part's bounds in window coordinates; false when the source has none.
@@ -921,65 +1002,21 @@ static bool PartShowing(const LinuxAccessible& object) {
 }
 
 static void PutStates(DbusWriter* body, const LinuxAccessible& object) {
-    uint32_t state[2] = {};
-    SetStateBit(state, 34); // visible
-    if (object.part < 0 || PartShowing(object)) {
-        SetStateBit(state, 25); // showing
-    }
+    uint64_t state = AtspiBit(kAtspiVisible);
     if (object.root) {
-        SetStateBit(state, 8); // enabled
+        state |= AtspiBit(kAtspiEnabled) | AtspiBit(kAtspiShowing);
     } else if (object.part >= 0) {
-        SetStateBit(state, 8);  // enabled
-        SetStateBit(state, 24); // sensitive
-        SetStateBit(state, 43); // read-only
-    } else if (object.win && object.nodeIndex >= 0) {
-        const AccessibilityNode& node = object.win
-                                            ->accessibility[object.nodeIndex];
-        if (!node.info.disabled) {
-            SetStateBit(state, 8);  // enabled
-            SetStateBit(state, 24); // sensitive
-        }
-        if (node.actions & AccessibilityActionFocus) SetStateBit(state, 11);
-        if (node.focusId && node.focusId == object.win->focusId) {
-            SetStateBit(state, 12);
-        }
-        if (node.info.toggled != AccessibilityToggled::Unset) {
-            SetStateBit(state, 41); // checkable
-            if (node.info.toggled == AccessibilityToggled::True) {
-                SetStateBit(state, 4);
-            }
-        }
-        if (node.info.hasExpanded) {
-            SetStateBit(state, 9);
-            SetStateBit(state, node.info.expanded ? 10 : 5);
-        }
-        if (node.info.hasSelected) {
-            SetStateBit(state, 22);
-            if (node.info.selected) SetStateBit(state, 23);
-        }
-        if (node.input) {
-            SetStateBit(state, 38); // selectable text
-            SetStateBit(state, InputIsMultiLine(node.input) ? 17 : 26);
-            if (InputIsEditable(node.input))
-                SetStateBit(state, 7);
-            else
-                SetStateBit(state, 43);
-        }
-        if (node.info.orientation == AccessibilityOrientation::Horizontal) {
-            SetStateBit(state, 14);
-        } else if (node.info
-                       .orientation == AccessibilityOrientation::Vertical) {
-            SetStateBit(state, 29);
-        }
-        if (node.info.role == AccessibilityRole::DefaultButton) {
-            SetStateBit(state, 39);
-        }
+        state |= AtspiBit(kAtspiEnabled) | AtspiBit(kAtspiSensitive) |
+                 AtspiBit(kAtspiReadOnly);
+        if (PartShowing(object)) state |= AtspiBit(kAtspiShowing);
+    } else if (const auto* node = ElementNode(object)) {
+        state = LinuxNodeStates(object.win, *node);
     }
     int lengthAt = 0;
     int contentsAt = 0;
     ArrayBegin(body, 4, &lengthAt, &contentsAt);
-    PutU32(body, state[0]);
-    PutU32(body, state[1]);
+    PutU32(body, (uint32_t)state);
+    PutU32(body, (uint32_t)(state >> 32));
     ArrayEnd(body, lengthAt, contentsAt);
 }
 
@@ -1055,6 +1092,10 @@ static Str ObjectName(const LinuxAccessible& object) {
     return object.win->accessibility[object.nodeIndex].info.PlatformName();
 }
 
+static Str LinuxNodeDescription(const AccessibilityInfo& info) {
+    return info.description.s ? info.description : info.placeholder;
+}
+
 // The Text interface's text: a part's own text or the node's.
 static Str ObjectText(const LinuxAccessible& object) {
     if (object.part >= 0) {
@@ -1078,8 +1119,7 @@ static bool PutPropertyVariant(DbusWriter* body, const LinuxAccessible& object,
         } else if (StrIs(property, "Description")) {
             // AccessKit's description; a node without one keeps offering its
             // placeholder here, as it did before it could have one.
-            Str description = node ? node->info.description : Str{};
-            if (!description.s && node) description = node->info.placeholder;
+            Str description = node ? LinuxNodeDescription(node->info) : Str{};
             PutVariantString(body, "s", description);
         } else if (StrIs(property, "HelpText")) {
             PutVariantString(body, "s", node ? node->info.placeholder : Str{});
@@ -2178,6 +2218,8 @@ void AccessibilityLinuxShutdown() {
     VecReset(gA11y.rx);
     for (const auto& snapshot : gA11y.text) StrFree(snapshot.text);
     VecReset(gA11y.text);
+    for (auto* history : gA11y.nodes) delete history;
+    VecReset(gA11y.nodes);
 }
 
 void AccessibilityLinuxForgetWindow(Window* win) {
@@ -2185,6 +2227,12 @@ void AccessibilityLinuxForgetWindow(Window* win) {
         if (gA11y.text[i].window != win) continue;
         StrFree(gA11y.text[i].text);
         VecRemoveAtFast(gA11y.text, i);
+    }
+    for (int i = 0; i < len(gA11y.nodes); i++) {
+        if (gA11y.nodes[i]->window != win) continue;
+        delete gA11y.nodes[i];
+        VecRemoveAtFast(gA11y.nodes, i);
+        break;
     }
 }
 
@@ -2214,9 +2262,21 @@ void AccessibilityLinuxPump() {
     ProcessMessages();
 }
 
+struct AtspiEventValue {
+    char type = 's';
+    Str text = {};
+    uint32_t role = 0;
+    double number = 0;
+
+    AtspiEventValue() = default;
+    AtspiEventValue(Str value) : text(value) {}
+    explicit AtspiEventValue(uint32_t value) : type('u'), role(value) {}
+    explicit AtspiEventValue(double value) : type('d'), number(value) {}
+};
+
 static void SendEvent(Window* win, uint32_t nodeId, const char* member,
-                      const char* detail, int detail1, Str payload = {},
-                      int detail2 = 0) {
+                      const char* detail, int detail1,
+                      AtspiEventValue payload = {}, int detail2 = 0) {
     if (!gA11y.ready || !win || !gA11y.app) return;
     int wi = -1;
     for (int i = 0; i < len(gA11y.app->windows); i++) {
@@ -2236,7 +2296,12 @@ static void SendEvent(Window* win, uint32_t nodeId, const char* member,
     PutString(&body, detail);
     PutI32(&body, detail1);
     PutI32(&body, detail2);
-    PutVariantString(&body, "s", payload);
+    if (payload.type == 'u')
+        PutVariantU32(&body, payload.role);
+    else if (payload.type == 'd')
+        PutVariantDouble(&body, payload.number);
+    else
+        PutVariantString(&body, "s", payload.text);
     PutEmptyStringDict(&body);
     SendMessage(4, 0, &fields, &body);
     VecReset(fields.bytes);
@@ -2344,9 +2409,139 @@ static void TrackLinuxText(Window* win, const AccessibilityNode& node) {
     *previous = current;
 }
 
+static int CompareLinuxNodePath(const void* a, const void* b) {
+    uint32_t x = static_cast<const LinuxNodeSnapshot*>(a)->path;
+    uint32_t y = static_cast<const LinuxNodeSnapshot*>(b)->path;
+    return (x > y) - (x < y);
+}
+
+static int CompareLinuxNode(const void* a, const void* b) {
+    if (int path = CompareLinuxNodePath(a, b)) return path;
+    uint32_t x = static_cast<const LinuxNodeSnapshot*>(a)->id;
+    uint32_t y = static_cast<const LinuxNodeSnapshot*>(b)->id;
+    return (x > y) - (x < y);
+}
+
+static bool UniqueLinuxNodePath(const Vec<LinuxNodeSnapshot>& frame,
+                                const LinuxNodeSnapshot* node) {
+    return node->path &&
+           (node == frame.begin() || node[-1].path != node->path) &&
+           (node + 1 == frame.end() || node[1].path != node->path);
+}
+
+static uint64_t LinuxPropertyHash(Str text) {
+    return Fnv1a64(kFnv1aBasis64, text.s, (size_t)len(text));
+}
+
+static void SendLinuxNodeChanges(Window* win, const LinuxNodeSnapshot& before,
+                                 const LinuxNodeSnapshot& after) {
+    const AccessibilityInfo& info = win->accessibility[after.index].info;
+    const struct {
+        AtspiStateBit bit;
+        const char* name;
+    } states[] = {
+        {kAtspiChecked, "checked"},
+        {kAtspiCollapsed, "collapsed"},
+        {kAtspiEditable, "editable"},
+        {kAtspiEnabled, "enabled"},
+        {kAtspiExpandable, "expandable"},
+        {kAtspiExpanded, "expanded"},
+        {kAtspiFocusable, "focusable"},
+        {kAtspiHorizontal, "horizontal"},
+        {kAtspiMultiLine, "multi-line"},
+        {kAtspiSelectable, "selectable"},
+        {kAtspiSelected, "selected"},
+        {kAtspiSensitive, "sensitive"},
+        {kAtspiSingleLine, "single-line"},
+        {kAtspiVertical, "vertical"},
+        {kAtspiIndeterminate, "indeterminate"},
+        {kAtspiSelectableText, "selectable-text"},
+        {kAtspiDefault, "is-default"},
+        {kAtspiCheckable, "checkable"},
+        {kAtspiReadOnly, "read-only"},
+    };
+    // Focus has its own dispatch path. Report the other GetState transitions.
+    uint64_t changed = (before.state ^ after.state) & ~AtspiBit(kAtspiFocused);
+    if (changed) {
+        for (const auto& state : states) {
+            if (changed & AtspiBit(state.bit))
+                SendEvent(win, after.id, "StateChanged", state.name,
+                          (after.state & AtspiBit(state.bit)) != 0,
+                          AtspiEventValue(uint32_t{0}));
+        }
+    }
+    if (before.name != after.name)
+        SendEvent(win, after.id, "PropertyChange", "accessible-name", 0,
+                  info.PlatformName());
+    if (before.description != after.description)
+        SendEvent(win, after.id, "PropertyChange", "accessible-description", 0,
+                  LinuxNodeDescription(info));
+    if (before.role != after.role)
+        SendEvent(win, after.id, "PropertyChange", "accessible-role", 0,
+                  AtspiEventValue(after.role));
+    if (after.hasValue && (!before.hasValue || before.value != after.value))
+        SendEvent(win, after.id, "PropertyChange", "accessible-value", 0,
+                  AtspiEventValue((double)after.value));
+}
+
+static void TrackLinuxNodes(Window* win) {
+    LinuxNodeHistory* history = nullptr;
+    for (auto* candidate : gA11y.nodes) {
+        if (candidate->window == win) {
+            history = candidate;
+            break;
+        }
+    }
+    if (!history) {
+        history = new LinuxNodeHistory;
+        history->window = win;
+        if (!VecAppend(gA11y.nodes, history)) {
+            delete history;
+            return;
+        }
+    }
+
+    const auto& previous = history->frames[history->frame];
+    auto& next = history->frames[1 - history->frame];
+    if (!VecResize(next, len(win->accessibility))) return;
+    for (int i = 0; i < len(next); i++) {
+        const auto& node = win->accessibility[i];
+        const auto& info = node.info;
+        next[i] = {node.elementPath,
+                   node.id,
+                   i,
+                   AtspiRole(info.role),
+                   LinuxNodeStates(win, node),
+                   LinuxPropertyHash(info.PlatformName()),
+                   LinuxPropertyHash(LinuxNodeDescription(info)),
+                   info.numericValue,
+                   (bool)info.hasNumericValue};
+    }
+    if (len(next) > 1)
+        qsort(next.els, (size_t)len(next), sizeof(next[0]), CompareLinuxNode);
+    if (len(previous)) {
+        for (const auto& current : next) {
+            auto* old = static_cast<const LinuxNodeSnapshot*>(
+                bsearch(&current, previous.els, (size_t)len(previous),
+                        sizeof(current), CompareLinuxNode));
+            // Unnamed elements share their ancestor's path. Only use a path
+            // by itself when it identifies exactly one node in both frames.
+            if (!old && UniqueLinuxNodePath(next, &current)) {
+                old = static_cast<const LinuxNodeSnapshot*>(
+                    bsearch(&current, previous.els, (size_t)len(previous),
+                            sizeof(current), CompareLinuxNodePath));
+                if (old && !UniqueLinuxNodePath(previous, old)) old = nullptr;
+            }
+            if (old) SendLinuxNodeChanges(win, *old, current);
+        }
+    }
+    history->frame = 1 - history->frame;
+}
+
 void AccessibilityLinuxTreeChanged(Window* win) {
     if (!win || !gA11y.ready) return;
     SendEvent(win, 0, "ChildrenChanged", "invalidate", 0);
+    TrackLinuxNodes(win);
     ++gA11y.textRevision;
     for (int i = 0; i < len(win->accessibility); i++) {
         const auto& node = win->accessibility[i];
@@ -2592,15 +2787,16 @@ bool AccessibilityLinuxPartsSmokeTest(Window* win, uint32_t nodeId) {
     return ok;
 }
 
-struct SmokeTextEvent {
+struct LinuxSmokeEvent {
     const char* member;
     const char* detail;
     int offset;
     int count;
-    Str payload;
+    AtspiEventValue payload;
 };
 
-static bool SmokeTextEvents(int fd, const SmokeTextEvent* expected, int count) {
+static bool LinuxSmokeEvents(int fd, const LinuxSmokeEvent* expected,
+                             int count) {
     uint8_t buffer[4096];
     int size = (int)recv(fd, buffer, sizeof(buffer), MSG_DONTWAIT);
     int seen = 0;
@@ -2619,16 +2815,25 @@ static bool SmokeTextEvents(int fd, const SmokeTextEvent* expected, int count) {
         int pos = ReadI32(in.body, in.bodyLen, &at);
         int lenText = ReadI32(in.body, in.bodyLen, &at);
         Str payloadKind = ReadSignature(in.body, in.bodyLen, &at);
-        Str payload = ReadString(in.body, in.bodyLen, &at);
         if (!StrIs(in.member, event.member) || !StrIs(detail, event.detail) ||
             pos != event.offset || lenText != event.count ||
-            !StrIs(payloadKind, "s") || !StrEq(payload, event.payload))
+            len(payloadKind) != 1 || payloadKind.s[0] != event.payload.type)
             return false;
+        if (event.payload.type == 'u') {
+            if (ReadU32(in.body, in.bodyLen, &at) != event.payload.role)
+                return false;
+        } else if (event.payload.type == 'd') {
+            if (ReadDouble(in.body, in.bodyLen, &at) != event.payload.number)
+                return false;
+        } else if (!StrEq(ReadString(in.body, in.bodyLen, &at), event.payload
+                                                                    .text)) {
+            return false;
+        }
     }
     return seen == count;
 }
 
-bool AccessibilityLinuxTextEventsSmokeTest() {
+bool AccessibilityLinuxEventSmokeTest() {
     int fds[2] = {-1, -1};
     if (socketpair(AF_UNIX, SOCK_STREAM, 0, fds) != 0) return false;
     AccessibilityLinuxState saved = gA11y;
@@ -2653,34 +2858,81 @@ bool AccessibilityLinuxTextEventsSmokeTest() {
     InputSetValue(&input, StrL("a\xc3\xa9!"));
     input.selectedRange = {3, 3};
     AccessibilityLinuxTreeChanged(&win);
-    bool ok = SmokeTextEvents(fds[0], nullptr, 0);
+    bool ok = LinuxSmokeEvents(fds[0], nullptr, 0);
 
     InputSetValue(&input, StrL("a\xc3\xaa\xf0\x9f\x92\xbb!"));
     input.selectedRange = {1, 7};
     win.accessibility[0].id = 2; // the semantic path survives renumbering
     AccessibilityLinuxTreeChanged(&win);
-    const SmokeTextEvent replacement[] = {
+    const LinuxSmokeEvent replacement[] = {
         {"TextChanged", "delete", 1, 1, StrL("\xc3\xa9")},
         {"TextChanged", "insert", 1, 2, StrL("\xc3\xaa\xf0\x9f\x92\xbb")},
         {"TextSelectionChanged", "", 0, 0, {}},
         {"TextCaretMoved", "", 3, 0, {}},
     };
-    ok = SmokeTextEvents(fds[0], replacement, dimofi(replacement)) && ok;
+    ok = LinuxSmokeEvents(fds[0], replacement, dimofi(replacement)) && ok;
 
     input.selectedRange = {1, 1};
     AccessibilityLinuxTreeChanged(&win);
-    const SmokeTextEvent caret[] = {
+    const LinuxSmokeEvent caret[] = {
         {"TextSelectionChanged", "", 0, 0, {}},
         {"TextCaretMoved", "", 1, 0, {}},
     };
-    ok = SmokeTextEvents(fds[0], caret, dimofi(caret)) && ok;
+    ok = LinuxSmokeEvents(fds[0], caret, dimofi(caret)) && ok;
     AccessibilityLinuxTreeChanged(&win);
-    ok = SmokeTextEvents(fds[0], nullptr, 0) && ok;
+    ok = LinuxSmokeEvents(fds[0], nullptr, 0) && ok;
 
     input.masked = true;
     InputSetValue(&input, StrL("secret"));
     AccessibilityLinuxTreeChanged(&win);
-    ok = SmokeTextEvents(fds[0], nullptr, 0) && !len(gA11y.text) && ok;
+    ok = LinuxSmokeEvents(fds[0], nullptr, 0) && !len(gA11y.text) && ok;
+
+    auto& control = win.accessibility[0];
+    control = {};
+    control.id = 3;
+    control.elementPath = 60;
+    control.info.role = AccessibilityRole::CheckBox;
+    control.info.label = StrL("Send alerts");
+    control.info.placeholder = StrL("Alerts from this device");
+    control.info.toggled = AccessibilityToggled::False;
+    AccessibilityLinuxTreeChanged(&win);
+    ok = LinuxSmokeEvents(fds[0], nullptr, 0) && ok;
+
+    control.id = 4;
+    control.info.label = StrL("Send notifications");
+    control.info.description = StrL("Alerts on all devices");
+    control.info.toggled = AccessibilityToggled::True;
+    control.info.hasNumericValue = true;
+    control.info.numericValue = 2.5f;
+    AccessibilityLinuxTreeChanged(&win);
+    const AtspiEventValue zero(uint32_t{0});
+    const LinuxSmokeEvent checked[] = {
+        {"StateChanged", "checked", 1, 0, zero},
+        {"PropertyChange", "accessible-name", 0, 0, StrL("Send notifications")},
+        {"PropertyChange", "accessible-description", 0, 0,
+         StrL("Alerts on all devices")},
+        {"PropertyChange", "accessible-value", 0, 0, AtspiEventValue(2.5)},
+    };
+    ok = LinuxSmokeEvents(fds[0], checked, dimofi(checked)) && ok;
+
+    control.info.disabled = true;
+    control.info.toggled = AccessibilityToggled::Mixed;
+    control.info.description = {};
+    control.info.role = AccessibilityRole::Slider;
+    AccessibilityLinuxTreeChanged(&win);
+    const LinuxSmokeEvent mixed[] = {
+        {"StateChanged", "checked", 0, 0, zero},
+        {"StateChanged", "enabled", 0, 0, zero},
+        {"StateChanged", "sensitive", 0, 0, zero},
+        {"StateChanged", "indeterminate", 1, 0, zero},
+        {"PropertyChange", "accessible-description", 0, 0,
+         StrL("Alerts from this device")},
+        {"PropertyChange", "accessible-role", 0, 0,
+         AtspiEventValue(AtspiRole(AccessibilityRole::Slider))},
+    };
+    ok = LinuxSmokeEvents(fds[0], mixed, dimofi(mixed)) && ok;
+    AccessibilityLinuxTreeChanged(&win);
+    ok = LinuxSmokeEvents(fds[0], nullptr, 0) && ok;
     AccessibilityLinuxForgetWindow(&win);
     close(fds[0]);
     close(fds[1]);

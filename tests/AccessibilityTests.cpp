@@ -16,7 +16,7 @@ bool AccessibilityWinPartsSmokeTest(Window* win, uint32_t nodeId);
 namespace gpui {
 // Drives the AT-SPI handlers over a socketpair; beside the adapter too.
 bool AccessibilityLinuxPartsSmokeTest(Window* win, uint32_t nodeId);
-bool AccessibilityLinuxTextEventsSmokeTest();
+bool AccessibilityLinuxEventSmokeTest();
 } // namespace gpui
 #endif
 #if GPUI_OS_MAC
@@ -1694,7 +1694,7 @@ void TestAccessibility() {
     SliderAccessibilityLabelsFollowTheExistingNodes();
     EditableTextOffersSetValueAndReadOnlyTextDoesNot();
 #if GPUI_OS_LINUX
-    utassert(AccessibilityLinuxTextEventsSmokeTest());
+    utassert(AccessibilityLinuxEventSmokeTest());
 #endif
     SetValuePreservesExactEditorText();
     SelectionContainersExposeTheirSelectedItems();

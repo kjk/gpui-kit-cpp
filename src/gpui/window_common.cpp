@@ -388,6 +388,10 @@ static uint64_t AccessibilityTreeHash(const Vec<AccessibilityNode>& nodes) {
         GPUI_A11Y_HASH(node.focusId);
         GPUI_A11Y_HASH(node.textSelectionStart);
         GPUI_A11Y_HASH(node.textSelectionEnd);
+        if (node.input) {
+            GPUI_A11Y_HASH(InputIsMultiLine(node.input));
+            GPUI_A11Y_HASH(InputIsEditable(node.input));
+        }
         if (node.input && !node.document.text &&
             WindowAccessibilityHasText(node)) {
             Selection selection;
@@ -405,7 +409,9 @@ static uint64_t AccessibilityTreeHash(const Vec<AccessibilityNode>& nodes) {
         GPUI_A11Y_HASH(info.role);
         GPUI_A11Y_HASH(info.live);
         hash = AccessibilityHashStr(hash, info.authorId);
+        GPUI_A11Y_HASH(info.label.s != nullptr);
         hash = AccessibilityHashStr(hash, info.label);
+        GPUI_A11Y_HASH(info.description.s != nullptr);
         hash = AccessibilityHashStr(hash, info.description);
         hash = AccessibilityHashStr(hash, info.value);
         hash = AccessibilityHashStr(hash, info.placeholder);
