@@ -3,6 +3,7 @@
    cairo's user space is y-down with clockwise-increasing angles, the same
    convention the element tree uses, so nothing here flips coordinates. */
 
+#include "base/text_boundary.h"
 #include "gpui/paint.h"
 #include "gpui/paint_backend.h"
 #include "gpui/scene.h"
@@ -1171,10 +1172,9 @@ int TextLayoutHitPoint(TextLayout* tl, Str s, float relX, float relY) {
     bool inside = pango_layout_xy_to_index(
         tl->layout, px, (int)((relY - BoxPad(tl)) * PANGO_SCALE), &index,
         &trailing);
-    // Outside a wrapped row Pango returns the nearest glyph's leading edge,
-    // not the nearest caret edge: a click past the right side can therefore
-    // land one character before the wrap. Clamp x against the visual line
-    // Pango selected from y, matching DirectWrite/CoreText hit testing.
+    // A point past a wrapped row belongs to its end, including a trailing
+    // space at the wrap. Use the selected row's reading direction to tell
+    // which visual edge starts or ends that row.
     if (!inside) {
         int lineNo = 0;
         int lineX = 0;
@@ -1185,10 +1185,13 @@ int TextLayoutHitPoint(TextLayout* tl, Str s, float relX, float relY) {
             // In layout coordinates, so an aligned line is measured where
             // it was put rather than from the layout's left edge.
             PangoRectangle logical = LineExtents(tl->layout, lineNo);
-            if (px <= logical.x) {
+            bool left = px <= logical.x;
+            bool right = px >= logical.x + logical.width;
+            bool rtl = line->resolved_dir == PANGO_DIRECTION_RTL;
+            if (rtl ? right : left) {
                 index = line->start_index;
                 trailing = 0;
-            } else if (px >= logical.x + logical.width) {
+            } else if (rtl ? left : right) {
                 index = line->start_index + line->length;
                 trailing = 0;
             }
@@ -1202,6 +1205,22 @@ int TextLayoutHitPoint(TextLayout* tl, Str s, float relX, float relY) {
     }
     index = ClampI(index, 0, len(s));
     return index;
+}
+
+bool TextLayoutCaretPoint(TextLayout* tl, Str text, int offset, bool trailing,
+                          float* x, float* y, float* height) {
+    if (!tl || !tl->layout) return false;
+    offset = Utf8ClipLeft(text, ClampI(offset, 0, len(text)));
+    trailing = trailing && offset > 0;
+    int at = trailing ? Utf8Prev(text, offset) : offset;
+    PangoRectangle pos = {};
+    pango_layout_index_to_pos(tl->layout, at, &pos);
+    int row = 0;
+    pango_layout_index_to_line_x(tl->layout, at, trailing, &row, nullptr);
+    *x = (float)(pos.x + (trailing ? pos.width : 0)) / PANGO_SCALE + tl->dx;
+    *y = (float)row * tl->box;
+    *height = tl->box;
+    return true;
 }
 
 float TextLayoutBaseline(TextLayout* tl) {

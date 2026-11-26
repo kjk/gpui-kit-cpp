@@ -2921,7 +2921,6 @@ static void MixedDirectionSelectionKeepsVisualGaps() {
     utassertnear(selection[1].x, rest.Right());
     utassertnear(selection[1].x, alef.x);
     utassertnear(selection[1].w, alef.w);
-#if GPUI_OS_WINDOWS
     // The same source boundary touches the Latin run's trailing edge and
     // the Hebrew run's leading edge, which are separated on screen.
     float x = 0, y = 0, h = 0;
@@ -2931,7 +2930,33 @@ static void MixedDirectionSelectionKeepsVisualGaps() {
     utassertnear(x, alef.Right());
     utassert(TextLayoutPointAt(layout, text, false, 10, &x, &y, &h, true));
     utassertnear(x, rest.x);
+    TextLayoutRelease(layout);
+}
 #endif
+
+#if GPUI_OS_LINUX
+static void RtlCaretAndOutsideHitsFollowTheReadingEdge() {
+    SelectionFixture fixture;
+    constexpr Str text = StrL("\xd7\x90\xd7\x91\xd7\x92");
+    TextLayout* layout = TextLayoutNew(&fixture.win->paint, text, 16.f, 300.f,
+                                       false, 0, 0, nullptr, TextAlign::Right);
+    utassert(layout);
+    if (!layout) return;
+    Bounds row = {};
+    utassert(TextLayoutRangeRects(layout, text, 0, len(text), &row, 1) == 1);
+    utassert(row.w > 0);
+    float x = 0, y = 0, height = 0;
+    utassert(TextLayoutPointAt(layout, text, false, 0, &x, &y, &height, false));
+    utassertnear(x, row.Right());
+    utassert(TextLayoutPointAt(layout, text, false, len(text), &x, &y, &height,
+                               true));
+    utassertnear(x, row.x);
+    utassertnear(y, row.y);
+    utassertnear(height, row.h);
+    utassert(TextLayoutHitPoint(layout, text, row.x - 4.f, row.CenterY()) ==
+             len(text));
+    utassert(TextLayoutHitPoint(layout, text, row.Right() + 4.f,
+                                row.CenterY()) == 0);
     TextLayoutRelease(layout);
 }
 #endif
@@ -2941,6 +2966,9 @@ void TestTextSelection() {
     TestSuite("text_selection");
 #if GPUI_OS_LINUX || GPUI_OS_WINDOWS
     MixedDirectionSelectionKeepsVisualGaps();
+#endif
+#if GPUI_OS_LINUX
+    RtlCaretAndOutsideHitsFollowTheReadingEdge();
 #endif
     PaintDoesNotResolveWindowSelectedText();
     HighlightedTextSelectsAndCopiesAsPlainText();
