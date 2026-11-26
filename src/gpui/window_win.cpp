@@ -2274,12 +2274,16 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
                 AppInvalidate(win);
             }
             break;
-        case WM_ACTIVATE:
+        case WM_ACTIVATE: {
             // is_window_active: the frame dims while another window has the
             // focus.
-            WindowSetActive(win, LOWORD(wParam) != WA_INACTIVE);
-            PlatAccessibilityFocusChanged(win, win->focusId);
+            bool activated = LOWORD(wParam) != WA_INACTIVE;
+            WindowSetActive(win, activated);
+            if (win->plat)
+                AccessibilityWinHostFocusChanged(win->plat->accessibility,
+                                                 activated);
             break;
+        }
         case WM_MOUSEACTIVATE:
             // WinOpts::activatable false: a click leaves the active window
             // active, so the press is not one that activated anything.

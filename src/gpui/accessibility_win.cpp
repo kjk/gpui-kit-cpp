@@ -380,8 +380,13 @@ struct WinAccessibility
     Arena* snapshotStrings[2] = {};
     int snapshotFrame = 0;
     uint32_t focusedNode = 0;
+    bool hostFocused;
 
-    WinAccessibility(Window* window, HWND handle) : win(window), hwnd(handle) {}
+    WinAccessibility(Window* window, HWND handle)
+        : win(window),
+          hwnd(handle),
+          hostFocused(window->plat ? GetForegroundWindow() == handle
+                                   : window->active) {}
     ~WinAccessibility() override {
         for (Arena* arena : snapshotStrings) {
             if (arena) ArenaDelete(arena);
@@ -1050,8 +1055,8 @@ HRESULT WinAccessibility::ElementProviderFromPoint(
     return S_OK;
 }
 
-static int WinFocusedIndex(const Window* win) {
-    return win && win->active ? WindowAccessibilityFocusIndex(win) : -1;
+static int WinFocusedIndex(const WinAccessibility* root) {
+    return root->hostFocused ? WindowAccessibilityFocusIndex(root->win) : -1;
 }
 
 HRESULT WinAccessibility::GetFocus(IRawElementProviderFragment** out) {
@@ -1062,7 +1067,7 @@ HRESULT WinAccessibility::GetFocus(IRawElementProviderFragment** out) {
     if (!win) {
         return UIA_E_ELEMENTNOTAVAILABLE;
     }
-    int index = WinFocusedIndex(win);
+    int index = WinFocusedIndex(this);
     if (index >= 0) *out = NewNode(index);
     return S_OK;
 }
@@ -1284,7 +1289,7 @@ HRESULT WinAccessibilityNode::GetPropertyValue(PROPERTYID property,
     const AccessibilityNode* node = Node();
     if (!node) return UIA_E_ELEMENTNOTAVAILABLE;
     if (property == UIA_HasKeyboardFocusPropertyId) {
-        int index = WinFocusedIndex(root->win);
+        int index = WinFocusedIndex(root);
         VariantBool(out, index >= 0 && node == &root->win
                                                     ->accessibility[index]);
     } else if (property == UIA_IsOffscreenPropertyId && root->hwnd) {
@@ -2963,7 +2968,7 @@ static void WinFocusChanges(WinAccessibility* root,
                             const Vec<WinNodeSnapshot>* previousTree,
                             Vec<WinPropertyChange>* properties,
                             Vec<WinNodeEvent>* events) {
-    int index = WinFocusedIndex(root->win);
+    int index = WinFocusedIndex(root);
     uint32_t focused = index >= 0 ? root->win->accessibility[index].id : 0;
     uint32_t before = root->focusedNode;
     if (before == focused) return;
@@ -3041,11 +3046,19 @@ void AccessibilityWinFocusChanged(WinAccessibility* accessibility) {
     accessibility->Release();
 }
 
+void AccessibilityWinHostFocusChanged(WinAccessibility* accessibility,
+                                      bool focused) {
+    if (!accessibility) return;
+    accessibility->hostFocused = focused;
+    AccessibilityWinFocusChanged(accessibility);
+}
+
 // Linked only by the repository test runner (it is deliberately absent from
 // accessibility_win.h). This exercises the COM projection itself without
 // opening a second native window or making the public API carry test types.
 bool AccessibilityWinFocusChangesSmokeTest() {
     Window win;
+    win.active = false;
     win.focusId = 5;
     AccessibilityNode list;
     list.id = 10;
@@ -3085,7 +3098,10 @@ bool AccessibilityWinFocusChangesSmokeTest() {
         VecClear(events);
     };
     WinFocusChanges(root, nullptr, &changes, &events);
-    bool ok = len(changes) == 1 && property(0, 11, true) && focusEvent(11);
+    bool ok = !len(changes) && !len(events);
+    root->hostFocused = true;
+    WinFocusChanges(root, nullptr, &changes, &events);
+    ok &= len(changes) == 1 && property(0, 11, true) && focusEvent(11);
     clear();
 
     win.accessibility[1].info.activeDescendant = false;
@@ -3099,7 +3115,7 @@ bool AccessibilityWinFocusChangesSmokeTest() {
     WinFocusChanges(root, nullptr, &changes, &events);
     ok &= !len(changes) && !len(events);
 
-    win.active = false;
+    root->hostFocused = false;
     WinFocusChanges(root, nullptr, &changes, &events);
     ok &= len(changes) == 1 && property(0, 12, false) && !len(events);
     IRawElementProviderFragment* focused = nullptr;
@@ -3107,7 +3123,7 @@ bool AccessibilityWinFocusChangesSmokeTest() {
     if (focused) focused->Release();
     clear();
 
-    win.active = true;
+    root->hostFocused = true;
     WinFocusChanges(root, nullptr, &changes, &events);
     ok &= len(changes) == 1 && property(0, 12, true) && focusEvent(12);
     clear();

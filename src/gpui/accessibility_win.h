@@ -15,6 +15,8 @@ intptr_t AccessibilityWinGetObject(WinAccessibility* accessibility,
                                    uintptr_t wParam, intptr_t lParam);
 void AccessibilityWinTreeChanged(WinAccessibility* accessibility);
 void AccessibilityWinFocusChanged(WinAccessibility* accessibility);
+void AccessibilityWinHostFocusChanged(WinAccessibility* accessibility,
+                                      bool focused);
 #endif
 
 } // namespace gpui
