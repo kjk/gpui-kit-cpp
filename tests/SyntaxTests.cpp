@@ -102,12 +102,17 @@ static void TestRustLiteralAndCommentBoundaries() {
     SyntaxLang rust = SyntaxLangFor(StrL("rust"));
     const char* src =
         "fn get<'a>(v: &'a str) -> &'a str { return v; }\n"
+        "fn /* trivia */ r#match<T>() {}\n"
+        "type Handler = fn(u32);\n"
         "let r#type = r##\"raw \"# quote\nstays raw\"##;\n"
         "let bytes = br#\"raw bytes\"#; let cstr = cr\"raw c\";\n"
         "let byte = b'x'; let mark = '\\n'; let wide = \"two\nlines\";\n"
         "/* outside /* inside */ still a comment */\n"
         "'outer: loop { break 'outer; }\n";
     utassert(Partitions(rust, src));
+    utassert(TokAt(rust, src, "get") == SyntaxTok::Function);
+    utassert(TokAt(rust, src, "r#match") == SyntaxTok::Function);
+    utassert(TokAt(rust, src, "u32") == SyntaxTok::Type);
     utassert(TokAt(rust, src, "return") == SyntaxTok::Keyword);
     utassert(TokAt(rust, src, "str)") == SyntaxTok::Type);
     utassert(TokAt(rust, src, "type =") == SyntaxTok::Text);

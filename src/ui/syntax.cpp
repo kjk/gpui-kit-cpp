@@ -268,6 +268,7 @@ void SyntaxLexStart(SyntaxLexer* lx, SyntaxLang lang, Str src) {
     lx->tagName = false;
     lx->inFence = false;
     lx->linkDest = false;
+    lx->rustFunctionName = false;
 }
 
 static void SyntaxEmit(SyntaxLexer* lx, int start, SyntaxTok tok) {
@@ -313,7 +314,8 @@ static void SyntaxScanString(SyntaxLexer* lx, char quote, bool escapes,
     }
 }
 
-static bool SyntaxNextRustPrefix(SyntaxLexer* lx, int start) {
+static bool SyntaxNextRustPrefix(SyntaxLexer* lx, int start,
+                                 bool functionName) {
     Str src = lx->src;
     char first = src.s[start];
     int at = start;
@@ -352,7 +354,8 @@ static bool SyntaxNextRustPrefix(SyntaxLexer* lx, int start) {
             while (++at < len(src) && SyntaxIsIdent(src.s[at])) {
             }
             lx->at = at;
-            SyntaxEmit(lx, start, SyntaxTok::Text);
+            SyntaxEmit(lx, start,
+                       functionName ? SyntaxTok::Function : SyntaxTok::Text);
             return true;
         }
     }
@@ -714,7 +717,9 @@ bool SyntaxLexNext(SyntaxLexer* lx) {
         SyntaxEmit(lx, start, SyntaxTok::Comment);
         return true;
     }
-    if (d->rust && SyntaxNextRustPrefix(lx, start)) return true;
+    bool functionName = lx->rustFunctionName;
+    lx->rustFunctionName = false;
+    if (d->rust && SyntaxNextRustPrefix(lx, start, functionName)) return true;
     if (d->htmlComment && SyntaxAt(lx, lx->at, "<!--")) {
         SyntaxScanHtmlComment(lx, start);
         return true;
@@ -780,10 +785,14 @@ bool SyntaxLexNext(SyntaxLexer* lx) {
         if (SyntaxIsLiteralWord(word) ||
             SyntaxInList("true false", word, d->caseInsensitive)) {
             tok = SyntaxTok::Boolean;
+        } else if (functionName &&
+                   !SyntaxInList(d->keywords, word, d->caseInsensitive)) {
+            tok = SyntaxTok::Function;
         } else if (SyntaxInList(d->types, word, d->caseInsensitive)) {
             tok = SyntaxTok::Type;
         } else if (SyntaxInList(d->keywords, word, d->caseInsensitive)) {
             tok = SyntaxTok::Keyword;
+            lx->rustFunctionName = d->rust && StrEq(word, StrL("fn"));
         } else {
             int next = SyntaxSkipSpace(lx, lx->at);
             char after = next < len(lx->src) ? lx->src.s[next] : 0;

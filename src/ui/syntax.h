@@ -76,6 +76,8 @@ struct SyntaxLexer {
     // (destination) after it reads as one.
     bool inFence = false;
     bool linkDest = false;
+    // Rust only: a declaration's name is the next token after fn and trivia.
+    bool rustFunctionName = false;
 };
 
 void SyntaxLexStart(SyntaxLexer* lx, SyntaxLang lang, Str src);

@@ -665,8 +665,8 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   (the pull request is the review, added, deleted, and mode files
   together), previous/next, and the options menu (example, mode,
   context, inline, separator, indicator, tint, hover, and wrap). The
-  Alex review comment is on the pull request. The per-hunk tree-sitter test
-  stays under the scanner gap above.
+  Alex review comment is on the pull request. The Rust scanner resets
+  between hunks and recognizes generic function declarations.
 - **`tig` uses the native process runner.** The desktop example captures Git
   output up to the representable string size (`examples/tig.cpp`).
 - **The Base showcase colors the Rust scanner's captures.** It uses the

@@ -1794,8 +1794,8 @@ static void BuiltInDiffSyntaxLandsFromTheExecutorAndResetsAtHunks() {
     Vec<DiffFile*> files;
     utassert(
         Parse("--- a/code.rs\n+++ b/code.rs\n@@ -1,2 +1,2 @@\n"
-              " /* opening\n \tlet inside\n@@ -10 +10 @@\n"
-              "-\tlet before = 1;\n+\tlet after = 2;\n",
+              " /* opening\n \tlet inside\n@@ -10,2 +10,2 @@\n"
+              " close */\n-\tfn before<T>() {}\n+\tfn after<T>() {}\n",
               &files));
     state->SetFiles(files.els, len(files), nullptr);
     Window* win = TestWindowOpen(app, view, 400, 320);
@@ -1805,21 +1805,30 @@ static void BuiltInDiffSyntaxLandsFromTheExecutorAndResetsAtHunks() {
     const DiffSide sides[] = {DiffSide::Original, DiffSide::Modified};
     for (DiffSide side : sides) {
         bool comment = false;
+        bool commentAfterGap = false;
         bool keyword = false;
+        bool function = false;
         for (const auto& span : state->syntaxSpans) {
             if (span.side != (uint8_t)side) continue;
             if (span.line == 1 && span.token == SyntaxTok::Comment) {
                 comment = span.start == 0 && span.end == 14;
             }
-            if (span.line == 2 && span.token == SyntaxTok::Keyword) {
-                keyword = span.start == 4 && span.end == 7;
+            if (span.line == 2 && span.token == SyntaxTok::Comment) {
+                commentAfterGap = true;
+            }
+            if (span.line == 3 && span.token == SyntaxTok::Keyword) {
+                keyword = span.start == 4 && span.end == 6;
+            }
+            if (span.line == 3 && span.token == SyntaxTok::Function) {
+                function = span.start == 7 &&
+                           span.end == (side == DiffSide::Original ? 13 : 12);
             }
         }
-        utassert(comment && keyword);
+        utassert(comment && !commentAfterGap && keyword && function);
     }
     El* root = EntityRender(app, win, win->frameArena, view.id);
     LayoutEl(&win->paint, root, 0, 0, 400, 320, 14, {});
-    utassert(FindDiffCodeRun(root, StrL("let")));
+    utassert(FindDiffCodeRun(root, StrL("fn")));
 
     state->SetSyntaxMaxLineLength(5, nullptr);
     TestDraw(win);
