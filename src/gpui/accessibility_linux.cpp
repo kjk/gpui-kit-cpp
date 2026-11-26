@@ -1475,6 +1475,9 @@ static bool HandleAccessible(const Incoming& in,
     } else if (StrIs(in.member, "GetRelationSet")) {
         PutEmptyRelations(&body);
         signature = "a(ua(so))";
+    } else if (StrIs(in.member, "GetApplication")) {
+        PutObjectRef(&body, Str(kRootPath));
+        signature = "(so)";
     } else {
         VecReset(body.bytes);
         return false;
@@ -2993,6 +2996,17 @@ static bool SmokeCheckPart(SmokeClient* c, int windowIndex,
     if (!StrEq(path, PartPathForTemp(windowIndex, node.id, part))) return false;
 
     bool ok = SmokeIntCall(c, path, kAccessible, "GetRole") == (int)kRolePage;
+    Incoming application;
+    ok = ok && SmokeCall(c, path, kAccessible, "GetApplication", "", nullptr,
+                         &application);
+    if (ok) {
+        int at = 0;
+        ok = StrIs(application.signature, "(so)") &&
+             StrEq(ReadString(application.body, application.bodyLen, &at),
+                   gA11y.busName) &&
+             StrIs(ReadString(application.body, application.bodyLen, &at),
+                   kRootPath);
+    }
     ok = ok && SmokeIntCall(c, path, kAccessible, "GetIndexInParent") ==
                    elements + part;
     ok = ok && StrEq(SmokeStringProperty(c, path, "Name"),
