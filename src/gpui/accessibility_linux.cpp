@@ -159,7 +159,9 @@ struct LinuxTextSnapshot {
 
 struct LinuxNodeSnapshot {
     uint32_t path, id;
+    uint32_t wireId;
     int index;
+    int previousIndex;
     uint32_t role;
     uint64_t state;
     uint64_t name, description;
@@ -170,6 +172,8 @@ struct LinuxNodeSnapshot {
 struct LinuxNodeHistory {
     Window* window;
     Vec<LinuxNodeSnapshot> frames[2];
+    Vec<uint32_t> wireIds;
+    uint64_t nextWireId = 1;
     int frame = 0;
     uint32_t focusedNode = 0;
     int focusedHandle = 0;
@@ -192,6 +196,13 @@ struct AccessibilityLinuxState {
 };
 
 static AccessibilityLinuxState gA11y;
+
+static LinuxNodeHistory* LinuxHistory(Window* win) {
+    for (auto* history : gA11y.nodes) {
+        if (history->window == win) return history;
+    }
+    return nullptr;
+}
 
 static bool SendAll(const uint8_t* data, int n) {
     while (n > 0 && gA11y.fd >= 0) {
@@ -429,6 +440,29 @@ struct LinuxAccessible {
     bool root = false;
 };
 
+static uint32_t LinuxWireId(Window* win, uint32_t nodeId) {
+    const auto* history = LinuxHistory(win);
+    if (!history || !nodeId) return nodeId;
+    // Collection assigns IDs in tree order, so the common lookup is direct.
+    int index = (int)(nodeId - 1);
+    if (nodeId > (uint32_t)len(win->accessibility) || win->accessibility[index]
+                                                              .id != nodeId)
+        index = WindowAccessibilityNodeIndex(win, nodeId);
+    return index >= 0 && index < len(history->wireIds) ? history->wireIds[index]
+                                                       : 0;
+}
+
+static int LinuxNodeIndexForWire(Window* win, uint32_t wireId) {
+    if (!wireId) return -1;
+    const auto* history = LinuxHistory(win);
+    if (!history) return WindowAccessibilityNodeIndex(win, wireId);
+    int count = std::min(len(history->wireIds), len(win->accessibility));
+    for (int i = 0; i < count; i++) {
+        if (history->wireIds[i] == wireId) return i;
+    }
+    return -1;
+}
+
 static LinuxAccessible AccessibleForPath(Str path) {
     LinuxAccessible result;
     if (StrIs(path, kRootPath)) {
@@ -449,27 +483,30 @@ static LinuxAccessible AccessibleForPath(Str path) {
     if (!win || !win->plat) {
         return result;
     }
-    for (int i = 0; i < len(win->accessibility); i++) {
-        if (win->accessibility[i].id != nodeId) continue;
-        if (part >= WindowAccessibilityPartCount(win->accessibility[i])) {
-            break;
-        }
-        result.win = win;
-        result.windowIndex = windowIndex;
-        result.nodeIndex = i;
-        result.part = part;
-        break;
-    }
+    int index = LinuxNodeIndexForWire(win, nodeId);
+    if (index < 0 ||
+        part >= WindowAccessibilityPartCount(win->accessibility[index]))
+        return result;
+    result.win = win;
+    result.windowIndex = windowIndex;
+    result.nodeIndex = index;
+    result.part = part;
     return result;
 }
 
+static TempStr WirePathForTemp(int windowIndex, uint32_t wireId) {
+    return fmt("/org/a11y/atspi/accessible/w%d/n%u", windowIndex, wireId);
+}
+
 static TempStr PathForTemp(int windowIndex, uint32_t nodeId) {
-    return fmt("/org/a11y/atspi/accessible/w%d/n%u", windowIndex, nodeId);
+    Window* win = gA11y.app->windows[windowIndex];
+    return WirePathForTemp(windowIndex, LinuxWireId(win, nodeId));
 }
 
 static TempStr PartPathForTemp(int windowIndex, uint32_t nodeId, int part) {
-    return fmt("/org/a11y/atspi/accessible/w%d/n%u/p%d", windowIndex, nodeId,
-               part);
+    Window* win = gA11y.app->windows[windowIndex];
+    return fmt("/org/a11y/atspi/accessible/w%d/n%u/p%d", windowIndex,
+               LinuxWireId(win, nodeId), part);
 }
 
 // The object's node when it is an element, null for the root and parts.
@@ -2277,9 +2314,9 @@ struct AtspiEventValue {
     explicit AtspiEventValue(double value) : type('d'), number(value) {}
 };
 
-static void SendEvent(Window* win, uint32_t nodeId, const char* member,
-                      const char* detail, int detail1,
-                      AtspiEventValue payload = {}, int detail2 = 0) {
+static void SendWireEvent(Window* win, uint32_t wireId, const char* member,
+                          const char* detail, int detail1,
+                          AtspiEventValue payload = {}, int detail2 = 0) {
     if (!gA11y.ready || !win || !gA11y.app) return;
     int wi = -1;
     for (int i = 0; i < len(gA11y.app->windows); i++) {
@@ -2289,7 +2326,7 @@ static void SendEvent(Window* win, uint32_t nodeId, const char* member,
         }
     }
     if (wi < 0) return;
-    Str path = nodeId ? (Str)PathForTemp(wi, nodeId) : Str(kRootPath);
+    Str path = wireId ? (Str)WirePathForTemp(wi, wireId) : Str(kRootPath);
     DbusWriter fields;
     DbusWriter body;
     PutHeaderString(&fields, 1, "o", path);
@@ -2309,6 +2346,15 @@ static void SendEvent(Window* win, uint32_t nodeId, const char* member,
     SendMessage(4, 0, &fields, &body);
     VecReset(fields.bytes);
     VecReset(body.bytes);
+}
+
+static void SendEvent(Window* win, uint32_t nodeId, const char* member,
+                      const char* detail, int detail1,
+                      AtspiEventValue payload = {}, int detail2 = 0) {
+    if (!win) return;
+    uint32_t wireId = LinuxWireId(win, nodeId);
+    if (wireId || !nodeId)
+        SendWireEvent(win, wireId, member, detail, detail1, payload, detail2);
 }
 
 static void SendTextEdit(Window* win, uint32_t id, Str before, Str after) {
@@ -2489,13 +2535,6 @@ static void SendLinuxNodeChanges(Window* win, const LinuxNodeSnapshot& before,
                   AtspiEventValue((double)after.value));
 }
 
-static LinuxNodeHistory* LinuxHistory(Window* win) {
-    for (auto* candidate : gA11y.nodes) {
-        if (candidate->window == win) return candidate;
-    }
-    return nullptr;
-}
-
 static void TrackLinuxNodes(Window* win) {
     LinuxNodeHistory* history = LinuxHistory(win);
     if (!history) {
@@ -2509,13 +2548,16 @@ static void TrackLinuxNodes(Window* win) {
 
     const auto& previous = history->frames[history->frame];
     auto& next = history->frames[1 - history->frame];
-    if (!VecResize(next, len(win->accessibility))) return;
+    int count = len(win->accessibility);
+    if (!VecResize(next, count) || !VecResize(history->wireIds, count)) return;
     for (int i = 0; i < len(next); i++) {
         const auto& node = win->accessibility[i];
         const auto& info = node.info;
         next[i] = {node.elementPath,
                    node.id,
+                   0,
                    i,
+                   -1,
                    AtspiRole(info.role),
                    LinuxNodeStates(win, node),
                    LinuxPropertyHash(info.PlatformName()),
@@ -2525,9 +2567,10 @@ static void TrackLinuxNodes(Window* win) {
     }
     if (len(next) > 1)
         qsort(next.els, (size_t)len(next), sizeof(next[0]), CompareLinuxNode);
-    if (len(previous)) {
-        for (const auto& current : next) {
-            auto* old = static_cast<const LinuxNodeSnapshot*>(
+    for (auto& current : next) {
+        const LinuxNodeSnapshot* old = nullptr;
+        if (len(previous)) {
+            old = static_cast<const LinuxNodeSnapshot*>(
                 bsearch(&current, previous.els, (size_t)len(previous),
                         sizeof(current), CompareLinuxNode));
             // Unnamed elements share their ancestor's path. Only use a path
@@ -2538,10 +2581,24 @@ static void TrackLinuxNodes(Window* win) {
                             sizeof(current), CompareLinuxNodePath));
                 if (old && !UniqueLinuxNodePath(previous, old)) old = nullptr;
             }
-            if (old) SendLinuxNodeChanges(win, *old, current);
         }
+        if (old) current.previousIndex = (int)(old - previous.els);
+    }
+    // Publish the full mapping before emitting any events. The frame-local
+    // IDs still identify nodes for the shared action and document APIs.
+    for (auto& current : next) {
+        if (current.previousIndex >= 0) {
+            current.wireId = previous[current.previousIndex].wireId;
+        } else if (history->nextWireId <= UINT32_MAX) {
+            current.wireId = (uint32_t)history->nextWireId++;
+        }
+        history->wireIds[current.index] = current.wireId;
     }
     history->frame = 1 - history->frame;
+    for (const auto& current : next) {
+        if (current.previousIndex >= 0)
+            SendLinuxNodeChanges(win, previous[current.previousIndex], current);
+    }
 }
 
 void AccessibilityLinuxTreeChanged(Window* win) {
@@ -2590,7 +2647,7 @@ void AccessibilityLinuxFocusChanged(Window* win) {
             }
         }
     }
-    uint32_t next = focused ? focused->id : 0;
+    uint32_t next = focused ? LinuxWireId(win, focused->id) : 0;
     int handle = focused ? focused->focusId : 0;
     uint32_t prior = history->focusedNode;
     int priorHandle = history->focusedHandle;
@@ -2599,8 +2656,8 @@ void AccessibilityLinuxFocusChanged(Window* win) {
     history->focusedHandle = handle;
 
     const AtspiEventValue zero(uint32_t{0});
-    if (focused) {
-        SendEvent(win, next, "StateChanged", "focused", 1, zero);
+    if (next) {
+        SendWireEvent(win, next, "StateChanged", "focused", 1, zero);
         // A logical focus gain includes the current selection and caret.
         // Lazy document providers are queried only on request.
         if (priorHandle != handle && !focused->document.text) {
@@ -2609,19 +2666,16 @@ void AccessibilityLinuxFocusChanged(Window* win) {
             if (text.s &&
                 WindowAccessibilityTextSelection(*focused, &selection)) {
                 if (selection.start != selection.end)
-                    SendEvent(win, next, "TextSelectionChanged", "", 0);
-                SendEvent(win, next, "TextCaretMoved", "",
-                          Utf8CharacterForByte(
-                              text, WindowAccessibilityTextCaret(*focused)));
+                    SendWireEvent(win, next, "TextSelectionChanged", "", 0);
+                SendWireEvent(
+                    win, next, "TextCaretMoved", "",
+                    Utf8CharacterForByte(
+                        text, WindowAccessibilityTextCaret(*focused)));
             }
         }
     }
     if (prior && prior != next) {
-        const auto* node = WindowAccessibilityNode(win, prior);
-        // Node IDs are allocated during each collection. An unrelated node
-        // might already have taken this path when the old one disappeared.
-        if (!node || node->focusId == priorHandle)
-            SendEvent(win, prior, "StateChanged", "focused", 0, zero);
+        SendWireEvent(win, prior, "StateChanged", "focused", 0, zero);
     }
 }
 
@@ -2867,7 +2921,7 @@ static bool LinuxSmokeEvents(int fd, const LinuxSmokeEvent* expected,
             pos != event.offset || lenText != event.count ||
             len(payloadKind) != 1 || payloadKind.s[0] != event.payload.type)
             return false;
-        if (event.nodeId && !StrEq(in.path, PathForTemp(0, event.nodeId)))
+        if (event.nodeId && !StrEq(in.path, WirePathForTemp(0, event.nodeId)))
             return false;
         if (event.payload.type == 'u') {
             if (ReadU32(in.body, in.bodyLen, &at) != event.payload.role)
@@ -2920,14 +2974,13 @@ bool AccessibilityLinuxEventSmokeTest() {
     win.accessibility[0].id = 2; // the semantic path survives renumbering
     AccessibilityLinuxTreeChanged(&win);
     const LinuxSmokeEvent replacement[] = {
-        {"TextChanged", "delete", 1, 1, StrL("\xc3\xa9")},
-        {"TextChanged", "insert", 1, 2, StrL("\xc3\xaa\xf0\x9f\x92\xbb")},
+        {"TextChanged", "delete", 1, 1, StrL("\xc3\xa9"), 1},
+        {"TextChanged", "insert", 1, 2, StrL("\xc3\xaa\xf0\x9f\x92\xbb"), 1},
         {"TextSelectionChanged", "", 0, 0, {}},
         {"TextCaretMoved", "", 3, 0, {}},
-        {"StateChanged", "focused", 1, 0, zero, 2},
-        {"StateChanged", "focused", 0, 0, zero, 1},
     };
     ok = LinuxSmokeEvents(fds[0], replacement, dimofi(replacement)) && ok;
+    ok = LinuxWireId(&win, 2) == 1 && LinuxNodeIndexForWire(&win, 1) == 0 && ok;
 
     input.selectedRange = {1, 1};
     AccessibilityLinuxTreeChanged(&win);
@@ -2949,25 +3002,25 @@ bool AccessibilityLinuxEventSmokeTest() {
     ok = LinuxSmokeEvents(fds[0], nullptr, 0) && ok;
     WindowSetFocusId(&win, 8);
     const LinuxSmokeEvent transferred[] = {
-        {"StateChanged", "focused", 1, 0, zero, 5},
-        {"StateChanged", "focused", 0, 0, zero, 2},
+        {"StateChanged", "focused", 1, 0, zero, 2},
+        {"StateChanged", "focused", 0, 0, zero, 1},
     };
     ok = LinuxSmokeEvents(fds[0], transferred, dimofi(transferred)) && ok;
     const LinuxSmokeEvent buttonBlur[] = {
-        {"StateChanged", "focused", 0, 0, zero, 5},
+        {"StateChanged", "focused", 0, 0, zero, 2},
     };
     WindowSetFocusId(&win, 0);
     ok = LinuxSmokeEvents(fds[0], buttonBlur, dimofi(buttonBlur)) && ok;
     input.selectedRange = {1, 7};
     WindowSetFocusId(&win, 7);
     const LinuxSmokeEvent editableFocus[] = {
-        {"StateChanged", "focused", 1, 0, zero, 2},
-        {"TextSelectionChanged", "", 0, 0, {}, 2},
-        {"TextCaretMoved", "", 3, 0, {}, 2},
+        {"StateChanged", "focused", 1, 0, zero, 1},
+        {"TextSelectionChanged", "", 0, 0, {}, 1},
+        {"TextCaretMoved", "", 3, 0, {}, 1},
     };
     ok = LinuxSmokeEvents(fds[0], editableFocus, dimofi(editableFocus)) && ok;
     const LinuxSmokeEvent editableBlur[] = {
-        {"StateChanged", "focused", 0, 0, zero, 2},
+        {"StateChanged", "focused", 0, 0, zero, 1},
     };
     win.active = false;
     AccessibilityLinuxFocusChanged(&win);
@@ -3000,6 +3053,8 @@ bool AccessibilityLinuxEventSmokeTest() {
     control.info.toggled = AccessibilityToggled::False;
     AccessibilityLinuxTreeChanged(&win);
     ok = LinuxSmokeEvents(fds[0], nullptr, 0) && ok;
+    ok = LinuxWireId(&win, 3) == 3 && LinuxNodeIndexForWire(&win, 1) == -1 &&
+         LinuxNodeIndexForWire(&win, 2) == -1 && ok;
 
     control.id = 4;
     control.info.label = StrL("Send notifications");
