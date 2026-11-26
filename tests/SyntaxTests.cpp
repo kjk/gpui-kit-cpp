@@ -323,7 +323,7 @@ static void FoldCandidatesCoverTheirLastLineWhenItCanBeHidden() {
     struct Case {
         const char* language;
         const char* code;
-        FoldRange folds[2];
+        FoldRange folds[6];
         int count;
     };
     const Case cases[] = {
@@ -345,6 +345,49 @@ static void FoldCandidatesCoverTheirLastLineWhenItCanBeHidden() {
          "}\n",
          {{0, 3}},
          1},
+        {"python",
+         "if ok:\n    a()\n    b()\nelif alternate:\n    c()\n"
+         "else:\n    d()\n    e()\noutside()",
+         {{0, 8}, {1, 3}, {3, 5}, {5, 8}, {6, 8}},
+         5},
+        {"python",
+         "@deco(\n    x,\n)\n@second\nasync def f(\n    one,\n    two,\n"
+         "):\n    with one:\n        return two\noutside()",
+         {{0, 10}, {4, 10}, {8, 10}},
+         3},
+        {"python",
+         "def f():\n    # leading\n    a()\n\n    # indented trailing\n"
+         "# dedented trailing\n\noutside()",
+         {{0, 5}, {2, 5}},
+         2},
+        {"python",
+         "match value:\n    case 0:\n        zero()\n    case 1:\n"
+         "        one()\n        extra()\n    case _:\n        more()\nnext()",
+         {{0, 8}, {1, 3}, {3, 6}, {4, 6}, {6, 8}},
+         5},
+        {"python",
+         "def f():\n    \"\"\"from top\nif example:\n    pass\n    \"\"\"\n"
+         "    x = (\n        1 + 2\n    )\nnext()",
+         {{0, 8}, {1, 8}, {5, 7}},
+         3},
+        {"python",
+         "if x \\\n   and y:\n    a()\n    b()\nelse:\n    c()\n",
+         {{0, 6}, {2, 4}, {4, 6}},
+         3},
+        {"python",
+         "if flag: a()\nelse: b()\nfor x in values: print(x)\nelse:\n"
+         "    print(\"end\")\n",
+         {{0, 2}, {2, 5}, {3, 5}},
+         3},
+        {"python",
+         "try:\n    first()\nexcept ValueError:\n    fail()\nelse:\n"
+         "    pass\nfinally:\n    clean()\nnext()",
+         {{0, 8}, {2, 4}, {4, 6}, {6, 8}},
+         4},
+        {"python",
+         "def f():\n\tif True:\n\t\tpass\n\tprint(\"end\")\noutside()\n",
+         {{0, 4}, {1, 4}},
+         2},
     };
     App* app = TestAppNew();
     component::Init(app);

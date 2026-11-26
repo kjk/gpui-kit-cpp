@@ -393,13 +393,13 @@ static void SyntaxScanBlockComment(SyntaxLexer* lx, bool nested) {
 static void SyntaxScanTripleQuote(SyntaxLexer* lx, char quote) {
     lx->at += 3;
     while (lx->at < len(lx->src)) {
-        if (lx->src.s[lx->at] == quote && SyntaxAt(lx, lx->at, "\"\"\"")) {
+        if (SyntaxAt(lx, lx->at, quote == '\'' ? "'''" : "\"\"\"")) {
             lx->at += 3;
             return;
         }
-        if (lx->src.s[lx->at] == '\'' && SyntaxAt(lx, lx->at, "'''")) {
-            lx->at += 3;
-            return;
+        if (lx->src.s[lx->at] == '\\' && lx->at + 1 < len(lx->src)) {
+            lx->at += 2;
+            continue;
         }
         lx->at++;
     }
@@ -727,9 +727,10 @@ bool SyntaxLexNext(SyntaxLexer* lx) {
     }
     if (c == '"' || c == '\'' || (c == '`' && d->backtickString)) {
         // A shell's '..' takes no escapes; everything else does.
-        SyntaxScanString(
-            lx, c, !(c == '\'' && d->lineComment && d->lineComment[0] == '#'),
-            d->rust && c == '"');
+        SyntaxScanString(lx, c,
+                         d->tripleQuote || !(c == '\'' && d->lineComment &&
+                                             d->lineComment[0] == '#'),
+                         d->rust && c == '"');
         SyntaxTok tok = SyntaxTok::String;
         if (d->stringKeyProperty) {
             // JSON: a string before a ':' is the object's key, which the

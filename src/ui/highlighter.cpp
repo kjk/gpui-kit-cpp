@@ -890,9 +890,8 @@ struct SynHlJob {
    this counts bracket pairs outside strings and comments, the way the
    showcase's own highlighter does (`brace_fold_ranges` in
    examples/showcase/syntect_highlighter.rs), sharing the one lex that also
-   produces the token runs. SQL SELECT statements also have a lexical fold
-   for the statement and its FROM clause. This cannot see an arbitrary
-   named node such as a Python suite. */
+   produces the token runs. SQL SELECT statements and Python suites also
+   have language-specific folds. */
 static int SkipFoldWhitespace(Str text, int at, bool separators = false) {
     while (at < len(text) && text.s[at] != '\n') {
         uint32_t c = 0;
@@ -932,6 +931,296 @@ static void AppendSqlSelectFolds(Vec<FoldRange>* folds, int start, int from,
     if (from > start && end > from + 1) {
         VecAppend(*folds, FoldRange{from, end});
     }
+}
+
+enum class PythonFoldKind : uint8_t {
+    None,
+    Async,
+    Decorator,
+    Definition,
+    Suite,
+    If,
+    Loop,
+    Try,
+    Match,
+    Elif,
+    Else,
+    Except,
+    Finally,
+};
+
+static PythonFoldKind PythonHeader(Str word) {
+    if (StrEq(word, StrL("@"))) return PythonFoldKind::Decorator;
+    if (StrEq(word, StrL("async"))) return PythonFoldKind::Async;
+    if (StrEq(word, StrL("def")) || StrEq(word, StrL("class")))
+        return PythonFoldKind::Definition;
+    if (StrEq(word, StrL("while")) || StrEq(word, StrL("for")))
+        return PythonFoldKind::Loop;
+    if (StrEq(word, StrL("with")) || StrEq(word, StrL("case")))
+        return PythonFoldKind::Suite;
+    if (StrEq(word, StrL("if"))) return PythonFoldKind::If;
+    if (StrEq(word, StrL("try"))) return PythonFoldKind::Try;
+    if (StrEq(word, StrL("match"))) return PythonFoldKind::Match;
+    if (StrEq(word, StrL("elif"))) return PythonFoldKind::Elif;
+    if (StrEq(word, StrL("else"))) return PythonFoldKind::Else;
+    if (StrEq(word, StrL("except"))) return PythonFoldKind::Except;
+    if (StrEq(word, StrL("finally"))) return PythonFoldKind::Finally;
+    return PythonFoldKind::None;
+}
+
+struct PythonFoldRow {
+    int row = -1;
+    int start = 0;
+    int end = 0;
+};
+
+struct PythonFoldSuite {
+    PythonFoldKind kind;
+    PythonFoldKind clauseKind;
+    int indent;
+    int bodyIndent = -1;
+    PythonFoldRow header;
+    PythonFoldRow decorator;
+    PythonFoldRow clause;
+    PythonFoldRow body;
+    PythonFoldRow last;
+};
+
+static bool PythonContinues(const PythonFoldSuite& suite, PythonFoldKind next) {
+    using Kind = PythonFoldKind;
+    switch (next) {
+        case Kind::Elif:
+            return suite.kind == Kind::If && suite.clauseKind != Kind::Else;
+        case Kind::Except:
+            return suite.kind == Kind::Try &&
+                   (suite.clauseKind == Kind::Try ||
+                    suite.clauseKind == Kind::Except);
+        case Kind::Else:
+            return (suite.kind == Kind::If || suite.kind == Kind::Loop ||
+                    suite.kind == Kind::Try) &&
+                   suite.clauseKind != Kind::Else &&
+                   suite.clauseKind != Kind::Finally;
+        case Kind::Finally:
+            return suite.kind == Kind::Try && suite.clauseKind != Kind::Finally;
+        default:
+            return false;
+    }
+}
+
+struct PythonFoldScanner {
+    Str text;
+    Vec<FoldRange>* folds;
+    Vec<PythonFoldSuite> stack;
+    PythonFoldRow first, last, decorator;
+    int indent = 0;
+    int decoratorIndent = 0;
+    int row = 0;
+    int rowStart = 0;
+    int brackets = 0;
+    PythonFoldKind kind = PythonFoldKind::None;
+    bool asyncHead = false;
+    bool colon = false;
+    bool inlineBody = false;
+
+    int IndentAt(int end) const {
+        int width = 0;
+        for (int at = rowStart; at < end; at++) {
+            switch (text.s[at]) {
+                case ' ':
+                    width++;
+                    break;
+                case '\t':
+                    width = (width + 8) & ~7;
+                    break;
+                case '\f':
+                    width = 0;
+                    break;
+                default:
+                    return width;
+            }
+        }
+        return width;
+    }
+
+    void Add(PythonFoldRow start, PythonFoldRow end) const {
+        if (start.row < 0 || end.row <= start.row) return;
+        int tail = start.end;
+        while (!FoldLineEnd(text, tail)) tail++;
+        while (tail > start.start) {
+            int prev = Utf8Prev(text, tail);
+            uint32_t cp = 0;
+            if (Utf8At(text, prev, &cp) <= 0 || !IsUnicodeWhitespace(cp)) break;
+            tail = prev;
+        }
+        char open = tail > start.start ? text.s[tail - 1] : 0;
+        char close = open == '('   ? ')'
+                     : open == '[' ? ']'
+                     : open == '{' ? '}'
+                                   : 0;
+        int firstOnEnd = SkipFoldWhitespace(text, end.start);
+        bool keepLast =
+            (close && firstOnEnd < len(text) && text.s[firstOnEnd] == close) ||
+            HasCodeAfterFold(text, end.end);
+        int after = end.row + (keepLast ? 0 : 1);
+        if (after > start.row + 1) VecAppend(*folds, {start.row, after});
+    }
+
+    void FinishClause(const PythonFoldSuite& suite) const {
+        if (suite.clause.row != suite.header.row) Add(suite.clause, suite.last);
+        // The match block starts on its header row in the Python grammar.
+        if (suite.clauseKind != PythonFoldKind::Match)
+            Add(suite.body, suite.last);
+    }
+
+    void Include(PythonFoldSuite& suite, PythonFoldRow begin, PythonFoldRow end,
+                 int childIndent) {
+        if (suite.body.row < 0) {
+            suite.body = begin;
+            suite.bodyIndent = childIndent;
+        }
+        if (end.row >= suite.last.row) suite.last = end;
+    }
+
+    void PopSuite() {
+        PythonFoldSuite suite = VecPop(stack);
+        FinishClause(suite);
+        Add(suite.header, suite.last);
+        Add(suite.decorator, suite.last);
+        // The parent sees the entire compound statement, including any
+        // comments that belonged to its last suite.
+        if (len(stack) && stack[len(stack) - 1].last.row < suite.last.row)
+            stack[len(stack) - 1].last = suite.last;
+    }
+
+    void FinishLine() {
+        if (first.row < 0) return;
+        auto headerKind = colon ? kind : PythonFoldKind::None;
+        if (asyncHead && kind != PythonFoldKind::Definition &&
+            kind != PythonFoldKind::Loop && kind != PythonFoldKind::Suite)
+            headerKind = PythonFoldKind::None;
+        bool continued = false;
+        while (len(stack) && stack[len(stack) - 1].indent >= indent) {
+            auto& suite = stack[len(stack) - 1];
+            if (suite.indent == indent && PythonContinues(suite, headerKind)) {
+                FinishClause(suite);
+                suite.clause = first;
+                suite.clauseKind = headerKind;
+                suite.body = {};
+                suite.bodyIndent = -1;
+                suite.last = last;
+                continued = true;
+                break;
+            }
+            PopSuite();
+        }
+        if (!continued) {
+            if (len(stack)) Include(stack[len(stack) - 1], first, last, indent);
+            PythonFoldRow decorated;
+            if (decoratorIndent == indent) decorated = decorator;
+            if (kind == PythonFoldKind::Decorator) {
+                decorator = decorated.row >= 0 ? decorated : first;
+                decoratorIndent = indent;
+            } else {
+                decorator = {};
+            }
+            if (headerKind == PythonFoldKind::Definition &&
+                decorated.row >= 0 && inlineBody)
+                Add(decorated, last);
+            bool acceptsClause = headerKind == PythonFoldKind::If ||
+                                 headerKind == PythonFoldKind::Loop ||
+                                 headerKind == PythonFoldKind::Try;
+            if (headerKind != PythonFoldKind::None &&
+                (!inlineBody || acceptsClause)) {
+                VecAppend(stack, {headerKind,
+                                  headerKind,
+                                  indent,
+                                  -1,
+                                  first,
+                                  headerKind == PythonFoldKind::Definition
+                                      ? decorated
+                                      : PythonFoldRow{},
+                                  first,
+                                  {},
+                                  last});
+            }
+        }
+        first = {};
+        asyncHead = colon = inlineBody = false;
+    }
+
+    void Token(const SyntaxLexer& lexer) {
+        int start = (int)(lexer.text.s - text.s);
+        if (lexer.tok == SyntaxTok::Comment) {
+            if (first.row < 0) {
+                int commentIndent = IndentAt(start);
+                for (int i = len(stack) - 1; i >= 0; i--) {
+                    auto& suite = stack[i];
+                    if (suite.bodyIndent >= 0 &&
+                        commentIndent >= suite.bodyIndent) {
+                        suite.last = {row, rowStart, start + len(lexer.text)};
+                        break;
+                    }
+                }
+            }
+            return;
+        }
+        char ch = text.s[start];
+        if ((uint8_t)ch <= ' ' && lexer.tok == SyntaxTok::Text) {
+            for (int i = 0; i < len(lexer.text); i++) {
+                if (lexer.text.s[i] != '\n') continue;
+                int end = start + i;
+                if (end > rowStart && text.s[end - 1] == '\r') end--;
+                if (brackets == 0 &&
+                    (end == rowStart || text.s[end - 1] != '\\'))
+                    FinishLine();
+                row++;
+                rowStart = start + i + 1;
+            }
+            return;
+        }
+        if (first.row < 0) {
+            first = {row, rowStart, start};
+            indent = IndentAt(start);
+            kind = PythonHeader(lexer.text);
+            asyncHead = kind == PythonFoldKind::Async;
+        } else if (kind == PythonFoldKind::Async) {
+            kind = PythonHeader(lexer.text);
+        }
+        if (lexer.tok == SyntaxTok::String) {
+            PythonFoldRow opening = {row, rowStart, start};
+            for (int i = 0; i < len(lexer.text); i++) {
+                if (lexer.text.s[i] != '\n') continue;
+                row++;
+                rowStart = start + i + 1;
+            }
+            last = {row, rowStart, start + len(lexer.text)};
+            Add(opening, last);
+        } else {
+            if (ch == '(' || ch == '[' || ch == '{') brackets++;
+            if ((ch == ')' || ch == ']' || ch == '}') && brackets > 0)
+                brackets--;
+            last = {row, rowStart, start + len(lexer.text)};
+        }
+        if (ch == ':' && brackets == 0 && kind != PythonFoldKind::None &&
+            kind != PythonFoldKind::Decorator) {
+            colon = true;
+            inlineBody = false;
+        } else if (colon) {
+            inlineBody = true;
+        }
+    }
+};
+
+static void AppendPythonFolds(SyntaxLang lang, Str text,
+                              Vec<FoldRange>* folds) {
+    PythonFoldScanner scanner;
+    scanner.text = text;
+    scanner.folds = folds;
+    SyntaxLexer lexer;
+    SyntaxLexStart(&lexer, lang, text);
+    while (SyntaxLexNext(&lexer)) scanner.Token(lexer);
+    scanner.FinishLine();
+    while (len(scanner.stack)) scanner.PopSuite();
 }
 
 static void SynHlLexInto(SyntaxLang lang, Str text, Vec<HlRun>* runs,
@@ -1050,6 +1339,23 @@ static void SynHlLexInto(SyntaxLang lang, Str text, Vec<HlRun>* runs,
         VecAppend(*runs, run);
     }
     AppendSqlSelectFolds(folds, sqlStart, sqlFrom, lastSqlLine, false);
+    if (StrEq(SyntaxLangName(lang), StrL("python"))) {
+        AppendPythonFolds(lang, text, folds);
+        // Rust traverses parents first. A suite with the same start row as
+        // a bracket or nested statement takes precedence.
+        if (len(*folds) > 1) {
+            qsort(folds->els, (size_t)len(*folds), sizeof(FoldRange),
+                  [](const void* a, const void* b) {
+                      auto& x = *static_cast<const FoldRange*>(a);
+                      auto& y = *static_cast<const FoldRange*>(b);
+                      if (x.startLine != y.startLine)
+                          return x.startLine < y.startLine ? -1 : 1;
+                      return x.endLine == y.endLine  ? 0
+                             : x.endLine > y.endLine ? -1
+                                                     : 1;
+                  });
+        }
+    }
 }
 
 static Str SynHlLanguage(void* data) {
