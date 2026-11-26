@@ -7444,6 +7444,8 @@ int CopyTextHitsIn(PaintCtx* ctx, int selA, int selB, int scope, char* out,
                    const Bounds* cell = nullptr);
 int CopyTextHitsIn(PaintCtx* ctx, int selA, int selB, int scope,
                    StrBuilder* out, SelectionFormat fmt, const Bounds* cell);
+bool TextHitsUseSourceAcrossStyles(const PaintCtx* ctx, int a, int b, int scope,
+                                   EntityId owner);
 int CopyTextHitsInEntity(PaintCtx* ctx, int selA, int selB, int scope,
                          EntityId owner, char* out, int cap,
                          SelectionFormat fmt = SelectionFormat::Plain,

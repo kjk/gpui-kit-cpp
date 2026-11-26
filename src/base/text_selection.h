@@ -346,6 +346,18 @@ struct TextSelectionReflow {
     TextSelectionSourcePoint unit[2];
 };
 
+struct TextSelectionCopyProjection {
+    EntityId owner = {};
+    TextSelectionSourcePoint endpoints[2];
+    uint64_t revision = 0;
+    uint64_t selectionRevision = 0;
+    Str plain;
+    Str source;
+    bool mixedStyles = false;
+    int sourceStart = -1;
+    int sourceEnd = -1;
+};
+
 //
 // The runtime calls the three gestures and TextSelectionApply; an
 // application only has to say `Selectable()` on the text.
@@ -356,6 +368,7 @@ struct WindowSelection {
     int cursor = -1;
     // A source range awaiting projection because an endpoint didn't paint.
     TextSelectionReflow pendingReflow;
+    TextSelectionCopyProjection copyProjection;
     // A TextView's explicit Select All owns the document as its runs move.
     EntityId selectAllOwner = {};
     // TextSelectionScopeId: the trap the gesture began in. Extending stays
@@ -468,6 +481,9 @@ int WindowSelectionTextAs(Window* win, char* out, int cap, SelectionFormat fmt);
 int WindowSelectionTextForEntity(Window* win, EntityId owner, char* out,
                                  int cap, SelectionFormat fmt);
 bool WindowSelectionHasEntity(const Window* win, EntityId owner);
+struct Span;
+bool WindowSelectionRetainedSourceRange(const Window* win, EntityId owner,
+                                        Span* out);
 void WindowSelectionSelectAll(Window* win, EntityId owner);
 // TextSelection::select_all for the touch edit menu: the participant the
 // gesture started in, keeping the handles and the menu over the result.

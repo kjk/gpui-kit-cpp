@@ -1195,6 +1195,8 @@ bool TextViewState::SelectedSourceRange(const Window* window, Span* out) const {
         out->end = len(Source());
         return true;
     }
+    if (s->pendingReflow.owner == self)
+        return WindowSelectionRetainedSourceRange(window, self, out);
     return TextHitsSourceRange(&window->paint, s->anchor, s->cursor, s->scope,
                                self)
         .IntoRange(out);

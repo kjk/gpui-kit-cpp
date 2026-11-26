@@ -17,6 +17,12 @@ static bool AwaitingSelectionReflow(const WindowSelection* selection) {
            saved.offsets[1] == selection->cursor;
 }
 
+static void ClearCopyProjection(TextSelectionCopyProjection* copy) {
+    StrFree(copy->plain);
+    StrFree(copy->source);
+    *copy = {};
+}
+
 struct TextSelectionParticipantState {
     Entity<TextSelectionParticipantState> self = {};
     Str fallbackCopyText = {};
@@ -1053,6 +1059,7 @@ void WindowSelectionClear(Window* win) {
     s->anchor = -1;
     s->cursor = -1;
     s->pendingReflow = {};
+    ClearCopyProjection(&s->copyProjection);
     s->selectAllOwner = {};
     s->scope = 0;
     s->hasWindowPoints = false;
@@ -1630,6 +1637,30 @@ static const TextViewState* TextViewForSelectionOwner(App* app,
     return (const TextViewState*)EntityGet(app, owner);
 }
 
+static const TextViewState* RetainedSelectionView(const Window* win) {
+    const WindowSelection* selection = win ? win->sel : nullptr;
+    if (!selection || !AwaitingSelectionReflow(selection)) return nullptr;
+    EntityId owner = selection->pendingReflow.owner;
+    if (selection->copyProjection.owner != owner) return nullptr;
+    const TextViewState* view = TextViewForSelectionOwner(win->app, owner);
+    return view &&
+                   view->fullUpdateRevision == selection->pendingReflow
+                                                   .replacement &&
+                   view->CopyDocumentReady()
+               ? view
+               : nullptr;
+}
+
+static Str RetainedSelectionText(const WindowSelection* selection,
+                                 SelectionFormat format) {
+    const TextSelectionCopyProjection& copy = selection->copyProjection;
+    return format == SelectionFormat::Source ||
+                   (format == SelectionFormat::SourceAcrossStyles &&
+                    copy.mixedStyles)
+               ? copy.source
+               : copy.plain;
+}
+
 static const TextViewState* SelectAllTextView(Window* win) {
     if (!win || !win->sel || win->sel->touchSource.copy) return nullptr;
     return TextViewForSelectionOwner(win->app, win->sel->selectAllOwner);
@@ -1640,6 +1671,57 @@ static bool SelectionContainsHit(const TextHit& hit, int lo, int hi,
     int size = hit.atom || hit.blockPlugin ? 1 : len(hit.text);
     return size > 0 && (scope < 0 || hit.scope == scope) && hit.docOff < hi &&
            hit.docOff + size > lo;
+}
+
+static bool SameSourcePoint(TextSelectionSourcePoint a,
+                            TextSelectionSourcePoint b) {
+    return a.source == b.source && a.entityEnd == b.entityEnd &&
+           a.entityByte == b.entityByte;
+}
+
+static void CaptureSelectionCopy(Window* win, const TextViewState* view,
+                                 const TextSelectionReflow& selection) {
+    auto& copy = win->sel->copyProjection;
+    int lo = std::min(selection.offsets[0], selection.offsets[1]);
+    int hi = std::max(selection.offsets[0], selection.offsets[1]);
+    for (const TextHit& hit : win->paint.texts) {
+        if (hit.docOff >= hi) break;
+        if (hit.owner != view->self &&
+            SelectionContainsHit(hit, lo, hi, selection.scope)) {
+            ClearCopyProjection(&copy);
+            return;
+        }
+    }
+    if (copy.owner == view->self && copy.revision == view->committedRevision &&
+        copy.selectionRevision == view->selectionRevision &&
+        SameSourcePoint(copy.endpoints[0], selection.endpoints[0]) &&
+        SameSourcePoint(copy.endpoints[1], selection.endpoints[1])) {
+        return;
+    }
+
+    ClearCopyProjection(&copy);
+    copy.owner = view->self;
+    copy.revision = view->committedRevision;
+    copy.selectionRevision = view->selectionRevision;
+    copy.endpoints[0] = selection.endpoints[0];
+    copy.endpoints[1] = selection.endpoints[1];
+    const Bounds* cell = AnchorCellOf(win->sel);
+    StrBuilder plain;
+    StrBuilder source;
+    CopyTextHitsIn(&win->paint, lo, hi, selection.scope, &plain,
+                   SelectionFormat::Plain, cell);
+    CopyTextHitsIn(&win->paint, lo, hi, selection.scope, &source,
+                   SelectionFormat::Source, cell);
+    copy.plain = plain.TakeStr();
+    copy.source = source.TakeStr();
+    copy.mixedStyles = TextHitsUseSourceAcrossStyles(
+        &win->paint, lo, hi, selection.scope, view->self);
+    Span range;
+    if (TextHitsSourceRange(&win->paint, lo, hi, selection.scope, view->self)
+            .IntoRange(&range)) {
+        copy.sourceStart = range.start;
+        copy.sourceEnd = range.end;
+    }
 }
 
 static int FirstMapSegmentAt(const SelSourceMap& map, int offset) {
@@ -1766,6 +1848,7 @@ TextSelectionReflow WindowSelectionCaptureReflow(Window* win) {
     if (!view || !view->CopyDocumentReady()) return {};
     out.owner = view->self;
     out.replacement = view->fullUpdateRevision;
+    CaptureSelectionCopy(win, view, out);
     if (s->unitHeld) {
         const TextHit* start = CaptureSourcePoint(
             win->paint, s->unitStart, s->scope, false, &out.unit[0]);
@@ -1848,6 +1931,9 @@ int WindowSelectionTextAs(Window* win, char* out, int cap,
     if (const TextViewState* view = SelectAllTextView(win)) {
         return StrCopyCapped(out, cap, view->SelectAllText(fmt));
     }
+    if (RetainedSelectionView(win)) {
+        return StrCopyCapped(out, cap, RetainedSelectionText(win->sel, fmt));
+    }
     if (!WindowSelectionHas(win)) {
         if (out && cap > 0) {
             out[0] = 0;
@@ -1864,6 +1950,8 @@ int WindowSelectionText(Window* win, char* out, int cap) {
 }
 
 bool WindowSelectionHasEntity(const Window* win, EntityId owner) {
+    if (const TextViewState* view = RetainedSelectionView(win))
+        return view->self == owner;
     if (!owner.IsValid() || !WindowSelectionHas(win)) return false;
     const WindowSelection* selection = win->sel;
     if (selection->selectAllOwner.IsValid()) {
@@ -1886,12 +1974,24 @@ bool WindowSelectionHasEntity(const Window* win, EntityId owner) {
     return false;
 }
 
+bool WindowSelectionRetainedSourceRange(const Window* win, EntityId owner,
+                                        Span* out) {
+    const TextViewState* view = RetainedSelectionView(win);
+    if (!view || view->self != owner || !out) return false;
+    const auto& copy = win->sel->copyProjection;
+    if (copy.sourceStart < 0) return false;
+    *out = {copy.sourceStart, copy.sourceEnd};
+    return true;
+}
+
 int WindowSelectionTextForEntity(Window* win, EntityId owner, char* out,
                                  int cap, SelectionFormat fmt) {
     if (!out || cap <= 0) return 0;
     out[0] = 0;
     if (!WindowSelectionHasEntity(win, owner)) return 0;
     WindowSelection* selection = win->sel;
+    if (AwaitingSelectionReflow(selection))
+        return StrCopyCapped(out, cap, RetainedSelectionText(selection, fmt));
     return CopyTextHitsInEntity(&win->paint, selection->anchor,
                                 selection->cursor, selection->scope, owner, out,
                                 cap, fmt, AnchorCellOf(selection));
@@ -2100,7 +2200,8 @@ int TextSelection::SelectedText(Window* window, App* app, char* out, int cap) {
 }
 
 bool TextSelection::HasSelection(Window* window, const App* app) {
-    if (WindowSelectionHas(window)) return true;
+    if (WindowSelectionHas(window) || RetainedSelectionView(window))
+        return true;
     const WindowSelection* selection = window ? window->sel : nullptr;
     if (!selection || !app) return false;
     for (int i = 0; i < len(selection->participants); i++) {
@@ -2143,6 +2244,8 @@ void WindowSelectionSetFormat(Window* win, SelectionFormat fmt) {
 SelectionFormat WindowSelectionFormat(Window* win) {
     const WindowSelection* s = win ? win->sel : nullptr;
     if (!s) return SelectionFormat::Plain;
+    if (const TextViewState* view = RetainedSelectionView(win))
+        return view->selectionFormat;
     if (s->touchSource.copy || !WindowSelectionHas(win)) return s->format;
 
     EntityId owner = s->selectAllOwner;
@@ -2187,6 +2290,9 @@ bool WindowSelectionCopy(Window* win, bool trim) {
     }
     if (const TextViewState* view = SelectAllTextView(win)) {
         return write(view->SelectAllText(view->selectionFormat));
+    }
+    if (const TextViewState* view = RetainedSelectionView(win)) {
+        return write(RetainedSelectionText(selection, view->selectionFormat));
     }
     // Participant copy callbacks still use the bounded copy API.
     bool usesCallbacks = len(selection->participants) > 0;

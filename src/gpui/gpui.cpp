@@ -10563,7 +10563,8 @@ static bool BlockPluginHitSelected(const PaintCtx* ctx, const TextHit& t, int a,
     return a <= t.docOff && b > t.docOff;
 }
 
-static bool AtomReached(PaintCtx* ctx, int i, int a, int b, EntityId owner) {
+static bool AtomReached(const PaintCtx* ctx, int i, int a, int b,
+                        EntityId owner) {
     const TextHit& t = ctx->texts[i];
     const SelBlock* blk = t.src ? t.src->block : nullptr;
     const TextHit* prev = i > 0 ? &ctx->texts[i - 1] : nullptr;
@@ -10602,7 +10603,7 @@ static bool AtomReached(PaintCtx* ctx, int i, int a, int b, EntityId owner) {
 // block, a second mark group, or an object copies as source. A block that
 // never painted is not in this list; source copy is the non-scrollable path,
 // where every block the selection covers has painted.
-static bool AcrossStylesUsesSource(PaintCtx* ctx, int a, int b, int scope,
+bool TextHitsUseSourceAcrossStyles(const PaintCtx* ctx, int a, int b, int scope,
                                    EntityId owner) {
     const SelSource* grp = nullptr;
     bool saw = false;
@@ -10662,7 +10663,7 @@ static int CopyTextHitsFiltered(PaintCtx* ctx, int a, int b, int scope,
         b = t;
     }
     if (fmt == SelectionFormat::SourceAcrossStyles) {
-        fmt = AcrossStylesUsesSource(ctx, a, b, scope, owner)
+        fmt = TextHitsUseSourceAcrossStyles(ctx, a, b, scope, owner)
                   ? SelectionFormat::Source
                   : SelectionFormat::Plain;
     }

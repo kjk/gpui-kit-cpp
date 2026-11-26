@@ -527,8 +527,8 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   format. Selections spanning separate views use the window's fallback.
   Source mapping includes images when a selected run reaches their boundary.
   Mapped Markdown text endpoints survive reflow and can reattach after an
-  enclosing virtual list omits their row. Copy needs both endpoints projected
-  onto the current frame.
+  enclosing virtual list omits their row. A selected TextView retains its last
+  plain text, Markdown and source range while the row is absent.
   Select All copies from the committed document and follows appends until
   the selection moves. A painted block plugin is included whole when the
   drag starts or ends inside its box or covers it. Enclosed top-level

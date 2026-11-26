@@ -7114,7 +7114,21 @@ static void SourceSelectionSurvivesAnUnrenderedVirtualRow() {
         TestDraw(win);
         TestDraw(win);
         utassert(!HitContaining(win, "alpha"));
-        utassert(!WindowSelectionCopy(win));
+        utassert(WindowSelectionCopy(win));
+        utassert(StrEq(TestReadFromClipboard(GetTempArena()), StrL("**lph**")));
+        char copied[64];
+        int n = WindowSelectionTextAs(win, copied, dimofi(copied),
+                                      SelectionFormat::Plain);
+        utassert(StrEq(Str(copied, n), StrL("lph")));
+        n = WindowSelectionTextAs(win, copied, dimofi(copied),
+                                  SelectionFormat::SourceAcrossStyles);
+        utassert(StrEq(Str(copied, n), StrL("lph")));
+        auto* document = view->document.Get(app);
+        n = document->SelectedText(win, copied, dimofi(copied));
+        utassert(StrEq(Str(copied, n), StrL("**lph**")));
+        Span range;
+        utassert(document->SelectedSourceRange(win, &range) &&
+                 range.start == 3 && range.end == 6);
         utassert(win->paint.selA == -1);
 
         view->top = 7;
@@ -7125,6 +7139,12 @@ static void SourceSelectionSurvivesAnUnrenderedVirtualRow() {
                  selection->anchor != originalStart);
         utassert(WindowSelectionCopy(win));
         utassert(StrEq(TestReadFromClipboard(GetTempArena()), StrL("**lph**")));
+
+        view->top = 15;
+        TestDraw(win);
+        document->SetText(StrL("replacement document"), app);
+        utassert(!WindowSelectionCopy(win));
+        utassert(!document->SelectedSourceRange(win, &range));
     }
     TestAppFree(app);
 }
