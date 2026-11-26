@@ -388,6 +388,18 @@ static bool GpuiAccessibilitySelectionItem(gpui::AccessibilityRole role) {
     }
 }
 
+static bool GpuiAccessibilityMacSelectable(
+    const gpui::AccessibilityNode* node) {
+    return node && node->info.role != gpui::AccessibilityRole::Tab &&
+           GpuiAccessibilitySelectionItem(node->info.role) &&
+           node->info.hasSelected && !node->info.disabled;
+}
+
+static bool GpuiAccessibilityCanPick(const gpui::AccessibilityNode* node) {
+    return GpuiAccessibilityMacSelectable(node) &&
+           (node->actions & gpui::AccessibilityActionDefault);
+}
+
 static NSArray* GpuiAccessibilityRows(GpuiAccessibilityElement* element,
                                       bool selectedOnly) {
     gpui::Window* win = element->gpuiWindow;
@@ -503,7 +515,27 @@ static NSArray* GpuiAccessibilityRows(GpuiAccessibilityElement* element,
 }
 - (BOOL)isAccessibilitySelected {
     const gpui::AccessibilityNode* node = GpuiAccessibilityNode(self);
-    return node && node->info.hasSelected && node->info.selected;
+    return GpuiAccessibilityMacSelectable(node) && node->info.selected;
+}
+- (BOOL)isAccessibilitySelectorAllowed:(SEL)selector {
+    if (selector == @selector(setAccessibilitySelected:) ||
+        selector == @selector(accessibilityPerformPick)) {
+        return GpuiAccessibilityCanPick(GpuiAccessibilityNode(self));
+    }
+    return [super isAccessibilitySelectorAllowed:selector];
+}
+- (void)setAccessibilitySelected:(BOOL)selected {
+    const gpui::AccessibilityNode* node = GpuiAccessibilityNode(self);
+    if (GpuiAccessibilityCanPick(node) &&
+        node->info.selected != (selected != NO)) {
+        gpui::WindowAccessibilityPerform(gpuiWindow, gpuiNodeId,
+                                         gpui::AccessibilityAction::Default);
+    }
+}
+- (BOOL)accessibilityPerformPick {
+    return GpuiAccessibilityCanPick(GpuiAccessibilityNode(self)) &&
+           gpui::WindowAccessibilityPerform(gpuiWindow, gpuiNodeId,
+                                            gpui::AccessibilityAction::Default);
 }
 - (BOOL)isAccessibilityExpanded {
     const gpui::AccessibilityNode* node = GpuiAccessibilityNode(self);
@@ -2786,6 +2818,32 @@ bool AccessibilityMacSelectionSmokeTest() {
         ok &= [[list accessibilitySelectedChildren] count] == 0 &&
               [[list accessibilitySelectedRows] count] == 0 &&
               [[list accessibilityRows] count] == 2;
+
+        int clicks = 0;
+        AccessibilityNode& option = win.accessibility[2];
+        option.actions = AccessibilityActionDefault;
+        option.onClick = MkFunc0(+[](int* count) { ++*count; }, &clicks);
+        auto* element = GpuiAccessibilityElementFor(&win, option.id);
+        ok &= [element
+            isAccessibilitySelectorAllowed:@selector(
+                                               setAccessibilitySelected:)];
+        [element setAccessibilitySelected:NO];
+        ok &= clicks == 0;
+        [element setAccessibilitySelected:YES];
+        ok &= clicks == 1;
+        option.info.selected = true;
+        ok &= [element isAccessibilitySelected];
+        [element setAccessibilitySelected:NO];
+        ok &= clicks == 2;
+        ok &= [element accessibilityPerformPick] && clicks == 3;
+        option.info.disabled = true;
+        [element setAccessibilitySelected:NO];
+        ok &=
+            ![element isAccessibilitySelected] &&
+            ![element
+                isAccessibilitySelectorAllowed:@selector(
+                                                   accessibilityPerformPick)] &&
+            ![element accessibilityPerformPick] && clicks == 3;
         VecReset(win.accessibility);
         return ok;
     }
