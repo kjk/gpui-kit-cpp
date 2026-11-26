@@ -584,6 +584,7 @@ void* PlatWindowHandle(Window* win);
 // `install_window_hit_test_forwarder`; the macOS implementation is the source
 // operation and the other platform definitions are intentional no-ops.
 void PlatInstallAccessibilityHitTest(Window* win);
+bool AccessibilityRoleIsSelectionContainer(AccessibilityRole role);
 // The portable tree is live data; native accessibility clients need change
 // notifications beside their queries. The focus id is GPUI's internal id,
 // which the adapter resolves back to the semantic node that exposes it.

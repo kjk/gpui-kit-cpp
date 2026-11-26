@@ -11507,6 +11507,27 @@ bool AccessibilityRoleIsTextField(AccessibilityRole role) {
     }
 }
 
+bool AccessibilityRoleIsSelectionContainer(AccessibilityRole role) {
+    switch (role) {
+        case AccessibilityRole::ComboBox:
+        case AccessibilityRole::EditableComboBox:
+        case AccessibilityRole::Grid:
+        case AccessibilityRole::ListBox:
+        case AccessibilityRole::ListGrid:
+        case AccessibilityRole::Menu:
+        case AccessibilityRole::MenuBar:
+        case AccessibilityRole::MenuListPopup:
+        case AccessibilityRole::RadioGroup:
+        case AccessibilityRole::TabList:
+        case AccessibilityRole::Toolbar:
+        case AccessibilityRole::Tree:
+        case AccessibilityRole::TreeGrid:
+            return true;
+        default:
+            return false;
+    }
+}
+
 bool AccessibilityRoleTakesText(AccessibilityRole role) {
     switch (role) {
         case AccessibilityRole::MonthInput:

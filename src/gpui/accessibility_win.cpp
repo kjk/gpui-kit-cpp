@@ -5,6 +5,7 @@
 
 #include "gpui/accessibility_win.h"
 #include "base/text_boundary.h"
+#include "gpui/platform.h"
 
 #include <uiautomation.h>
 
@@ -256,27 +257,6 @@ static bool AccessibilityItemSelected(const AccessibilityInfo& info) {
     return AccessibilityRadioItem(info.role)
                ? info.toggled == AccessibilityToggled::True
                : info.hasSelected && info.selected;
-}
-
-static bool AccessibilitySelectionContainerRole(AccessibilityRole role) {
-    switch (role) {
-        case AccessibilityRole::ComboBox:
-        case AccessibilityRole::EditableComboBox:
-        case AccessibilityRole::Grid:
-        case AccessibilityRole::ListBox:
-        case AccessibilityRole::ListGrid:
-        case AccessibilityRole::Menu:
-        case AccessibilityRole::MenuBar:
-        case AccessibilityRole::MenuListPopup:
-        case AccessibilityRole::RadioGroup:
-        case AccessibilityRole::TabList:
-        case AccessibilityRole::Toolbar:
-        case AccessibilityRole::Tree:
-        case AccessibilityRole::TreeGrid:
-            return true;
-        default:
-            return false;
-    }
 }
 
 static bool AccessibilityGridRole(AccessibilityRole role) {
@@ -1135,7 +1115,7 @@ HRESULT WinAccessibilityNode::GetPatternProvider(PATTERNID pattern,
         return QueryInterface(__uuidof(IExpandCollapseProvider), (void**)out);
     }
     if (pattern == UIA_SelectionPatternId &&
-        AccessibilitySelectionContainerRole(node->info.role)) {
+        AccessibilityRoleIsSelectionContainer(node->info.role)) {
         return QueryInterface(__uuidof(ISelectionProvider), (void**)out);
     }
     if (pattern == UIA_SelectionItemPatternId &&
@@ -1273,7 +1253,7 @@ static WinPropertyValue WinSemanticProperty(const WinNodeProperties& node,
         return AccessibilityItemSelected(info);
     } else if ((property == UIA_SelectionCanSelectMultiplePropertyId ||
                 property == UIA_SelectionIsSelectionRequiredPropertyId) &&
-               AccessibilitySelectionContainerRole(info.role)) {
+               AccessibilityRoleIsSelectionContainer(info.role)) {
         return false;
     } else if (property == UIA_GridRowCountPropertyId && info.hasRowCount) {
         return info.rowCount;
@@ -1661,8 +1641,8 @@ static bool AccessibilityDescendsFrom(const Window* win, int index,
         if (at == ancestor) {
             return true;
         }
-        if (AccessibilitySelectionContainerRole(win->accessibility[at]
-                                                    .info.role)) {
+        if (AccessibilityRoleIsSelectionContainer(win->accessibility[at]
+                                                      .info.role)) {
             return false;
         }
         at = win->accessibility[at].parent;
@@ -1688,7 +1668,7 @@ HRESULT WinAccessibilityNode::GetSelection(SAFEARRAY** out) {
             new WinTextRange(root, id, std::min(lo, hi), std::max(lo, hi)),
             out);
     }
-    if (!AccessibilitySelectionContainerRole(node->info.role)) {
+    if (!AccessibilityRoleIsSelectionContainer(node->info.role)) {
         return UIA_E_INVALIDOPERATION;
     }
     int ancestor = root->NodeIndex(id);
@@ -1738,7 +1718,7 @@ HRESULT WinAccessibilityNode::get_CanSelectMultiple(BOOL* out) {
     if (!node) {
         return UIA_E_ELEMENTNOTAVAILABLE;
     }
-    if (!AccessibilitySelectionContainerRole(node->info.role)) {
+    if (!AccessibilityRoleIsSelectionContainer(node->info.role)) {
         return UIA_E_INVALIDOPERATION;
     }
     // The portable semantic record has no multi-select policy. Every current
@@ -1806,7 +1786,7 @@ HRESULT WinAccessibilityNode::get_SelectionContainer(
         return hr;
     }
     int parent = root->win->accessibility[index].parent;
-    while (parent >= 0 && !AccessibilitySelectionContainerRole(
+    while (parent >= 0 && !AccessibilityRoleIsSelectionContainer(
                               root->win->accessibility[parent].info.role)) {
         parent = root->win->accessibility[parent].parent;
     }
@@ -2844,7 +2824,7 @@ static void WinSelectionEvents(Vec<WinSelectionDelta>& deltas,
         // AccessKit's Windows adapter coalesces more than 20 item changes.
         constexpr int kInvalidateLimit = 20;
         if (end - start > kInvalidateLimit &&
-            AccessibilitySelectionContainerRole(node.properties.info.role)) {
+            AccessibilityRoleIsSelectionContainer(node.properties.info.role)) {
             VecAppend(*events,
                       WinNodeEvent{id, UIA_Selection_InvalidatedEventId});
             continue;
@@ -2887,8 +2867,8 @@ static bool WinSnapshotChanges(WinAccessibility* root,
         if (node.parent >= 0) {
             auto& parentSnapshot = next[node.parent];
             snapshot.selectionContainer =
-                AccessibilitySelectionContainerRole(parentSnapshot.properties
-                                                        .info.role)
+                AccessibilityRoleIsSelectionContainer(parentSnapshot.properties
+                                                          .info.role)
                     ? (uint32_t)node.parent + 1
                     : parentSnapshot.selectionContainer;
         }
@@ -3625,7 +3605,7 @@ bool AccessibilityWinSmokeTest(Window* win, uint32_t nodeId) {
                                                           .hasNumericValue},
         {UIA_ExpandCollapsePatternId, expected->info.hasExpanded != 0},
         {UIA_SelectionPatternId,
-         AccessibilitySelectionContainerRole(expected->info.role)},
+         AccessibilityRoleIsSelectionContainer(expected->info.role)},
         {UIA_SelectionItemPatternId,
          AccessibilitySelectionItem(expected->info)},
         {UIA_TextPatternId, AccessibilityTextPattern(*expected)},
@@ -3692,7 +3672,7 @@ bool AccessibilityWinSmokeTest(Window* win, uint32_t nodeId) {
             text->Release();
         }
     }
-    if (ok && AccessibilitySelectionContainerRole(expected->info.role)) {
+    if (ok && AccessibilityRoleIsSelectionContainer(expected->info.role)) {
         ISelectionProvider* selection = nullptr;
         SAFEARRAY* selected = nullptr;
         ok = SUCCEEDED(simple->QueryInterface(__uuidof(ISelectionProvider),

@@ -365,6 +365,29 @@ static NSArray* GpuiAccessibilityChildren(gpui::Window* win, int parent) {
     return children;
 }
 
+// AccessKit's items traversal stops at item-like children, even if those
+// children have their own items. Other roles are transparent to the query.
+static bool GpuiAccessibilitySelectionItem(gpui::AccessibilityRole role) {
+    using gpui::AccessibilityRole;
+    switch (role) {
+        case AccessibilityRole::Article:
+        case AccessibilityRole::Comment:
+        case AccessibilityRole::ListItem:
+        case AccessibilityRole::MenuItem:
+        case AccessibilityRole::MenuItemCheckBox:
+        case AccessibilityRole::MenuItemRadio:
+        case AccessibilityRole::Tab:
+        case AccessibilityRole::TreeItem:
+        case AccessibilityRole::ListBoxOption:
+        case AccessibilityRole::MenuListOption:
+        case AccessibilityRole::RadioButton:
+        case AccessibilityRole::Term:
+            return true;
+        default:
+            return false;
+    }
+}
+
 @implementation GpuiAccessibilityElement
 
 - (BOOL)isAccessibilityElement {
@@ -491,6 +514,47 @@ static NSArray* GpuiAccessibilityChildren(gpui::Window* win, int parent) {
                                       owner:self
                                   partCount:(NSUInteger)count]
                      : children;
+}
+- (NSArray*)accessibilitySelectedChildren {
+    int index = gpui::WindowAccessibilityNodeIndex(gpuiWindow, gpuiNodeId);
+    if (index < 0) return nil;
+    const auto& nodes = gpuiWindow->accessibility;
+    gpui::AccessibilityRole role = nodes[index].info.role;
+    if (!gpui::AccessibilityRoleIsSelectionContainer(role) ||
+        role == gpui::AccessibilityRole::TabList) {
+        return nil;
+    }
+    NSMutableArray* selected = [[NSMutableArray alloc] init];
+    for (int i = index + 1; i < len(nodes); i++) {
+        const auto& node = nodes[i];
+        int parent = node.parent;
+        while (parent > index &&
+               !GpuiAccessibilitySelectionItem(nodes[parent].info.role)) {
+            parent = nodes[parent].parent;
+        }
+        if (parent < index) break;
+        if (parent == index && GpuiAccessibilitySelectionItem(node.info.role) &&
+            node.info.hasSelected && node.info.selected) {
+            [selected
+                addObject:GpuiAccessibilityElementFor(gpuiWindow, node.id)];
+        }
+    }
+    return selected;
+}
+- (NSArray*)accessibilityTabs {
+    int index = gpui::WindowAccessibilityNodeIndex(gpuiWindow, gpuiNodeId);
+    if (index < 0 || gpuiWindow->accessibility[index]
+                             .info.role != gpui::AccessibilityRole::TabList) {
+        return nil;
+    }
+    NSMutableArray* tabs = [[NSMutableArray alloc] init];
+    for (const auto& node : gpuiWindow->accessibility) {
+        if (node.parent == index &&
+            node.info.role == gpui::AccessibilityRole::Tab) {
+            [tabs addObject:GpuiAccessibilityElementFor(gpuiWindow, node.id)];
+        }
+    }
+    return tabs;
 }
 - (NSArray<NSString*>*)accessibilityActionNames {
     const gpui::AccessibilityNode* node = GpuiAccessibilityNode(self);
@@ -2665,6 +2729,46 @@ void PlatInstallAccessibilityHitTest(Window* win) {
     // point of two doubles — the encoding Rust builds from the same pieces.
     class_addMethod(cls, @selector(accessibilityHitTest:),
                     (IMP)GpuiAccessibilityHitTest, "@@:{CGPoint=dd}");
+}
+
+bool AccessibilityMacSelectionSmokeTest() {
+    @autoreleasepool {
+        Window win;
+        PlatWindow platform;
+        win.plat = &platform;
+        auto append = [&](AccessibilityRole role, int parent, bool selected) {
+            AccessibilityNode node;
+            node.id = (uint32_t)len(win.accessibility) + 1;
+            node.parent = parent;
+            node.info.role = role;
+            node.info.hasSelected = selected;
+            node.info.selected = selected;
+            VecAppend(win.accessibility, node);
+        };
+        append(AccessibilityRole::ListBox, -1, false);
+        append(AccessibilityRole::Group, 0, false);
+        append(AccessibilityRole::ListBoxOption, 1, true);
+        append(AccessibilityRole::ListBoxOption, 2, true);
+        append(AccessibilityRole::ListBoxOption, 0, false);
+        append(AccessibilityRole::TabList, -1, false);
+        append(AccessibilityRole::Tab, 5, true);
+        append(AccessibilityRole::Tab, 5, false);
+        auto* list = GpuiAccessibilityElementFor(&win, 1);
+        auto* tabList = GpuiAccessibilityElementFor(&win, 6);
+        NSArray* selected = [list accessibilitySelectedChildren];
+        NSArray* tabs = [tabList accessibilityTabs];
+        bool ok =
+            selected.count == 1 &&
+            selected.firstObject == GpuiAccessibilityElementFor(&win, 3) &&
+            ![list accessibilityTabs] && tabs.count == 2 &&
+            tabs.firstObject == GpuiAccessibilityElementFor(&win, 7) &&
+            tabs.lastObject == GpuiAccessibilityElementFor(&win, 8) &&
+            ![tabList accessibilitySelectedChildren];
+        win.accessibility[2].info.selected = false;
+        ok &= [[list accessibilitySelectedChildren] count] == 0;
+        VecReset(win.accessibility);
+        return ok;
+    }
 }
 
 // Exercises the AppKit objects from a headless test window.

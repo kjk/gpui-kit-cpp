@@ -29,6 +29,7 @@ bool AccessibilityLinuxEventSmokeTest();
 #if GPUI_OS_MAC
 namespace gpui {
 bool AccessibilityMacPartsSmokeTest(Window* win, uint32_t nodeId);
+bool AccessibilityMacSelectionSmokeTest();
 } // namespace gpui
 #endif
 
@@ -1865,6 +1866,9 @@ void TestAccessibility() {
     utassert(AccessibilityWinSelectionItemActionsSmokeTest());
     utassert(AccessibilityWinSelectionContainerSmokeTest());
     utassert(AccessibilityWinDialogEventsSmokeTest());
+#endif
+#if GPUI_OS_MAC
+    utassert(AccessibilityMacSelectionSmokeTest());
 #endif
     TheTreeSkipsVisualBoxesButKeepsSemanticParents();
     StyledButtonsCanReplaceTheirVisibleAccessibleName();

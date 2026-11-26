@@ -4,6 +4,7 @@
    live hierarchy, component geometry, actions, values, selection and text. */
 
 #include "gpui/accessibility_linux.h"
+#include "gpui/platform.h"
 
 #include <errno.h>
 #include <locale.h>
@@ -642,27 +643,6 @@ static Str ChildPathTemp(const LinuxAccessible& object, int wanted) {
     return PartPathForTemp(object.windowIndex, node->id, part);
 }
 
-static bool IsSelectionRole(AccessibilityRole role) {
-    switch (role) {
-        case AccessibilityRole::ComboBox:
-        case AccessibilityRole::EditableComboBox:
-        case AccessibilityRole::Grid:
-        case AccessibilityRole::ListBox:
-        case AccessibilityRole::ListGrid:
-        case AccessibilityRole::Menu:
-        case AccessibilityRole::MenuBar:
-        case AccessibilityRole::MenuListPopup:
-        case AccessibilityRole::RadioGroup:
-        case AccessibilityRole::TabList:
-        case AccessibilityRole::Toolbar:
-        case AccessibilityRole::Tree:
-        case AccessibilityRole::TreeGrid:
-            return true;
-        default:
-            return false;
-    }
-}
-
 // ATSPI_ROLE_PAGE, a document part's role, as for Evince's pages. UIA has no
 // page control type, so Windows uses Custom.
 static constexpr uint32_t kRolePage = 84;
@@ -989,7 +969,8 @@ static uint8_t LinuxNodeInterfaces(const AccessibilityNode& node) {
     uint8_t interfaces = 0;
     if (ActionCount(node)) interfaces |= kLinuxAction;
     if (node.info.hasNumericValue) interfaces |= kLinuxValue;
-    if (IsSelectionRole(node.info.role)) interfaces |= kLinuxSelection;
+    if (AccessibilityRoleIsSelectionContainer(node.info.role))
+        interfaces |= kLinuxSelection;
     if (WindowAccessibilityHasText(node)) interfaces |= kLinuxText;
     if (node.input && (node.actions & AccessibilityActionSetValue))
         interfaces |= kLinuxEditable;
@@ -1305,7 +1286,7 @@ static bool PutPropertyVariant(DbusWriter* body, const LinuxAccessible& object,
         }
         PutVariantDouble(body, value);
     } else if (StrIs(interfaceName, kSelection) && node &&
-               IsSelectionRole(node->info.role)) {
+               AccessibilityRoleIsSelectionContainer(node->info.role)) {
         if (StrIs(property, "version")) {
             PutVariantU32(body, 1);
         } else if (StrIs(property, "NSelectedChildren")) {
@@ -1396,7 +1377,7 @@ static bool PutAllProperties(DbusWriter* body, const LinuxAccessible& object,
         GPUI_ATSPI_PROPERTY("CurrentValue");
         GPUI_ATSPI_PROPERTY("Text");
     } else if (StrIs(interfaceName, kSelection) && node &&
-               IsSelectionRole(node->info.role)) {
+               AccessibilityRoleIsSelectionContainer(node->info.role)) {
         GPUI_ATSPI_PROPERTY("version");
         GPUI_ATSPI_PROPERTY("NSelectedChildren");
     } else if (StrIs(interfaceName, kText) && object.nodeIndex >= 0 &&
@@ -2231,7 +2212,9 @@ static bool SelectionDescendant(const Window* win, int index, int ancestor) {
     int at = win->accessibility[index].parent;
     while (at >= 0 && at < len(win->accessibility)) {
         if (at == ancestor) return true;
-        if (IsSelectionRole(win->accessibility[at].info.role)) return false;
+        if (AccessibilityRoleIsSelectionContainer(win->accessibility[at]
+                                                      .info.role))
+            return false;
         at = win->accessibility[at].parent;
     }
     return false;
@@ -2282,7 +2265,7 @@ static bool LinuxSetChildSelected(const LinuxAccessible& object, int child,
 static bool HandleSelection(const Incoming& in, const LinuxAccessible& object) {
     if (!StrIs(in.interfaceName, kSelection)) return false;
     const auto* target = ElementNode(object);
-    if (!target || !IsSelectionRole(target->info.role)) {
+    if (!target || !AccessibilityRoleIsSelectionContainer(target->info.role)) {
         return false;
     }
     DbusWriter body;
@@ -3012,7 +2995,8 @@ static void TrackLinuxNodes(Window* win, int focused) {
                    info.numericValue,
                    (bool)info.hasNumericValue,
                    node.bounds};
-        next[i].selectionContainer = IsSelectionRole(info.role);
+        next[i].selectionContainer =
+            AccessibilityRoleIsSelectionContainer(info.role);
         next[i].interfaces = LinuxNodeInterfaces(node);
     }
     if (len(next) > 1)
