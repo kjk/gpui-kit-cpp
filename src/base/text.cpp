@@ -4236,6 +4236,34 @@ static int LeafIndexInPiece(const LeafGeometry& leaf, const LeafPiece& piece,
 static Point LeafWholePosition(const LeafGeometry& leaf, int index,
                                bool lineEndAffinity) {
     Point origin = {leaf.originX, leaf.originY};
+    if (index > 0 && leaf.text.s[index - 1] == '\n') {
+        Str text = leaf.text;
+        int end = index;
+        while (end < len(text) &&
+               (text.s[end] == '\n' ||
+                (text.s[end] == '\r' && end + 1 < len(text) &&
+                 text.s[end + 1] == '\n'))) {
+            end += text.s[end] == '\r' ? 2 : 1;
+        }
+        if (end == len(text)) {
+            // A trailing empty line has a caret but no glyph range to query.
+            int prefix = index;
+            int rows = 0;
+            while (prefix > 0 && text.s[prefix - 1] == '\n') {
+                --prefix;
+                if (prefix > 0 && text.s[prefix - 1] == '\r') --prefix;
+                ++rows;
+            }
+            float firstEmptyY =
+                prefix > 0
+                    ? MeasureText(leaf.paint, Str(text.s, prefix), leaf.font,
+                                  leaf.maxW, leaf.wrap, leaf.weight, leaf.lineH)
+                          .h
+                    : leaf.lineHeight;
+            return {origin.x,
+                    origin.y + firstEmptyY + (rows - 1) * leaf.lineHeight};
+        }
+    }
     float x = 0;
     float y = 0;
     float h = 0;
@@ -5824,9 +5852,11 @@ El* TextView::CodeBlock(MdNode* n) {
     // drawing, CJK) cannot set its own leading and make the block ragged.
     // Nothing wraps, so a long line clips the way a <pre> does.
     int nBytes = RunsLen(n);
-    while (nBytes > 0 && n->runLast && len(n->runLast->text) > 0 &&
+    while (!n->hasEditorKey && nBytes > 0 && n->runLast &&
+           len(n->runLast->text) > 0 &&
            n->runLast->text.s[len(n->runLast->text) - 1] == '\n') {
-        // The fence's own trailing newline would paint an empty last line.
+        // Trim trailing empty lines in ordinary previews. An editor leaf's
+        // layout must retain their byte offsets and caret positions.
         n->runLast->text.len--;
         nBytes--;
     }

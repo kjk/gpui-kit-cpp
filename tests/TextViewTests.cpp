@@ -9747,6 +9747,28 @@ static void EmptyKeyedLeafHasALineBox() {
     TestAppFree(app);
 }
 
+static void KeyedCodeKeepsTrailingNewlines() {
+    App* app = TestAppNew();
+    Arena* arena = ArenaNew();
+    MdNode* doc = HostNode(arena, MdKind::Doc);
+    MdNode* code = HostNode(arena, MdKind::Code);
+    code->runFirst = code->runLast = HostRun(arena, "return;\n\n");
+    MdSetLeafKey(code, 1);
+    HostAdd(doc, code);
+    Window* win = nullptr;
+    OpenEditorHost(app, doc, 220, &win);
+    const auto* leaf = EditorHostLeaf(1);
+    utassert(leaf && StrEq(leaf->text, "return;\n\n"));
+    if (leaf) {
+        utassert(leaf->PositionForIndex(8).y > leaf->PositionForIndex(7).y);
+        utassert(leaf->PositionForIndex(9).y > leaf->PositionForIndex(8).y);
+    }
+    utassert(StrEq(code->runFirst->text, "return;\n\n"));
+    EditorHostEnd();
+    TestAppFree(app);
+    ArenaDelete(arena);
+}
+
 static void CollectLeafGeometryNestsAndRestores() {
     utassert(!EditorHostActive());
     EditorHostBegin();
@@ -11511,6 +11533,7 @@ void TestTextView() {
     RekeyingClonedLeavesPreservesEachIdentity();
     GeometryIsAnImmutableSnapshot();
     EmptyKeyedLeafHasALineBox();
+    KeyedCodeKeepsTrailingNewlines();
     HostForegroundsFollowTheRenderContext();
     HtmlParagraphsPaintTheirOwnText();
     CollectLeafGeometryNestsAndRestores();
