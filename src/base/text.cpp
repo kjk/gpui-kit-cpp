@@ -7547,6 +7547,21 @@ static bool LeafTextOffsetNear(const RenderedIndex* index,
     return true;
 }
 
+static int RenderedIndexBlockAt(const RenderedIndex* index, int offset) {
+    int count = len(index->blocks);
+    if (count == 0) return -1;
+    int lo = 0;
+    int hi = count;
+    while (lo < hi) {
+        int mid = lo + (hi - lo) / 2;
+        if (index->blocks[mid].end <= offset)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    return std::min(lo, count - 1);
+}
+
 bool RenderedIndexLocate(const RenderedIndex* index, Span range,
                          TextViewReveal* out) {
     Vec<RangePiece> pieces;
@@ -7554,22 +7569,16 @@ bool RenderedIndexLocate(const RenderedIndex* index, Span range,
         return false;
     }
     out->block = false;
+    out->blockIx = RenderedIndexBlockAt(index, range.start);
+    if (out->blockIx < 0) return false;
     if (len(pieces) > 0) {
         out->key = pieces[0].key;
         out->offset = pieces[0].range.start;
+        if (const auto* leaf = RenderedIndexFind(index, out->key))
+            out->blockIx = RenderedIndexBlockAt(index, leaf->range.start);
         return true;
     }
-    int nBlocks = len(index->blocks);
-    if (nBlocks == 0) {
-        return false;
-    }
-    // The top-level block `range` starts in, or the last one.
-    int blockIx = 0;
-    while (blockIx < nBlocks && index->blocks[blockIx].end <= range.start) {
-        blockIx++;
-    }
-    blockIx = std::min(blockIx, nBlocks - 1);
-    int blockStart = index->blocks[blockIx].start;
+    int blockStart = index->blocks[out->blockIx].start;
     int nLeaves = len(index->leaves);
     int ix = 0;
     while (ix < nLeaves && index->leaves[ix].range.end <= range.start) {
@@ -7597,6 +7606,7 @@ bool RenderedIndexLocate(const RenderedIndex* index, Span range,
     if (leaf && LeafTextOffsetNear(index, leaf, offset, &nearText)) {
         out->key = leaf->key;
         out->offset = nearText;
+        out->blockIx = RenderedIndexBlockAt(index, leaf->range.start);
         return true;
     }
     // A custom block inside a surface is not a leaf and not its own row.
@@ -7607,11 +7617,11 @@ bool RenderedIndexLocate(const RenderedIndex* index, Span range,
             custom.renderedEnd > range.start) {
             out->key = TextLeafKey{custom.sourceStart, 0};
             out->offset = 0;
+            out->blockIx = RenderedIndexBlockAt(index, custom.renderedStart);
             return true;
         }
     }
     out->block = true;
-    out->blockIx = blockIx;
     return true;
 }
 
@@ -8122,6 +8132,9 @@ void TextViewState::ReconcileRangeHighlights(const MdNode* doc, Str source,
                 .Leaf(reveal.key, &key, &unchanged) &&
             reveal.offset < unchanged) {
             reveal.key = key;
+            const auto* leaf = RenderedIndexFind(next, key);
+            reveal.blockIx = RenderedIndexBlockAt(next, leaf->range.start);
+            reveal.attempts = 0;
         } else {
             reveal.pending = false;
         }
@@ -9151,6 +9164,8 @@ El* TextView::RenderVirtualBlock(void* user, Ctx* cx, int index) {
     Str id = StrDup(cx->a, fmt("text-block-%d", index));
     view->cx->path = IdFoldName(frame->view->cx->path, id);
     view->blockDepth = 1;
+    if (view->revealTarget && index != view->revealTarget->blockIx)
+        view->revealOut = nullptr;
     if (row.previous) {
         if (row.previous->kind == MdKind::Heading) {
             float scale = 1;
@@ -9177,7 +9192,10 @@ El* TextView::RenderVirtualBlock(void* user, Ctx* cx, int index) {
     if (LayoutIsRtl(cx->app)) rowRoot->TextRight();
     if (view->textViewStyle.foreground.a)
         rowRoot->Fg(view->textViewStyle.foreground);
-    rowRoot->Child(view->Block(row.node, 0, false, row.node->next == nullptr));
+    El* block = view->Block(row.node, 0, false, row.node->next == nullptr);
+    if (block && view->revealOut && view->revealTarget->block)
+        block->BoundsOut(view->revealOut);
+    rowRoot->Child(block);
     BaseTextViewStatePop(cx->app);
     return rowRoot;
 }
@@ -9189,10 +9207,11 @@ static void VirtualTextArranged(PaintCtx*, El* list, void* user) {
     if (frame->bounceOffset) *frame->bounceOffset = list->scrollY;
 }
 
-static void VirtualTextPainted(PaintCtx* ctx, El* list, void* user) {
+void TextView::VirtualBlocksPainted(PaintCtx* ctx, El* list, void* user) {
     auto* frame = (TextViewVirtualFrame*)user;
     frame->listAfterPaint(ctx, list, frame->listUser);
     frame->state->scrollY = frame->measured->handle.offset;
+    RevealPainted(ctx, list, frame->view);
 }
 
 static bool TextBlockHasDynamicSize(const MdNode* node) {
@@ -9249,6 +9268,22 @@ El* TextView::VirtualBlocks(TextViewState* managed, MdNode* doc, uint32_t key,
         measured->font = baseFont;
     }
     measured->handle.offset = managed->scrollY;
+    // Jump to the owning block before its line has geometry. Once the
+    // line paints, RevealPainted can scroll precisely within a tall block.
+    if (revealTarget && revealTarget->attempts == 0) {
+        int ix = revealTarget->blockIx;
+        if (ix >= 0 && ix < count) {
+            float origin =
+                VirtualListItemOrigin(measured->heights.els, count, ix);
+            float end = origin + measured->heights[ix];
+            const auto& handle = measured->handle;
+            if (measured->heights[ix] <= 0 || end <= handle.offset ||
+                origin >= handle.offset + handle.viewport) {
+                VirtualListScrollToItemDeferred(&measured->handle, ix,
+                                                ScrollStrategy::Top);
+            }
+        }
+    }
     VirtualListOpts options;
     options.count = count;
     options.sizes = measured->heights.els;
@@ -9266,7 +9301,7 @@ El* TextView::VirtualBlocks(TextViewState* managed, MdNode* doc, uint32_t key,
         ->ScrollId((int)key);
     frame->listAfterPaint = list->lifecycle->afterPaint;
     frame->listUser = list->lifecycle->user;
-    list->lifecycle->afterPaint = &VirtualTextPainted;
+    list->lifecycle->afterPaint = &TextView::VirtualBlocksPainted;
     list->lifecycle->afterLayout = &VirtualTextArranged;
     list->lifecycle->user = frame;
     *out = frame;
@@ -9464,8 +9499,7 @@ El* TextView::IntoEl() {
     // inverted surface before layout has resolved it.
     TextViewVirtualFrame* virtualFrame = nullptr;
     El* virtualList = nullptr;
-    if (scrollable && !selectable && !inheritedBuilder && !revealTarget &&
-        cx->win && managed) {
+    if (scrollable && !selectable && !inheritedBuilder && cx->win && managed) {
         virtualList = VirtualBlocks(managed, doc, TextViewScrollKey(state),
                                     ListenTo(state, &TextViewState::OnScroll),
                                     &virtualFrame);

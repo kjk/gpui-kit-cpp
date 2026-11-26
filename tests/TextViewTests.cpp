@@ -7135,6 +7135,43 @@ static void ScrollableTextMeasuresAllBlocksAndBuildsOnlyTheViewport() {
     TestAppFree(app);
 }
 
+// state.rs a_scrollable_view_scrolls_to_a_line_inside_a_long_paragraph,
+// using a multi-line code block to exercise the precise line scroll.
+static void VirtualTextRevealsALineWithoutRebuildingOtherBlocks() {
+    App* app = TestAppNew();
+    auto root = EntityNew<VirtualTextBlockView>(app);
+    auto* view = root.Get(app);
+    StrBuilder markdown;
+    for (int i = 0; i < 25; i++) markdown.Append(StrL("A paragraph.\n\n"));
+    markdown.Append(StrL("~~~\nfirst\nreveal this line\n"));
+    for (int i = 0; i < 25; i++) markdown.Append(StrL("code below\n"));
+    markdown.Append(StrL("~~~\n\n"));
+    for (int i = 0; i < 25; i++) markdown.Append(StrL("More paragraphs.\n\n"));
+    markdown.Append(StrL("~~~\ntail\n~~~"));
+    view->document =
+        TextViewState::Markdown(app, Str(markdown.els, len(markdown)));
+    Window* win = TestWindowOpen(app, root, 320, 100, 1);
+    TestDraw(win);
+    utassert(view->tailBuilds == 1);
+
+    auto* state = view->document.Get(app);
+    Str needle = StrL("reveal this line");
+    int start = StrFind(state->RenderedText().text, needle);
+    utassert(start >= 0);
+    utassert(state->RevealRange({start, start + len(needle)}, app, win).IsOk());
+    for (int frame = 0; frame < 4 && state->reveal.pending; frame++)
+        TestDraw(win);
+    utassert(!state->reveal.pending);
+    utassert(state->scrollY > 300);
+    utassert(view->tailBuilds == 1);
+    if (TestMarkdownIsFull()) {
+        utassert(!state->reveal.block);
+        Bounds line = state->reveal.line;
+        utassert(line.h > 0 && line.y >= -0.5f && line.Bottom() <= 100.5f);
+    }
+    TestAppFree(app);
+}
+
 static void SourceSelectionSurvivesAnUnrenderedVirtualRow() {
     if (!TestMarkdownIsFull()) return;
     App* app = TestAppNew();
@@ -9747,6 +9784,7 @@ static void TestTextStateWindow() {
     PartialSourceSelectionSurvivesInlineObjectReflow();
     SourceSelectionSurvivesAnUnrenderedVirtualRow();
     ScrollableTextMeasuresAllBlocksAndBuildsOnlyTheViewport();
+    VirtualTextRevealsALineWithoutRebuildingOtherBlocks();
     ShapedTextCopiesAcrossMarkdownStyleBoundaries();
     WrappedLinksUseSharedTextGeometry();
     InlineObjectsShareRowsWithShapedProse();

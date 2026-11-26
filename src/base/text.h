@@ -1747,6 +1747,7 @@ struct TextView {
     El* Blocks(El* into, MdNode* n, int depth, bool inList,
                El* continuation = nullptr);
     static El* RenderVirtualBlock(void* user, Ctx* cx, int index);
+    static void VirtualBlocksPainted(PaintCtx* ctx, El* list, void* user);
     El* VirtualBlocks(TextViewState* state, MdNode* doc, uint32_t key,
                       Listener scroll, TextViewVirtualFrame** out);
     El* Item(MdNode* n, Str marker, int depth);
