@@ -4222,13 +4222,13 @@ static void ClearDiffReviewSelection(DiffState* self, Ctx* cx) {
     }
 }
 
-static bool DiffTouchCaret(const DiffState* state, int sourceOffset,
+static bool DiffTouchCaret(const DiffState* state, int file, int sourceOffset,
                            SelectionEdge edge, Bounds* out) {
     const DiffTextSelection& selection = state->textSelection;
-    const auto* source = SideOf(state->files[selection.file], selection.side);
+    const auto* source = SideOf(state->files[file], selection.side);
     for (const DiffCodeRunGeometry& run : state->codeRuns) {
-        if (run.file != selection.file || run.side != selection.side ||
-            !run.layout || !len(run.text))
+        if (run.file != file || run.side != selection.side || !run.layout ||
+            !len(run.text))
             continue;
         const DiffSourceLine& line = source->lines[run.line];
         if (sourceOffset < line.sourceStart || sourceOffset > line.contentEnd) {
@@ -4269,18 +4269,22 @@ static bool DiffTouchSnapshot(void* user, const Window*,
                               TouchSelectionSnapshot* out) {
     auto* state = static_cast<DiffState*>(user);
     const DiffTextSelection& sel = state->textSelection;
-    if (!sel.HasSourceRange() || sel.file >= len(state->files)) return false;
-    if (out) {
-        Bounds start;
-        Bounds end;
-        bool startVisible = DiffTouchCaret(state, IMin(sel.anchor, sel.cursor),
-                                           SelectionEdge::Start, &start);
-        bool endVisible = DiffTouchCaret(state, IMax(sel.anchor, sel.cursor),
-                                         SelectionEdge::End, &end);
-        *out = TouchSelectionSnapshot::New(start, end)
-                   .WithEdgeVisible(SelectionEdge::Start, startVisible)
-                   .WithEdgeVisible(SelectionEdge::End, endVisible);
-    }
+    if (!sel.hitText || sel.file < 0 || sel.file >= len(state->files) ||
+        sel.cursorFile < 0 || sel.cursorFile >= len(state->files))
+        return false;
+    // The window also asks whether there is text to copy, without requesting
+    // geometry. Cross-file endpoints retain both handles during the gesture.
+    if (!out) return sel.HasSourceRange();
+    if (sel.file == sel.cursorFile && sel.anchor == sel.cursor) return false;
+    Bounds start;
+    Bounds end;
+    bool startVisible = DiffTouchCaret(state, sel.file, sel.anchor,
+                                       SelectionEdge::Start, &start);
+    bool endVisible = DiffTouchCaret(state, sel.cursorFile, sel.cursor,
+                                     SelectionEdge::End, &end);
+    *out = TouchSelectionSnapshot::New(start, end)
+               .WithEdgeVisible(SelectionEdge::Start, startVisible)
+               .WithEdgeVisible(SelectionEdge::End, endVisible);
     return true;
 }
 
@@ -4311,20 +4315,27 @@ static SelectionEdge MoveDiffTouchEndpoint(DiffState* state, Window* win,
                                            SelectionEdge edge, Point point,
                                            bool* changed) {
     DiffTextSelection& sel = state->textSelection;
-    const auto* run = DiffSelectionRun(state, point, sel.file, sel.side);
+    const auto* run = DiffSelectionRun(state, point, -1, sel.side);
     if (!run) return edge;
-    int fixed = edge == SelectionEdge::Start ? IMax(sel.anchor, sel.cursor)
-                                             : IMin(sel.anchor, sel.cursor);
+    int fixedFile = edge == SelectionEdge::Start ? sel.cursorFile : sel.file;
+    int fixed = edge == SelectionEdge::Start ? sel.cursor : sel.anchor;
     int moving = DiffSelectionAt(state, &win->paint, *run, point, 1).start;
-    if (moving == fixed) return edge;
-    int lo = IMin(fixed, moving);
-    int hi = IMax(fixed, moving);
-    if (sel.anchor != lo || sel.cursor != hi) {
-        sel.anchor = lo;
-        sel.cursor = hi;
+    if (run->file == fixedFile && moving == fixed) return edge;
+    bool before =
+        run->file < fixedFile || (run->file == fixedFile && moving < fixed);
+    int startFile = before ? run->file : fixedFile;
+    int endFile = before ? fixedFile : run->file;
+    int start = before ? moving : fixed;
+    int end = before ? fixed : moving;
+    if (sel.file != startFile || sel.cursorFile != endFile ||
+        sel.anchor != start || sel.cursor != end) {
+        sel.file = startFile;
+        sel.cursorFile = endFile;
+        sel.anchor = start;
+        sel.cursor = end;
         *changed = true;
     }
-    return moving < fixed ? SelectionEdge::Start : SelectionEdge::End;
+    return before ? SelectionEdge::Start : SelectionEdge::End;
 }
 
 static SelectionEdge ExtendDiffTouch(void* user, Window* win,

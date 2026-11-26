@@ -2548,8 +2548,7 @@ static void DiffShiftClickKeepsTheSelectedWordOrLineUnit() {
     TestAppFree(stage.app);
 }
 
-// selection.rs selected_source_range requires endpoints in the same file.
-static void DiffDragAcrossFilesKeepsTheAnchorWithoutCopyingTheWrongFile() {
+static PointerStage StageTwoFiles(Bounds (&rows)[2]) {
     PointerStage stage = StagePointer(false, StrL("diff --git a/a.txt b/a.txt\n"
                                                   "--- /dev/null\n"
                                                   "+++ b/a.txt\n"
@@ -2561,7 +2560,6 @@ static void DiffDragAcrossFilesKeepsTheAnchorWithoutCopyingTheWrongFile() {
                                                   "@@ -0,0 +1 @@\n"
                                                   "+bravo bridge\n"));
     auto* state = stage.host->state.Get(stage.app);
-    Bounds rows[2] = {};
     for (const DiffCodeRunGeometry& run : state->codeRuns) {
         if (run.side == DiffSide::Modified && run.line == 0 && run.file >= 0 &&
             run.file < dimofi(rows)) {
@@ -2569,6 +2567,14 @@ static void DiffDragAcrossFilesKeepsTheAnchorWithoutCopyingTheWrongFile() {
         }
     }
     utassert(rows[0].w > 0 && rows[1].w > 0);
+    return stage;
+}
+
+// selection.rs selected_source_range requires endpoints in the same file.
+static void DiffDragAcrossFilesKeepsTheAnchorWithoutCopyingTheWrongFile() {
+    Bounds rows[2] = {};
+    PointerStage stage = StageTwoFiles(rows);
+    auto* state = stage.host->state.Get(stage.app);
     float cell = MeasureText(&stage.win->paint, StrL("a"),
                              ThemeFontSize(stage.app), 0, false, kFontMono)
                      .w;
@@ -2595,6 +2601,64 @@ static void DiffDragAcrossFilesKeepsTheAnchorWithoutCopyingTheWrongFile() {
                                                        .cursorFile == 1);
     utassert(len(state->SelectedText(a)) == 0);
     ArenaDelete(a);
+    TestAppFree(stage.app);
+}
+
+static void DiffTouchHandlesKeepBothEndpointsAcrossFiles() {
+    Bounds rows[2] = {};
+    PointerStage stage = StageTwoFiles(rows);
+    float cell = MeasureText(&stage.win->paint, StrL("a"),
+                             ThemeFontSize(stage.app), 0, false, kFontMono)
+                     .w;
+    auto gesture = [&](PlatformInput input) {
+        WindowDispatchInput(stage.win, &input);
+        TestDraw(stage.win);
+    };
+    auto knob = [](SelectionEdge edge, Bounds caret) {
+        Bounds handle = TouchHandle::KnobBounds(edge, caret);
+        return Point{handle.CenterX(), handle.CenterY()};
+    };
+    auto moveTo = [](Point finger, Bounds caret, Point target) {
+        return Point{finger.x + target.x - caret.CenterX(),
+                     finger.y + target.y - caret.CenterY()};
+    };
+    Point word = {rows[0].x + cell * 2.1f, rows[0].CenterY()};
+    gesture(InputLongPress(TouchPhase::Started, word, word));
+    gesture(InputLongPress(TouchPhase::Ended, word, word));
+    TouchSelectionSnapshot snapshot;
+    if (!WindowSelectionTouchSnapshot(stage.win, &snapshot)) {
+        utassert(false);
+        TestAppFree(stage.app);
+        return;
+    }
+    Point finger = knob(SelectionEdge::Start, snapshot.start);
+    Point across = moveTo(finger, snapshot.start,
+                          {rows[1].x + cell * 3.1f, rows[1].CenterY()});
+    gesture(InputTouchDrag(TouchPhase::Started, finger, finger));
+    gesture(InputTouchDrag(TouchPhase::Moved, finger, across));
+    utassert(WindowSelectionTouchSnapshot(stage.win, &snapshot) &&
+             snapshot.startVisible && snapshot.endVisible &&
+             snapshot.hasDragging && snapshot.dragging == SelectionEdge::End);
+    gesture(InputTouchDrag(TouchPhase::Ended, finger, across));
+    utassert(WindowSelectionTouchSnapshot(stage.win, &snapshot) &&
+             !snapshot.menuOpen && !snapshot.hasDragging);
+    utassert(snapshot.start.CenterY() < snapshot.end.CenterY());
+    char copy[64];
+    utassert(TextSelection::SelectedText(stage.win, stage.app, copy,
+                                         sizeof(copy)) == 0);
+
+    finger = knob(SelectionEdge::End, snapshot.end);
+    Point back = moveTo(finger, snapshot.end, word);
+    gesture(InputTouchDrag(TouchPhase::Started, finger, finger));
+    gesture(InputTouchDrag(TouchPhase::Moved, finger, back));
+    utassert(WindowSelectionTouchSnapshot(stage.win, &snapshot) &&
+             snapshot.hasDragging && snapshot.dragging == SelectionEdge::Start);
+    gesture(InputTouchDrag(TouchPhase::Ended, finger, back));
+    utassert(WindowSelectionTouchSnapshot(stage.win, &snapshot) &&
+             snapshot.menuOpen);
+    int count =
+        TextSelection::SelectedText(stage.win, stage.app, copy, sizeof(copy));
+    utassert(StrEq(Str(copy, count), "pha"));
     TestAppFree(stage.app);
 }
 
@@ -2999,6 +3063,7 @@ void TestDiff() {
     CodeSelectionCopiesCharactersAndWords();
     DiffShiftClickKeepsTheSelectedWordOrLineUnit();
     DiffDragAcrossFilesKeepsTheAnchorWithoutCopyingTheWrongFile();
+    DiffTouchHandlesKeepBothEndpointsAcrossFiles();
     SplitCodeSelectionKeepsTheSourceSideAndTabs();
     DiffKeyboardSelectsAndExtendsSourceLines();
     DiffKeyboardScrollsBothAxesAndReachesEitherEnd();
