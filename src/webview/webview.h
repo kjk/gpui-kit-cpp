@@ -72,6 +72,7 @@ struct WebViewHandle {
 /** `gpui_webview::WebView`. */
 struct WebView {
     WebViewHandle owned;
+    FocusHandle focus = {};
     bool visible = true;
     // The OS view, which a clip can hide without changing `visible`.
     bool nativeShown = false;
@@ -131,10 +132,9 @@ struct WebView {
     at an empty box, the way Rust's `set_bounds(Rect::default())` does — the
     element gives it a real one on the first frame.
 
-    The handle is invalid if there is no webview runtime on this machine (or
-    no backend on this platform), having logged why; a caller that wants to
-    say something better than an empty box can ask first with
-    `wry::WebViewAvailable()`.
+    If the native runtime is unavailable, the entity renders an empty box.
+    Callers can check for a live surface with `WebViewRaw()` or check for
+    runtime availability first with `wry::WebViewAvailable()`.
 
     A note for a caller that makes one lazily, from inside a Render: this
     blocks, and it blocks by running the window's message loop, exactly as
@@ -151,6 +151,9 @@ void WebViewHide(WebView* self);
 bool WebViewVisible(const WebView* self);
 /** `WebView::bounds`: the box the element had last frame. */
 Bounds WebViewBounds(const WebView* self);
+/** `Focusable::focus_handle`: the webview's handle in the GPUI focus tree.
+    Native keyboard focus is controlled through the raw wry webview. */
+FocusHandle WebViewFocusHandle(const WebView* self);
 /** `WebView::load_url`. */
 void WebViewLoadUrl(WebView* self, Str url);
 /** `WebView::back` — `history.back()` evaluated in the page, which is what

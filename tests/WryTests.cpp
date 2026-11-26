@@ -26,6 +26,7 @@ struct WebViewReleaseProbe {
             auto* web = self->web.Get(cx);
             web->app = cx->app;
             web->window = cx->win;
+            web->focus = FocusHandleNew(cx);
         }
         return Div(cx->a)
             ->SizeFull()
@@ -54,6 +55,62 @@ static void MissingNativeWebViewLeavesThePointerTargetReachable() {
     TestFlushEffects(app);
     TestSimulateClick(win, {20, 20});
     utassert(self->clicks == 2);
+    TestAppFree(app);
+}
+
+struct WebViewFocusProbe {
+    FocusHandle parent = {};
+    Entity<WebView> web;
+    bool omitWebView = false;
+
+    static El* Render(WebViewFocusProbe* self, Ctx* cx) {
+        if (!self->web.IsValid()) {
+            self->parent = FocusHandleNew(cx);
+            wry::WebViewAttributes attrs = {};
+            self->web = WebViewNew(cx, &attrs);
+        }
+        El* root =
+            Div(cx->a)->SizeFull()->TrackFocus(self->parent)->TabStop(false);
+        if (!self->omitWebView) root->Child(WebViewEl(self->web, cx));
+        return root;
+    }
+};
+
+// crates/webview/src/lib.rs: Focusable and Render's track_focus.
+static void WebViewTracksFocusWithoutATabStop() {
+    App* app = TestAppNew();
+    auto view = EntityNew<WebViewFocusProbe>(app);
+    Window* win = TestWindowOpen(app, view, 240, 120, 1);
+    auto* self = view.Get(app);
+    FocusHandle focus = WebViewFocusHandle(self->web.Get(app));
+    utassert(focus.IsValid());
+    utassert(FocusHandleContains(win, self->parent, focus));
+    bool tracked = false;
+    for (const FocusRect& rect : win->focusEls) {
+        if (rect.id == focus.id) tracked = !rect.tabStop && rect.focusOnPress;
+    }
+    utassert(tracked);
+    FocusHandleFocus(win, focus);
+    TestDraw(win);
+    utassert(FocusHandleIsFocused(win, focus));
+    utassert(FocusHandleContainsFocused(win, self->parent));
+    self->omitWebView = true;
+    AppInvalidate(win);
+    TestDraw(win);
+    utassert(!FocusHandleIsFocused(win, focus));
+    utassert(!FocusHandleContains(win, self->parent, focus));
+
+    self->omitWebView = false;
+    AppInvalidate(win);
+    TestDraw(win);
+    FocusHandleFocus(win, focus);
+    TestFlushEffects(app);
+    utassert(FocusHandleIsFocused(win, focus));
+    EntityDrop(app, self->web.id);
+    utassert(win->invalidations > 0);
+    TestFlushEffects(app);
+    utassert(!FocusHandleContains(win, self->parent, focus));
+    utassert(!FocusHandleIsFocused(win, focus));
     TestAppFree(app);
 }
 
@@ -294,6 +351,7 @@ void TestWryUri() {
     MediaPermissionsRespectEachRequestedDevice();
     TestSuite("wry_uri");
     MissingNativeWebViewLeavesThePointerTargetReachable();
+    WebViewTracksFocusWithoutATabStop();
     FractionalDocumentCoversTheClipWithoutMovingItsTopEdge();
     FractionalDpiKeepsTheDocumentSizeAndFullyVisibleEdge();
     WebViewRegionExcludesOverlappingOverlayBoxes();

@@ -99,8 +99,9 @@ WebView::~WebView() {
         wry::WebViewFocusParent(raw);
         wry::WebViewSetVisible(raw, false);
     }
-    // The last frame can still contain the webview's mouse blocker.
-    if (visible && AppHasWindow(app, window)) {
+    // The last frame can still contain the webview's focus entry or
+    // native mouse blocker.
+    if (AppHasWindow(app, window)) {
         AppInvalidate(window);
     }
 }
@@ -155,6 +156,10 @@ Entity<WebView> WebViewNew(Ctx* cx, const wry::WebViewAttributes* attrs) {
     if (!self) {
         return handle;
     }
+    self->window = cx->win;
+    self->app = cx->app;
+    self->selfId = handle.id;
+    self->focus = FocusHandleNew(cx);
     void* window = PlatWindowHandle(cx->win);
     if (!window) {
         self->visible = false;
@@ -176,9 +181,6 @@ Entity<WebView> WebViewNew(Ctx* cx, const wry::WebViewAttributes* attrs) {
         // callback unset.
         wry::WebViewSetPageClick(raw, &WebView::OnPageClick, self);
     }
-    self->window = cx->win;
-    self->app = cx->app;
-    self->selfId = handle.id;
     self->visible = raw != nullptr;
     return handle;
 }
@@ -342,6 +344,10 @@ wry::WebView* WebViewRaw(const WebView* self) {
     return self ? self->owned.Raw() : nullptr;
 }
 
+FocusHandle WebViewFocusHandle(const WebView* self) {
+    return self ? self->focus : FocusHandle{};
+}
+
 WebViewHandle WebViewGetHandle(const WebView* self) {
     return self ? self->owned : WebViewHandle();
 }
@@ -471,8 +477,9 @@ static wry::Rect NativeWebViewRect(Bounds box, float scale) {
 
 // Keep the hitbox in paint order, but leave it empty until the platform
 // has placed and shown the surface.
-static int ReserveWebViewHit(PaintCtx* ctx) {
+static int ReserveWebViewHit(PaintCtx* ctx, FocusHandle focus) {
     HitRect hit;
+    hit.focusId = focus.id;
     hit.popupDismissScope = ctx->popupDismissScope;
     hit.stopMouseDown = true;
     hit.paintLayer = ctx->paintLayer;
@@ -749,7 +756,7 @@ static void PaintWebView(PaintCtx* ctx, El* e, void* user) {
 #endif
         return;
     }
-    int hit = ReserveWebViewHit(ctx);
+    int hit = ReserveWebViewHit(ctx, self->focus);
 #if GPUI_WRY_CLIPPED_CHILD || GPUI_WEBVIEW_NATIVE_CLIP
     const WebViewBackdrop* backdrop = self->backdrop;
     if (same && backdrop && backdrop->image && backdrop->size.w == document.w &&
@@ -782,6 +789,7 @@ El* WebViewEl(Entity<WebView> view, Ctx* cx) {
     if (!self || self->window != cx->win) {
         return e;
     }
+    e->TrackFocus(self->focus)->TabStop(false)->FocusOnPress();
     e->customPaint = PaintWebView;
     e->customUser = self;
     return e;
