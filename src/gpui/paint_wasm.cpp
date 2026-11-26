@@ -26,6 +26,7 @@
 #include "gpui/paint.h"
 #include "gpui/paint_backend.h"
 #include "gpui/scene.h"
+#include "gpui/unicode_joining_data.h"
 
 #include <emscripten/emscripten.h>
 #include <math.h>
@@ -42,6 +43,24 @@ extern "C" EMSCRIPTEN_KEEPALIVE int gpui_wasm_text_direction(uint32_t scalar) {
     if (direction == ParagraphBidi::Left) return 0;
     if (direction == ParagraphBidi::Right) return 1;
     return -1;
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE int gpui_wasm_joining_type(uint32_t scalar) {
+    // Bidi isolates interrupt shaping even though their controls are
+    // transparent in the Unicode joining table.
+    if (scalar >= 0x2066 && scalar <= 0x2069) return 0;
+    int lo = 0, hi = dimofi(kJoiningRanges);
+    while (lo < hi) {
+        int mid = lo + (hi - lo) / 2;
+        const auto& range = kJoiningRanges[mid];
+        if (scalar < range.first)
+            hi = mid;
+        else if (scalar > range.last)
+            lo = mid + 1;
+        else
+            return range.flags;
+    }
+    return 0;
 }
 
 // ─── the JavaScript half ──────────────────────────────────────────────────
@@ -184,15 +203,70 @@ EM_JS(void, GpJsInit, (), {
                 continue;
             }
             c.font = part.font;
-            return part.x + c.measureText(line.slice(part.start, offset)).width;
+            return part.x + G.measureJoinedText(c, line, part.start, offset,
+                G.textJoining(line, part.start, offset));
         }
         return width;
     };
     G.textParts = function(e, li) {
         if (e.parts) return e.parts[li];
         const line = e.lines[li];
-        return [{start: 0, end: line.length, font: e.font, x: 0,
+        return [{start: 0, end: line.length, font: e.font, x: 0, joining: 0,
                  width: e.fullWidths[li]}];
+    };
+    G.textJoinAt = function(text, offset) {
+        if (offset <= 0 || offset >= text.length ||
+            text.charCodeAt(offset - 1) < 0xad || text.charCodeAt(offset) < 0xad)
+            return 0;
+        let before = 0;
+        let previous = 0;
+        for (let at = offset; at > 0;) {
+            const unit = text.charCodeAt(--at);
+            if (at > 0 && unit >= 0xdc00 && unit <= 0xdfff) at--;
+            previous = text.codePointAt(at);
+            before = _gpui_wasm_joining_type(previous);
+            if (before !== 4) break;
+        }
+        if (!(before & 2)) return 0;
+        for (let at = offset; at < text.length;) {
+            const scalar = text.codePointAt(at);
+            const after = _gpui_wasm_joining_type(scalar);
+            if (after !== 4) {
+                if (!(after & 1)) return 0;
+                const direction = _gpui_wasm_text_direction(scalar);
+                return (direction < 0 ? _gpui_wasm_text_direction(previous)
+                                      : direction) === 1 ? 2 : 1;
+            }
+            at += scalar > 0xffff ? 2 : 1;
+        }
+        return 0;
+    };
+    G.textJoining = function(text, start, end) {
+        if (typeof document === "undefined") return 0;
+        const before = G.textJoinAt(text, start);
+        const after = G.textJoinAt(text, end);
+        return (before ? 1 : 0) | (after ? 2 : 0) |
+               (before === 2 || after === 2 ? 4 : 0);
+    };
+    G.textWithJoining = function(text, start, end, joining) {
+        // Supply the joining context lost by splitting the line into
+        // single-font Canvas calls. The controls belong only to the
+        // shaper: offsets, selection and copying still use the source.
+        const run = text.slice(start, end);
+        if (!joining) return run;
+        const joiner = String.fromCharCode(0x200d);
+        return (joining & 1 ? joiner : "") + run + (joining & 2 ? joiner : "");
+    };
+    G.measureJoinedText = function(c, text, start, end, joining) {
+        const run = G.textWithJoining(text, start, end, joining);
+        if (!(joining & 4)) return c.measureText(run).width;
+        // In a left-to-right Canvas paragraph, some engines put the
+        // synthetic joiner outside the run it should shape with.
+        const direction = c.direction;
+        c.direction = "rtl";
+        const width = c.measureText(run).width;
+        c.direction = direction;
+        return width;
     };
     G.styledBidiLine = function(e, li) {
         if (!e.parts || e.parts[li].length < 2) return false;
@@ -244,7 +318,7 @@ EM_JS(void, GpJsInit, (), {
             const direction = first.rtl ? "rtl" : "ltr";
             const start = (first.rtl ? last : first).start;
             const end = (first.rtl ? first : last).end;
-            let text = line.slice(start, end);
+            let text = G.textWithJoining(line, start, end, G.textJoining(line, start, end));
             // The full line already resolved explicit overrides. When
             // drawing their fragments alone, carry the resolved override.
             if (hasOverride)
@@ -310,7 +384,7 @@ EM_JS(void, GpJsInit, (), {
             nodes = parts.map(function(part) {
                 const face = document.createElement("span");
                 face.style.font = part.font;
-                face.textContent = normalized(line.slice(part.start, part.end));
+                face.textContent = normalized(G.textWithJoining(line, part.start, part.end, part.joining));
                 span.appendChild(face);
                 return face.firstChild;
             });
@@ -331,20 +405,26 @@ EM_JS(void, GpJsInit, (), {
             const node = shared ? nodes[p] : G.clusterNode;
             if (!shared) {
                 span.style.font = part.font;
-                node.data = normalized(text);
+                node.data = normalized(G.textWithJoining(line, part.start, part.end, part.joining));
                 box = span.getBoundingClientRect();
             }
             const origin = shared ? 0 : part.x;
             const width = shared ? lineWidth : part.width;
             const scale = box.width > 0 ? width / box.width : 1;
             const visual = shared ? visualLine : [];
+            const shift = part.joining & 1;
             let start = caretX(node, 0);
+            let startAt = 0;
             for (const g of G.graphemes.segment(text)) {
                 const endAt = g.index + g.segment.length;
-                range.setStart(node, g.index);
-                range.setEnd(node, endAt);
+                // The browser can put a synthetic joiner inside the first
+                // or last glyph cluster. Include it in that DOM range while
+                // keeping the reported byte range in the original text.
+                const endInNode = endAt === text.length ? node.length : shift + endAt;
+                range.setStart(node, startAt);
+                range.setEnd(node, endInNode);
                 const rect = range.getBoundingClientRect();
-                const end = caretX(node, endAt);
+                const end = caretX(node, endInNode);
                 const lo = byte;
                 byte += G.u8len(g.segment);
                 const x = rect.width || start === null ? rect.left : start;
@@ -387,6 +467,7 @@ EM_JS(void, GpJsInit, (), {
                 clusters.push(cluster);
                 if (right > left) visual.push(cluster);
                 start = end;
+                startAt = endInNode;
             }
             if (!shared) G.alignTextClusters(visual, part.x, part.x + part.width);
         }
@@ -1085,8 +1166,9 @@ EM_JS(int, GpJsTextNew,
             if (lo < hi) {
                 const x = parts.length ? parts[parts.length - 1].x + parts[parts.length - 1].width : 0;
                 c.font = face;
-                parts.push({start: lo, end: hi, font: face, x: x,
-                            width: c.measureText(s.slice(lo, hi)).width});
+                const joining = G.textJoining(s, lo, hi);
+                parts.push({start: lo, end: hi, font: face, x: x, joining: joining,
+                            width: G.measureJoinedText(c, s, lo, hi, joining)});
             }
         };
         for (let i = min; i < spans.length && spans[i].lo < end; i++) {
@@ -1305,7 +1387,8 @@ EM_JS(void, GpJsTextDraw, (int id, float x, float y, int color, int clip), {
         } else if (e.parts) {
             for (const part of e.parts[i]) {
                 c.font = part.font;
-                c.fillText(e.lines[i].slice(part.start, part.end), lx + part.x, base);
+                c.direction = part.joining & 4 ? "rtl" : direction;
+                c.fillText(G.textWithJoining(e.lines[i], part.start, part.end, part.joining), lx + part.x, base);
             }
         } else {
             c.fillText(e.lines[i], lx, base);

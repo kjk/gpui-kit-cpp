@@ -193,8 +193,9 @@ The current update target is
 - **Selectable text highlight font ranges cross the mobile paint adapter.**
   iOS and Android hosts can read `PaintCtx::textFontRanges` when shaping
   `TextLayoutNew`. On wasm a styled bidi line gets its visual run order
-  from browser layout. Canvas2D reshapes those runs individually, so
-  contextual glyph forms can differ at their boundaries. Core Text uses
+  from browser layout. Unicode joining types provide the cursive context
+  across font changes in Canvas2D. Other font-specific contextual
+  substitutions can still differ at the run boundaries. Core Text uses
   the italic face for an oblique highlight. Highlight strokes use
   the portable text decoration geometry (`src/gpui/gpui.cpp`).
 - **The legacy C++ reduced-motion setter treats same-value writes as explicit.**
