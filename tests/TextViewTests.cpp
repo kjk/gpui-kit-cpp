@@ -7089,6 +7089,52 @@ struct VirtualTextSelectionView {
     }
 };
 
+struct VirtualTextBlockView {
+    Entity<TextViewState> document;
+    int tailBuilds = 0;
+
+    static El* CodeActions(Ctx*, void* user, Str code, Str) {
+        auto* view = (VirtualTextBlockView*)user;
+        if (base::StrContains(code, StrL("tail"))) view->tailBuilds++;
+        return nullptr;
+    }
+
+    static El* Render(VirtualTextBlockView* self, Ctx* cx) {
+        return TextView::New(cx, self->document)
+            ->Scrollable()
+            ->Selectable(false)
+            ->CodeBlockActions(&CodeActions, self)
+            ->IntoEl();
+    }
+};
+
+static void ScrollableTextMeasuresAllBlocksAndBuildsOnlyTheViewport() {
+    App* app = TestAppNew();
+    auto root = EntityNew<VirtualTextBlockView>(app);
+    auto* view = root.Get(app);
+    StrBuilder markdown;
+    for (int i = 0; i < 48; i++) markdown.Append(StrL("A paragraph.\n\n"));
+    markdown.Append(StrL("~~~\ntail\n~~~"));
+    view->document =
+        TextViewState::Markdown(app, Str(markdown.els, len(markdown)));
+    Window* win = TestWindowOpen(app, root, 320, 100, 1);
+    TestDraw(win);
+    utassert(view->tailBuilds == 1);
+    float content = 0;
+    for (const ScrollRect& scroll : win->paint.scrolls)
+        content = std::max(content, scroll.contentH);
+    utassert(content > 1000);
+
+    TestDraw(win);
+    utassert(view->tailBuilds == 1);
+
+    view->document.Get(app)->scrollY = content;
+    TestDraw(win);
+    utassert(view->tailBuilds == 2);
+    utassertnear(view->document.Get(app)->scrollY, content - 100);
+    TestAppFree(app);
+}
+
 static void SourceSelectionSurvivesAnUnrenderedVirtualRow() {
     if (!TestMarkdownIsFull()) return;
     App* app = TestAppNew();
@@ -9700,6 +9746,7 @@ static void TestTextStateWindow() {
     PartialCopyUsesTheSelectedTextViewFormat();
     PartialSourceSelectionSurvivesInlineObjectReflow();
     SourceSelectionSurvivesAnUnrenderedVirtualRow();
+    ScrollableTextMeasuresAllBlocksAndBuildsOnlyTheViewport();
     ShapedTextCopiesAcrossMarkdownStyleBoundaries();
     WrappedLinksUseSharedTextGeometry();
     InlineObjectsShareRowsWithShapedProse();

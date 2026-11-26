@@ -8,6 +8,7 @@
 #include "base/scrollbar.h"
 #include "base/text_format.h"
 #include "base/text_selection.h"
+#include "base/virtual_list.h"
 #include "gpui/image.h"
 #include "gpui/keymap.h"
 #include "gpui/paint.h"
@@ -6025,6 +6026,7 @@ El* TextView::CodeBlock(MdNode* n) {
     codeIx++;
     uint32_t name =
         (uint32_t)(cx->self.index + 1) * 1000003u + (uint32_t)codeIx;
+    if (cx->path) name = KeyedKey(name, cx->path);
     uint32_t key =
         KeyedKey(name, (uint32_t)HashClickId(StrL("codeblock-scroll")));
     Entity<MdCodeScroll> ent = KeyedEntity<MdCodeScroll>(cx, key);
@@ -6638,6 +6640,7 @@ El* TextView::ScrollTable(MdNode* n) {
     tableIx++;
     uint32_t name =
         (uint32_t)(cx->self.index + 1) * 1000003u + (uint32_t)tableIx;
+    if (cx->path) name = KeyedKey(name, cx->path);
     uint32_t key = KeyedKey(name, (uint32_t)HashClickId(StrL("md-table")));
     Entity<MdTableScroll> ent = KeyedEntity<MdTableScroll>(cx, key);
     MdTableScroll* st = ent.Get(cx->app);
@@ -9083,6 +9086,8 @@ void TextView::PrepareInheritedColor(PaintCtx*, El* element, Rgba inherited,
     IdsCollectChildren(element);
     element->style.color = resolved->style.color;
     element->style.hasColor = resolved->style.hasColor;
+    element->prePaint = resolved->prePaint;
+    element->customUser = resolved->customUser;
     element->lifecycle = resolved->lifecycle;
 }
 
@@ -9108,6 +9113,164 @@ struct TextViewAccessibilitySource {
 static AccessibilityDocumentText TextViewAccessibility(void* data) {
     auto* source = (TextViewAccessibilitySource*)data;
     return source->state->AccessibilityText(source->window);
+}
+
+struct TextViewBlockMeasurements {
+    Vec<float> heights;
+    Vec<uint8_t> dirty;
+    float width = -1;
+    float rem = 0;
+    float font = 0;
+    uint64_t revision = 0;
+    uint64_t styleRevision = 0;
+    VirtualListScrollHandle handle;
+};
+
+struct TextViewVirtualBlock {
+    MdNode* node;
+    MdNode* previous;
+};
+
+struct TextViewVirtualFrame {
+    TextView* view = nullptr;
+    TextViewState* state = nullptr;
+    TextViewBlockMeasurements* measured = nullptr;
+    const TextViewVirtualBlock* blocks = nullptr;
+    float* bounceOffset = nullptr;
+    void (*listAfterPaint)(PaintCtx*, El*, void*) = nullptr;
+    void* listUser = nullptr;
+};
+
+El* TextView::RenderVirtualBlock(void* user, Ctx* cx, int index) {
+    auto* frame = (TextViewVirtualFrame*)user;
+    const TextViewVirtualBlock& row = frame->blocks[index];
+    auto* view = ArenaNew<TextView>(cx->a);
+    *view = *frame->view;
+    view->cx = ArenaNew<Ctx>(cx->a);
+    *view->cx = *cx;
+    Str id = StrDup(cx->a, fmt("text-block-%d", index));
+    view->cx->path = IdFoldName(frame->view->cx->path, id);
+    view->blockDepth = 1;
+    if (row.previous) {
+        if (row.previous->kind == MdKind::Heading) {
+            float scale = 1;
+            float line = 0;
+            float section = 0;
+            HeadingMetrics(row.previous->level, &scale, &line, &section);
+            gpui::Style refinement;
+            int level = row.previous->level;
+            uint32_t fields = view->textViewStyle
+                                  .Heading((uint8_t)level, &refinement);
+            float font = (fields & StyleFieldFontSize) && refinement
+                                                                  .fontSize > 0
+                             ? refinement.fontSize
+                             : view->baseFont * scale;
+            view->flowPrev = 1;
+            view->flowPrevSpace = FontPx(cx, font) * kHeadingBottomGap;
+        } else {
+            view->flowPrev = row.previous->kind == MdKind::Rule ? 2 : 3;
+        }
+    }
+    BaseTextViewStatePush(cx->app, view->state.id);
+    El* rowRoot = Div(cx->a)->Id(id)->FlexCol()->W(kFill);
+    view->tooltipRendering = rowRoot;
+    if (LayoutIsRtl(cx->app)) rowRoot->TextRight();
+    if (view->textViewStyle.foreground.a)
+        rowRoot->Fg(view->textViewStyle.foreground);
+    rowRoot->Child(view->Block(row.node, 0, false, row.node->next == nullptr));
+    BaseTextViewStatePop(cx->app);
+    return rowRoot;
+}
+
+static void VirtualTextArranged(PaintCtx*, El* list, void* user) {
+    if (LayoutInScratchPass()) return;
+    auto* frame = (TextViewVirtualFrame*)user;
+    frame->state->scrollY = list->scrollY;
+    if (frame->bounceOffset) *frame->bounceOffset = list->scrollY;
+}
+
+static void VirtualTextPainted(PaintCtx* ctx, El* list, void* user) {
+    auto* frame = (TextViewVirtualFrame*)user;
+    frame->listAfterPaint(ctx, list, frame->listUser);
+    frame->state->scrollY = frame->measured->handle.offset;
+}
+
+static bool TextBlockHasDynamicSize(const MdNode* node) {
+    if (node->kind == MdKind::Custom || node->kind == MdKind::Html ||
+        node->kind == MdKind::Surface)
+        return true;
+    for (const MdRun* run = node->runFirst; run; run = run->next) {
+        if (len(run->imgSrc) || run->hasCustom) return true;
+    }
+    for (const MdNode* child = node->first; child; child = child->next) {
+        if (TextBlockHasDynamicSize(child)) return true;
+    }
+    return false;
+}
+
+El* TextView::VirtualBlocks(TextViewState* managed, MdNode* doc, uint32_t key,
+                            Listener scroll, TextViewVirtualFrame** out) {
+    auto* frame = ArenaNew<TextViewVirtualFrame>(cx->a);
+    frame->view = ArenaNew<TextView>(cx->a);
+    *frame->view = *this;
+    frame->view->cx = ArenaNew<Ctx>(cx->a);
+    *frame->view->cx = *cx;
+    frame->state = managed;
+    auto* measured = KeyedState<TextViewBlockMeasurements>(
+        cx, KeyedKey(key, (uint32_t)HashClickId(StrL("text-view-rows"))));
+    if (!measured) return nullptr;
+    frame->measured = measured;
+    MdNode* previous = nullptr;
+    ArenaVec<TextViewVirtualBlock> blocks;
+    for (MdNode* block = doc->first; block; block = block->next) {
+        if (!blocks.Append(cx->a, {block, previous})) return nullptr;
+        if (!MdDrawsNothing(block)) previous = block;
+    }
+    frame->blocks = blocks.Flatten(cx->a);
+    int count = len(blocks);
+    if (count > 0 && !frame->blocks) return nullptr;
+    if (!VecResize(measured->heights, count) ||
+        !VecResize(measured->dirty, count))
+        return nullptr;
+    // Image loads and custom renderers can change a row's intrinsic size
+    // between parses, including while that row is outside the viewport.
+    for (int i = 0; i < count; i++) {
+        if (len(plugins) || TextBlockHasDynamicSize(frame->blocks[i].node))
+            measured->dirty[i] = 1;
+    }
+    float rem = WindowRemSize(cx->win);
+    if (measured->revision != managed->committedRevision ||
+        measured->styleRevision != managed->selectionRevision ||
+        measured->rem != rem || measured->font != baseFont) {
+        measured->width = -1;
+        measured->revision = managed->committedRevision;
+        measured->styleRevision = managed->selectionRevision;
+        measured->rem = rem;
+        measured->font = baseFont;
+    }
+    measured->handle.offset = managed->scrollY;
+    VirtualListOpts options;
+    options.count = count;
+    options.sizes = measured->heights.els;
+    options.needsMeasure = measured->dirty.els;
+    options.measureAllWidth = &measured->width;
+    options.handle = &measured->handle;
+    options.scrollId = (int)key;
+    options.onScroll = scroll;
+    options.axis = ScrollAxis::Vertical;
+    options.row = &TextView::RenderVirtualBlock;
+    options.user = frame;
+    El* list = VirtualList::New(cx, StrL("text-view-blocks"), options);
+    Scrollbar::Apply(cx, list, StrL("text-view-blocks"), managed->scrollY, 0,
+                     scroll, ScrollAxis::Vertical)
+        ->ScrollId((int)key);
+    frame->listAfterPaint = list->lifecycle->afterPaint;
+    frame->listUser = list->lifecycle->user;
+    list->lifecycle->afterPaint = &VirtualTextPainted;
+    list->lifecycle->afterLayout = &VirtualTextArranged;
+    list->lifecycle->user = frame;
+    *out = frame;
+    return list;
 }
 
 El* TextView::IntoEl() {
@@ -9299,7 +9462,16 @@ El* TextView::IntoEl() {
     // Defer palette-dependent rendering until ancestors have supplied their
     // color. In particular, do not invoke the default highlighter on an
     // inverted surface before layout has resolved it.
-    El* element = inheritedBuilder ? root : Blocks(root, doc, 0, false);
+    TextViewVirtualFrame* virtualFrame = nullptr;
+    El* virtualList = nullptr;
+    if (scrollable && !selectable && !inheritedBuilder && !revealTarget &&
+        cx->win && managed) {
+        virtualList = VirtualBlocks(managed, doc, TextViewScrollKey(state),
+                                    ListenTo(state, &TextViewState::OnScroll),
+                                    &virtualFrame);
+    }
+    El* element =
+        inheritedBuilder || virtualList ? root : Blocks(root, doc, 0, false);
     BaseTextViewStatePop(cx->app);
 
     // max_lines is fit-content only: cap at body-text leading, keep the full
@@ -9318,14 +9490,15 @@ El* TextView::IntoEl() {
         Listener onScroll = ListenTo(state, &TextViewState::OnScroll);
         // The integrated bar paints after the document and shares its
         // scroll offset, including when ScrollBounce shifts the content.
-        scrollBox = Scrollbar::New(cx)
-                        ->FlexCol()
-                        ->W(kFill)
-                        ->H(kFill)
-                        ->ScrollY(managed->scrollY)
-                        ->ScrollId((int)key)
-                        ->OnScroll(onScroll)
-                        ->Child(element);
+        scrollBox = virtualList ? virtualList
+                                : Scrollbar::New(cx)
+                                      ->FlexCol()
+                                      ->W(kFill)
+                                      ->H(kFill)
+                                      ->ScrollY(managed->scrollY)
+                                      ->ScrollId((int)key)
+                                      ->OnScroll(onScroll)
+                                      ->Child(element);
         element = scrollBox;
         Entity<ScrollBounceMetrics> met =
             ScrollBounceMetricsEntity(cx, StrL("text-view-bounce"), true);
@@ -9333,6 +9506,7 @@ El* TextView::IntoEl() {
         if (m) {
             m->offset = managed->scrollY;
             revealBounceOffset = &m->offset;
+            if (virtualFrame) virtualFrame->bounceOffset = &m->offset;
             element =
                 ScrollBounce::New(cx, StrL("text-view-bounce"),
                                   PositiveScrollHandle(&m->slot), scrollBox)
@@ -9366,11 +9540,13 @@ El* TextView::IntoEl() {
     // the wrapper's content height is the viewport, not the document.
     El* revealed = scrollBox ? scrollBox : element;
     revealed = RevealReportView(revealed, managed);
-    revealed->lifecycle = ArenaNew<ElLifecycle>(a);
-    if (revealTarget)
-        revealed->lifecycle->afterLayout = &TextView::RevealArranged;
-    revealed->lifecycle->afterPaint = &TextView::RevealPainted;
-    revealed->lifecycle->user = this;
+    if (!virtualFrame) {
+        revealed->lifecycle = ArenaNew<ElLifecycle>(a);
+        if (revealTarget)
+            revealed->lifecycle->afterLayout = &TextView::RevealArranged;
+        revealed->lifecycle->afterPaint = &TextView::RevealPainted;
+        revealed->lifecycle->user = this;
+    }
     if (inheritedBuilder) {
         inheritedBuilder->state = state;
         inheritedBuilder->textViewStyle = textViewStyle;

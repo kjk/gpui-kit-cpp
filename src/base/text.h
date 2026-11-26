@@ -1007,6 +1007,7 @@ bool RenderedIndexLocate(const RenderedIndex* index, Span range,
 // large replacements and appends parse on the executor with detached jobs.
 struct TextViewParse;
 struct TextViewParseJob;
+struct TextViewVirtualFrame;
 struct TextViewBaselineAck;
 
 // text_view.rs TaskToggleEvent. A click on a Markdown task checkbox. The
@@ -1745,6 +1746,9 @@ struct TextView {
     El* Block(MdNode* n, int depth, bool inList, bool isLast);
     El* Blocks(El* into, MdNode* n, int depth, bool inList,
                El* continuation = nullptr);
+    static El* RenderVirtualBlock(void* user, Ctx* cx, int index);
+    El* VirtualBlocks(TextViewState* state, MdNode* doc, uint32_t key,
+                      Listener scroll, TextViewVirtualFrame** out);
     El* Item(MdNode* n, Str marker, int depth);
     El* Table(MdNode* n);
     // The `table_actions` row, built from the table it goes under. Null when
