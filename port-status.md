@@ -534,11 +534,10 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   drag starts or ends inside its box or covers it. Enclosed top-level
   Markdown blocks copy their original source spans, including rules and
   link definitions that have no text hit. This relies on the frame registering
-  the block's position. Non-selectable scrollable TextViews cache block
-  heights and build the viewport's blocks. A reveal scrolls to its block
-  and then uses the painted line to settle the offset. Selectable views
-  still lay out the full document, so a partial selection can extend from
-  an anchor outside the viewport.
+  the block's position. Scrollable TextViews cache block heights and build
+  the viewport's blocks. A reveal scrolls to its block and then uses the
+  painted line to settle the offset. A partial selection expands the full
+  layout so a drag can extend from an anchor outside the viewport.
   Rust virtualizes the blocks and resolves the same range from the document
   even when the anchor and intervening blocks have no painted runs.
   Participant copy callbacks receive a 64 KiB buffer.

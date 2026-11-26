@@ -2914,6 +2914,7 @@ struct ElLifecycle {
     const InlineTextFragment* inlineTextFragment = nullptr;
     Str selectionBlockSource;
     const ArenaVec<Str>* selectionBlockPrefix = nullptr;
+    int selectionBlockIndex = -1;
     const TextSpan* strikes = nullptr;
     int strikeCount = 0;
     bool inlineTextGroup = false;
@@ -4348,6 +4349,7 @@ struct SelectionSourceBlock {
     int endHit;
     int start;
     int end;
+    int index = -1;
 };
 
 struct PaintCtx {

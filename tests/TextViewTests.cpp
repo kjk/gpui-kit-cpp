@@ -5715,7 +5715,15 @@ static El* RevealMarked(El* e, const Bounds* out) {
 }
 
 static El* RhRenderScrollable(RhView* v) {
-    return gpui::TextView::New(&v->cx, v->state)->Scrollable()->IntoEl();
+    // This fixture inspects the full tree before layout and supplies its own
+    // paint report. Window tests below exercise the virtual layout path.
+    WindowSelection partial;
+    partial.gesture.selecting = true;
+    WindowSelection* previous = v->win->sel;
+    v->win->sel = &partial;
+    El* root = gpui::TextView::New(&v->cx, v->state)->Scrollable()->IntoEl();
+    v->win->sel = previous;
+    return root;
 }
 
 // The bounce wrapper has no lifecycle of its own. Reveal is painted on the
@@ -8791,6 +8799,11 @@ static TswScrollTop TswScrollTopOf(const TswView& v) {
     TswScrollTop top;
     El* scroller = TswScrollBox(v.Root()->scroller);
     El* doc = scroller ? scroller->first : nullptr;
+    if (doc && doc->lifecycle && doc->lifecycle->selectionBlockIndex >= 0) {
+        top.itemIx = doc->lifecycle->selectionBlockIndex;
+        top.offsetInItem = scroller->y - doc->y;
+        return top;
+    }
     float scroll = v.State()->scrollY;
     int ix = 0;
     for (El* b = doc ? doc->first : nullptr; b; b = b->next, ix++) {
@@ -8805,10 +8818,9 @@ static TswScrollTop TswScrollTopOf(const TswView& v) {
 }
 
 static int TswBlockCount(const TswView& v) {
-    El* scroller = TswScrollBox(v.Root()->scroller);
-    El* doc = scroller ? scroller->first : nullptr;
+    const MdNode* doc = v.State()->ParsedDocument();
     int n = 0;
-    for (El* b = doc ? doc->first : nullptr; b; b = b->next) {
+    for (const MdNode* b = doc ? doc->first : nullptr; b; b = b->next) {
         n++;
     }
     return n;
@@ -9565,6 +9577,30 @@ static void ScrollingKeepsAnInlineCodeSelectionAnchor() {
     ArenaDelete(a);
 }
 
+static void SelectionStartsInAnIdleVirtualizedTextView() {
+    Arena* a = ArenaNew();
+    TswView view = TswOpen(TswParagraphs(a, 120).s, TswContainer::Scrollable);
+    TswReveal(view, "paragraph 60");
+    const TextHit* hit = HitContaining(view.win, "paragraph 60");
+    utassert(hit && !HitContaining(view.win, "paragraph 119"));
+    if (hit) {
+        Point start = TextHitCaretPoint(&view.win->paint, *hit, 2, false);
+        start.x += 0.1f;
+        RawMouse(view.win, PlatformInputKind::MouseDown, start, false);
+        TestDraw(view.win);
+        hit = HitContaining(view.win, "paragraph 60");
+        utassert(hit && HitContaining(view.win, "paragraph 119"));
+        if (hit) {
+            Point end = TextHitCaretPoint(&view.win->paint, *hit, 9, true);
+            end.x -= 0.1f;
+            RawMouse(view.win, PlatformInputKind::MouseMove, end, true);
+            utassert(StrEq(StrTrimAscii(TswCopy(a, view)), StrL("ragraph")));
+        }
+    }
+    TswClose(&view);
+    ArenaDelete(a);
+}
+
 static void UnicodeParagraphCopyExtendsBeforePaint() {
     Arena* built = ArenaNew();
     StrBuilder sb(built);
@@ -9748,6 +9784,7 @@ static void TestTextStateWindow() {
     ReplacingSourceCannotReprojectOldContent();
     ScrollingBeforePaintKeepsTheCompletedFrame();
     ScrollingKeepsAnInlineCodeSelectionAnchor();
+    SelectionStartsInAnIdleVirtualizedTextView();
     UnicodeParagraphCopyExtendsBeforePaint();
     ScrollableTextViewUsesTheBaseScrollbarTheme();
     TripleClickSelectsTheWholeWrappedParagraph();

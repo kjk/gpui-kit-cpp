@@ -1796,8 +1796,9 @@ static void TvDraw(TvMounted* m, Vec<El*>* images) {
                 EntityRender(&m->app, &m->window, m->frame, m->views[i].id);
             m->window.paint.app = &m->app;
             m->window.paint.window = &m->window;
-            TestPrepareTextStyles(&m->window.paint, root,
-                                  RuntimeStyleNow(&m->app).foreground);
+            const RuntimeStyle& style = RuntimeStyleNow(&m->app);
+            LayoutEl(&m->window.paint, root, 0, 0, 320, 200, style.fontSize,
+                     style.foreground);
             TvCollectImages(root, images);
         }
         utassert(ExecWaitIdle(5000));

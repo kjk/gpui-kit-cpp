@@ -8877,21 +8877,23 @@ static void PaintElNode(PaintCtx* ctx, El* e, bool skipOverlay) {
     if (selectionScope) {
         VecAppend(ctx->window->textSelectionScopes, e->selectionScope);
     }
-    auto addSourceBlock = [&](Str source) {
+    auto addSourceBlock = [&](Str source, int blockIndex) {
         int index = len(ctx->selectionSourceBlocks);
         SelectionSourceBlock block{
             source,          e->selectionOwner, ElSelectionScope(ctx, e),
             len(ctx->texts), len(ctx->texts),   ctx->textDocLen,
-            ctx->textDocLen};
+            ctx->textDocLen, blockIndex};
         return VecAppend(ctx->selectionSourceBlocks, block) ? index : -1;
     };
     int sourceBlock = -1;
     if (e->lifecycle) {
         if (const auto* prefix = e->lifecycle->selectionBlockPrefix) {
-            for (Str source : *prefix) addSourceBlock(source);
+            for (Str source : *prefix) addSourceBlock(source, -1);
         }
-        if (Str source = e->lifecycle->selectionBlockSource; source.s)
-            sourceBlock = addSourceBlock(source);
+        Str source = e->lifecycle->selectionBlockSource;
+        int blockIndex = e->lifecycle->selectionBlockIndex;
+        if (source.s || blockIndex >= 0)
+            sourceBlock = addSourceBlock(source, blockIndex);
     }
 #ifndef NDEBUG
     // debug_below sets DebugBelow for as long as the element and what it
@@ -10750,8 +10752,8 @@ static int CopyTextHitsFiltered(PaintCtx* ctx, int a, int b, int scope,
             const auto& block = ctx->selectionSourceBlocks[blockIx];
             if (block.firstHit > i) break;
             blockIx++;
-            if (block.firstHit != i || block.start <= a || block.end >= b ||
-                (scope >= 0 && block.scope != scope) ||
+            if (!block.source.s || block.firstHit != i || block.start <= a ||
+                block.end >= b || (scope >= 0 && block.scope != scope) ||
                 (owner.IsValid() && block.owner != owner)) {
                 continue;
             }

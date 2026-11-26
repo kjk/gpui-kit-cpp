@@ -1676,7 +1676,8 @@ static bool SelectionContainsHit(const TextHit& hit, int lo, int hi,
 static bool SameSourcePoint(TextSelectionSourcePoint a,
                             TextSelectionSourcePoint b) {
     return a.source == b.source && a.entityEnd == b.entityEnd &&
-           a.entityByte == b.entityByte;
+           a.entityByte == b.entityByte && a.block == b.block &&
+           a.blockByte == b.blockByte;
 }
 
 static void CaptureSelectionCopy(Window* win, const TextViewState* view,
@@ -1740,14 +1741,16 @@ static int FirstMapSegmentAt(const SelSourceMap& map, int offset) {
 static const TextHit* CaptureSourcePoint(const PaintCtx& paint, int offset,
                                          int scope, bool trailing,
                                          TextSelectionSourcePoint* out) {
+    const TextHit* candidate = nullptr;
     for (const TextHit& hit : paint.texts) {
         if (hit.docOff > offset) break;
         const SelSourceMap* map = hit.map;
-        if (hit.scope != scope || !hit.owner.IsValid() || !map || map->atomic ||
-            hit.atom || hit.blockPlugin ||
-            offset > hit.docOff + len(hit.text)) {
+        if (hit.scope != scope || !hit.owner.IsValid() || hit.atom ||
+            hit.blockPlugin || offset > hit.docOff + len(hit.text)) {
             continue;
         }
+        if (!candidate) candidate = &hit;
+        if (!map || map->atomic) continue;
         int local = map->offset + offset - hit.docOff;
         for (int i = FirstMapSegmentAt(*map, local); i < map->count; i++) {
             const SourceSegment& segment = map->segments[i];
@@ -1774,6 +1777,18 @@ static const TextHit* CaptureSourcePoint(const PaintCtx& paint, int offset,
             return &hit;
         }
     }
+    if (candidate) {
+        int hitIndex = (int)(candidate - paint.texts.els);
+        for (const auto& block : paint.selectionSourceBlocks) {
+            if (block.index >= 0 && block.owner == candidate->owner &&
+                block.scope == scope && hitIndex >= block.firstHit &&
+                hitIndex < block.endHit) {
+                out->block = block.index;
+                out->blockByte = offset - block.start;
+                return candidate;
+            }
+        }
+    }
     return nullptr;
 }
 
@@ -1781,6 +1796,24 @@ static const TextHit* RestoreSourcePoint(const PaintCtx& paint,
                                          const TextSelectionReflow& old,
                                          const TextSelectionSourcePoint& key,
                                          bool trailing, int* offset) {
+    if (key.block >= 0) {
+        for (const auto& block : paint.selectionSourceBlocks) {
+            if (block.owner != old.owner || block.scope != old.scope ||
+                block.index != key.block)
+                continue;
+            int at = block.start + key.blockByte;
+            for (int i = block.firstHit; i < block.endHit; i++) {
+                const TextHit& hit = paint.texts[i];
+                if (hit.owner == old.owner && hit.scope == old.scope &&
+                    at >= hit.docOff && at <= hit.docOff + len(hit.text)) {
+                    *offset = at;
+                    return &hit;
+                }
+            }
+            break;
+        }
+        return nullptr;
+    }
     const TextHit* fallback = nullptr;
     for (const TextHit& hit : paint.texts) {
         const SelSourceMap* map = hit.map;
@@ -1830,7 +1863,9 @@ TextSelectionReflow WindowSelectionCaptureReflow(Window* win) {
     if (!s || s->touchSource.entity.IsValid() || s->selectAllOwner.IsValid())
         return out;
     if (AwaitingSelectionReflow(s)) return s->pendingReflow;
-    if (!WindowSelectionHas(win)) return out;
+    bool selectingCaret =
+        s->gesture.selecting && s->anchor >= 0 && s->anchor == s->cursor;
+    if (!selectingCaret && !WindowSelectionHas(win)) return out;
     out.offsets[0] = s->anchor;
     out.offsets[1] = s->cursor;
     out.scope = s->scope;
@@ -1848,7 +1883,7 @@ TextSelectionReflow WindowSelectionCaptureReflow(Window* win) {
     if (!view || !view->CopyDocumentReady()) return {};
     out.owner = view->self;
     out.replacement = view->fullUpdateRevision;
-    CaptureSelectionCopy(win, view, out);
+    if (!selectingCaret) CaptureSelectionCopy(win, view, out);
     if (s->unitHeld) {
         const TextHit* start = CaptureSourcePoint(
             win->paint, s->unitStart, s->scope, false, &out.unit[0]);
@@ -1910,7 +1945,7 @@ void WindowSelectionRestoreReflow(Window* win, const TextSelectionReflow& old) {
     }
     if (remapped && s->unitHeld) {
         s->unitHeld =
-            old.unit[0].source >= 0 &&
+            (old.unit[0].source >= 0 || old.unit[0].block >= 0) &&
             RestoreSourcePoint(win->paint, old, old.unit[0], false,
                                &s->unitStart) &&
             RestoreSourcePoint(win->paint, old, old.unit[1], true, &s->unitEnd);

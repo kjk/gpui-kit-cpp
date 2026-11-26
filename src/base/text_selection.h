@@ -334,6 +334,8 @@ struct TextSelectionSourcePoint {
     int source = -1;
     int entityEnd = -1;
     int entityByte = 0;
+    int block = -1;
+    int blockByte = 0;
 };
 
 struct TextSelectionReflow {

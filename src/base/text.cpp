@@ -8622,11 +8622,12 @@ El* TextView::Blocks(El* into, MdNode* n, int depth, bool inList,
             e->BoundsOut(revealOut);
             revealOut = nullptr;
         }
-        if (blockSource.s || sourceOnly) {
+        if (blockSource.s || sourceOnly || (outer && selectable)) {
             if (!e->lifecycle) e->lifecycle = ArenaNew<ElLifecycle>(a);
             if (e->lifecycle) {
                 e->lifecycle->selectionBlockSource = blockSource;
                 e->lifecycle->selectionBlockPrefix = sourceOnly;
+                e->lifecycle->selectionBlockIndex = blockIx;
                 e->SelectionOwner(state.id);
             }
             sourceOnly = nullptr;
@@ -9193,6 +9194,20 @@ El* TextView::RenderVirtualBlock(void* user, Ctx* cx, int index) {
     if (view->textViewStyle.foreground.a)
         rowRoot->Fg(view->textViewStyle.foreground);
     El* block = view->Block(row.node, 0, false, row.node->next == nullptr);
+    if (view->selectable) {
+        if (!rowRoot->lifecycle)
+            rowRoot->lifecycle = ArenaNew<ElLifecycle>(cx->a);
+        rowRoot->lifecycle->selectionBlockIndex = index;
+        Str source = frame->state->Source();
+        if (!view->html && row.node->blockStart >= 0 &&
+            row.node->blockEnd > row.node->blockStart &&
+            row.node->blockEnd <= len(source)) {
+            rowRoot->lifecycle->selectionBlockSource =
+                Str(source.s + row.node->blockStart,
+                    row.node->blockEnd - row.node->blockStart);
+        }
+        rowRoot->SelectionOwner(view->state.id);
+    }
     if (block && view->revealOut && view->revealTarget->block)
         block->BoundsOut(view->revealOut);
     rowRoot->Child(block);
@@ -9200,9 +9215,15 @@ El* TextView::RenderVirtualBlock(void* user, Ctx* cx, int index) {
     return rowRoot;
 }
 
-static void VirtualTextArranged(PaintCtx*, El* list, void* user) {
+void TextView::VirtualBlocksArranged(PaintCtx* ctx, El* list, void* user) {
     if (LayoutInScratchPass()) return;
     auto* frame = (TextViewVirtualFrame*)user;
+    float offset = list->scrollY;
+    RevealArranged(ctx, list, frame->view);
+    if (offset != list->scrollY) {
+        frame->measured->handle.offset = list->scrollY;
+        WindowRequestAnimationFrame(ctx->window);
+    }
     frame->state->scrollY = list->scrollY;
     if (frame->bounceOffset) *frame->bounceOffset = list->scrollY;
 }
@@ -9302,7 +9323,7 @@ El* TextView::VirtualBlocks(TextViewState* managed, MdNode* doc, uint32_t key,
     frame->listAfterPaint = list->lifecycle->afterPaint;
     frame->listUser = list->lifecycle->user;
     list->lifecycle->afterPaint = &TextView::VirtualBlocksPainted;
-    list->lifecycle->afterLayout = &VirtualTextArranged;
+    list->lifecycle->afterLayout = &TextView::VirtualBlocksArranged;
     list->lifecycle->user = frame;
     *out = frame;
     return list;
@@ -9499,7 +9520,14 @@ El* TextView::IntoEl() {
     // inverted surface before layout has resolved it.
     TextViewVirtualFrame* virtualFrame = nullptr;
     El* virtualList = nullptr;
-    if (scrollable && !selectable && !inheritedBuilder && cx->win && managed) {
+    const WindowSelection* selection = cx->win ? cx->win->sel : nullptr;
+    // Keep geometry for a partial selection until its offscreen projection
+    // can address all intervening blocks by source position.
+    bool partialSelection =
+        selectable && selection && !selection->selectAllOwner.IsValid() &&
+        (selection->gesture.selecting || WindowSelectionHas(cx->win));
+    if (scrollable && !partialSelection && !inheritedBuilder && cx->win &&
+        managed) {
         virtualList = VirtualBlocks(managed, doc, TextViewScrollKey(state),
                                     ListenTo(state, &TextViewState::OnScroll),
                                     &virtualFrame);
