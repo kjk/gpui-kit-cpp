@@ -304,6 +304,7 @@ struct Tig {
     VirtualListScrollHandle historyScroll, filesScroll;
     int commitIx = -1, fileIx = -1;
     uint64_t revision = 0;
+    float messageScroll = 0;
     bool started = false, readingHistory = false, readingCommit = false;
     bool sidebar = true, wrap = true, numbers = true, messageOpen = false;
 
@@ -459,6 +460,7 @@ struct Tig {
         StrFree(message);
         message = {};
         messageOpen = false;
+        messageScroll = 0;
         if (auto* state = diff.Get(cx)) state->SetFiles(nullptr, 0, cx);
         if (const auto* commit = Commit()) {
             VirtualListScrollToItemDeferred(&historyScroll, index,
@@ -574,6 +576,12 @@ static void ClickTigAction(Tig* self, Ctx* cx, const ClickEvent*,
 static void DispatchTigAction(Tig* self, Ctx* cx, const ActionEvent*,
                               int64_t action) {
     self->Action(cx, (TigAction)action);
+}
+
+static void ScrollTigMessage(Tig* self, Ctx* cx, const ScrollEvent* event) {
+    if (self->messageScroll == event->offsetY) return;
+    self->messageScroll = event->offsetY;
+    Notify(cx);
 }
 
 static component::Button* TigButton(Ctx* cx, TigAction action) {
@@ -853,18 +861,26 @@ El* Tig::RenderDiff(Ctx* cx, Tig* self) {
                           ->Child(subject)
                           ->Child(info));
     }
-    if (self->messageOpen) {
-        column->Child(Div(cx->a)
-                          ->H(160)
-                          ->FlexNone()
-                          ->PadX(16)
-                          ->PadY(12)
-                          ->PathId(StrL("commit-message"))
-                          ->ScrollFromPath()
-                          ->ScrollY(0.f)
-                          ->Bg(th.groupBox)
-                          ->BorderB(1, th.border)
-                          ->Child(TextView::New(cx, self->message)->IntoEl()));
+    if (self->messageOpen && !self->readingCommit && !self->readingHistory) {
+        El* body = Div(cx->a)
+                       ->FlexCol()
+                       ->FlexNone()
+                       ->PadX(Rems(cx, 1.f))
+                       ->PadY(Rems(cx, 0.75f))
+                       ->Child(TextView::New(cx, self->message)
+                                   ->Font(Rems(cx, 0.875f))
+                                   ->IntoEl());
+        El* area = Div(cx->a)
+                       ->FlexCol()
+                       ->H(Rems(cx, 10.f))
+                       ->FlexNone()
+                       ->MinH(0)
+                       ->Bg(th.groupBox)
+                       ->BorderB(1, th.border)
+                       ->Child(body);
+        column->Child(component::ScrollableElement::VerticalScrollbar(
+            cx, area, StrL("commit-message"), self->messageScroll,
+            Listen(cx, &ScrollTigMessage)));
     }
     El* content;
     if (self->readingHistory || self->readingCommit) {
