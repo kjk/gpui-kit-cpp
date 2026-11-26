@@ -1097,6 +1097,10 @@ int GpuiMain(int argc, char** argv) {
         return 2;
     }
     if (!path.s) path = StrL(".");
+    char canonical[kMaxPath];
+    if (PlatCanonicalPath(path.s, canonical, dimofi(canonical))) {
+        path = Str(canonical);
+    }
     if (check) return CheckTig(path, head);
     App* app = AppNew();
     component::Init(app);
