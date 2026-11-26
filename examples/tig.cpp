@@ -1150,19 +1150,24 @@ El* Tig::Render(Tig* self, Ctx* cx) {
                                     ->Font(12)
                                     ->Fg(th.mutedFg)))
             ->IntoEl());
+    float rem = WindowRemSize(cx->win);
     El* navigation =
         Div(cx->a)
             ->SizeFull()
             ->Bg(th.sidebar)
             ->Child(v_resizable(cx, StrL("tig-navigation"))
-                        ->Panel(Navigation(cx, self, true), 25 * 16, 12 * 16,
-                                100 * 16)
-                        ->Grow(Navigation(cx, self, false), 10 * 16)
+                        ->Panel(Navigation(cx, self, true), 25 * rem, 12 * rem,
+                                100 * rem)
+                        ->Child(ResizablePanel::New(cx)
+                                    ->SizeRange(10 * rem, 100 * rem)
+                                    ->Child(Navigation(cx, self, false)))
                         ->IntoEl());
     El* panes = h_resizable(cx, StrL("tig-panes"))
-                    ->Panel(navigation, 22 * 16, 18 * 16, 30 * 16)
+                    ->Panel(navigation, 22 * rem, 18 * rem, 30 * rem)
                     ->Visible(self->sidebar)
-                    ->Grow(RenderDiff(cx, self), 38 * 16)
+                    ->Child(ResizablePanel::New(cx)
+                                ->SizeRange(38 * rem, 200 * rem)
+                                ->Child(RenderDiff(cx, self)))
                     ->IntoEl();
     root->Child(Div(cx->a)->Flex1()->MinH(0)->Child(panes));
     Str commitStatus =
