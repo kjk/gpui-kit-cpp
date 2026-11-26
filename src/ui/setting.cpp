@@ -501,6 +501,22 @@ void SettingsState::OnSearchEscape(SettingsState* self, Ctx* cx,
     InputClean(&self->search, cx->app, cx->win);
 }
 
+SettingSection* SettingSection::New(Ctx* cx, Str heading) {
+    auto* section = ArenaNew<SettingSection>(cx->a);
+    section->a = cx->a;
+    section->heading = heading;
+    return section;
+}
+
+SettingSection* SettingSection::Page(const SettingPage& page) {
+    return Pages(&page, 1);
+}
+
+SettingSection* SettingSection::Pages(const SettingPage* values, int count) {
+    if (values) pages.AppendMany(a, values, count);
+    return this;
+}
+
 Settings* Settings::New(Ctx* cx, Str id, Entity<SettingsState> state) {
     Arena* a = cx->a;
     Settings* s = ArenaNew<Settings>(a);
@@ -521,12 +537,35 @@ Settings* Settings::New(Ctx* cx, Str id, Entity<SettingsState> state) {
     return s;
 }
 
+Settings* Settings::Section(Str heading) {
+    int start = len(pages);
+    openSection = sections.Append(a, {start, start, heading})
+                      ? &sections[len(sections) - 1]
+                      : nullptr;
+    return this;
+}
+
+Settings* Settings::EndSection() {
+    openSection = nullptr;
+    return this;
+}
+
+Settings* Settings::Section(const SettingSection& section) {
+    Section(section.heading);
+    for (const SettingPage& page : section.pages) {
+        if (!pages.Append(a, page)) break;
+    }
+    if (openSection) openSection->end = len(pages);
+    return EndSection();
+}
+
 Settings* Settings::Page(Str title, IconName icon, Str description) {
     SettingPage pg;
     pg.title = title;
     pg.icon = icon;
     pg.description = description;
     pages.Append(a, pg);
+    if (openSection) openSection->end = len(pages);
     return this;
 }
 
@@ -1272,6 +1311,28 @@ static El* SettingsNoResults(Ctx* cx) {
                 ->IntoEl());
 }
 
+ArenaVec<SettingsSidebarPage> Settings::SidebarPages(Str query) const {
+    ArenaVec<SettingsSidebarPage> visible;
+    auto section = sections.begin();
+    auto end = sections.end();
+    int sectionIx = 0;
+    int pageIx = 0;
+    for (const SettingPage& page : pages) {
+        while (section != end && section->end <= pageIx) {
+            ++section;
+            ++sectionIx;
+        }
+        int groups = MatchingGroupCount(page, query);
+        if (groups > 0) {
+            int heading =
+                section != end && section->start <= pageIx ? sectionIx : -1;
+            visible.Append(a, {pageIx, heading, groups});
+        }
+        ++pageIx;
+    }
+    return visible;
+}
+
 El* Settings::IntoEl() {
     SettingsState* st = state.Get(cx);
     if (st) {
@@ -1320,8 +1381,8 @@ El* Settings::IntoEl() {
     float sideWidth = sidebarMinWidth;
 
     // render_sidebar: a Sidebar the width of its panel, borderless and not
-    // collapsible, with the search field as its header and one SidebarMenu
-    // of the pages that still have a matching group.
+    // collapsible, with the search field as its header and a SidebarMenu
+    // for each run of matching pages under the same heading.
     Sidebar* sidebar = Sidebar::New(cx, StrL("settings-sidebar"))
                            ->Collapsible(false)
                            ->Collapsed(false);
@@ -1343,16 +1404,25 @@ El* Settings::IntoEl() {
             cx->win->input = &st->search;
         }
     }
-    SidebarMenu* menu = SidebarMenu::New(cx);
+    SidebarMenu* menu = nullptr;
+    int lastSection = -2;
     int selected = st ? st->page : 0;
     int selectedGroup = st ? st->group : -1;
-    int i = -1;
-    for (const SettingPage& p : pages) {
-        i++;
-        int visibleGroups = MatchingGroupCount(p, query);
-        if (visibleGroups == 0) {
-            continue;
+    for (SettingsSidebarPage entry : SidebarPages(query)) {
+        if (entry.sectionIx != lastSection) {
+            lastSection = entry.sectionIx;
+            menu = SidebarMenu::New(cx);
+            if (lastSection < 0) {
+                sidebar->Child(menu);
+            } else {
+                sidebar
+                    ->Child(SidebarGroup::New(cx, sections[lastSection].heading)
+                                ->Child(menu));
+            }
         }
+        int i = entry.pageIx;
+        int visibleGroups = entry.visibleGroups;
+        const SettingPage& p = pages[i];
         // The page row is active when no group is selected, or when the page
         // has only one visible group — the group cannot be a separate row.
         bool pageShown = i == selected;
@@ -1388,7 +1458,6 @@ El* Settings::IntoEl() {
         }
         menu->Child(item);
     }
-    sidebar->Child(menu);
     // `.w(relative(1.)).border_0()`: the panel is what sizes it.
     El* side = sidebar->IntoEl()->W(kFill);
     side->style.border = 0;

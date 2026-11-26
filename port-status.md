@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `6d7004f557d7da932992768f784b07ae97411fed` (2026-11-26,
-feat(gpui-pre): upgrade the accesskit version (#4140)).
-The Rust snapshot generator now targets newer AccessKit adapters for future
-GPUI releases. The locked GPUI reference and C++ native bridges are unchanged.
+Processed through `72f28383c7b96090de4a2b0de72f92fccd8b4cba` (2026-11-26,
+settings: Add SettingSection to group the sidebar's pages (#4146)).
+Settings sidebar sections preserve page order and hide headings with no
+matching pages. The story groups its pages under Preferences and Application.
 The current update target is
-`6d7004f557d7da932992768f784b07ae97411fed`.
+`f807c1b2c49ef25ddfbe73e465e33b8a5fa5632e`.
 
 ## Known gaps vs Rust
 

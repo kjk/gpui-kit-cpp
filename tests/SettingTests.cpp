@@ -289,6 +289,48 @@ static void FillSearchFixture(Arena* a, ArenaVec<SettingPage>& pages) {
     pages.Append(a, editor);
 }
 
+// settings.rs groups the visible pages in the order the sidebar renders them.
+static void SectionsHeadThePagesAfterThemAndHideWithoutResults() {
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.a = a;
+    Settings settings;
+    settings.a = a;
+    SettingPage editor[2];
+    editor[0].title = StrL("font");
+    editor[1].title = StrL("theme");
+    AppendKeywordGroup(a, &editor[0], "", "font");
+    AppendKeywordGroup(a, &editor[1], "", "theme");
+    settings.Page(StrL("general"))->Group({})->Item(StrL("general"), {});
+    settings
+        .Section(*SettingSection::New(&cx, StrL("Editor"))->Pages(editor, 2));
+    settings.Section(*SettingSection::New(&cx, StrL("Empty")));
+    settings.Section(StrL("Network"))
+        ->Page(StrL("proxy"))
+        ->Group({})
+        ->Item(StrL("proxy"), {})
+        ->EndSection()
+        ->Page(StrL("about"))
+        ->Group({})
+        ->Item(StrL("about"), {});
+    const auto all = settings.SidebarPages({});
+    utassert(len(all) == 5);
+    const int headings[] = {-1, 0, 0, 2, -1};
+    if (len(all) == dimofi(headings)) {
+        for (int i = 0; i < len(all); i++) {
+            utassert(all[i].pageIx == i && all[i].sectionIx == headings[i]);
+        }
+    }
+    const auto theme = settings.SidebarPages(StrL("theme"));
+    utassert(len(theme) == 1 && theme[0].pageIx == 2 &&
+             theme[0].sectionIx == 0);
+    const auto proxy = settings.SidebarPages(StrL("proxy"));
+    utassert(len(proxy) == 1 && proxy[0].pageIx == 3 &&
+             proxy[0].sectionIx == 2);
+    utassert(len(settings.SidebarPages(StrL("Network"))) == 0);
+    ArenaDelete(a);
+}
+
 static void SearchPreservesPageIdentityAndFallsBackToTheFirstMatch() {
     Arena* a = ArenaNew();
     ArenaVec<SettingPage> pages;
@@ -1136,6 +1178,7 @@ void TestSetting() {
     RenderOptionsNarrowCopiesAndReachCustomFields();
     NumberSettingsDelegateStepAndRangeToTheInputEngine();
     SearchPreservesPageIdentityAndFallsBackToTheFirstMatch();
+    SectionsHeadThePagesAfterThemAndHideWithoutResults();
     TheShownPagesTitleFoldsAndUnfoldsItsGroups();
     SearchPreservesGroupIdentityUntilTheGroupDisappears();
     ResettingSearchResultsLeavesHiddenSettingsUnchanged();

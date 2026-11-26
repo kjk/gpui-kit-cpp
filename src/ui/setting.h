@@ -291,6 +291,28 @@ struct SettingPage {
     bool resettable = true;
 };
 
+struct SettingSection {
+    Arena* a = nullptr;
+    Str heading = {};
+    ArenaVec<SettingPage> pages;
+
+    static SettingSection* New(Ctx* cx, Str heading);
+    SettingSection* Page(const SettingPage& page);
+    SettingSection* Pages(const SettingPage* values, int count);
+};
+
+struct SettingSectionRange {
+    int start;
+    int end;
+    Str heading;
+};
+
+struct SettingsSidebarPage {
+    int pageIx;
+    int sectionIx;
+    int visibleGroups;
+};
+
 // is_match: the query against the title, the description and the keywords,
 // case-insensitively. An empty query matches everything.
 bool SettingItemMatches(const SettingItem* it, Str query);
@@ -417,6 +439,8 @@ struct Settings {
     // The three levels grow into the frame arena the builder is on, so a
     // page is as long as the caller makes it.
     ArenaVec<SettingPage> pages;
+    ArenaVec<SettingSectionRange> sections;
+    SettingSectionRange* openSection = nullptr;
     // sidebar_width. Rust's panel shrinks from it to sidebarMinWidth beside a
     // size_full page within two frames, so the panel opens at the minimum;
     // see Settings::IntoEl.
@@ -434,6 +458,10 @@ struct Settings {
     // The state is optional, as `use_keyed_state(self.id, ..)` is upstream:
     // a pane left to itself keys its own off the id.
     static Settings* New(Ctx* cx, Str id, Entity<SettingsState> state = {});
+    Settings* Section(const SettingSection& section);
+    // Fluent page builders can start a section before adding its pages.
+    Settings* Section(Str heading);
+    Settings* EndSection();
     Settings* Page(Str title, IconName icon = IconName::None,
                    Str description = {});
     Settings* Group(Str title, Str description = {});
@@ -488,6 +516,7 @@ struct Settings {
     Settings* WithGroupVariant(GroupBoxVariant v);
     // Compatibility spelling: true is WithGroupVariant(Outline), false Normal.
     Settings* Bordered(bool v);
+    ArenaVec<SettingsSidebarPage> SidebarPages(Str query) const;
     El* IntoEl();
 };
 

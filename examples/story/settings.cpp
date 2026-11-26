@@ -145,7 +145,8 @@ El* SettingsStory::Render(SettingsStory* self, Ctx* cx) {
                                  ->WithSize(size)
                                  ->WithGroupVariant(variant);
 
-    s->Page(StrL("General"), IconName::Settings2)
+    s->Section(StrL("Preferences"))
+        ->Page(StrL("General"), IconName::Settings2)
         ->PageResettable(self->resettable)
         ->PageDefaultOpen(true)
         ->PageTitleSuffix(
@@ -274,7 +275,8 @@ El* SettingsStory::Render(SettingsStory* self, Ctx* cx) {
         ->Layout(Axis::Vertical)
         ->Disabled(disabled);
 
-    s->Page(StrL("Software Update"), IconName::Cpu)
+    s->Section(StrL("Application"))
+        ->Page(StrL("Software Update"), IconName::Cpu)
         ->PageResettable(self->resettable);
     s->Group(StrL("Updates"));
     s->Item(StrL("Enable Notifications"),
