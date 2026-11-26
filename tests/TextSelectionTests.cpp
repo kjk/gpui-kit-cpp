@@ -2899,9 +2899,38 @@ static void SelectableTextRevealsOnlyWhenItsValidRangeChanges() {
     TestAppFree(app);
 }
 
+#if GPUI_OS_LINUX
+static void MixedDirectionSelectionKeepsVisualGaps() {
+    SelectionFixture fixture;
+    Str text = StrL("abc \xd7\x90\xd7\x91\xd7\x92 xyz");
+    TextLayout* layout = TextLayoutNew(&fixture.win->paint, text, 16.f, 300.f,
+                                       false, 0, 0, nullptr, TextAlign::Right);
+    utassert(layout);
+    if (!layout) return;
+    Bounds selection[4] = {};
+    Bounds latin = {}, alef = {}, rest = {}, whole = {};
+    utassert(TextLayoutRangeRects(layout, text, 0, 4, &latin, 1) == 1);
+    utassert(TextLayoutRangeRects(layout, text, 4, 6, &alef, 1) == 1);
+    utassert(TextLayoutRangeRects(layout, text, 6, 10, &rest, 1) == 1);
+    utassert(TextLayoutRangeRects(layout, text, 0, len(text), &whole, 1) == 1);
+    utassert(TextLayoutRangeRects(layout, text, 0, 6, selection, 4) == 2);
+    utassert(latin.w > 0 && alef.w > 0 && rest.w > 0);
+    utassertnear(whole.Right(), 300.f);
+    utassertnear(selection[0].x, latin.x);
+    utassertnear(selection[0].Right(), rest.x);
+    utassertnear(selection[1].x, rest.Right());
+    utassertnear(selection[1].x, alef.x);
+    utassertnear(selection[1].w, alef.w);
+    TextLayoutRelease(layout);
+}
+#endif
+
 void TestTextSelection() {
     SelectableTextRevealsOnlyWhenItsValidRangeChanges();
     TestSuite("text_selection");
+#if GPUI_OS_LINUX
+    MixedDirectionSelectionKeepsVisualGaps();
+#endif
     PaintDoesNotResolveWindowSelectedText();
     HighlightedTextSelectsAndCopiesAsPlainText();
     ADragRedrawsOwnedTextBeforeRelease();

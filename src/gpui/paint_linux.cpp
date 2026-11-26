@@ -1241,29 +1241,24 @@ int TextLayoutRangeRects(TextLayout* tl, Str s, int u8a, int u8b, Bounds* out,
         if (lo >= hi) {
             continue;
         }
-        int x0 = 0, x1 = 0;
-        pango_layout_line_index_to_x(line, lo, FALSE, &x0);
-        pango_layout_line_index_to_x(line, hi, FALSE, &x1);
-        // index_to_x is from the line's own left edge; the iterator's
-        // extents say where an aligned line was put.
-        PangoRectangle logical = {};
-        pango_layout_iter_get_line_extents(iter, nullptr, &logical);
-        float left = (float)(logical.x + x0) / PANGO_SCALE + tl->dx;
-        float right = (float)(logical.x + x1) / PANGO_SCALE + tl->dx;
-        if (right < left) {
-            float t = left;
-            left = right;
-            right = t;
+        // Pango returns visual ranges in layout coordinates. Merge touching
+        // ranges on the same row, keeping gaps caused by bidi reordering.
+        int* ranges = nullptr;
+        int count = 0;
+        pango_layout_line_get_x_ranges(line, lo, hi, &ranges, &count);
+        for (int i = 0; i < count && n < max;) {
+            int left = ranges[2 * i];
+            int right = ranges[2 * i + 1];
+            ++i;
+            while (i < count && ranges[2 * i] <= right) {
+                right = std::max(right, ranges[2 * i + 1]);
+                ++i;
+            }
+            out[n++] = {(float)left / PANGO_SCALE + tl->dx,
+                        (float)thisLine * tl->box,
+                        (float)(right - left) / PANGO_SCALE, tl->box};
         }
-        // The line box, from its top. Pango's y-range is the glyph box, and
-        // the half-leading pad sits above it; a rect from the glyphs reached
-        // into the next line. DirectWrite and Core Text report the box, so
-        // index 0 sits on the element's origin.
-        out[n].x = left;
-        out[n].y = (float)thisLine * tl->box;
-        out[n].w = right - left;
-        out[n].h = tl->box;
-        n++;
+        g_free(ranges);
     } while (n < max && pango_layout_iter_next_line(iter));
     pango_layout_iter_free(iter);
     return n;
