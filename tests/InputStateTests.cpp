@@ -1637,6 +1637,31 @@ static void EnterInsertsANewlineOnlyWhereItShould() {
     utassert(ValueIs(chat, "\n"));
 }
 
+// state.rs enter clears the current item and inserts its newline silently.
+static void EnterDismissesInlineCompletion() {
+    for (int mode = 0; mode < 3; mode++) {
+        InputState s;
+        s.kind = InputKind::Editor;
+        s.inlineCompletionProvider = &TestInlineCompletion;
+        s.submitOnEnter = mode == 0;
+        gInlineCalls = 0;
+        Type(&s, "hello");
+        s.inlineCompletion.dueAt = 0.0;
+        InputUpdateInlineCompletion(&s, false);
+        utassert(InputHasInlineCompletion(&s));
+
+        bool insertsNewline = mode == 2;
+        bool handled = InputPerform(&s, nullptr, nullptr, InputAction::Enter,
+                                    false, mode == 1);
+        utassert(handled == insertsNewline);
+        utassert(ValueIs(s, insertsNewline ? "hello\n" : "hello"));
+        utassert(!InputHasInlineCompletion(&s));
+        s.inlineCompletion.dueAt = 0.0;
+        InputUpdateInlineCompletion(&s, false);
+        utassert(gInlineCalls == 1);
+    }
+}
+
 // indent.rs. Tab indents a multi-line field and shift-tab takes it back; a
 // single-line one does not handle either, which is what lets the window walk
 // the focus ring with the same key.
@@ -15508,6 +15533,7 @@ void TestInputState() {
     ACompositionReplacesItselfUntilItCommits();
     ACommitReplacesWhatWasMarked();
     EnterInsertsANewlineOnlyWhereItShould();
+    EnterDismissesInlineCompletion();
     MaskFormatsWhileTyping();
     TabIndentsOnlyWhereThereIsSomethingToIndent();
     TabIndentsEveryLineOfASelection();

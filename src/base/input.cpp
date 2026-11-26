@@ -11969,6 +11969,10 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
         }
 
         case InputAction::Enter: {
+            if (InputHasInlineCompletion(s)) {
+                InputClearInlineCompletion(s);
+                Notify(app, win);
+            }
             // A multi-line input takes a newline, unless it submits on Enter —
             // then only Shift+Enter does. Secondary Enter always submits.
             bool insertNewline = InputIsMultiLine(s) && !secondary &&
@@ -11979,7 +11983,10 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
                 int caretInText = -1;
                 Str newline =
                     InputNextLineIndent(s, app, GetTempArena(), &caretInText);
+                bool wasSilent = s->silentReplace;
+                s->silentReplace = true;
                 InputReplaceTextInRange(s, app, win, nullptr, newline);
+                s->silentReplace = wasSilent;
                 if (caretInText >= 0) {
                     s->selectedRange = SelectionAt(oldCursor + caretInText);
                     s->selectionReversed = false;
