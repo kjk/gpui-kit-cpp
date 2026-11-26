@@ -673,6 +673,29 @@ static bool ApplyGeometry(WebView* self, wry::WebView* raw, Bounds document,
 #endif
 }
 
+static bool UpdateWebViewGeometry(WebView* self, wry::WebView* raw,
+                                  Bounds document, Bounds visible, float scale,
+                                  bool* unchanged = nullptr) {
+    bool same = self->hasApplied && !self->geometryFailed &&
+                BoundsSame(self->applied, document) &&
+                BoundsSame(self->appliedVisible, visible) &&
+                self->appliedScale == scale;
+    if (unchanged) *unchanged = same;
+    if (same) return true;
+    if (!ApplyGeometry(self, raw, document, visible)) {
+        if (!self->geometryFailed) logf("WebView geometry update failed\n");
+        self->geometryFailed = true;
+        return false;
+    }
+    self->applied = document;
+    self->appliedVisible = visible;
+    self->appliedScale = scale;
+    self->visibleRegionNeedsUpdate = self->hasVisibleRegion;
+    self->hasApplied = true;
+    self->geometryFailed = false;
+    return true;
+}
+
 static void PaintWebView(PaintCtx* ctx, El* e, void* user) {
     WebView* self = (WebView*)user;
     Bounds document = e->Bounds();
@@ -702,32 +725,26 @@ static void PaintWebView(PaintCtx* ctx, El* e, void* user) {
     bool empty = visible.w <= 0.f || visible.h <= 0.f;
     if (empty) {
         HideNative(self, raw);
+#if GPUI_WRY_CLIPPED_CHILD
+        // composition::set_geometry prepares the full layout while the
+        // native container is hidden. It only becomes visible with a clip.
+        if (document.w > 0 && document.h > 0) {
+            UpdateWebViewGeometry(self, raw, document, document, gpuiScale);
+        }
+#endif
 #if GPUI_WRY_SNAPSHOT
         DropWebViewBackdrop(self);
 #endif
         return;
     }
-    bool same = self->hasApplied && BoundsSame(self->applied, document) &&
-                BoundsSame(self->appliedVisible, visible) &&
-                self->appliedScale == gpuiScale;
-    if (!same || self->geometryFailed) {
-        if (!ApplyGeometry(self, raw, document, visible)) {
-            if (!self->geometryFailed) {
-                self->geometryFailed = true;
-                logf("WebView geometry update failed\n");
-            }
-            HideNative(self, raw);
+    bool same = false;
+    if (!UpdateWebViewGeometry(self, raw, document, visible, gpuiScale,
+                               &same)) {
+        HideNative(self, raw);
 #if GPUI_WRY_SNAPSHOT
-            DropWebViewBackdrop(self);
+        DropWebViewBackdrop(self);
 #endif
-            return;
-        }
-        self->applied = document;
-        self->visibleRegionNeedsUpdate = self->hasVisibleRegion;
-        self->appliedVisible = visible;
-        self->appliedScale = gpuiScale;
-        self->hasApplied = true;
-        self->geometryFailed = false;
+        return;
     }
     int hit = ReserveWebViewHit(ctx);
 #if GPUI_WRY_CLIPPED_CHILD || GPUI_WEBVIEW_NATIVE_CLIP

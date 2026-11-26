@@ -1311,6 +1311,16 @@ static void ResizeClippedContainer(WebView* wv, int x, int y, int w, int h,
     gtk_window_resize(GTK_WINDOW(wv->gtkWindow), w, h);
     GtkAllocation a = {0, 0, w, h};
     gtk_widget_size_allocate(wv->gtkWindow, &a);
+    if (!gtk_widget_get_visible(wv->gtkWindow)) {
+        // GTK skips allocation for the hidden plug. Allocate the page in
+        // logical pixels so WebKit can lay it out before the plug maps.
+        GtkWidget* page = GTK_WIDGET(wv->webview);
+        int scale = std::max(1, gtk_widget_get_scale_factor(page));
+        GtkAllocation pageBounds = {0, 0, std::max(w / scale, 1),
+                                    std::max(h / scale, 1)};
+        gtk_widget_show(page);
+        gtk_widget_size_allocate(page, &pageBounds);
+    }
 }
 
 static void ResizeContainer(WebView* wv, int x, int y, int w, int h) {

@@ -728,6 +728,8 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   See the browser section of AGENTS.md.
 - **Native webviews are child surfaces.** Desktop hosts clip the child
   to the content mask and keep the page's full size and scroll position.
+  Linux and macOS also prepare full document bounds on a hidden child
+  when its clip is empty.
   Omitting its element hides the native child while retaining the loaded page.
   macOS composites deferred GPUI layers above the live WKWebView. Linux
   blends them in an ARGB X11 window when a compositor is available.
