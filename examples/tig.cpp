@@ -576,7 +576,7 @@ void Tig::Action(Ctx* cx, TigAction action) {
             ThemeSet(cx->app, ThemeMode::Light);
             break;
         case TigMessage:
-            messageOpen = !messageOpen;
+            if (len(message)) messageOpen = !messageOpen;
             break;
         case TigActionCount:
             break;
@@ -927,32 +927,69 @@ El* Tig::RenderDiff(Ctx* cx, Tig* self) {
     auto* state = self->diff.Get(cx);
     El* column = Div(cx->a)->FlexCol()->SizeFull()->MinW(0)->MinH(0);
     if (const TigCommit* commit = self->Commit()) {
-        El* subject = Div(cx->a)->FlexRow()->Gap(4)->ItemsCenter()->Child(
-            TextEl(cx->a, commit->Subject())->Font(16)->Medium()->Wrap());
+        El* subject = Div(cx->a)->FlexRow()->Gap(4)->ItemsStart()->Child(
+            TextEl(cx->a, commit->Subject())
+                ->MinW(0)
+                ->Font(16)
+                ->Medium()
+                ->Wrap());
         if (len(self->message)) {
+            Str messageAction = self->messageOpen ? StrL("Hide commit message")
+                                                  : StrL("Show commit message");
             subject->Child(TigButton(cx, TigMessage)
                                ->Icon(self->messageOpen ? IconName::ChevronUp
                                                         : IconName::ChevronDown)
-                               ->Tooltip(self->messageOpen
-                                             ? StrL("Hide commit message")
-                                             : StrL("Show commit message"))
-                               ->IntoEl());
+                               ->Toggled(self->messageOpen)
+                               ->AccessibilityLabel(messageAction)
+                               ->Tooltip(messageAction)
+                               ->IntoEl()
+                               ->FlexNone());
         }
         El* info =
             Div(cx->a)
                 ->FlexRow()
+                ->MinW(0)
                 ->Gap(8)
                 ->ItemsCenter()
                 ->Fg(th.mutedFg)
-                ->Child(TextEl(cx->a, commit->shortHash)->Mono()->Font(12))
+                ->Child(TextEl(cx->a, commit->shortHash)
+                            ->FlexNone()
+                            ->Mono()
+                            ->Font(12))
                 ->Child(TigButton(cx, TigCopy)
                             ->Icon(IconName::Copy)
+                            ->AccessibilityLabel(StrL("Copy commit hash"))
                             ->Tooltip(StrL("Copy commit hash"))
                             ->IntoEl())
-                ->Child(TextEl(cx->a, commit->author)->Font(12)->Truncate())
-                ->Child(TextEl(cx->a, commit->date)->Font(12))
-                ->Child(Div(cx->a)->Flex1())
-                ->Child(TigToolbar(cx, self, state));
+                ->Child(TextEl(cx->a, commit->author)
+                            ->MinW(0)
+                            ->Font(12)
+                            ->Truncate())
+                ->Child(TextEl(cx->a, StrL("·"))->FlexNone()->Font(12))
+                ->Child(TextEl(cx->a, commit->date)->FlexNone()->Font(12))
+                ->Child(Div(cx->a)->Flex1());
+        if (!self->readingCommit) {
+            size_t additions = 0;
+            size_t deletions = 0;
+            for (int i = 0; i < len(self->files); i++) {
+                if (const auto* file = self->File(i, cx)) {
+                    additions += (size_t)file->Additions();
+                    deletions += (size_t)file->Deletions();
+                }
+            }
+            info->Child(
+                Div(cx->a)
+                    ->FlexRow()
+                    ->FlexNone()
+                    ->Gap(8)
+                    ->Child(TextEl(cx->a, fmt("%d files", len(self->files)))
+                                ->Font(12))
+                    ->Child(
+                        TextEl(cx->a, fmt("+%zu -%zu", additions, deletions))
+                            ->Font(12)
+                            ->Mono()));
+        }
+        info->Child(TigToolbar(cx, self, state));
         column->Child(Div(cx->a)
                           ->FlexCol()
                           ->FlexNone()
@@ -971,7 +1008,9 @@ El* Tig::RenderDiff(Ctx* cx, Tig* self) {
                        ->PadY(Rems(cx, 0.75f))
                        ->Child(TextView::New(cx, self->message)
                                    ->Font(Rems(cx, 0.875f))
-                                   ->IntoEl());
+                                   ->Selectable()
+                                   ->IntoEl()
+                                   ->PathId(StrL("commit-message-content")));
         El* area = Div(cx->a)
                        ->FlexCol()
                        ->H(Rems(cx, 10.f))
