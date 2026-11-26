@@ -44,6 +44,10 @@ static void MissingNativeWebViewLeavesThePointerTargetReachable() {
     auto view = EntityNew<WebViewReleaseProbe>(app);
     Window* win = TestWindowOpen(app, view, 240, 120, 1);
     auto* self = view.Get(app);
+    WebView* web = self->web.Get(app);
+    utassert(!WebViewSetBounds(
+        web, {wry::LogicalPosition(15, 10), wry::LogicalSize(180, 80)}));
+    utassert(!WebViewSetGeometry(web, {15, 10, 180, 80}, {0, 0, 100, 50}));
     // Even a logically visible element needs a native surface to block.
     TestSimulateClick(win, {20, 20});
     utassert(self->clicks == 1);

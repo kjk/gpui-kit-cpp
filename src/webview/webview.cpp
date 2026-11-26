@@ -434,12 +434,12 @@ bool WebViewWindowGeometry(Bounds document, Bounds visible, double scale,
            clip[3] != height;
 }
 
-static void HideNative(WebView* self, wry::WebView* raw) {
-    if (!self->nativeShown) {
-        return;
+static bool HideNative(WebView* self, wry::WebView* raw) {
+    if (self->nativeShown && !wry::WebViewSetVisible(raw, false)) {
+        return false;
     }
-    wry::WebViewSetVisible(raw, false);
     self->nativeShown = false;
+    return true;
 }
 
 static void HideOmittedWebView(WebView* self, Ctx*, const void*) {
@@ -449,16 +449,21 @@ static void HideOmittedWebView(WebView* self, Ctx*, const void*) {
 #endif
 }
 
-static void ShowNative(WebView* self, wry::WebView* raw) {
+static bool ShowNative(WebView* self, wry::WebView* raw) {
     if (!self->nativeShown) {
         if (!wry::WebViewSetVisible(raw, true)) {
             // The native host may have mapped before its browser rejected
             // the visibility update.
             wry::WebViewSetVisible(raw, false);
-            return;
+            return false;
         }
         self->nativeShown = true;
     }
+    return true;
+}
+
+static void ShowPaintedWebView(WebView* self, wry::WebView* raw) {
+    if (!ShowNative(self, raw)) return;
     Entity<WebView> owner{self->selfId};
     WindowTrackPaintedNativeSurface(
         self->window, ListenTo(owner, &HideOmittedWebView),
@@ -631,7 +636,7 @@ static void FinishNativeWebView(void* user, const Bounds* overlays, int count) {
         self->liveOverlay = liveOverlay;
 #endif
     }
-    ShowNative(self, raw);
+    ShowPaintedWebView(self, raw);
     if (self->nativeShown && surface->hit >= 0) {
         surface->paint->hits[surface->hit].bounds = viewport;
     }
@@ -706,54 +711,126 @@ static bool UpdateWebViewGeometry(WebView* self, wry::WebView* raw,
     return true;
 }
 
+static void MatchWebViewScale(WebView* self, wry::WebView* raw, float scale) {
+    // `match_scale_factor`: GDK's factor is an integer, so a fractional
+    // GPUI scale would otherwise draw the page large. The script's page
+    // zoom multiplies that factor. Other platforms return without
+    // changing the zoom.
+    if (!self->hasPageScale || self->pageScale != scale) {
+        if (wry::WebViewMatchPageScale(raw, scale)) {
+            self->pageScale = scale;
+            self->hasPageScale = true;
+        }
+    }
+}
+
+static bool PrepareWebViewGeometry(WebView* self, wry::WebView* raw,
+                                   Bounds document, Bounds visible, float scale,
+                                   bool* unchanged = nullptr) {
+    if (!self->visible || visible.w <= 0 || visible.h <= 0) {
+        bool ok = HideNative(self, raw);
+#if GPUI_WRY_CLIPPED_CHILD
+        // composition::set_geometry prepares the full layout while the
+        // native container is hidden. It only becomes visible with a clip.
+        if (ok && self->visible && document.w > 0 && document.h > 0) {
+            ok = UpdateWebViewGeometry(self, raw, document, document, scale);
+        }
+#endif
+#if GPUI_WRY_SNAPSHOT
+        DropWebViewBackdrop(self);
+#endif
+        return ok;
+    }
+    if (UpdateWebViewGeometry(self, raw, document, visible, scale, unchanged))
+        return true;
+    HideNative(self, raw);
+#if GPUI_WRY_SNAPSHOT
+    DropWebViewBackdrop(self);
+#endif
+    return false;
+}
+
+// A direct setter only has a document and clip. Any holes left by deferred
+// overlays in the last element paint must be removed before applying it.
+static bool ClearWebViewOverlay(WebView* self, wry::WebView* raw) {
+    if (self->hasVisibleRegion) {
+#if GPUI_WEBVIEW_NATIVE_CLIP
+        self->hasApplied = false;
+        if (!WebViewNativeClipClear(self, raw)) return false;
+#elif GPUI_WRY_CLIPPED_CHILD
+        if (!wry::WebViewSetVisibleRegion(raw, nullptr, 0)) return false;
+#else
+        (void)raw;
+#endif
+        VecClear(self->visibleRegion);
+        self->hasVisibleRegion = false;
+        self->visibleRegionNeedsUpdate = false;
+    }
+#if GPUI_WRY_SNAPSHOT
+    DropWebViewBackdrop(self);
+#endif
+    return true;
+}
+
+static float WebViewScale(const PaintCtx* paint) {
+    return paint && paint->dpi > 0 ? paint->dpi / 96.f : 1.f;
+}
+
+bool WebViewSetBounds(WebView* self, wry::Rect bounds) {
+    wry::WebView* raw = WebViewRaw(self);
+    if (!raw || !AppHasWindow(self->app, self->window) ||
+        !ClearWebViewOverlay(self, raw)) {
+        return false;
+    }
+    self->hasApplied = false;
+#if GPUI_WRY_CLIPPED_CHILD
+    float scale = WebViewScale(&self->window->paint);
+    double positionScale = bounds.position.logical ? 1. : scale;
+    double sizeScale = bounds.size.logical ? 1. : scale;
+    Bounds document = {(float)(bounds.position.x / positionScale),
+                       (float)(bounds.position.y / positionScale),
+                       (float)(bounds.size.width / sizeScale),
+                       (float)(bounds.size.height / sizeScale)};
+    return ApplyGeometry(self, raw, document, document, scale);
+#else
+#if GPUI_WEBVIEW_NATIVE_CLIP
+    if (!WebViewNativeClipClear(self, raw)) return false;
+#endif
+    return wry::WebViewSetBounds(raw, bounds);
+#endif
+}
+
+bool WebViewSetGeometry(WebView* self, Bounds document, Bounds clip) {
+    wry::WebView* raw = WebViewRaw(self);
+    if (!raw || !AppHasWindow(self->app, self->window) ||
+        !ClearWebViewOverlay(self, raw)) {
+        return false;
+    }
+    float scale = WebViewScale(&self->window->paint);
+    MatchWebViewScale(self, raw, scale);
+    Bounds visible = ClipIntersect(document, clip);
+    if (!PrepareWebViewGeometry(self, raw, document, visible, scale)) {
+        return false;
+    }
+    return !self->visible || visible.w <= 0 || visible.h <= 0 ||
+           ShowNative(self, raw);
+}
+
 static void PaintWebView(PaintCtx* ctx, El* e, void* user) {
     WebView* self = (WebView*)user;
     Bounds document = e->Bounds();
     self->bounds = document;
     wry::WebView* raw = self->owned.Raw();
-    if (!raw) {
-        return;
-    }
-    // `match_scale_factor`: GDK's factor is an integer, so a fractional
-    // GPUI scale would otherwise draw the page large. The script's page
-    // zoom multiplies that factor. Other platforms return without
-    // changing the zoom.
-    float gpuiScale = ctx && ctx->dpi > 0 ? ctx->dpi / 96.f : 1.f;
-    if (!self->hasPageScale || self->pageScale != gpuiScale) {
-        if (wry::WebViewMatchPageScale(raw, gpuiScale)) {
-            self->pageScale = gpuiScale;
-            self->hasPageScale = true;
-        }
-    }
-    if (!self->visible) {
-        HideNative(self, raw);
-        return;
-    }
+    if (!raw) return;
+    float gpuiScale = WebViewScale(ctx);
+    MatchWebViewScale(self, raw, gpuiScale);
     Bounds visible = ctx && ctx->hasHitMask
                          ? ClipIntersect(document, ctx->hitMask)
                          : document;
-    bool empty = visible.w <= 0.f || visible.h <= 0.f;
-    if (empty) {
-        HideNative(self, raw);
-#if GPUI_WRY_CLIPPED_CHILD
-        // composition::set_geometry prepares the full layout while the
-        // native container is hidden. It only becomes visible with a clip.
-        if (document.w > 0 && document.h > 0) {
-            UpdateWebViewGeometry(self, raw, document, document, gpuiScale);
-        }
-#endif
-#if GPUI_WRY_SNAPSHOT
-        DropWebViewBackdrop(self);
-#endif
-        return;
-    }
     bool same = false;
-    if (!UpdateWebViewGeometry(self, raw, document, visible, gpuiScale,
-                               &same)) {
-        HideNative(self, raw);
-#if GPUI_WRY_SNAPSHOT
-        DropWebViewBackdrop(self);
-#endif
+    if (!PrepareWebViewGeometry(self, raw, document, visible, gpuiScale,
+                                &same) ||
+        !self->visible || visible.w <= 0 || visible.h <= 0) {
         return;
     }
     int hit = ReserveWebViewHit(ctx, self->focus);
@@ -777,7 +854,7 @@ static void PaintWebView(PaintCtx* ctx, El* e, void* user) {
               PaintCtx::NativeSurfacePaint{&FinishNativeWebView, surface,
                                            len(ctx->nativeOverlayBounds)});
 #else
-    ShowNative(self, raw);
+    ShowPaintedWebView(self, raw);
     if (self->nativeShown && hit >= 0) ctx->hits[hit].bounds = visible;
 #endif
 }

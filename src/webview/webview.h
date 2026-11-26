@@ -151,6 +151,14 @@ void WebViewHide(WebView* self);
 bool WebViewVisible(const WebView* self);
 /** `WebView::bounds`: the box the element had last frame. */
 Bounds WebViewBounds(const WebView* self);
+/** Set window-relative native bounds, including offscreen loading bounds.
+    Position and size independently accept logical or device pixels. */
+bool WebViewSetBounds(WebView* self, wry::Rect bounds);
+/** Show the intersection of the document and clip in window-relative DIPs.
+    The page keeps its full document size. An empty clip hides the surface
+    without changing the requested visibility or unloading the page.
+    A later WebViewEl paint uses the element's own geometry. */
+bool WebViewSetGeometry(WebView* self, Bounds document, Bounds clip);
 /** `Focusable::focus_handle`: the webview's handle in the GPUI focus tree.
     Native keyboard focus is controlled through the raw wry webview. */
 FocusHandle WebViewFocusHandle(const WebView* self);
