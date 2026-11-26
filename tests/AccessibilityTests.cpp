@@ -13,6 +13,7 @@ bool AccessibilityWinPartsSmokeTest(Window* win, uint32_t nodeId);
 bool AccessibilityWinPropertyChangesSmokeTest();
 bool AccessibilityWinTextChangesSmokeTest();
 bool AccessibilityWinSelectionEventsSmokeTest();
+bool AccessibilityWinDialogEventsSmokeTest();
 } // namespace gpui
 #endif
 #if GPUI_OS_LINUX
@@ -104,6 +105,9 @@ static void TheTreeSkipsVisualBoxesButKeepsSemanticParents() {
         utassert(WindowAccessibilityPerform(f.win, buttonNode->id,
                                             AccessibilityAction::Focus));
         utassert(f.win->focusId == buttonNode->focusId);
+#if GPUI_OS_WINDOWS
+        utassert(AccessibilityWinSmokeTest(f.win, dialogNode->id));
+#endif
     }
     FreeAccessibilityFrame(&f);
 }
@@ -1780,6 +1784,7 @@ void TestAccessibility() {
     utassert(AccessibilityWinPropertyChangesSmokeTest());
     utassert(AccessibilityWinTextChangesSmokeTest());
     utassert(AccessibilityWinSelectionEventsSmokeTest());
+    utassert(AccessibilityWinDialogEventsSmokeTest());
 #endif
     TheTreeSkipsVisualBoxesButKeepsSemanticParents();
     StyledButtonsCanReplaceTheirVisibleAccessibleName();

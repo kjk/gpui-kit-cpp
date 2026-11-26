@@ -134,6 +134,11 @@ static int AccessibilityControlType(AccessibilityRole role) {
     }
 }
 
+static bool AccessibilityIsDialog(AccessibilityRole role) {
+    return role == AccessibilityRole::Dialog ||
+           role == AccessibilityRole::AlertDialog;
+}
+
 static const wchar_t* AccessibilityRoleName(AccessibilityRole role) {
     if (AccessibilityRoleIsTextField(role)) {
         return L"textbox";
@@ -369,7 +374,7 @@ struct WinAccessibilityNode
                 IRangeValueProvider, IExpandCollapseProvider,
                 ISelectionProvider, ISelectionItemProvider, ITextProvider,
                 IGridProvider, IGridItemProvider, ITableProvider,
-                ITableItemProvider> {
+                ITableItemProvider, IWindowProvider> {
     WinAccessibility* root = nullptr;
     uint32_t id = 0;
 
@@ -400,6 +405,16 @@ struct WinAccessibilityNode
             return UIA_E_ELEMENTNOTAVAILABLE;
         }
         return AccessibilityTextPattern(**out) ? S_OK : UIA_E_INVALIDOPERATION;
+    }
+    HRESULT DialogNode() const {
+        const auto* node = Node();
+        if (!node) return UIA_E_ELEMENTNOTAVAILABLE;
+        return AccessibilityIsDialog(node->info.role) ? S_OK
+                                                      : UIA_E_INVALIDOPERATION;
+    }
+    HRESULT UnsupportedDialogOperation() const {
+        HRESULT hr = DialogNode();
+        return FAILED(hr) ? hr : UIA_E_NOTSUPPORTED;
     }
     // The preamble of a getter returning through `out`: a null `out` is
     // INVALIDARG, otherwise it is cleared before the node is looked up.
@@ -484,6 +499,17 @@ struct WinAccessibilityNode
     get_RowOrColumnMajor(RowOrColumnMajor* out) override;
     HRESULT STDMETHODCALLTYPE GetRowHeaderItems(SAFEARRAY** out) override;
     HRESULT STDMETHODCALLTYPE GetColumnHeaderItems(SAFEARRAY** out) override;
+    HRESULT STDMETHODCALLTYPE SetVisualState(WindowVisualState) override;
+    HRESULT STDMETHODCALLTYPE Close() override;
+    HRESULT STDMETHODCALLTYPE WaitForInputIdle(int, BOOL* out) override;
+    HRESULT STDMETHODCALLTYPE get_CanMaximize(BOOL* out) override;
+    HRESULT STDMETHODCALLTYPE get_CanMinimize(BOOL* out) override;
+    HRESULT STDMETHODCALLTYPE get_IsModal(BOOL* out) override;
+    HRESULT STDMETHODCALLTYPE
+    get_WindowVisualState(WindowVisualState* out) override;
+    HRESULT STDMETHODCALLTYPE
+    get_WindowInteractionState(WindowInteractionState* out) override;
+    HRESULT STDMETHODCALLTYPE get_IsTopmost(BOOL* out) override;
 };
 
 // A text range stores UTF-16 offsets, which is what UI Automation speaks.
@@ -1013,6 +1039,10 @@ HRESULT WinAccessibilityNode::GetPatternProvider(PATTERNID pattern,
     if (pattern == UIA_TextPatternId && AccessibilityTextPattern(*node)) {
         return QueryInterface(__uuidof(ITextProvider), (void**)out);
     }
+    if (pattern == UIA_WindowPatternId &&
+        AccessibilityIsDialog(node->info.role)) {
+        return QueryInterface(__uuidof(IWindowProvider), (void**)out);
+    }
     if (pattern == UIA_GridPatternId &&
         node->info.role == AccessibilityRole::Table && node->info.hasRowCount &&
         node->info.hasColumnCount) {
@@ -1122,6 +1152,11 @@ static WinPropertyValue WinSemanticProperty(const WinNodeProperties& node,
         return (node.actions & AccessibilityActionFocus) != 0;
     } else if (property == UIA_IsPasswordPropertyId) {
         return info.role == AccessibilityRole::PasswordInput;
+    } else if (property == UIA_IsDialogPropertyId) {
+        return AccessibilityIsDialog(info.role);
+    } else if (property == UIA_WindowIsModalPropertyId &&
+               AccessibilityIsDialog(info.role)) {
+        return false;
     } else if (property == UIA_OrientationPropertyId &&
                info.orientation != AccessibilityOrientation::Unset) {
         return (int)(info.orientation == AccessibilityOrientation::Vertical
@@ -1705,6 +1740,51 @@ HRESULT WinAccessibilityNode::GetVisibleRanges(SAFEARRAY** out) {
     Str text = WindowAccessibilityTextValue(*node);
     int n = RopeOffsetToOffsetUtf16(text, len(text));
     return AccessibilityRangeArray(new WinTextRange(root, id, 0, n), out);
+}
+
+HRESULT WinAccessibilityNode::SetVisualState(WindowVisualState) {
+    HRESULT hr = DialogNode();
+    return FAILED(hr) ? hr : UIA_E_INVALIDOPERATION;
+}
+
+HRESULT WinAccessibilityNode::Close() {
+    return UnsupportedDialogOperation();
+}
+
+HRESULT WinAccessibilityNode::WaitForInputIdle(int, BOOL* out) {
+    return out ? UnsupportedDialogOperation() : E_INVALIDARG;
+}
+
+HRESULT WinAccessibilityNode::get_CanMaximize(BOOL* out) {
+    return out ? UnsupportedDialogOperation() : E_INVALIDARG;
+}
+
+HRESULT WinAccessibilityNode::get_CanMinimize(BOOL* out) {
+    return out ? UnsupportedDialogOperation() : E_INVALIDARG;
+}
+
+HRESULT WinAccessibilityNode::get_IsModal(BOOL* out) {
+    if (!out) return E_INVALIDARG;
+    if (HRESULT hr = DialogNode(); FAILED(hr)) return hr;
+    // The pinned GPUI nodes have no AccessKit modal flag.
+    *out = FALSE;
+    return S_OK;
+}
+
+HRESULT WinAccessibilityNode::get_WindowVisualState(WindowVisualState* out) {
+    return out ? UnsupportedDialogOperation() : E_INVALIDARG;
+}
+
+HRESULT WinAccessibilityNode::get_WindowInteractionState(
+    WindowInteractionState* out) {
+    if (!out) return E_INVALIDARG;
+    if (HRESULT hr = DialogNode(); FAILED(hr)) return hr;
+    *out = WindowInteractionState_ReadyForUserInteraction;
+    return S_OK;
+}
+
+HRESULT WinAccessibilityNode::get_IsTopmost(BOOL* out) {
+    return out ? UnsupportedDialogOperation() : E_INVALIDARG;
 }
 
 // Which part of node `id` the provider is, from its runtime id; -1 when it
@@ -2600,6 +2680,7 @@ static constexpr PROPERTYID kWinTrackedProperties[] = {
     UIA_IsEnabledPropertyId,
     UIA_IsKeyboardFocusablePropertyId,
     UIA_IsPasswordPropertyId,
+    UIA_IsDialogPropertyId,
     UIA_OrientationPropertyId,
     UIA_PositionInSetPropertyId,
     UIA_SizeOfSetPropertyId,
@@ -2791,14 +2872,26 @@ static bool WinSnapshotChanges(WinAccessibility* root,
     bool structureChanged = len(last) != len(next);
     int beforeIndex = 0;
     Vec<WinSelectionDelta> selectionDeltas;
+    auto removedNode = [&](const WinNodeSnapshot& removed) {
+        if (!events) return;
+        if (AccessibilityIsDialog(removed.properties.info.role)) {
+            VecAppend(
+                *events,
+                WinNodeEvent{removed.id, UIA_Window_WindowClosedEventId, true});
+        }
+        if (removed.IsSelectedItem())
+            RecordWinSelectionDelta(selectionDeltas, removed, false);
+    };
     for (const auto& node : next) {
         while (beforeIndex < len(last) && last[beforeIndex].id < node.id) {
-            const auto& removed = last[beforeIndex++];
-            if (events && removed.IsSelectedItem())
-                RecordWinSelectionDelta(selectionDeltas, removed, false);
+            removedNode(last[beforeIndex++]);
         }
         if (beforeIndex == len(last) || last[beforeIndex].id != node.id) {
             structureChanged = true;
+            if (events && AccessibilityIsDialog(node.properties.info.role))
+                VecAppend(
+                    *events,
+                    WinNodeEvent{node.id, UIA_Window_WindowOpenedEventId});
             if (events && node.IsSelectedItem())
                 RecordWinSelectionDelta(selectionDeltas, node, true);
             continue;
@@ -2830,9 +2923,7 @@ static bool WinSnapshotChanges(WinAccessibility* root,
     }
     if (events) {
         for (; beforeIndex < len(last); beforeIndex++) {
-            if (last[beforeIndex].IsSelectedItem())
-                RecordWinSelectionDelta(selectionDeltas, last[beforeIndex],
-                                        false);
+            removedNode(last[beforeIndex]);
         }
         WinSelectionEvents(selectionDeltas, next, changes, events);
     }
@@ -3015,6 +3106,46 @@ bool AccessibilityWinSelectionEventsSmokeTest() {
     return ok;
 }
 
+bool AccessibilityWinDialogEventsSmokeTest() {
+    Window win;
+    AccessibilityNode node;
+    node.id = 10;
+    node.info.role = AccessibilityRole::Button;
+    VecAppend(win.accessibility, node);
+    WinAccessibility* root = AccessibilityWinNew(&win, GetDesktopWindow());
+    if (!root) return false;
+
+    node.id = 4;
+    node.info.role = AccessibilityRole::Dialog;
+    VecAppend(win.accessibility, node);
+    node.id = 20;
+    node.info.role = AccessibilityRole::AlertDialog;
+    VecAppend(win.accessibility, node);
+    Vec<WinNodeEvent> events;
+    bool ok = WinSnapshotChanges(root, nullptr, &events) && len(events) == 2 &&
+              events[0].id == 4 && events[1].id == 20 &&
+              events[0].event == UIA_Window_WindowOpenedEventId &&
+              events[1].event == UIA_Window_WindowOpenedEventId;
+    VecClear(events);
+    ok &= !WinSnapshotChanges(root, nullptr, &events) && !len(events);
+
+    VecResize(win.accessibility, 1);
+    ok &= WinSnapshotChanges(root, nullptr, &events) && len(events) == 2 &&
+          events[0].id == 4 && events[1].id == 20 &&
+          events[0].event == UIA_Window_WindowClosedEventId &&
+          events[1].event == UIA_Window_WindowClosedEventId &&
+          events[0].allowRemovedNode && events[1].allowRemovedNode;
+    auto* removed = WinEventProvider(root, 4, true);
+    VARIANT value = {};
+    ok &=
+        removed && removed->GetPropertyValue(UIA_IsDialogPropertyId, &value) ==
+                       UIA_E_ELEMENTNOTAVAILABLE;
+    if (removed) removed->Release();
+    VariantClear(&value);
+    AccessibilityWinClose(root);
+    return ok;
+}
+
 bool AccessibilityWinPropertyChangesSmokeTest() {
     Window win;
     char label[] = "Old";
@@ -3118,6 +3249,14 @@ bool AccessibilityWinSmokeTest(Window* win, uint32_t nodeId) {
         SysFreeString(wanted);
         VariantClear(&property);
     }
+    bool dialog = AccessibilityIsDialog(expected->info.role);
+    if (ok) {
+        ok = SUCCEEDED(
+                 simple->GetPropertyValue(UIA_IsDialogPropertyId, &property)) &&
+             property.vt == VT_BOOL &&
+             (property.boolVal != VARIANT_FALSE) == dialog;
+        VariantClear(&property);
+    }
     struct PatternExpectation {
         PATTERNID id;
         bool wanted;
@@ -3135,6 +3274,7 @@ bool AccessibilityWinSmokeTest(Window* win, uint32_t nodeId) {
          expected->info.hasSelected &&
              AccessibilitySelectionItemRole(expected->info.role)},
         {UIA_TextPatternId, AccessibilityTextPattern(*expected)},
+        {UIA_WindowPatternId, dialog},
         {UIA_GridPatternId, expected->info.role == AccessibilityRole::Table &&
                                 expected->info.hasRowCount &&
                                 expected->info.hasColumnCount},
@@ -3160,6 +3300,18 @@ bool AccessibilityWinSmokeTest(Window* win, uint32_t nodeId) {
         if (provider) {
             provider->Release();
         }
+    }
+    if (ok && dialog) {
+        IWindowProvider* window = nullptr;
+        BOOL modal = TRUE;
+        WindowInteractionState state = WindowInteractionState_NotResponding;
+        ok = SUCCEEDED(simple->QueryInterface(__uuidof(IWindowProvider),
+                                              (void**)&window)) &&
+             window && SUCCEEDED(window->get_IsModal(&modal)) && !modal &&
+             SUCCEEDED(window->get_WindowInteractionState(&state)) &&
+             state == WindowInteractionState_ReadyForUserInteraction &&
+             window->Close() == (HRESULT)UIA_E_NOTSUPPORTED;
+        if (window) window->Release();
     }
     if (ok && AccessibilityTextPattern(*expected)) {
         ITextProvider* text = nullptr;
