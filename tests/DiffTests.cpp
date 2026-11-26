@@ -2501,6 +2501,53 @@ static void CodeSelectionCopiesCharactersAndWords() {
     TestAppFree(stage.app);
 }
 
+// text_selection.rs shift_click_after_a_double_click_extends_by_words.
+static void DiffShiftClickKeepsTheSelectedWordOrLineUnit() {
+    PointerStage stage = StagePointer(false, StrL("diff --git a/words b/words\n"
+                                                  "--- /dev/null\n"
+                                                  "+++ b/words\n"
+                                                  "@@ -0,0 +1,2 @@\n"
+                                                  "+one two three\n"
+                                                  "+second line\n"));
+    auto* state = stage.host->state.Get(stage.app);
+    Bounds first, second;
+    utassert(DiffRunBounds(stage.win, DiffSide::Modified, 0, &first));
+    utassert(DiffRunBounds(stage.win, DiffSide::Modified, 1, &second));
+    float cell = MeasureText(&stage.win->paint, StrL("o"),
+                             ThemeFontSize(stage.app), 0, false, kFontMono)
+                     .w;
+    auto at = [&](Bounds row, float column) {
+        return Point{row.x + column * cell, row.CenterY()};
+    };
+    auto click = [&](Point p, bool shift, int count) {
+        Modifiers modifiers;
+        modifiers.shift = shift;
+        TestSimulateMouseDown(stage.win, p, MouseButton::Left, modifiers,
+                              count);
+        TestSimulateMouseUp(stage.win, p, MouseButton::Left, modifiers, count);
+    };
+    Arena* a = ArenaNew();
+    click(at(first, 5.1f), false, 2);
+    utassert(StrEq(state->SelectedText(a), "two"));
+    click(at(first, 9.1f), true, 1);
+    utassert(StrEq(state->SelectedText(a), "two three"));
+    click(at(first, 1.1f), true, 1);
+    utassert(StrEq(state->SelectedText(a), "one two"));
+
+    click(at(first, 5.1f), false, 3);
+    click(at(second, 3.1f), true, 1);
+    utassert(StrEq(state->SelectedText(a), "one two three\nsecond line"));
+    TestSimulateKeystrokes(stage.win, "secondary-c");
+    utassert(StrEq(TestReadFromClipboard(a), "one two three\nsecond line"));
+
+    TestSimulateMouseDown(stage.win, at(first, 5.1f));
+    TestSimulateMouseMove(stage.win, at(first, 9.1f), true);
+    TestSimulateMouseUp(stage.win, at(first, 9.1f));
+    utassert(StrEq(state->SelectedText(a), "wo t"));
+    ArenaDelete(a);
+    TestAppFree(stage.app);
+}
+
 static void SplitCodeSelectionKeepsTheSourceSideAndTabs() {
     PointerStage stage = StagePointer(false,
                                       StrL("--- a/file.txt\n+++ b/file.txt\n"
@@ -2900,6 +2947,7 @@ void TestDiff() {
     AModifierAloneReportsTheCharacterAgain();
     AClaimedTextClickKeepsTheLineHandlerQuiet();
     CodeSelectionCopiesCharactersAndWords();
+    DiffShiftClickKeepsTheSelectedWordOrLineUnit();
     SplitCodeSelectionKeepsTheSourceSideAndTabs();
     DiffKeyboardSelectsAndExtendsSourceLines();
     DiffKeyboardScrollsBothAxesAndReachesEitherEnd();

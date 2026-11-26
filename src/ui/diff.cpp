@@ -4385,6 +4385,28 @@ static void OnDiffCodeLongPress(DiffState* state, Ctx* cx,
     Notify(cx);
 }
 
+static bool UpdateDiffTextEndpoint(DiffState* self, PaintCtx* paint,
+                                   const DiffCodeRunGeometry& run, Point at) {
+    DiffTextSelection& sel = self->textSelection;
+    bool inText = len(run.text) > 0 && run.visible.Contains(at);
+    bool hit = sel.hitText || inText;
+    Selection unit =
+        DiffSelectionAt(self, paint, run, at, inText ? sel.clicks : 1);
+    int anchor = sel.anchor;
+    int cursor = unit.end;
+    if (sel.clicks > 1) {
+        bool backwards = unit.start < sel.unit.start;
+        anchor = backwards ? sel.unit.end : sel.unit.start;
+        cursor = backwards ? unit.start : std::max(unit.end, sel.unit.end);
+    }
+    bool changed =
+        hit != sel.hitText || anchor != sel.anchor || cursor != sel.cursor;
+    sel.hitText = hit;
+    sel.anchor = anchor;
+    sel.cursor = cursor;
+    return changed;
+}
+
 static void OnDiffCodeDown(DiffState* self, Ctx* cx, const MouseDownEvent* ev,
                            int64_t arg) {
     if (!ev->IsFocusing()) return;
@@ -4403,15 +4425,13 @@ static void OnDiffCodeDown(DiffState* self, Ctx* cx, const MouseDownEvent* ev,
         sel = {};
         sel.file = run->file;
         sel.side = run->side;
-        sel.clicks = ev->clickCount;
         sel.hitText = len(run->text) > 0 && run->visible.Contains(at);
-        int clicks = sel.hitText ? sel.clicks : 1;
-        sel.unit = DiffSelectionAt(self, &cx->win->paint, *run, at, clicks);
+        sel.clicks = sel.hitText ? ev->clickCount : 1;
+        sel.unit = DiffSelectionAt(self, &cx->win->paint, *run, at, sel.clicks);
         sel.anchor = sel.unit.start;
         sel.cursor = sel.unit.end;
     } else {
-        sel.clicks = 1;
-        sel.cursor = DiffSelectionAt(self, &cx->win->paint, *run, at, 1).end;
+        UpdateDiffTextEndpoint(self, &cx->win->paint, *run, at);
     }
     sel.dragging = true;
     Notify(cx);
@@ -4422,20 +4442,7 @@ static void ExtendDiffTextSelection(DiffState* self, Ctx* cx, Point at) {
     if (!sel.dragging) return;
     const auto* run = DiffSelectionRun(self, at, sel.file, sel.side);
     if (!run) return;
-    bool hit = sel.hitText || (len(run->text) > 0 && run->visible.Contains(at));
-    Selection unit =
-        DiffSelectionAt(self, &cx->win->paint, *run, at, sel.clicks);
-    int anchor = sel.anchor;
-    int cursor = unit.end;
-    if (sel.clicks > 1) {
-        bool backwards = unit.start < sel.unit.start;
-        anchor = backwards ? sel.unit.end : sel.unit.start;
-        cursor = backwards ? unit.start : unit.end;
-    }
-    if (hit != sel.hitText || anchor != sel.anchor || cursor != sel.cursor) {
-        sel.hitText = hit;
-        sel.anchor = anchor;
-        sel.cursor = cursor;
+    if (UpdateDiffTextEndpoint(self, &cx->win->paint, *run, at)) {
         Notify(cx);
     }
 }
