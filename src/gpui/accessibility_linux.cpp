@@ -1200,10 +1200,6 @@ static Str ObjectName(const LinuxAccessible& object) {
     return object.win->accessibility[object.nodeIndex].info.PlatformName();
 }
 
-static Str LinuxNodeDescription(const AccessibilityInfo& info) {
-    return info.description.s ? info.description : info.placeholder;
-}
-
 // The Text interface's text: a part's own text or the node's.
 static Str ObjectText(const LinuxAccessible& object) {
     if (object.part >= 0) {
@@ -1225,10 +1221,7 @@ static bool PutPropertyVariant(DbusWriter* body, const LinuxAccessible& object,
         } else if (StrIs(property, "Name")) {
             PutVariantString(body, "s", ObjectName(object));
         } else if (StrIs(property, "Description")) {
-            // AccessKit's description; a node without one keeps offering its
-            // placeholder here, as it did before it could have one.
-            Str description = node ? LinuxNodeDescription(node->info) : Str{};
-            PutVariantString(body, "s", description);
+            PutVariantString(body, "s", node ? node->info.description : Str{});
         } else if (StrIs(property, "HelpText")) {
             PutVariantString(body, "s", node ? node->info.placeholder : Str{});
         } else if (StrIs(property, "AccessibleId")) {
@@ -1468,7 +1461,7 @@ static void PutCacheItem(DbusWriter* body, const LinuxAccessible& object,
     PutInterfaces(body, object, interfaces);
     PutString(body, ObjectName(object));
     PutU32(body, node ? AtspiRole(node->info.role) : 75);
-    PutString(body, node ? LinuxNodeDescription(node->info) : Str{});
+    PutString(body, node ? node->info.description : Str{});
     PutStates(body, state);
 }
 
@@ -1537,6 +1530,42 @@ static bool HandleLinuxCache(const Incoming& in) {
     return false;
 }
 
+// accesskit_atspi_common's node attributes. GPUI positions are already
+// one-based. An explicitly sized item can supply the count if no ancestor does.
+static void PutObjectAttributes(DbusWriter* body, const LinuxAccessible& object,
+                                bool asArray) {
+    int lengthAt = 0;
+    int contentsAt = 0;
+    ArrayBegin(body, asArray ? 4 : 8, &lengthAt, &contentsAt);
+    auto put = [&](Str name, Str value) {
+        if (asArray) {
+            PutString(body, fmt("%s:%s", name, value));
+        } else {
+            PutAlign(body, 8);
+            PutString(body, name);
+            PutString(body, value);
+        }
+    };
+    if (const auto* node = ElementNode(object)) {
+        const AccessibilityInfo& info = node->info;
+        if (info.placeholder.s) put(StrL("placeholder-text"), info.placeholder);
+        if (info.hasPositionInSet)
+            put(StrL("posinset"), fmt("%d", info.positionInSet));
+        const AccessibilityInfo* size = &info;
+        for (int i = node->parent; i >= 0; i = object.win->accessibility[i]
+                                                   .parent) {
+            const auto& ancestor = object.win->accessibility[i].info;
+            if (ancestor.hasSizeOfSet) {
+                size = &ancestor;
+                break;
+            }
+        }
+        if (size->hasSizeOfSet)
+            put(StrL("setsize"), fmt("%d", size->sizeOfSet));
+    }
+    ArrayEnd(body, lengthAt, contentsAt);
+}
+
 static bool HandleAccessible(const Incoming& in,
                              const LinuxAccessible& object) {
     if (!StrIs(in.interfaceName, kAccessible)) return false;
@@ -1587,13 +1616,10 @@ static bool HandleAccessible(const Incoming& in,
         PutInterfaces(&body, object, node ? LinuxNodeInterfaces(*node) : 0);
         signature = "as";
     } else if (StrIs(in.member, "GetAttributes")) {
-        PutEmptyStringDict(&body);
+        PutObjectAttributes(&body, object, false);
         signature = "a{ss}";
     } else if (StrIs(in.member, "GetAttributesAsArray")) {
-        int lengthAt = 0;
-        int contentsAt = 0;
-        ArrayBegin(&body, 4, &lengthAt, &contentsAt);
-        ArrayEnd(&body, lengthAt, contentsAt);
+        PutObjectAttributes(&body, object, true);
         signature = "as";
     } else if (StrIs(in.member, "GetRelationSet")) {
         PutEmptyRelations(&body);
@@ -2788,7 +2814,7 @@ static void SendLinuxNodeChanges(Window* win, const LinuxNodeSnapshot& before,
                   info.PlatformName());
     if (before.description != after.description)
         SendEvent(win, after.id, "PropertyChange", "accessible-description", 0,
-                  LinuxNodeDescription(info));
+                  info.description);
     if (before.role != after.role)
         SendEvent(win, after.id, "PropertyChange", "accessible-role", 0,
                   AtspiEventValue(after.role));
@@ -2993,7 +3019,7 @@ static void TrackLinuxNodes(Window* win, int focused) {
                    AtspiRole(info.role),
                    LinuxNodeStates(win, node, i == focused),
                    LinuxPropertyHash(info.PlatformName()),
-                   LinuxPropertyHash(LinuxNodeDescription(info)),
+                   LinuxPropertyHash(info.description),
                    info.numericValue,
                    (bool)info.hasNumericValue,
                    node.bounds};
@@ -3644,6 +3670,80 @@ static bool LinuxSmokeWindowActivation(Window* win, int fd) {
     return LinuxSmokeEvents(fd, nullptr, 0) && ok;
 }
 
+static bool LinuxSmokeAttributes(Window* win, int fd, int serverFd) {
+    AccessibilityNode collection;
+    collection.id = 1;
+    collection.info.role = AccessibilityRole::List;
+    collection.info.hasSizeOfSet = true;
+    collection.info.sizeOfSet = 12;
+    AccessibilityNode group;
+    group.id = 2;
+    group.parent = 0;
+    group.info.role = AccessibilityRole::Group;
+    group.info.hasSizeOfSet = true;
+    group.info.sizeOfSet = 7;
+    AccessibilityNode item;
+    item.id = 3;
+    item.parent = 1;
+    item.info.role = AccessibilityRole::TextInput;
+    item.info.placeholder = StrL("Find: caf\xc3\xa9");
+    item.info.hasPositionInSet = true;
+    item.info.positionInSet = 3;
+    item.info.hasSizeOfSet = true;
+    item.info.sizeOfSet = 4;
+    VecClear(win->accessibility);
+    VecAppend(win->accessibility, collection);
+    VecAppend(win->accessibility, group);
+    VecAppend(win->accessibility, item);
+
+    PlatWindow* plat = win->plat;
+    if (!plat) win->plat = (PlatWindow*)win;
+    SmokeClient client;
+    client.fd = fd;
+    client.serverFd = serverFd;
+    Str path = PathForTemp(0, item.id);
+    auto check = [&](bool asArray, Str setsize) {
+        Incoming reply;
+        const char* member = asArray ? "GetAttributesAsArray" : "GetAttributes";
+        if (!SmokeCall(&client, path, kAccessible, member, "", nullptr,
+                       &reply) ||
+            !StrIs(reply.signature, asArray ? "as" : "a{ss}"))
+            return false;
+        int at = 0;
+        uint32_t size = ReadU32(reply.body, reply.bodyLen, &at);
+        int alignment = asArray ? 4 : 8;
+        if (size != (uint32_t)(reply.bodyLen - AlignAt(at, alignment)))
+            return false;
+        Str keys[] = {StrL("placeholder-text"), StrL("posinset"),
+                      StrL("setsize")};
+        Str values[] = {item.info.placeholder, StrL("3"), setsize};
+        for (int i = 0; i < dimofi(keys); i++) {
+            at = AlignAt(at, alignment);
+            Str first = ReadString(reply.body, reply.bodyLen, &at);
+            if (asArray) {
+                if (!StrEq(first, fmt("%s:%s", keys[i], values[i])))
+                    return false;
+            } else if (!StrEq(first, keys[i]) ||
+                       !StrEq(ReadString(reply.body, reply.bodyLen, &at),
+                              values[i])) {
+                return false;
+            }
+        }
+        return at == reply.bodyLen;
+    };
+    bool ok =
+        check(false, StrL("7")) && check(true, StrL("7")) &&
+        StrEq(SmokeStringProperty(&client, path, "Description"), StrL(""));
+    win->accessibility[1].info.hasSizeOfSet = false;
+    ok &= check(false, StrL("12"));
+    win->accessibility[0].info.hasSizeOfSet = false;
+    ok &= check(false, StrL("4"));
+    VecReset(client.rx);
+    VecReset(gA11y.rx);
+    win->plat = plat;
+    return ok;
+}
+
 bool AccessibilityLinuxEventSmokeTest() {
     int fds[2] = {-1, -1};
     if (socketpair(AF_UNIX, SOCK_STREAM, 0, fds) != 0) return false;
@@ -3787,8 +3887,7 @@ bool AccessibilityLinuxEventSmokeTest() {
         {"StateChanged", "enabled", 0, 0, zero},
         {"StateChanged", "sensitive", 0, 0, zero},
         {"StateChanged", "indeterminate", 1, 0, zero},
-        {"PropertyChange", "accessible-description", 0, 0,
-         StrL("Alerts from this device")},
+        {"PropertyChange", "accessible-description", 0, 0, StrL("")},
         {"PropertyChange", "accessible-role", 0, 0,
          AtspiEventValue(AtspiRole(AccessibilityRole::Slider))},
     };
@@ -3800,6 +3899,7 @@ bool AccessibilityLinuxEventSmokeTest() {
     ok = LinuxSmokeChildChanges(&win, fds[0]) && ok;
     ok = LinuxSmokeSelectionChanges(&win, fds[0]) && ok;
     ok = LinuxSmokeWindowActivation(&win, fds[0]) && ok;
+    ok = LinuxSmokeAttributes(&win, fds[0], fds[1]) && ok;
     close(fds[0]);
     close(fds[1]);
     gA11y = saved;

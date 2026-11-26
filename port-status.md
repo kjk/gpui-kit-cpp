@@ -290,6 +290,10 @@ The current update target is
   role, numeric-value and window-relative bounds changes.
   Selection containers report changes to their selected descendants once per
   tree update.
+  Object attributes expose `placeholder-text`, one-based `posinset`, and
+  the nearest enclosing `setsize`. A node's explicitly declared set size
+  supplies the count when no ancestor declares one. The accessible
+  description carries the node's supplementary description.
   AT-SPI clients can read the current tree in a single cache request and
   receive cache updates for structural changes. Synthetic document pages
   are still queried on demand.
