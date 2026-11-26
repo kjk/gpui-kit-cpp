@@ -2923,6 +2923,15 @@ static int FileIx(const DiffState* state, Str path) {
 }
 
 void DiffState::SetFiles(DiffFile** next, int count, Ctx* cx) {
+    // The window owns the handles and any in-progress edge drag. Clear
+    // this diff's source even when the caller has no window context.
+    if (app && self.IsValid()) {
+        for (Window* win : app->windows) {
+            if (win->sel && win->sel->touchSource.entity == self.id) {
+                TextSelection::ClearForWindow(win, app);
+            }
+        }
+    }
     CancelDiffPresentationJob(this);
     ClearDiffCodeRuns(this);
     for (int i = 0; i < len(files); i++) delete files[i];

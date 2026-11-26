@@ -2285,8 +2285,22 @@ static void TouchHandlesExtendAndCopyTheDiffSourceRange() {
         copied = TextSelection::SelectedText(stage.win, stage.app, buf,
                                              (int)sizeof(buf));
         utassert(StrEq(Str(buf, copied), "other()"));
+
+        utassert(WindowSelectionTouchSnapshot(stage.win, &snapshot));
+        knob = TouchHandle::KnobBounds(SelectionEdge::End, snapshot.end);
+        Point drag = {knob.CenterX(), knob.CenterY()};
+        gesture(InputTouchDrag(TouchPhase::Started, drag, drag));
+        utassert(stage.win->sel->hasTouchEdgeDrag);
+
+        DiffState* state = stage.host->state.Get(stage.app);
+        DiffFile* replacement =
+            DiffFile::Unchanged(StrL("file.rs"), StrL("fn replacement() {}"));
+        state->SetFiles(&replacement, 1, nullptr);
+        utassert(!stage.win->sel->hasTouchEdgeDrag);
+        utassert(!stage.win->sel->touchSource.entity.IsValid());
+        utassert(!TextSelection::HasSelection(stage.win, stage.app));
+        TestDraw(stage.win);
     }
-    TextSelection::Clear(stage.win, stage.app);
     utassert(!WindowSelectionTouchSnapshot(stage.win, &snapshot));
     TestAppFree(stage.app);
 }
