@@ -384,6 +384,12 @@ static uint64_t AccessibilityTreeHash(const Vec<AccessibilityNode>& nodes) {
         GPUI_A11Y_HASH(node.id);
         GPUI_A11Y_HASH(node.elementPath);
         GPUI_A11Y_HASH(node.parent);
+        if (kPlatAccessibilityTracksBounds) {
+            GPUI_A11Y_HASH(node.bounds.x);
+            GPUI_A11Y_HASH(node.bounds.y);
+            GPUI_A11Y_HASH(node.bounds.w);
+            GPUI_A11Y_HASH(node.bounds.h);
+        }
         GPUI_A11Y_HASH(node.actions);
         GPUI_A11Y_HASH(node.focusId);
         GPUI_A11Y_HASH(node.textSelectionStart);

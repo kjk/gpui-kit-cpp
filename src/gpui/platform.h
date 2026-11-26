@@ -589,6 +589,12 @@ void PlatInstallAccessibilityHitTest(Window* win);
 // which the adapter resolves back to the semantic node that exposes it.
 void PlatAccessibilityTreeChanged(Window* win);
 void PlatAccessibilityFocusChanged(Window* win, int focusId);
+// AT-SPI emits per-object BoundsChanged on movement within the window.
+#if GPUI_OS_LINUX
+inline constexpr bool kPlatAccessibilityTracksBounds = true;
+#else
+inline constexpr bool kPlatAccessibilityTracksBounds = false;
+#endif
 // Whether anything would read the portable tree: an automation client is
 // listening, or one has asked this window for it. While nothing would, a
 // frame does not collect or hash it — that walk is a cost of every frame

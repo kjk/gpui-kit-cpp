@@ -1674,6 +1674,33 @@ static void LiveRegionAnnouncesChangesAndKeepsTheSameNodeIdentity() {
     TestAppFree(app);
 }
 
+#if GPUI_OS_LINUX
+static void GeometryOnlyChangesRefreshLinuxAccessibility() {
+    struct Host {
+        float top = 12;
+        static El* Render(Host* self, Ctx* cx) {
+            return Div(cx->a)->SizeFull()->PadT(self->top)->Child(
+                Div(cx->a)->W(70)->H(30)->Role(AccessibilityRole::Button));
+        }
+    };
+    App* app = TestAppNew();
+    auto view = EntityNew<Host>(app);
+    Window* win = TestWindowOpen(app, view, 240, 140);
+    uint64_t original = win->accessibilityHash;
+    utassert(len(win->accessibility) == 1 && win->accessibility[0]
+                                                     .bounds.y == 12);
+    view.Get(app)->top = 30;
+    TestDraw(win);
+    utassert(len(win->accessibility) == 1 && win->accessibility[0]
+                                                     .bounds.y == 30);
+    uint64_t moved = win->accessibilityHash;
+    utassert(original != moved);
+    TestDraw(win);
+    utassert(win->accessibilityHash == moved);
+    TestAppFree(app);
+}
+#endif
+
 void TestAccessibility() {
     TextViewPublishesItsRenderedBodyToAccessibility();
     ButtonExposesOptionalDisclosureState();
@@ -1695,6 +1722,7 @@ void TestAccessibility() {
     EditableTextOffersSetValueAndReadOnlyTextDoesNot();
 #if GPUI_OS_LINUX
     utassert(AccessibilityLinuxEventSmokeTest());
+    GeometryOnlyChangesRefreshLinuxAccessibility();
 #endif
     SetValuePreservesExactEditorText();
     SelectionContainersExposeTheirSelectedItems();

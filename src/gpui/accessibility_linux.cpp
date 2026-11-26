@@ -167,6 +167,7 @@ struct LinuxNodeSnapshot {
     uint64_t name, description;
     float value;
     bool hasValue;
+    Bounds bounds = {};
     int parentIndex = -1;
     int siblingIndex = 0;
     int nextIndex = -1;
@@ -2317,6 +2318,7 @@ struct AtspiEventValue {
     Str text = {};
     uint32_t role = 0;
     double number = 0;
+    Bounds bounds = {};
 
     AtspiEventValue() = default;
     AtspiEventValue(Str value) : text(value) {}
@@ -2326,6 +2328,13 @@ struct AtspiEventValue {
     static AtspiEventValue Object(uint32_t wireId) {
         AtspiEventValue value(wireId);
         value.type = '(';
+        return value;
+    }
+
+    static AtspiEventValue Extents(Bounds bounds) {
+        AtspiEventValue value;
+        value.type = 'r';
+        value.bounds = bounds;
         return value;
     }
 };
@@ -2361,6 +2370,9 @@ static void SendWireEvent(Window* win, uint32_t wireId, const char* member,
         PutObjectRef(&body, payload.role
                                 ? (Str)WirePathForTemp(wi, payload.role)
                                 : Str(kRootPath));
+    } else if (payload.type == 'r') {
+        PutSignature(&body, "(iiii)");
+        PutExtents(&body, payload.bounds);
     } else
         PutVariantString(&body, "s", payload.text);
     PutEmptyStringDict(&body);
@@ -2563,6 +2575,14 @@ static void SendLinuxNodeChanges(Window* win, const LinuxNodeSnapshot& before,
     if (after.hasValue && (!before.hasValue || before.value != after.value))
         SendEvent(win, after.id, "PropertyChange", "accessible-value", 0,
                   AtspiEventValue((double)after.value));
+    Bounds oldBounds = before.bounds;
+    Bounds bounds = after.bounds;
+    if (bounds.x != oldBounds.x || bounds.y != oldBounds.y ||
+        bounds.w != oldBounds.w || bounds.h != oldBounds.h) {
+        // AccessKit uses CoordType::Window for the event rectangle.
+        SendWireEvent(win, after.wireId, "BoundsChanged", "", 0,
+                      AtspiEventValue::Extents(bounds));
+    }
 }
 
 static uint32_t LinuxParentWireId(const Vec<LinuxNodeSnapshot>& frame,
@@ -2682,7 +2702,8 @@ static void TrackLinuxNodes(Window* win) {
                    LinuxPropertyHash(info.PlatformName()),
                    LinuxPropertyHash(LinuxNodeDescription(info)),
                    info.numericValue,
-                   (bool)info.hasNumericValue};
+                   (bool)info.hasNumericValue,
+                   node.bounds};
     }
     if (len(next) > 1)
         qsort(next.els, (size_t)len(next), sizeof(next[0]), CompareLinuxNode);
@@ -3041,9 +3062,10 @@ static bool LinuxSmokeEvents(int fd, const LinuxSmokeEvent* expected, int count,
         int pos = ReadI32(in.body, in.bodyLen, &at);
         int lenText = ReadI32(in.body, in.bodyLen, &at);
         Str payloadKind = ReadSignature(in.body, in.bodyLen, &at);
+        char wireKind = event.payload.type == 'r' ? '(' : event.payload.type;
         if (!StrIs(in.member, event.member) || !StrIs(detail, event.detail) ||
             pos != event.offset || lenText != event.count ||
-            !len(payloadKind) || payloadKind.s[0] != event.payload.type)
+            !len(payloadKind) || payloadKind.s[0] != wireKind)
             return false;
         if (event.nodeId && !StrEq(in.path, WirePathForTemp(0, event.nodeId)))
             return false;
@@ -3052,6 +3074,15 @@ static bool LinuxSmokeEvents(int fd, const LinuxSmokeEvent* expected, int count,
                 return false;
         } else if (event.payload.type == 'd') {
             if (ReadDouble(in.body, in.bodyLen, &at) != event.payload.number)
+                return false;
+        } else if (event.payload.type == 'r') {
+            if (!StrIs(payloadKind, "(iiii)")) return false;
+            at = AlignAt(at, 8);
+            Bounds bounds = event.payload.bounds;
+            if (ReadI32(in.body, in.bodyLen, &at) != (int)bounds.x ||
+                ReadI32(in.body, in.bodyLen, &at) != (int)bounds.y ||
+                ReadI32(in.body, in.bodyLen, &at) != (int)bounds.w ||
+                ReadI32(in.body, in.bodyLen, &at) != (int)bounds.h)
                 return false;
         } else if (event.payload.type == '(') {
             if (!StrIs(payloadKind, "(so)")) return false;
@@ -3125,6 +3156,16 @@ static bool LinuxSmokeChildChanges(Window* win, int fd) {
          AtspiEventValue::Object(2), 3},
     };
     ok = LinuxSmokeEvents(fd, moved, dimofi(moved), true) && ok;
+    AccessibilityLinuxTreeChanged(win);
+    ok = LinuxSmokeEvents(fd, nullptr, 0, true) && ok;
+
+    win->accessibility[2].bounds = {-8, 14, 25, 31};
+    AccessibilityLinuxTreeChanged(win);
+    const LinuxSmokeEvent boundsChanged[] = {
+        {"BoundsChanged", "", 0, 0, AtspiEventValue::Extents({-8, 14, 25, 31}),
+         3},
+    };
+    ok = LinuxSmokeEvents(fd, boundsChanged, dimofi(boundsChanged), true) && ok;
     AccessibilityLinuxTreeChanged(win);
     ok = LinuxSmokeEvents(fd, nullptr, 0, true) && ok;
 

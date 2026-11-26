@@ -243,7 +243,7 @@ The current update target is
   Insertions and removals report individual child references, and reparented
   nodes also report the new parent. Lazy document revisions invalidate their
   own child lists. Retained nodes send individual state, name, description,
-  role and numeric-value changes.
+  role, numeric-value and window-relative bounds changes.
   AT-SPI object paths survive recollection for nodes with a unique element
   path. Nodes that share a path are matched by their collection position.
   Focus follows X11 activation and the retained widget focus handle. An
