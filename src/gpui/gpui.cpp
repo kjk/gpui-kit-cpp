@@ -3541,6 +3541,10 @@ bool TextPointAt(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
 
 bool TextLayoutPointAt(TextLayout* tl, Str s, bool wrap, int off, float* outX,
                        float* outY, float* outH, bool lineEndAffinity) {
+    if (TextLayoutCaretPoint(tl, off, lineEndAffinity || off == len(s), outX,
+                             outY, outH)) {
+        return true;
+    }
     Bounds r[32] = {};
     bool ok = false;
     if (off > 0 && (lineEndAffinity || off == len(s))) {
@@ -8378,6 +8382,13 @@ static CaretPlace MeasureCaretPlace(PaintCtx* ctx, const El* e, float font,
     Bounds r[32] = {};
     if (off > len(e->text)) {
         off = len(e->text);
+    }
+    if (TextLayoutCaretPoint(tl, off, lineEndAffinity || off == len(e->text),
+                             &place.x, &place.y, &place.h)) {
+        place.x += e->x;
+        place.y += e->y;
+        TextLayoutRelease(tl);
+        return place;
     }
     int n = 0;
     if (off > 0 && (lineEndAffinity || off == len(e->text))) {

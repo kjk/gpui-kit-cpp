@@ -37,6 +37,8 @@ The current update target is
   Inline code keeps its own inset and font-size layout. Desktop wrapping
   uses the shaped cluster advances in logical order. The browser measures
   in-context grapheme ranges and uses Canvas widths for each styled span.
+  Link hit targets, selection rectangles and caret positions follow visual
+  order within each browser font run.
   Mobile host layouts use caret geometry or isolated word widths
   (`src/base/text.cpp`, `src/gpui/gpui.cpp`).
 

@@ -22,6 +22,7 @@
      character break done here rather than a real line breaker. It agrees with
      Pango and DirectWrite on everything Latin. */
 
+#include "gpui/bidi.h"
 #include "gpui/paint.h"
 #include "gpui/paint_backend.h"
 #include "gpui/scene.h"
@@ -33,6 +34,15 @@ namespace gpui {
 
 static bool gOffscreenWasRecording = false;
 static bool gNoSceneBegin = false;
+
+extern "C" EMSCRIPTEN_KEEPALIVE int gpui_wasm_text_direction(uint32_t scalar) {
+    char bytes[4];
+    int count = Utf8Encode(bytes, scalar);
+    ParagraphBidi direction = FirstStrongBidi(Str(bytes, count));
+    if (direction == ParagraphBidi::Left) return 0;
+    if (direction == ParagraphBidi::Right) return 1;
+    return -1;
+}
 
 // ─── the JavaScript half ──────────────────────────────────────────────────
 //
@@ -177,6 +187,132 @@ EM_JS(void, GpJsInit, (), {
             return part.x + c.measureText(line.slice(part.start, offset)).width;
         }
         return width;
+    };
+    G.textParts = function(e, li) {
+        if (e.parts) return e.parts[li];
+        const line = e.lines[li];
+        return [{start: 0, end: line.length, font: e.font, x: 0,
+                 width: e.fullWidths[li]}];
+    };
+    G.textClusters = function(e, li) {
+        if (typeof document === "undefined" || typeof Intl.Segmenter !== "function")
+            return null;
+        if (!e.clusters) e.clusters = [];
+        if (e.clusters[li]) return e.clusters[li];
+        if (!G.graphemes) G.graphemes = new Intl.Segmenter("und", {granularity: "grapheme"});
+        if (!G.clusterText) {
+            // Page styles must not affect the geometry of canvas text.
+            const host = document.createElement("div");
+            host.style.cssText = "all:initial;position:fixed;left:0;top:0;visibility:hidden;contain:strict;pointer-events:none";
+            host.setAttribute("aria-hidden", "true");
+            const shadow = host.attachShadow({mode: "closed"});
+            const span = document.createElement("span");
+            span.style.cssText = "display:inline-block;white-space:pre";
+            span.appendChild(document.createTextNode(""));
+            shadow.appendChild(span);
+            (document.body || document.documentElement).appendChild(host);
+            G.clusterText = span;
+            G.clusterRange = document.createRange();
+        }
+        const span = G.clusterText;
+        const node = span.firstChild;
+        const range = G.clusterRange;
+        const caretX = function(at) {
+            range.setStart(node, at);
+            range.collapse(true);
+            const rects = range.getClientRects();
+            return rects.length ? rects[0].left : null;
+        };
+        const clusters = [];
+        let byte = 0;
+        for (const part of G.textParts(e, li)) {
+            const text = e.lines[li].slice(part.start, part.end);
+            const hasOverride = text.includes(String.fromCharCode(0x202d)) ||
+                                text.includes(String.fromCharCode(0x202e));
+            span.style.font = part.font;
+            span.style.direction = e.direction === "rtl" ? "rtl" : "ltr";
+            // Canvas replaces ASCII whitespace with spaces. Preserve UTF-16 offsets.
+            node.data = Array.from(text, function(ch) {
+                const code = ch.charCodeAt(0);
+                return code >= 9 && code <= 13 ? " " : ch;
+            }).join("");
+            const box = span.getBoundingClientRect();
+            const scale = box.width > 0 ? part.width / box.width : 1;
+            const visual = [];
+            let start = caretX(0);
+            for (const g of G.graphemes.segment(text)) {
+                const endAt = g.index + g.segment.length;
+                range.setStart(node, g.index);
+                range.setEnd(node, endAt);
+                const rect = range.getBoundingClientRect();
+                const end = caretX(endAt);
+                const lo = byte;
+                byte += G.u8len(g.segment);
+                const x = rect.width || start === null ? rect.left : start;
+                const left = part.x + (x - box.left) * scale;
+                const right = left + rect.width * scale;
+                // Match the two edges to native caret positions. At a
+                // direction change a caret can be at the adjacent run's
+                // far edge; the other caret still identifies this cluster.
+                const cost = function(at, x) {
+                    return at === null ? 0 : Math.min(Math.abs(at - x), rect.width);
+                };
+                const ltr = cost(start, rect.left) + cost(end, rect.right);
+                const rtl = cost(start, rect.right) + cost(end, rect.left);
+                // A one-character run can have both collapsed carets on
+                // its neighbors. Strong direction survives embeddings and
+                // isolates unless the source explicitly overrides it.
+                let hint = -1;
+                if (!hasOverride) {
+                    const cp = g.segment.codePointAt(0);
+                    if ((cp >= 48 && cp <= 57) || (cp >= 65 && cp <= 90) ||
+                        (cp >= 97 && cp <= 122)) hint = 0;
+                    else if (cp >= 128) {
+                        hint = _gpui_wasm_text_direction(cp);
+                        if (hint < 0) {
+                            if (!G.decimalDigit)
+                                G.decimalDigit = new RegExp(String.fromCharCode(92) + "p{Decimal_Number}", "u");
+                            if (G.decimalDigit.test(g.segment)) hint = 0;
+                        }
+                    }
+                }
+                const cluster = {lo: lo, hi: byte, left: left, right: right,
+                    rtl: hint >= 0 ? hint === 1 :
+                        rtl === ltr ? e.direction === "rtl" : rtl < ltr};
+                clusters.push(cluster);
+                if (right > left) visual.push(cluster);
+                start = end;
+            }
+            // Browsers can round both edges of an individual DOM range
+            // outward. Share one boundary between neighboring cells so hit
+            // testing, selection and the sum of advances agree.
+            if (visual.length) {
+                visual.sort((a, b) => a.left - b.left);
+                let edge = part.x;
+                const last = part.x + part.width;
+                for (let i = 0; i < visual.length; i++) {
+                    const g = visual[i];
+                    g.left = edge;
+                    edge = i + 1 === visual.length ? last :
+                        Math.max(edge, Math.min(last, (g.right + visual[i + 1].left) * 0.5));
+                    g.right = edge;
+                }
+            }
+        }
+        node.data = "";
+        e.clusters[li] = clusters;
+        return clusters;
+    };
+    // First grapheme whose source range extends past this byte.
+    G.textClusterAt = function(clusters, offset) {
+        let lo = 0;
+        let hi = clusters.length;
+        while (lo < hi) {
+            const mid = (lo + hi) >> 1;
+            if (clusters[mid].hi <= offset) lo = mid + 1;
+            else hi = mid;
+        }
+        return lo;
     };
     // A paragraph as the units a greedy wrap may break between: each is one
     // run of non-space plus the spaces that follow it, so concatenating them
@@ -929,11 +1065,13 @@ EM_JS(int, GpJsTextNew,
 
     let maxLine = 0;
     const widths = [];
+    const fullWidths = [];
     const parts = spanCount ? [] : null;
     for (let i = 0; i < lines.length; i++) {
         const lw = width(wrapped[i] ? lines[i].trimEnd() : lines[i], starts[i]);
         if (parts) parts.push(partsOf(lines[i], starts[i]));
         widths.push(lw);
+        if (!parts) fullWidths.push(wrapped[i] ? width(lines[i], starts[i]) : lw);
         if (lw > maxLine) {
             maxLine = lw;
         }
@@ -958,7 +1096,7 @@ EM_JS(int, GpJsTextNew,
     const box = fontSize * (lineH > 0 ? lineH : 1.618034);
     const rec = {
         lines: lines, starts: starts, wrapped: wrapped, dx: dx, cover: cover,
-        parts: parts, widths: widths,
+        parts: parts, widths: widths, fullWidths: fullWidths,
         font: font,
         direction: c.direction === "inherit" && c.canvas && c.canvas.isConnected
             ? getComputedStyle(c.canvas).direction : c.direction,
@@ -988,79 +1126,31 @@ EM_JS(double, GpJsTextBaseline, (int id), {
 EM_JS(int, GpJsTextClusterWidths, (int id, int byteLen, float* out), {
     const G = globalThis.__gpui;
     const e = G.texts[id];
-    if (!e || e.lines.length !== 1 || typeof Intl.Segmenter !== "function") {
+    if (!e || e.lines.length !== 1 || typeof Intl.Segmenter !== "function")
         return 0;
-    }
     if (!e.clusterWidths) {
         const line = e.lines[0];
         if (!line.length || G.u8len(line) !== byteLen) return 0;
-        if (!G.graphemes) G.graphemes = new Intl.Segmenter("und", {granularity: "grapheme"});
-        if (typeof document !== "undefined" && !G.clusterText) {
-            // Measure in isolation so page styles cannot change the shaping
-            // of content painted into the canvas.
-            const host = document.createElement("div");
-            host.style.cssText = "all:initial;position:fixed;left:0;top:0;visibility:hidden;contain:strict;pointer-events:none";
-            host.setAttribute("aria-hidden", "true");
-            const shadow = host.attachShadow({mode: "closed"});
-            const span = document.createElement("span");
-            span.style.cssText = "display:inline-block;white-space:pre";
-            span.appendChild(document.createTextNode(""));
-            shadow.appendChild(span);
-            (document.body || document.documentElement).appendChild(host);
-            G.clusterText = span;
-            G.clusterRange = document.createRange();
-        }
-        const span = G.clusterText;
-        const range = G.clusterRange;
-        const c = span ? null : G.measurer();
-        const previous = c && c.font;
         const widths = new Float32Array(byteLen);
-        const parts = e.parts ? e.parts[0] :
-            [{start: 0, end: line.length, font: e.font, width: e.widths[0]}];
-        let byte = 0;
-        for (const part of parts) {
-            const text = line.slice(part.start, part.end);
-            if (span) {
-                span.style.font = part.font;
-                span.style.direction = e.direction === "rtl" ? "rtl" : "ltr";
-                // Canvas normalizes ASCII whitespace to spaces. Replacing
-                // it also leaves all UTF-16 range endpoints unchanged.
-                span.firstChild.data = Array.from(text, function(ch) {
-                    const code = ch.charCodeAt(0);
-                    return code >= 9 && code <= 13 ? " " : ch;
-                }).join("");
-            } else {
+        const clusters = G.textClusters(e, 0);
+        if (clusters) {
+            for (const cluster of clusters)
+                widths[cluster.lo] = cluster.right - cluster.left;
+        } else {
+            if (!G.graphemes) G.graphemes = new Intl.Segmenter("und", {granularity: "grapheme"});
+            const c = G.measurer();
+            const previous = c.font;
+            let byte = 0;
+            for (const part of G.textParts(e, 0)) {
                 c.font = part.font;
-            }
-            const start = byte;
-            let total = 0;
-            for (const g of G.graphemes.segment(text)) {
-                let width;
-                if (span) {
-                    range.setStart(span.firstChild, g.index);
-                    range.setEnd(span.firstChild, g.index + g.segment.length);
-                    width = 0;
-                    for (const rect of range.getClientRects()) width += rect.width;
-                } else {
-                    // The headless Node backend has additive font metrics.
-                    width = c.measureText(g.segment).width;
+                for (const g of G.graphemes.segment(line.slice(part.start, part.end))) {
+                    // Headless Node uses additive font metrics.
+                    widths[byte] = c.measureText(g.segment).width;
+                    byte += G.u8len(g.segment);
                 }
-                widths[byte] = width;
-                byte += G.u8len(g.segment);
-                total += width;
             }
-            if (total > 0) {
-                // DOM ranges supply in-context widths even in RTL runs.
-                // Keep the sum equal to the Canvas width used for painting.
-                const scale = part.width / total;
-                for (let i = start; i < byte; i++) widths[i] *= scale;
-            } else if (part.width > 0) {
-                widths[start] = part.width;
-            }
+            c.font = previous;
         }
-        if (span) span.firstChild.data = "";
-        if (c) c.font = previous;
-        if (byte !== byteLen) return 0;
         e.clusterWidths = widths;
     }
     HEAPF32.set(e.clusterWidths, out >> 2);
@@ -1080,6 +1170,8 @@ EM_JS(void, GpJsTextDraw, (int id, float x, float y, int color, int clip), {
         c.clip();
     }
     const pad = (e.box - e.natural) * 0.5;
+    const previousDirection = c.direction;
+    c.direction = e.direction === "rtl" ? "rtl" : "ltr";
     c.font = e.font;
     c.textBaseline = "alphabetic";
     c.textAlign = "left";
@@ -1108,6 +1200,7 @@ EM_JS(void, GpJsTextDraw, (int id, float x, float y, int color, int clip), {
             }
         }
     }
+    c.direction = previousDirection;
     if (clip) {
         c.restore();
     }
@@ -1130,6 +1223,21 @@ EM_JS(int, GpJsTextHit, (int id, float relX, float relY), {
     }
     const line = e.lines[li];
     relX -= e.dx[li];
+    const clusters = G.textClusters(e, li);
+    if (clusters) {
+        let best = 0;
+        let distance = Infinity;
+        for (const g of clusters) {
+            if (g.left === g.right) continue;
+            const d = Math.max(g.left - relX, relX - g.right, 0);
+            if (d >= distance) continue;
+            distance = d;
+            const firstHalf = relX < (g.left + g.right) * 0.5;
+            best = firstHalf !== g.rtl ? g.lo : g.hi;
+            if (d === 0) break;
+        }
+        return e.starts[li] + best;
+    }
     const c = G.measurer();
     const prev = c.font;
     c.font = e.font;
@@ -1149,7 +1257,7 @@ EM_JS(int, GpJsTextHit, (int id, float relX, float relY), {
     return e.starts[li] + G.u8len(line.slice(0, best));
 });
 
-// The rectangles covering UTF-8 range [a, b), one per line it crosses.
+// A logical range can have disjoint rectangles on a single bidi line.
 EM_JS(int, GpJsTextRangeRects,
       (int id, int a, int b, float* out, int max), {
     const G = globalThis.__gpui;
@@ -1161,6 +1269,14 @@ EM_JS(int, GpJsTextRangeRects,
     const prev = c.font;
     c.font = e.font;
     let n = 0;
+    const append = function(i, x0, x1) {
+        const o = (out >> 2) + n * 4;
+        HEAPF32[o] = x0 + e.dx[i];
+        HEAPF32[o + 1] = i * e.box;
+        HEAPF32[o + 2] = x1 - x0;
+        HEAPF32[o + 3] = e.box;
+        n++;
+    };
     for (let i = 0; i < e.lines.length && n < max; i++) {
         const line = e.lines[i];
         const start = e.starts[i];
@@ -1170,21 +1286,53 @@ EM_JS(int, GpJsTextRangeRects,
         if (lo >= hi) {
             continue;
         }
-        const x0 = G.textWidthAt(c, e, i, G.u16at(line, lo - start));
-        const x1 = G.textWidthAt(c, e, i, G.u16at(line, hi - start));
-        const o = (out >> 2) + n * 4;
-        // The line box, from its top. The half-leading pad is where the
-        // glyphs sit inside that box; a rect from the glyphs reached into
-        // the next line, which is why DirectWrite and Core Text report the
-        // box. Index 0 then sits on the element's origin.
-        HEAPF32[o] = x0 + e.dx[i];
-        HEAPF32[o + 1] = i * e.box;
-        HEAPF32[o + 2] = x1 - x0;
-        HEAPF32[o + 3] = e.box;
-        n++;
+        const clusters = G.textClusters(e, i);
+        if (!clusters) {
+            append(i, G.textWidthAt(c, e, i, G.u16at(line, lo - start)),
+                      G.textWidthAt(c, e, i, G.u16at(line, hi - start)));
+            continue;
+        }
+        const boxes = [];
+        for (let j = G.textClusterAt(clusters, lo - start);
+             j < clusters.length && clusters[j].lo < hi - start; j++) {
+            if (clusters[j].right > clusters[j].left) boxes.push(clusters[j]);
+        }
+        boxes.sort((a, b) => a.left - b.left);
+        for (let j = 0; j < boxes.length && n < max;) {
+            const left = boxes[j].left;
+            let right = boxes[j++].right;
+            // DOM range edges can be rounded to separate subpixel positions.
+            while (j < boxes.length && boxes[j].left <= right + 0.02)
+                right = Math.max(right, boxes[j++].right);
+            append(i, left, right);
+        }
     }
     c.font = prev;
     return n;
+});
+
+EM_JS(int, GpJsTextCaret, (int id, int offset, int trailing, float* out), {
+    const G = globalThis.__gpui;
+    const e = G.texts[id];
+    if (!e) return 0;
+    let li = 0;
+    while (li + 1 < e.lines.length && e.starts[li + 1] <= offset) li++;
+    if (trailing && li > 0 && e.starts[li] === offset &&
+        e.starts[li - 1] + G.u8len(e.lines[li - 1]) === offset) li--;
+    const clusters = G.textClusters(e, li);
+    if (!clusters) return 0;
+    let x = e.direction === "rtl" ? e.fullWidths[li] || 0 : 0;
+    if (clusters.length) {
+        const at = offset - e.starts[li] - (trailing ? 1 : 0);
+        const index = G.textClusterAt(clusters, at);
+        const after = trailing && at >= 0 || index === clusters.length;
+        const g = clusters[Math.min(index, clusters.length - 1)];
+        x = after !== g.rtl ? g.right : g.left;
+    }
+    HEAPF32[out >> 2] = x + e.dx[li];
+    HEAPF32[(out >> 2) + 1] = li * e.box;
+    HEAPF32[(out >> 2) + 2] = e.box;
+    return 1;
 });
 
 EM_JS(void, GpJsTextFree, (int id), {
@@ -1705,6 +1853,17 @@ int TextLayoutRangeRects(TextLayout* tl, Str s, int u8a, int u8b, Bounds* out,
 
 bool TextLayoutClusterWidths(TextLayout* tl, Str s, float* widths) {
     return tl && tl->js && GpJsTextClusterWidths(tl->js, len(s), widths);
+}
+
+bool TextLayoutCaretPoint(TextLayout* tl, int offset, bool trailing, float* x,
+                          float* y, float* height) {
+    float point[3];
+    if (!tl || !tl->js || !GpJsTextCaret(tl->js, offset, trailing, point))
+        return false;
+    *x = point[0];
+    *y = point[1];
+    *height = point[2];
+    return true;
 }
 
 } // namespace gpui

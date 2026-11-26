@@ -375,8 +375,8 @@ void DrawTextAt(PaintCtx* ctx, Str s, float x, float y, float w, float h,
                 float measMaxW = -1.f, int weight = 0, float lineH = 0);
 // The UTF-8 offset into `s` nearest the layout-relative point.
 int TextLayoutHitPoint(TextLayout* tl, Str s, float relX, float relY);
-// The rectangles covering UTF-8 range [u8a, u8b), one per line. Returns how
-// many were written.
+// The rectangles covering UTF-8 range [u8a, u8b). A bidi line can return
+// several rectangles. Returns how many were written.
 int TextLayoutRangeRects(TextLayout* tl, Str s, int u8a, int u8b, Bounds* out,
                          int max);
 // Add the advances of an unconstrained hard line to the zeroed array
@@ -389,6 +389,16 @@ bool TextLayoutClusterWidths(TextLayout* tl, Str s, float* widths);
 #else
 #define GPUI_PAINT_CLUSTER_WIDTHS 0
 inline bool TextLayoutClusterWidths(TextLayout*, Str, float*) {
+    return false;
+}
+#endif
+// Positioned caret when the backend exposes both edges of a bidi boundary.
+#if GPUI_OS_WASM
+bool TextLayoutCaretPoint(TextLayout* tl, int offset, bool trailing, float* x,
+                          float* y, float* height);
+#else
+inline bool TextLayoutCaretPoint(TextLayout*, int, bool, float*, float*,
+                                 float*) {
     return false;
 }
 #endif
