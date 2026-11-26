@@ -515,7 +515,10 @@ void Tig::Action(Ctx* cx, TigAction action) {
             break;
         }
         case TigCopy:
-            if (Commit()) ClipboardSetText(cx->win, Commit()->hash);
+            if (const auto* commit = Commit()) {
+                ClipboardSetText(cx->win, commit->hash);
+                WindowPushNotification(cx, StrL("Commit hash copied"));
+            }
             break;
         case TigSidebar:
             sidebar = !sidebar;
