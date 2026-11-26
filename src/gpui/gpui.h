@@ -581,6 +581,8 @@ struct MouseDownEvent : MouseButtonEvent {
     // WM_MOUSEACTIVATE; X11 has no such notion and a Cocoa view does not
     // accept the first mouse, so it is false on those two.
     bool firstMouse = false;
+    // A native child already received this press before forwarding it.
+    bool fromNativeSurface = false;
 };
 
 struct MouseUpEvent : MouseButtonEvent {};
@@ -7810,6 +7812,7 @@ struct Window {
     Vec<EntityId> rendered;
     struct PaintedNativeSurface {
         Listener onOmitted;
+        Listener onMouseDown;
         uint64_t frame;
     };
     Vec<PaintedNativeSurface> paintedNativeSurfaces;
@@ -9178,7 +9181,8 @@ void WindowRequestAutoscroll(Window* win, Bounds bounds);
 bool WindowTakeAutoscroll(Window* win, Bounds* out);
 // Keep a native child only while its element paints. An owner is notified
 // once when the next completed frame omits its surface.
-void WindowTrackPaintedNativeSurface(Window* win, Listener onOmitted);
+void WindowTrackPaintedNativeSurface(Window* win, Listener onOmitted,
+                                     Listener onMouseDown = {});
 // window.last_input_was_keyboard(): whether the last input was a key press
 // rather than the pointer. What focus_visible reads, so a control focused
 // by a click does not show the focus a Tab to it would.

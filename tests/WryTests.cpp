@@ -164,29 +164,54 @@ static void NativeSurfacesReceiveDeferredPanelBounds() {
 
 struct NativeSurfaceLifetimeProbe {
     EntityId owner;
+    Entity<NativeSurfaceLifetimeProbe> sibling;
     bool mounted = true;
     int omissions = 0;
+    int presses = 0;
+    int windowPresses = 0;
 
     static void OnOmitted(NativeSurfaceLifetimeProbe* self, Ctx*, const void*) {
         self->omissions++;
     }
 
+    static void MouseDown(NativeSurfaceLifetimeProbe* self, Ctx*,
+                          const MouseDownEvent*) {
+        self->presses++;
+    }
+
+    static void WindowMouseDown(NativeSurfaceLifetimeProbe* self, Ctx*,
+                                const MouseDownEvent*) {
+        self->windowPresses++;
+    }
+
     static void Paint(PaintCtx* ctx, El*, void* user) {
         auto* self = static_cast<NativeSurfaceLifetimeProbe*>(user);
-        WindowTrackPaintedNativeSurface(
-            ctx->window,
-            ListenTo(Entity<NativeSurfaceLifetimeProbe>{self->owner},
-                     &OnOmitted));
+        Entity<NativeSurfaceLifetimeProbe> view{self->owner};
+        WindowTrackPaintedNativeSurface(ctx->window, ListenTo(view, &OnOmitted),
+                                        ListenTo(view, &MouseDown));
+    }
+
+    static El* Surface(Ctx* cx, NativeSurfaceLifetimeProbe* surface) {
+        El* el = Div(cx->a)->Flex1();
+        if (surface->mounted) {
+            el->customPaint = &Paint;
+            el->customUser = surface;
+        }
+        return el;
     }
 
     static El* Render(NativeSurfaceLifetimeProbe* self, Ctx* cx) {
-        self->owner = cx->self;
-        El* root = Div(cx->a)->SizeFull();
-        if (self->mounted) {
-            root->customPaint = &Paint;
-            root->customUser = self;
+        if (!self->sibling.IsValid()) {
+            self->owner = cx->self;
+            self->sibling = EntityNewState<NativeSurfaceLifetimeProbe>(cx->app);
+            self->sibling.Get(cx)->owner = self->sibling.id;
+            WindowOnMouseDown(cx->win, Listen(cx, &WindowMouseDown));
         }
-        return root;
+        return Div(cx->a)
+            ->SizeFull()
+            ->FlexRow()
+            ->Child(Surface(cx, self))
+            ->Child(Surface(cx, self->sibling.Get(cx)));
     }
 };
 
@@ -195,11 +220,29 @@ static void OmittedNativeSurfacesAreHiddenOnce() {
     auto view = EntityNew<NativeSurfaceLifetimeProbe>(app);
     Window* win = TestWindowOpen(app, view, 240, 120);
     auto* self = view.Get(app);
+    auto* sibling = self->sibling.Get(app);
     TestDraw(win);
     utassert(self->omissions == 0);
+    TestSimulateClick(win, {20, 20});
+    utassert(self->presses == 1 && sibling->presses == 1);
+    utassert(self->windowPresses == 1);
+
+    PlatformInput native = {};
+    native.kind = PlatformInputKind::MouseDown;
+    native.mouseDown.x = 20;
+    native.mouseDown.y = 20;
+    native.mouseDown.fromNativeSurface = true;
+    WindowDispatchInput(win, &native);
+    TestSimulateMouseUp(win, {20, 20});
+    utassert(self->presses == 1 && sibling->presses == 1);
+    utassert(self->windowPresses == 2);
+
     self->mounted = false;
     TestDraw(win);
     utassert(self->omissions == 1);
+    TestSimulateClick(win, {20, 20});
+    utassert(self->presses == 1 && sibling->presses == 2);
+    utassert(self->windowPresses == 3);
     TestDraw(win);
     utassert(self->omissions == 1);
     self->mounted = true;

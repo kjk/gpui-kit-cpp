@@ -108,11 +108,11 @@ void WebView::OnWindowMouseDown(WebView* self, Ctx* cx,
                                 const MouseDownEvent* ev) {
     (void)cx;
     wry::WebView* raw = self->owned.Raw();
-    if (!raw || !ev) {
+    if (!raw || !self->nativeShown || !ev) {
         return;
     }
     Point p = {ev->x, ev->y};
-    bool hitsView = self->nativeShown && self->appliedVisible.Contains(p);
+    bool hitsView = self->appliedVisible.Contains(p);
     if (hitsView && self->hasVisibleRegion) {
         hitsView = false;
         p.x -= self->appliedVisible.x;
@@ -283,14 +283,15 @@ static bool AppHasWindow(App* app, Window* win) {
 }
 
 static void RunPageClick(PageClickJob* job) {
-    if (job->app && EntityGet(job->app, job->id) &&
-        AppHasWindow(job->app, job->win)) {
+    WebView* view = Entity<WebView>{job->id}.Get(job->app);
+    if (view && view->nativeShown && AppHasWindow(job->app, job->win)) {
         PlatformInput down = {};
         down.kind = PlatformInputKind::MouseDown;
         down.mouseDown.button = job->button;
         down.mouseDown.x = job->x;
         down.mouseDown.y = job->y;
         down.mouseDown.clickCount = 1;
+        down.mouseDown.fromNativeSurface = true;
         WindowDispatchInput(job->win, &down);
         PlatformInput up = {};
         up.kind = PlatformInputKind::MouseUp;
@@ -446,9 +447,10 @@ static void ShowNative(WebView* self, wry::WebView* raw) {
         self->nativeShown = true;
     }
     if (self->nativeShown) {
+        Entity<WebView> owner{self->selfId};
         WindowTrackPaintedNativeSurface(
-            self->window,
-            ListenTo(Entity<WebView>{self->selfId}, &HideOmittedWebView));
+            self->window, ListenTo(owner, &HideOmittedWebView),
+            ListenTo(owner, &WebView::OnWindowMouseDown));
     }
 }
 
@@ -728,10 +730,6 @@ El* WebViewEl(Entity<WebView> view, Ctx* cx) {
     El* e = Div(cx->a)->SizeFull();
     if (!self || self->window != cx->win) {
         return e;
-    }
-    if (!self->subscribed) {
-        self->subscribed = true;
-        WindowOnMouseDown(cx->win, ListenTo(view, &WebView::OnWindowMouseDown));
     }
     // `HitboxBehavior::BlockMouse`: the native view covers this box, so
     // GPUI content under it must not take the press.

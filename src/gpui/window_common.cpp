@@ -3183,6 +3183,13 @@ static void DispatchMouseDown(Window* win, const MouseDownEvent& in) {
         }
         VecReset(tipChain);
     }
+    if (!in.fromNativeSurface) {
+        for (const auto& surface : win->paintedNativeSurfaces) {
+            if (surface.onMouseDown.IsValid()) {
+                ListenerCall(win->app, win, surface.onMouseDown, &in);
+            }
+        }
+    }
     if (win->onMouseDown.IsValid()) {
         ListenerCall(win->app, win, win->onMouseDown, &in);
     }
@@ -5809,17 +5816,17 @@ void WindowSetRemSize(Window* win, float size) {
     AppInvalidate(win);
 }
 
-void WindowTrackPaintedNativeSurface(Window* win, Listener onOmitted) {
+void WindowTrackPaintedNativeSurface(Window* win, Listener onOmitted,
+                                     Listener onMouseDown) {
     if (!win || !onOmitted.IsValid()) return;
+    Window::PaintedNativeSurface current{onOmitted, onMouseDown, win->frameSeq};
     for (auto& surface : win->paintedNativeSurfaces) {
         if (surface.onOmitted.view == onOmitted.view) {
-            surface.onOmitted = onOmitted;
-            surface.frame = win->frameSeq;
+            surface = current;
             return;
         }
     }
-    VecAppend(win->paintedNativeSurfaces,
-              Window::PaintedNativeSurface{onOmitted, win->frameSeq});
+    VecAppend(win->paintedNativeSurfaces, current);
 }
 
 void WindowRequestAutoscroll(Window* win, Bounds bounds) {

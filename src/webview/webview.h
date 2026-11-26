@@ -113,12 +113,6 @@ struct WebView {
     Window* window = nullptr;
     App* app = nullptr;
     EntityId selfId = {};
-    // Whether the window subscription that blurs the page on an outside
-    // click has been made. Rust installs its `on_mouse_event` every paint,
-    // for that frame; a subscription here outlives the frame, so it is made
-    // once.
-    bool subscribed = false;
-
     ~WebView();
 
     /** The press that lands anywhere but on the webview: the page gives the
