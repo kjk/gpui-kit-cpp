@@ -247,6 +247,10 @@ The current update target is
   author ID, focus handle or position under the nearest named ancestor.
   Removed IDs are retired so a cached platform provider cannot activate a
   later control at the same index (`src/gpui/window_common.cpp`).
+- **Windows UIA invalidates the child list on structural changes.**
+  Retained nodes report changes to their projected properties separately.
+  Focus, live announcements and document revisions have their own events
+  (`src/gpui/accessibility_win.cpp`).
 - **Linux invalidates a child list when its retained children reorder.**
   Insertions and removals report individual child references, and reparented
   nodes also report the new parent. Lazy document revisions invalidate their

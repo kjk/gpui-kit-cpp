@@ -279,14 +279,46 @@ struct WinDocumentRevision {
     uint64_t selection = 0;
 };
 
+struct WinNodeProperties {
+    AccessibilityInfo info;
+    uint8_t actions;
+    bool hasRange;
+    double value;
+    double minimum;
+    double maximum;
+
+    explicit WinNodeProperties(const AccessibilityNode& node)
+        : info(node.info),
+          actions(node.actions),
+          hasRange(node.slider != nullptr),
+          value(hasRange ? node.slider->value.End() : 0),
+          minimum(hasRange ? node.slider->min : 0),
+          maximum(hasRange ? node.slider->max : 0) {}
+};
+
+struct WinNodeSnapshot {
+    uint32_t id;
+    uint32_t parent;
+    int index;
+    WinNodeProperties properties;
+};
+
 struct WinAccessibility
     : ComObject<IRawElementProviderSimple, IRawElementProviderFragment,
                 IRawElementProviderFragmentRoot> {
     Window* win = nullptr;
     HWND hwnd = nullptr;
     Vec<WinDocumentRevision> documents;
+    Vec<WinNodeSnapshot> snapshots[2];
+    Arena* snapshotStrings[2] = {};
+    int snapshotFrame = 0;
 
     WinAccessibility(Window* window, HWND handle) : win(window), hwnd(handle) {}
+    ~WinAccessibility() override {
+        for (Arena* arena : snapshotStrings) {
+            if (arena) ArenaDelete(arena);
+        }
+    }
 
     WIN_UIA_FRAGMENT_METHODS
     HRESULT STDMETHODCALLTYPE ElementProviderFromPoint(
@@ -988,93 +1020,146 @@ HRESULT WinAccessibilityNode::GetPatternProvider(PATTERNID pattern,
     return S_OK;
 }
 
-HRESULT WinAccessibilityNode::GetPropertyValue(PROPERTYID property,
-                                               VARIANT* out) {
-    if (!out) {
-        return E_INVALIDARG;
+struct WinPropertyValue {
+    VARTYPE type = VT_EMPTY;
+    Str text;
+    const WCHAR* wide = nullptr;
+    int integer = 0;
+    double number = 0;
+
+    WinPropertyValue() = default;
+    WinPropertyValue(Str value) : type(VT_BSTR), text(value) {}
+    WinPropertyValue(const WCHAR* value) : type(VT_BSTR), wide(value) {}
+    WinPropertyValue(bool value) : type(VT_BOOL), integer(value) {}
+    WinPropertyValue(int value) : type(VT_I4), integer(value) {}
+    WinPropertyValue(double value) : type(VT_R8), number(value) {}
+
+    bool SameAs(const WinPropertyValue& other) const {
+        if (type != other.type) return false;
+        if (type == VT_R8) return number == other.number;
+        if (type != VT_BSTR) return integer == other.integer;
+        return wide || other.wide
+                   ? wide && other.wide && wcscmp(wide, other.wide) == 0
+                   : StrEq(text, other.text);
     }
-    VariantInit(out);
-    const AccessibilityNode* node = Node();
-    if (!node) {
-        return UIA_E_ELEMENTNOTAVAILABLE;
+
+    void ToVariant(VARIANT* out) const {
+        switch (type) {
+            case VT_BOOL:
+                VariantBool(out, integer != 0);
+                break;
+            case VT_I4:
+                VariantInt(out, integer);
+                break;
+            case VT_R8:
+                VariantDouble(out, number);
+                break;
+            case VT_BSTR:
+                if (wide) {
+                    VariantInit(out);
+                    out->vt = VT_BSTR;
+                    out->bstrVal = SysAllocString(wide);
+                } else {
+                    VariantString(out, text);
+                }
+                break;
+            default:
+                VariantInit(out);
+                break;
+        }
     }
-    const AccessibilityInfo& info = node->info;
+};
+
+static ToggleState WinToggleState(AccessibilityToggled toggled) {
+    return toggled == AccessibilityToggled::Mixed  ? ToggleState_Indeterminate
+           : toggled == AccessibilityToggled::True ? ToggleState_On
+                                                   : ToggleState_Off;
+}
+
+static WinPropertyValue WinSemanticProperty(const WinNodeProperties& node,
+                                            PROPERTYID property) {
+    const AccessibilityInfo& info = node.info;
     if (property == UIA_ControlTypePropertyId) {
-        VariantInt(out, AccessibilityControlType(info.role));
+        return AccessibilityControlType(info.role);
     } else if (property == UIA_NamePropertyId) {
-        VariantString(out, info.PlatformName());
+        return info.PlatformName();
     } else if (property == UIA_AutomationIdPropertyId) {
-        VariantString(out, info.authorId);
+        return info.authorId;
     } else if (property == UIA_FullDescriptionPropertyId) {
         // accesskit_windows maps a node's description here, and leaves
         // HelpText to the placeholder.
-        VariantString(out, info.description);
+        return info.description;
     } else if (property == UIA_HelpTextPropertyId) {
-        VariantString(out, info.placeholder);
+        return info.placeholder;
     } else if (property == UIA_AriaRolePropertyId) {
-        VariantInit(out);
-        out->vt = VT_BSTR;
-        out->bstrVal = SysAllocString(AccessibilityRoleName(info.role));
+        return AccessibilityRoleName(info.role);
     } else if (property == UIA_LiveSettingPropertyId) {
-        VariantInt(out, (int)info.live);
+        return (int)info.live;
     } else if (property == UIA_IsEnabledPropertyId) {
-        VariantBool(out, !info.disabled);
+        return !info.disabled;
     } else if (property == UIA_IsControlElementPropertyId ||
                property == UIA_IsContentElementPropertyId) {
-        VariantBool(out, true);
+        return true;
     } else if (property == UIA_IsKeyboardFocusablePropertyId) {
-        VariantBool(out, (node->actions & AccessibilityActionFocus) != 0);
-    } else if (property == UIA_HasKeyboardFocusPropertyId) {
-        VariantBool(out, node->focusId && root->win &&
-                             node->focusId == root->win->focusId);
+        return (node.actions & AccessibilityActionFocus) != 0;
     } else if (property == UIA_IsPasswordPropertyId) {
-        VariantBool(out, info.role == AccessibilityRole::PasswordInput);
+        return info.role == AccessibilityRole::PasswordInput;
     } else if (property == UIA_OrientationPropertyId &&
                info.orientation != AccessibilityOrientation::Unset) {
-        VariantInt(out, info.orientation == AccessibilityOrientation::Vertical
-                            ? OrientationType_Vertical
-                            : OrientationType_Horizontal);
+        return (int)(info.orientation == AccessibilityOrientation::Vertical
+                         ? OrientationType_Vertical
+                         : OrientationType_Horizontal);
     } else if (property == UIA_PositionInSetPropertyId &&
                info.hasPositionInSet) {
-        VariantInt(out, info.positionInSet);
+        return info.positionInSet;
     } else if (property == UIA_SizeOfSetPropertyId && info.hasSizeOfSet) {
-        VariantInt(out, info.sizeOfSet);
+        return info.sizeOfSet;
     } else if (property == UIA_LevelPropertyId && info.hasLevel) {
-        VariantInt(out, info.level);
+        return info.level;
     } else if (property == UIA_SelectionItemIsSelectedPropertyId &&
                info.hasSelected) {
-        VariantBool(out, info.selected);
+        return (bool)info.selected;
     } else if (property == UIA_GridRowCountPropertyId && info.hasRowCount) {
-        VariantInt(out, info.rowCount);
+        return info.rowCount;
     } else if (property == UIA_GridColumnCountPropertyId &&
                info.hasColumnCount) {
-        VariantInt(out, info.columnCount);
+        return info.columnCount;
     } else if (property == UIA_GridItemRowPropertyId && info.hasRowIndex) {
-        VariantInt(out, std::max(0, info.rowIndex - 1));
+        return std::max(0, info.rowIndex - 1);
     } else if (property == UIA_GridItemColumnPropertyId &&
                info.hasColumnIndex) {
-        VariantInt(out, std::max(0, info.columnIndex - 1));
+        return std::max(0, info.columnIndex - 1);
     } else if (property == UIA_ToggleToggleStatePropertyId &&
                info.toggled != AccessibilityToggled::Unset) {
-        ToggleState state = ToggleState_Off;
-        get_ToggleState(&state);
-        VariantInt(out, state);
+        return (int)WinToggleState(info.toggled);
     } else if (property == UIA_ValueValuePropertyId &&
                AccessibilityTextRole(info.role)) {
-        VariantString(out, info.value);
+        return info.value;
     } else if (property == UIA_ValueIsReadOnlyPropertyId &&
                AccessibilityTextRole(info.role)) {
-        VariantBool(out, !(node->actions & AccessibilityActionSetValue));
-    } else if (property == UIA_RangeValueValuePropertyId && node->slider) {
-        VariantDouble(out, node->slider->value.End());
-    } else if (property == UIA_RangeValueMinimumPropertyId && node->slider) {
-        VariantDouble(out, node->slider->min);
-    } else if (property == UIA_RangeValueMaximumPropertyId && node->slider) {
-        VariantDouble(out, node->slider->max);
+        return !(node.actions & AccessibilityActionSetValue);
+    } else if (property == UIA_RangeValueValuePropertyId && node.hasRange) {
+        return node.value;
+    } else if (property == UIA_RangeValueMinimumPropertyId && node.hasRange) {
+        return node.minimum;
+    } else if (property == UIA_RangeValueMaximumPropertyId && node.hasRange) {
+        return node.maximum;
     } else if (property == UIA_ExpandCollapseExpandCollapseStatePropertyId &&
                info.hasExpanded) {
-        VariantInt(out, info.expanded ? ExpandCollapseState_Expanded
-                                      : ExpandCollapseState_Collapsed);
+        return (int)(info.expanded ? ExpandCollapseState_Expanded
+                                   : ExpandCollapseState_Collapsed);
+    }
+    return {};
+}
+
+HRESULT WinAccessibilityNode::GetPropertyValue(PROPERTYID property,
+                                               VARIANT* out) {
+    if (!out) return E_INVALIDARG;
+    VariantInit(out);
+    const AccessibilityNode* node = Node();
+    if (!node) return UIA_E_ELEMENTNOTAVAILABLE;
+    if (property == UIA_HasKeyboardFocusPropertyId) {
+        VariantBool(out, node->focusId && node->focusId == root->win->focusId);
     } else if (property == UIA_IsOffscreenPropertyId && root->hwnd) {
         RECT client = {};
         GetClientRect(root->hwnd, &client);
@@ -1083,6 +1168,8 @@ HRESULT WinAccessibilityNode::GetPropertyValue(PROPERTYID property,
                    node->bounds.x * scale >= (float)client.right ||
                    node->bounds.y * scale >= (float)client.bottom;
         VariantBool(out, off);
+    } else {
+        WinSemanticProperty(WinNodeProperties(*node), property).ToVariant(out);
     }
     return S_OK;
 }
@@ -1264,10 +1351,7 @@ HRESULT WinAccessibilityNode::get_ToggleState(ToggleState* out) {
     if (!node) {
         return UIA_E_ELEMENTNOTAVAILABLE;
     }
-    *out = node->info.toggled == AccessibilityToggled::Mixed
-               ? ToggleState_Indeterminate
-           : node->info.toggled == AccessibilityToggled::True ? ToggleState_On
-                                                              : ToggleState_Off;
+    *out = WinToggleState(node->info.toggled);
     return S_OK;
 }
 
@@ -2416,6 +2500,14 @@ HRESULT WinAccessibilityPart::get_IsReadOnly(BOOL* out) {
 
 static void AccessibilityDocumentsChanged(WinAccessibility* root,
                                           bool listening);
+struct WinPropertyChange {
+    uint32_t id;
+    PROPERTYID property;
+    VARIANT before;
+    VARIANT after;
+};
+static bool WinSnapshotChanges(WinAccessibility* root,
+                               Vec<WinPropertyChange>* changes);
 
 WinAccessibility* AccessibilityWinNew(Window* win, void* hwnd) {
     if (!win || !hwnd) {
@@ -2423,6 +2515,7 @@ WinAccessibility* AccessibilityWinNew(Window* win, void* hwnd) {
     }
     auto* accessibility = new WinAccessibility(win, (HWND)hwnd);
     // The tree may have been collected before there was a provider to tell.
+    WinSnapshotChanges(accessibility, nullptr);
     AccessibilityDocumentsChanged(accessibility, false);
     return accessibility;
 }
@@ -2448,17 +2541,108 @@ intptr_t AccessibilityWinGetObject(WinAccessibility* accessibility,
 
 static void AccessibilityRaiseNodeEvent(WinAccessibility* root, int index,
                                         EVENTID event) {
-    IRawElementProviderFragment* fragment = root->NewNode(index);
     IRawElementProviderSimple* provider = nullptr;
-    if (fragment) {
-        fragment->QueryInterface(__uuidof(IRawElementProviderSimple),
-                                 (void**)&provider);
-        fragment->Release();
-    }
-    if (provider) {
+    if (SUCCEEDED(AccessibilitySimpleAt(root, index, &provider)) && provider) {
         UiaRaiseAutomationEvent(provider, event);
         provider->Release();
     }
+}
+
+static constexpr PROPERTYID kWinTrackedProperties[] = {
+    UIA_ControlTypePropertyId,
+    UIA_NamePropertyId,
+    UIA_AutomationIdPropertyId,
+    UIA_FullDescriptionPropertyId,
+    UIA_HelpTextPropertyId,
+    UIA_AriaRolePropertyId,
+    UIA_LiveSettingPropertyId,
+    UIA_IsEnabledPropertyId,
+    UIA_IsKeyboardFocusablePropertyId,
+    UIA_IsPasswordPropertyId,
+    UIA_OrientationPropertyId,
+    UIA_PositionInSetPropertyId,
+    UIA_SizeOfSetPropertyId,
+    UIA_LevelPropertyId,
+    UIA_SelectionItemIsSelectedPropertyId,
+    UIA_GridRowCountPropertyId,
+    UIA_GridColumnCountPropertyId,
+    UIA_GridItemRowPropertyId,
+    UIA_GridItemColumnPropertyId,
+    UIA_ToggleToggleStatePropertyId,
+    UIA_ValueValuePropertyId,
+    UIA_ValueIsReadOnlyPropertyId,
+    UIA_RangeValueValuePropertyId,
+    UIA_RangeValueMinimumPropertyId,
+    UIA_RangeValueMaximumPropertyId,
+    UIA_ExpandCollapseExpandCollapseStatePropertyId,
+};
+
+static int CompareWinSnapshots(const void* a, const void* b) {
+    uint32_t left = static_cast<const WinNodeSnapshot*>(a)->id;
+    uint32_t right = static_cast<const WinNodeSnapshot*>(b)->id;
+    return left == right ? 0 : left < right ? -1 : 1;
+}
+
+static void ClearWinPropertyChange(WinPropertyChange* change) {
+    VariantClear(&change->before);
+    VariantClear(&change->after);
+}
+
+// Match the same provider across frames even if its siblings moved. Old
+// strings belong to this snapshot arena, and queued variants own their
+// strings so the snapshot can be published before notifying native clients.
+static bool WinSnapshotChanges(WinAccessibility* root,
+                               Vec<WinPropertyChange>* changes) {
+    int frame = 1 - root->snapshotFrame;
+    const auto& last = root->snapshots[root->snapshotFrame];
+    auto& next = root->snapshots[frame];
+    Arena*& strings = root->snapshotStrings[frame];
+    if (!strings) strings = ArenaNew();
+    if (!strings) return true;
+    strings->Reset();
+
+    const auto& nodes = root->win->accessibility;
+    if (!VecResize(next, len(nodes))) return true;
+    for (int i = 0; i < len(nodes); i++) {
+        const auto& node = nodes[i];
+        uint32_t parent = node.parent < 0 ? 0 : nodes[node.parent].id;
+        next[i] = {node.id, parent, i, WinNodeProperties(node)};
+        auto& info = next[i].properties.info;
+        info.label = StrDup(strings, info.label);
+        info.description = StrDup(strings, info.description);
+        info.value = StrDup(strings, info.value);
+        info.authorId = StrDup(strings, info.authorId);
+        info.placeholder = StrDup(strings, info.placeholder);
+    }
+    if (len(next) > 1)
+        qsort(next.els, (size_t)len(next), sizeof(next[0]),
+              CompareWinSnapshots);
+
+    bool structureChanged = len(last) != len(next);
+    int beforeIndex = 0;
+    for (const auto& node : next) {
+        while (beforeIndex < len(last) && last[beforeIndex].id < node.id)
+            beforeIndex++;
+        if (beforeIndex == len(last) || last[beforeIndex].id != node.id) {
+            structureChanged = true;
+            continue;
+        }
+        const auto& before = last[beforeIndex++];
+        structureChanged |=
+            before.parent != node.parent || before.index != node.index;
+        if (!changes) continue;
+        for (PROPERTYID property : kWinTrackedProperties) {
+            auto oldValue = WinSemanticProperty(before.properties, property);
+            auto newValue = WinSemanticProperty(node.properties, property);
+            if (oldValue.SameAs(newValue)) continue;
+            WinPropertyChange item{node.id, property, {}, {}};
+            oldValue.ToVariant(&item.before);
+            newValue.ToVariant(&item.after);
+            if (!VecAppend(*changes, item)) ClearWinPropertyChange(&item);
+        }
+    }
+    root->snapshotFrame = frame;
+    return structureChanged;
 }
 
 // A screen reader follows a document's selection and edits by these events,
@@ -2496,20 +2680,42 @@ void AccessibilityWinTreeChanged(WinAccessibility* accessibility) {
     if (!accessibility || !accessibility->win) {
         return;
     }
+    accessibility->AddRef();
     bool listening = UiaClientsAreListening();
+    Vec<WinPropertyChange> properties;
+    bool structure =
+        WinSnapshotChanges(accessibility, listening ? &properties : nullptr);
     if (listening) {
-        UiaRaiseStructureChangedEvent(
-            static_cast<IRawElementProviderSimple*>(accessibility),
-            StructureChangeType_ChildrenInvalidated, nullptr, 0);
-        const auto& nodes = accessibility->win->accessibility;
-        for (int i = 0; i < len(nodes); i++) {
-            if (nodes[i].liveChanged) {
-                AccessibilityRaiseNodeEvent(accessibility, i,
-                                            UIA_LiveRegionChangedEventId);
+        if (structure) {
+            UiaRaiseStructureChangedEvent(
+                static_cast<IRawElementProviderSimple*>(accessibility),
+                StructureChangeType_ChildrenInvalidated, nullptr, 0);
+        }
+        for (auto& change : properties) {
+            IRawElementProviderSimple* provider = nullptr;
+            if (SUCCEEDED(AccessibilitySimpleAt(
+                    accessibility, accessibility->NodeIndex(change.id),
+                    &provider)) &&
+                provider) {
+                UiaRaiseAutomationPropertyChangedEvent(
+                    provider, change.property, change.before, change.after);
+                provider->Release();
+            }
+            ClearWinPropertyChange(&change);
+        }
+        if (accessibility->win) {
+            const auto& nodes = accessibility->win->accessibility;
+            for (int i = 0; accessibility->win && i < len(nodes); i++) {
+                if (nodes[i].liveChanged) {
+                    AccessibilityRaiseNodeEvent(accessibility, i,
+                                                UIA_LiveRegionChangedEventId);
+                }
             }
         }
     }
-    AccessibilityDocumentsChanged(accessibility, listening);
+    if (accessibility->win)
+        AccessibilityDocumentsChanged(accessibility, listening);
+    accessibility->Release();
 }
 
 void AccessibilityWinFocusChanged(WinAccessibility* accessibility,
@@ -2531,6 +2737,67 @@ void AccessibilityWinFocusChanged(WinAccessibility* accessibility,
 // Linked only by the repository test runner (it is deliberately absent from
 // accessibility_win.h). This exercises the COM projection itself without
 // opening a second native window or making the public API carry test types.
+bool AccessibilityWinPropertyChangesSmokeTest() {
+    Window win;
+    char label[] = "Old";
+    SliderState slider;
+    slider.value = SliderSingle(10);
+    AccessibilityNode box;
+    box.id = 10;
+    box.info.role = AccessibilityRole::CheckBox;
+    box.info.label = Str(label);
+    box.info.toggled = AccessibilityToggled::False;
+    AccessibilityNode range;
+    range.id = 7;
+    range.info.role = AccessibilityRole::Slider;
+    range.slider = &slider;
+    VecAppend(win.accessibility, box);
+    VecAppend(win.accessibility, range);
+    WinAccessibility* root = AccessibilityWinNew(&win, GetDesktopWindow());
+    if (!root) return false;
+
+    memcpy(label, "New", sizeof(label));
+    win.accessibility[0].info.disabled = true;
+    win.accessibility[0].info.toggled = AccessibilityToggled::Mixed;
+    slider.value = SliderSingle(30);
+    Vec<WinPropertyChange> changes;
+    bool ok = !WinSnapshotChanges(root, &changes) && len(changes) == 4;
+    int matched = 0;
+    for (auto& change : changes) {
+        const VARIANT& old = change.before;
+        const VARIANT& now = change.after;
+        if (change.property == UIA_NamePropertyId && change.id == 10 &&
+            old.vt == VT_BSTR && now.vt == VT_BSTR && old.bstrVal &&
+            now.bstrVal && wcscmp(old.bstrVal, L"Old") == 0 &&
+            wcscmp(now.bstrVal, L"New") == 0)
+            matched |= 1;
+        if (change.property == UIA_IsEnabledPropertyId && change.id == 10 &&
+            old.vt == VT_BOOL && now.vt == VT_BOOL &&
+            old.boolVal == VARIANT_TRUE && now.boolVal == VARIANT_FALSE)
+            matched |= 2;
+        if (change.property == UIA_ToggleToggleStatePropertyId &&
+            change.id == 10 && old.vt == VT_I4 && now.vt == VT_I4 &&
+            old.lVal == ToggleState_Off &&
+            now.lVal == ToggleState_Indeterminate)
+            matched |= 4;
+        if (change.property == UIA_RangeValueValuePropertyId &&
+            change.id == 7 && old.vt == VT_R8 && now.vt == VT_R8 &&
+            old.dblVal == 10 && now.dblVal == 30)
+            matched |= 8;
+        ClearWinPropertyChange(&change);
+    }
+    ok &= matched == 15;
+    VecClear(changes);
+    ok &= !WinSnapshotChanges(root, &changes) && !len(changes);
+    box = win.accessibility[0];
+    win.accessibility[0] = win.accessibility[1];
+    win.accessibility[1] = box;
+    ok &= WinSnapshotChanges(root, &changes) && !len(changes);
+    for (auto& change : changes) ClearWinPropertyChange(&change);
+    AccessibilityWinClose(root);
+    return ok;
+}
+
 bool AccessibilityWinSmokeTest(Window* win, uint32_t nodeId) {
     const AccessibilityNode* expected = WindowAccessibilityNode(win, nodeId);
     if (!expected) {

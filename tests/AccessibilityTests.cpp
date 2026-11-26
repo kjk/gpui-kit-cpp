@@ -10,6 +10,7 @@ namespace gpui {
 // the published header surface.
 bool AccessibilityWinSmokeTest(Window* win, uint32_t nodeId);
 bool AccessibilityWinPartsSmokeTest(Window* win, uint32_t nodeId);
+bool AccessibilityWinPropertyChangesSmokeTest();
 } // namespace gpui
 #endif
 #if GPUI_OS_LINUX
@@ -1773,6 +1774,9 @@ void TestAccessibility() {
     ButtonExposesOptionalDisclosureState();
     AMixedCheckboxUsesTheDashAndRequestsChecked();
     TestSuite("accessibility");
+#if GPUI_OS_WINDOWS
+    utassert(AccessibilityWinPropertyChangesSmokeTest());
+#endif
     TheTreeSkipsVisualBoxesButKeepsSemanticParents();
     StyledButtonsCanReplaceTheirVisibleAccessibleName();
     LabelsExposeTheirTextToAssistiveTechnology();
