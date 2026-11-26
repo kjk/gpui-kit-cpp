@@ -1417,6 +1417,28 @@ static void ModeSwitchPreservesTheSourceAnchorAndSelection() {
     TestAppFree(app);
 }
 
+// state.rs keyboard_select reveals a row without aligning it to the top.
+static void ModeSwitchKeepsTheViewportAfterASelectionReveal() {
+    App* app = nullptr;
+    Window* win = nullptr;
+    DiffState* state = nullptr;
+    OpenLongDiff(&app, &win, &state);
+    Ctx cx{app, win, win->frameArena, state->self.id};
+    state->SetMode(DiffMode::Split, &cx);
+    TestDraw(win);
+    TestFocus(win, state->focus);
+    utassert(WindowDispatchAction(win, ActionOf(StrL("diff::ExtendDown"))));
+    utassert(state->listScroll.pending &&
+             state->listScroll.pendingStrategy == ScrollStrategy::Top);
+    utassert(state->listScroll.pendingIx > 0);
+    state->SetMode(DiffMode::Unified, &cx);
+    TestDraw(win);
+    utassertnear(state->listScroll.offset, 0.f);
+    utassert(state->HasSelectedLines() && state->SelectedLines().start == 1 &&
+             state->SelectedLines().end == 1);
+    TestAppFree(app);
+}
+
 static const El* FindSplitCells(const El* el) {
     const El* first = el->first;
     const El* last = el->last;
@@ -2719,6 +2741,7 @@ void TestDiff() {
     DisclosureKeepsUnchangedWrappedMeasurements();
     ModeSwitchAtTheTopKeepsTheFileHeaderInView();
     ModeSwitchPreservesTheSourceAnchorAndSelection();
+    ModeSwitchKeepsTheViewportAfterASelectionReveal();
     SplitRatioSizesTheRenderedColumns();
     TheWheelScrollsPastTheRowsRenderedSoFar();
     SplitColumnsKeepTheirGuttersWhileCodeScrolls();

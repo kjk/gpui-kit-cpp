@@ -2419,19 +2419,30 @@ static void Rebuild(DiffState* state, bool reset,
     if (!reset && before) {
         int top = 0;
         float offsetInRow = 0.f;
-        if (scroll.pending) {
-            top = scroll.pendingIx;
+        if (scroll.pending && scroll.pendingStrategy == ScrollStrategy::Start) {
+            top = scroll.pendingIx + scroll.pendingOffset;
             offsetInRow = scroll.pendingInItem;
-        } else if (scroll.offset > 0.f) {
+        } else {
             const float* sizes = len(state->rowHeights) == before
                                      ? state->rowHeights.els
                                      : nullptr;
-            VirtualListLogicalFromPixel(sizes, before, 24.f, scroll.offset,
-                                        &top, &offsetInRow);
+            float offset = scroll.offset;
+            if (scroll.pending && scroll.viewport > 0.f) {
+                // A reveal can leave the target anywhere in the viewport.
+                // Resolve it against the old rows before finding the anchor.
+                VirtualListScrollHandle resolved = scroll;
+                VirtualListHandleLayout(&resolved, sizes, before, 24.f,
+                                        scroll.viewport);
+                offset = resolved.offset;
+            }
+            if (offset > 0.f) {
+                VirtualListLogicalFromPixel(sizes, before, 24.f, offset, &top,
+                                            &offsetInRow);
+            }
         }
         // Keep the header at the very top. A header already clipped by
         // scrolling anchors to the first source line of that file.
-        if (top < before && (top > 0 || offsetInRow > 0.f)) {
+        if (top >= 0 && top < before && (top > 0 || offsetInRow > 0.f)) {
             anchorFile = state->rows[top].file;
             hasKept = DiffScrollSource(state, top, &kept);
         }
