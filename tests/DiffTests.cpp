@@ -2299,6 +2299,20 @@ static void TouchHandlesExtendAndCopyTheDiffSourceRange() {
     utassert(selected && snapshot.startVisible && snapshot.endVisible &&
              snapshot.menuOpen);
     if (selected) {
+        auto primitives = [&]() {
+            Bounds damage;
+            scene::FrameBegin(&stage.win->paint);
+            TestDraw(stage.win);
+            scene::FrameEnd(&stage.win->paint, &damage);
+            return scene::Stats(&stage.win->paint).prims;
+        };
+        int withHandles = primitives();
+        TouchSelectionSource source = stage.win->sel->touchSource;
+        stage.win->sel->touchSource = {};
+        int withoutHandles = primitives();
+        stage.win->sel->touchSource = source;
+        utassert(withHandles == withoutHandles + 4);
+
         char buf[64];
         int copied = TextSelection::SelectedText(stage.win, stage.app, buf,
                                                  (int)sizeof(buf));

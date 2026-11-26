@@ -48,6 +48,9 @@ struct TouchHandle {
     static Bounds KnobBounds(SelectionEdge edge, Bounds caret);
 };
 
+void PaintTouchHandles(PaintCtx* ctx, const TouchSelectionSnapshot& snapshot,
+                       Rgba color);
+
 Bounds TouchCaretLineBox(Point position, float lineHeight);
 bool TouchCaretInView(Bounds caret, Bounds viewport);
 

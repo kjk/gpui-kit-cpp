@@ -447,18 +447,7 @@ static void PaintInputTouchHandles(PaintCtx* ctx, El*, void* user) {
         !InputTouchSelection(p->state, ctx->window, &snap) || snap.IsEmpty()) {
         return;
     }
-    Rgba c = PaintFade(ctx, p->color);
-    for (SelectionEdge edge : {SelectionEdge::Start, SelectionEdge::End}) {
-        if (!snap.IsEdgeVisible(edge)) {
-            continue;
-        }
-        Bounds caret = snap.Edge(edge);
-        Bounds bar = TouchHandle::BarBounds(caret);
-        Bounds knob = TouchHandle::KnobBounds(edge, caret);
-        FillRound(ctx, bar.x, bar.y, bar.w, bar.h, 0, c);
-        FillRound(ctx, knob.x, knob.y, knob.w, knob.h,
-                  TouchHandle::kKnobSize * 0.5f, c);
-    }
+    PaintTouchHandles(ctx, snap, p->color);
 }
 
 static void InputTouchSelectionLayer(Ctx* cx, El* e, Str id,

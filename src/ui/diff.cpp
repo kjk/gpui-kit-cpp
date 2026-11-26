@@ -4288,6 +4288,21 @@ static bool DiffTouchSnapshot(void* user, const Window*,
     return true;
 }
 
+static void PaintDiffTouchHandles(PaintCtx* paint, El* box, void* user) {
+    auto* state = static_cast<DiffState*>(user);
+    Window* win = paint->window;
+    if (!win || !win->sel || win->sel->touchSource.entity != state->self.id)
+        return;
+    TouchSelectionSnapshot snapshot;
+    if (!DiffTouchSnapshot(state, win, &snapshot) || snapshot.IsEmpty()) return;
+    Rgba color = ActiveTheme(paint->app).selection;
+    color.a = 255;
+    Bounds viewport = box->Bounds();
+    CanvasPushClip(paint, viewport.x, viewport.y, viewport.w, viewport.h);
+    PaintTouchHandles(paint, snapshot, color);
+    CanvasPopClip(paint);
+}
+
 static void StopDiffSelectionScroll(DiffState* state, Window* win);
 static void TrackDiffSelectionScroll(DiffState* state, Window* win, Point at);
 
@@ -5721,6 +5736,9 @@ El* Diff::IntoEl() {
                    ->OnMouseDownOut(ListenTo(state, &OnDiffSelectionOutside));
     root->prePaint = &RecordDiffScrollRange;
     root->customUser = st;
+    root->lifecycle = ArenaNew<ElLifecycle>(a);
+    root->lifecycle->afterPaint = &PaintDiffTouchHandles;
+    root->lifecycle->user = st;
     for (const auto& binding : kDiffScrollBindings) {
         root->OnAction(
             Act(binding.action),

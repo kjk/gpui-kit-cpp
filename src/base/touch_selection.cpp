@@ -1,4 +1,5 @@
 #include "base/touch_selection.h"
+#include "gpui/paint.h"
 
 namespace gpui {
 
@@ -82,6 +83,22 @@ Bounds TouchHandle::KnobBounds(SelectionEdge edge, Bounds caret) {
     float top =
         edge == SelectionEdge::Start ? caret.y - kKnobSize : caret.y + caret.h;
     return {caret.x - kKnobSize * 0.5f, top, kKnobSize, kKnobSize};
+}
+
+void PaintTouchHandles(PaintCtx* ctx, const TouchSelectionSnapshot& snapshot,
+                       Rgba color) {
+    if (snapshot.IsEmpty()) return;
+    color = PaintFade(ctx, color);
+    for (int i = 0; i < 2; i++) {
+        SelectionEdge edge = i == 0 ? SelectionEdge::Start : SelectionEdge::End;
+        if (!snapshot.IsEdgeVisible(edge)) continue;
+        Bounds caret = snapshot.Edge(edge);
+        Bounds bar = TouchHandle::BarBounds(caret);
+        Bounds knob = TouchHandle::KnobBounds(edge, caret);
+        FillRound(ctx, bar.x, bar.y, bar.w, bar.h, 0, color);
+        FillRound(ctx, knob.x, knob.y, knob.w, knob.h,
+                  TouchHandle::kKnobSize * 0.5f, color);
+    }
 }
 
 Bounds TouchCaretLineBox(Point position, float lineHeight) {
