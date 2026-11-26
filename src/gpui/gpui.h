@@ -5,6 +5,10 @@
 #include "base.h"
 #include "taffy/taffy_tree.h"
 
+#if GPUI_OS_ANDROID
+#include <jni.h>
+#endif
+
 // The base lives in `namespace base` so that `src/taffy` and `src/markdown` —
 // ports of crates that have never heard of gpui — can be written against it
 // and nothing else. gpui is the one module that treats it as its own
@@ -9268,6 +9272,17 @@ void WindowOnAccessibilityAnnouncement(Window* win, Listener listener);
 #if GPUI_OS_IOS
 // A UIKit host can call this from its announcement listener on the UI thread.
 void IosPostAccessibilityAnnouncement(const AccessibilityAnnouncement& event);
+#endif
+#if GPUI_OS_ANDROID
+// Use this value when populating the provider's AccessibilityNodeInfo.
+jint AndroidAccessibilityLiveRegion(AccessibilityLive priority);
+// Send a change from the host View's virtual node on the UI thread.
+// The host's AccessibilityNodeProvider must expose the supplied virtual ID
+// with the new text and live region mode. The return value reports whether
+// the ViewParent accepted the event. A Java exception remains pending.
+bool AndroidPostAccessibilityAnnouncement(
+    JNIEnv* env, jobject hostView, jint virtualId,
+    const AccessibilityAnnouncement& event);
 #endif
 const AccessibilityNode* WindowAccessibilityNode(const Window* win,
                                                  uint32_t nodeId);

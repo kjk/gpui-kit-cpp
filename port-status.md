@@ -28,9 +28,12 @@ The current update target is
 - **Mobile LiveRegion announcements use a window listener.**
   `WindowOnAccessibilityAnnouncement` delivers nonempty changes with the
   status node ID and priority. UIKit hosts can forward these events through
-  `IosPostAccessibilityAnnouncement`. Android hosts deliver the notification
-  through their native accessibility adapter. Windows, macOS, Linux and web
-  windows deliver announcements through their existing native bridges.
+  `IosPostAccessibilityAnnouncement`. Android hosts with an
+  `AccessibilityNodeProvider` use `AndroidAccessibilityLiveRegion` on the
+  virtual node and `AndroidPostAccessibilityAnnouncement` to send its text
+  change. The host owns the provider and maps the GPUI node ID to its virtual
+  node ID. Windows, macOS, Linux and web windows deliver announcements
+  through their existing native bridges.
 
 - **Inline objects are atomic.** A paragraph can shape its links and retain
   Markdown copy boundaries in one layout. Prose beside inline objects shares
