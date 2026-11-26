@@ -2490,8 +2490,7 @@ static InlineElement RenderInlineMath(Ctx* cx, const MarkdownNode* node,
                                       const InlineRenderContext* context,
                                       void*) {
     gInlineRenders++;
-    gInlineInheritedBold = context->textStyle.fontSemibold || context->textStyle
-                                                                  .fontBold;
+    gInlineInheritedBold = context->textStyle.fontBold;
     gInlineInheritedLink = context->textStyle.underline;
     return InlineElement::New(TextEl(cx->a, node->text)->Id(StrL("formula")))
         .WithBaseline(context->fontSize * 0.75f);
@@ -6895,7 +6894,7 @@ static void MixedObjectProseSharesFontsLinksAndSourceRanges() {
         utassert(fonts.count == 2);
         if (fonts.count == 2) {
             utassert(fonts.ranges[0].lo == 7 && fonts.ranges[0].hi == 14 &&
-                     fonts.ranges[0].weight == kFontWeightSemibold);
+                     fonts.ranges[0].weight == kFontWeightBold);
             utassert(fonts.ranges[1].lo == 15 && fonts.ranges[1].hi == 22 &&
                      fonts.ranges[1].style == HighlightFontStyle::Italic);
         }
@@ -10751,8 +10750,7 @@ static void HostForegroundsFollowTheRenderContext() {
     RenderContext rcx =
         RenderContextWithForegroundRanges(a, RenderContext{}, 7, &cover, 1);
     El* text = FindTextEl(paint(rcx), "a中😀link");
-    utassert(text && (text->style.fontBold || text->style.fontSemibold) &&
-             text->style.italic);
+    utassert(text && text->style.fontBold && text->style.italic);
     utassert(text && text->nUnderlines > 0);
     utassert(SpanIs(text, red));
     utassert(StrEq(run->text, "a中😀link"));
@@ -10816,8 +10814,7 @@ static void HostForegroundsFollowTheRenderContext() {
     El* drawn =
         TextView::New(&cx, Str{})->HostForegrounds(rcx)->RenderDocument(mixed);
     text = FindTextEl(drawn, "a中😀link");
-    utassert(SpanIs(text, red) &&
-             (text->style.fontBold || text->style.fontSemibold));
+    utassert(SpanIs(text, red) && text->style.fontBold);
     utassert(text->nUnderlines > 0);
     El* object = FindTextEl(drawn, "long fallback");
     utassert(object && object->style.hasColor &&

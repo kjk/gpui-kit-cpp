@@ -3991,7 +3991,7 @@ El* TextView::Word(Str w, float font, Rgba color, uint8_t marks, int weight,
     if (c.a) {
         t->Fg(c);
     }
-    ApplyWeight(t, (marks & MdBold) ? (weight > 2 ? weight : 2) : weight);
+    ApplyWeight(t, (marks & MdBold) ? 3 : weight);
     if (marks & MdItalic) {
         t->Italic();
     }
@@ -4902,7 +4902,7 @@ static InlineTextAdvances* ObjectProseAdvances(Arena* arena, const MdRun* run,
             text ? (const char*)memchr(text, '\n', (size_t)size) : nullptr;
         end += hardBreak ? (int)(hardBreak - text) : size;
         uint16_t face =
-            (weight < 2 && (next->marks & MdBold)) ? kFontWeightSemibold : 0;
+            (weight < 3 && (next->marks & MdBold)) ? kFontWeightBold : 0;
         auto italic = next->marks & MdItalic ? HighlightFontStyle::Italic
                                              : HighlightFontStyle::Inherit;
         if (at < end && (face || italic != HighlightFontStyle::Inherit))
@@ -5192,8 +5192,8 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             }
             if (marks && start < len(line)) {
                 HighlightStyle style;
-                if ((marks & MdBold) && weight < 2) {
-                    style.weight = FontWeight::Semibold;
+                if ((marks & MdBold) && weight < 3) {
+                    style.weight = FontWeight::Bold;
                 }
                 if (marks & MdItalic) {
                     style.fontStyle = HighlightFontStyle::Italic;
@@ -5485,8 +5485,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             if (objFg) {
                 context.textStyle.color = objColor;
             }
-            int inheritedWeight =
-                (marks & MdBold) ? (weight > 2 ? weight : 2) : weight;
+            int inheritedWeight = (marks & MdBold) ? 3 : weight;
             context.textStyle.fontBold = inheritedWeight >= 3;
             context.textStyle.fontSemibold = inheritedWeight == 2;
             context.textStyle.fontMedium = inheritedWeight == 1;
@@ -6268,8 +6267,7 @@ static float CellContentWidth(TextView* tv, MdNode* cell, bool head) {
                 Str seg(text.s + start, i - start);
                 if (run->marks & MdCode) {
                     El* sample = ApplyWeight(
-                        TextEl(tv->a, seg),
-                        (run->marks & MdBold) ? std::max(2, weight) : weight);
+                        TextEl(tv->a, seg), (run->marks & MdBold) ? 3 : weight);
                     if (run->marks & MdItalic) sample->Italic();
                     ApplyInlineCodeStyle(tv->cx, sample, tv->textViewStyle,
                                          size);
