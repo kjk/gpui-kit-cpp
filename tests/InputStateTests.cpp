@@ -2939,14 +2939,19 @@ static void DecorationsAreIndependentClippedAndTrackEdits() {
     utassert(second.GetRanges(ranges, 2) == 1);
     utassert(ranges[0].start == 5 && ranges[0].end == 6);
 
-    TextDecoration overlap = TextDecoration::New({3, 6}, secondStyle);
+    TextSpan overlapStyle = secondStyle;
+    overlapStyle.bg = Rgb(7, 8, 9);
+    TextDecoration overlap = TextDecoration::New({3, 6}, overlapStyle);
     utassert(second.Append(&overlap, 1));
     TextSpan spans[4] = {};
     int n = collections.BuildSpans(spans, 4);
     utassert(n == 3);
-    utassert(spans[0].lo == 1 && spans[0].hi == 4);
-    utassert(spans[1].lo == 4 && spans[1].hi == 5);
-    utassert(spans[2].lo == 5 && spans[2].hi == 6);
+    utassert(spans[0].lo == 1 && spans[0].hi == 3);
+    utassert(spans[1].lo == 3 && spans[1].hi == 4);
+    utassert(RgbaEq(spans[1].color, firstStyle.color) &&
+             RgbaEq(spans[1].bg, overlapStyle.bg));
+    utassert(spans[2].lo == 4 && spans[2].hi == 6);
+    utassert(RgbaEq(spans[2].bg, overlapStyle.bg));
 
     collections.AdjustForEdit({0, 0}, 2);
     utassert(first.GetRanges(ranges, 2) == 1);
@@ -8647,6 +8652,12 @@ static void TextareaDecorationWeightShapesCaretAndHitTesting() {
                                     TextDecoration::New({2, 5}, color)};
     InputTextareaSetDecorations(state, decorations, 2, nullptr);
     TestDraw(view.win);
+
+    TextSpan spans[3] = {};
+    utassert(InputDecorationSpans(state, spans, dimofi(spans)) == 3);
+    utassert(spans[1].lo == 2 && spans[1].hi == 5 &&
+             spans[1].fontWeight == FontWeight::Bold &&
+             RgbaEq(spans[1].color, color.color));
 
     Bounds range;
     utassert(InputRangeToBounds(state, view.win, {0, len(value)}, &range));

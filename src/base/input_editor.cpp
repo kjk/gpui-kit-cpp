@@ -850,59 +850,39 @@ static void DecorationsClear(DecorationCollectionsState* state) {
     }
 }
 
-static bool SelectionOverlaps(Selection a, Selection b) {
-    return a.start < b.end && b.start < a.end;
-}
-
 static int DecorationsBuildSpans(const DecorationCollectionsState* state,
                                  TextSpan* out, int cap) {
-    if (!state || !state->ownerAlive) {
-        return 0;
-    }
-    Vec<TextSpan> accepted;
-    for (int i = 0; i < len(state->entries); i++) {
-        const Vec<TextDecoration>& ds = state->entries[i]->decorations;
-        for (int j = 0; j < len(ds); j++) {
-            Vec<Selection> pieces;
-            VecAppend(pieces, ds[j].range);
-            for (int k = 0; k < len(accepted) && len(pieces) > 0; k++) {
-                Selection occupied = {accepted[k].lo, accepted[k].hi};
-                for (int p = len(pieces) - 1; p >= 0; p--) {
-                    Selection piece = pieces[p];
-                    if (!SelectionOverlaps(piece, occupied)) {
-                        continue;
-                    }
-                    pieces[p] = pieces[len(pieces) - 1];
-                    pieces.len--;
-                    if (piece.start < occupied.start) {
-                        VecAppend(
-                            pieces,
-                            {piece.start, std::min(piece.end, occupied.start)});
-                    }
-                    if (piece.end > occupied.end) {
-                        VecAppend(pieces, {std::max(piece.start, occupied.end),
-                                           piece.end});
-                    }
-                }
-            }
-            for (int p = 0; p < len(pieces); p++) {
-                TextSpan span = ds[j].style;
-                span.lo = pieces[p].start;
-                span.hi = pieces[p].end;
-                VecAppend(accepted, span);
-            }
+    if (!state || !state->ownerAlive) return 0;
+
+    // The first collection has precedence. Within a collection, a later
+    // decoration overrides only the properties it sets.
+    Vec<TextSpan> layers;
+    bool disjoint = true;
+    for (int i = len(state->entries) - 1; i >= 0; i--) {
+        for (const TextDecoration& item : state->entries[i]->decorations) {
+            if (len(layers) && layers[len(layers) - 1].hi > item.style.lo)
+                disjoint = false;
+            if (!VecAppend(layers, item.style)) return 0;
         }
     }
-    if (len(accepted) > 1) {
-        std::sort(accepted.els, accepted.els + len(accepted),
-                  [](const TextSpan& a, const TextSpan& b) {
-                      return a.lo < b.lo || (a.lo == b.lo && a.hi < b.hi);
-                  });
+    if (!len(layers)) return 0;
+
+    const TextSpan* spans = layers.els;
+    int count = len(layers);
+    Vec<TextSpan> composed;
+    Vec<TextSpan> scratch;
+    if (!disjoint) {
+        // At most two endpoints per decoration can create span boundaries.
+        if (count > INT32_MAX / 2) return 0;
+        int capacity = count * 2;
+        if (!VecResize(composed, capacity) || !VecResize(scratch, capacity))
+            return 0;
+        count = InputComposeSpans(composed.els, 0, spans, count, capacity,
+                                  scratch.els);
+        spans = composed.els;
     }
-    for (int i = 0; out && i < len(accepted) && i < cap; i++) {
-        out[i] = accepted[i];
-    }
-    return len(accepted);
+    for (int i = 0; out && i < count && i < cap; i++) out[i] = spans[i];
+    return count;
 }
 
 TextDecorationCollection DecorationCollections::Create(
