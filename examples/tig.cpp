@@ -829,62 +829,82 @@ El* Tig::Navigation(Ctx* cx, Tig* self, bool history) {
 }
 
 static El* TigToolbar(Ctx* cx, Tig* self, const DiffState* state) {
+    const DiffFile* file = len(state->files) ? state->FileAt(0) : nullptr;
+    bool available =
+        file && !file->IsBinary() && (file->Additions() || file->Deletions());
+    bool dark = ThemeGet(cx->app) == ThemeMode::Dark;
+    auto* appearance = component::PopupMenu::New(cx, StrL("appearance"));
+    appearance->MenuWithCheck(StrL("Light"), !dark)
+        ->OnClick(Listen(cx, &ClickTigAction, TigLight));
+    appearance->MenuWithCheck(StrL("Dark"), dark)
+        ->OnClick(Listen(cx, &ClickTigAction, TigDark));
     auto* menu = component::PopupMenu::New(cx, StrL("diff-options"));
+    menu->MenuWithCheck(StrL("Unified"), state->Mode() == DiffMode::Unified)
+        ->OnClick(Listen(cx, &ClickTigAction, TigUnified));
+    menu->MenuWithCheck(StrL("Split"), state->Mode() == DiffMode::Split)
+        ->OnClick(Listen(cx, &ClickTigAction, TigSplit));
+    menu->Separator()->Submenu(StrL("Appearance"), appearance)->Separator();
     menu->MenuWithCheck(StrL("Wrap long lines"), self->wrap)
         ->OnClick(Listen(cx, &ClickTigAction, TigWrap));
     menu->MenuWithCheck(StrL("Line numbers"), self->numbers)
         ->OnClick(Listen(cx, &ClickTigAction, TigNumbers));
+    menu->Separator();
     auto* inlineMenu = component::PopupMenu::New(cx, StrL("inline-changes"));
-    inlineMenu->Menu(StrL("Words"))
+    inlineMenu
+        ->MenuWithCheck(StrL("Words"),
+                        state->HasInlineUnit() &&
+                            state->InlineUnit() == DiffInlineUnit::Word)
         ->OnClick(Listen(cx, &ClickTigAction, TigWords));
-    inlineMenu->Menu(StrL("Characters"))
+    inlineMenu
+        ->MenuWithCheck(StrL("Characters"),
+                        state->HasInlineUnit() &&
+                            state->InlineUnit() == DiffInlineUnit::Character)
         ->OnClick(Listen(cx, &ClickTigAction, TigCharacters));
-    inlineMenu->Menu(StrL("Whole lines"))
+    inlineMenu->MenuWithCheck(StrL("Whole lines"), !state->HasInlineUnit())
         ->OnClick(Listen(cx, &ClickTigAction, TigWholeLines));
     auto* context = component::PopupMenu::New(cx, StrL("context"));
     context
-        ->MenuWithCheck(StrL("Three context lines"), state->HasContextLines())
+        ->MenuWithCheck(StrL("Three lines"),
+                        state->HasContextLines() && state->ContextLines() == 3)
         ->OnClick(Listen(cx, &ClickTigAction, TigThreeContext));
     context
-        ->MenuWithCheck(StrL("All supplied context"), !state->HasContextLines())
+        ->MenuWithCheck(StrL("All supplied lines"), !state->HasContextLines())
         ->OnClick(Listen(cx, &ClickTigAction, TigAllContext));
-    context->Menu(StrL("Expand all"))
+    context->Separator()
+        ->Menu(StrL("Expand unchanged lines"))
         ->OnClick(Listen(cx, &ClickTigAction, TigExpand));
-    context->Menu(StrL("Collapse all"))
+    context->Menu(StrL("Collapse unchanged lines"))
         ->OnClick(Listen(cx, &ClickTigAction, TigCollapse));
-    auto* appearance = component::PopupMenu::New(cx, StrL("appearance"));
-    appearance->Menu(StrL("Light"))
-        ->OnClick(Listen(cx, &ClickTigAction, TigLight));
-    appearance->Menu(StrL("Dark"))
-        ->OnClick(Listen(cx, &ClickTigAction, TigDark));
     menu->Submenu(StrL("Inline changes"), inlineMenu);
     menu->Submenu(StrL("Context"), context);
-    menu->Submenu(StrL("Appearance"), appearance);
     return Div(cx->a)
         ->FlexRow()
+        ->FlexNone()
         ->ItemsCenter()
-        ->Gap(4)
-        ->Child(TigButton(cx, TigUnified)
-                    ->Label(StrL("Unified"))
-                    ->Selected(state->Mode() == DiffMode::Unified)
-                    ->IntoEl())
-        ->Child(TigButton(cx, TigSplit)
-                    ->Label(StrL("Split"))
-                    ->Selected(state->Mode() == DiffMode::Split)
-                    ->IntoEl())
-        ->Child(TigButton(cx, TigPreviousChange)
-                    ->Icon(IconName::ArrowUp)
-                    ->Tooltip(StrL("Previous change"))
-                    ->IntoEl())
-        ->Child(TigButton(cx, TigNextChange)
-                    ->Icon(IconName::ArrowDown)
-                    ->Tooltip(StrL("Next change"))
-                    ->IntoEl())
+        ->Gap(8)
+        ->Child(Div(cx->a)
+                    ->FlexRow()
+                    ->Gap(4)
+                    ->Child(TigButton(cx, TigPreviousChange)
+                                ->Icon(IconName::ArrowUp)
+                                ->AccessibilityLabel(StrL("Previous change"))
+                                ->Tooltip(StrL("Previous change"))
+                                ->Disabled(!available)
+                                ->IntoEl())
+                    ->Child(TigButton(cx, TigNextChange)
+                                ->Icon(IconName::ArrowDown)
+                                ->AccessibilityLabel(StrL("Next change"))
+                                ->Tooltip(StrL("Next change"))
+                                ->Disabled(!available)
+                                ->IntoEl()))
         ->Child(component::DropdownMenu::New(cx, StrL("diff-display"))
+                    ->AnchorRight()
                     ->Trigger(
                         component::Button::New(cx, StrL("diff-display-options"))
-                            ->Ghost()
-                            ->Icon(IconName::Settings)
+                            ->Outline()
+                            ->WithSize(UiSize::Small)
+                            ->Icon(IconName::Settings2)
+                            ->AccessibilityLabel(StrL("Diff display options"))
                             ->Tooltip(StrL("Diff display options"))
                             ->IntoEl())
                     ->Menu(menu)
