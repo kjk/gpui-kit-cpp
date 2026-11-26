@@ -3785,6 +3785,26 @@ static InputState* MakeEditor(InputState* s, const char* text) {
     return s;
 }
 
+// state.rs enter computes each replacement against its own line, then
+// applies them in one undo transaction.
+static void EnterIndentsEachCursorFromItsOwnLine() {
+    InputState s;
+    MakeEditor(&s, "alpha\n  beta");
+    InputMoveTo(&s, nullptr, nullptr, 5);
+    InputAddCursorAt(&s, nullptr, nullptr, 12);
+    utassert(InputCursorCount(&s) == 2);
+    utassert(InputPerform(&s, nullptr, nullptr, InputAction::Enter, false));
+    utassert(ValueIs(s, "alpha\n\n  beta\n  "));
+    utassert(RangeIs(s, 6, 6) && ExtraIs(s, 0, 16, 16));
+
+    utassert(InputPerform(&s, nullptr, nullptr, InputAction::Undo, false));
+    utassert(ValueIs(s, "alpha\n  beta"));
+    utassert(RangeIs(s, 5, 5) && ExtraIs(s, 0, 12, 12));
+    utassert(InputPerform(&s, nullptr, nullptr, InputAction::Redo, false));
+    utassert(ValueIs(s, "alpha\n\n  beta\n  "));
+    utassert(RangeIs(s, 6, 6) && ExtraIs(s, 0, 16, 16));
+}
+
 // add_cursor_at: a second caret, and a keystroke writes at both.
 static void AnAltClickAddsACursorAndTypingWritesAtEach() {
     InputState s;
@@ -15451,6 +15471,7 @@ void TestInputState() {
     InlineTokensRespectModeAndContent();
     InlineTokenWrapAndSizeRefresh();
     AnAltClickAddsACursorAndTypingWritesAtEach();
+    EnterIndentsEachCursorFromItsOwnLine();
     DeletesAtEveryCursorAreOneUndoStep();
     TypingAtEveryCursorUndoesToEveryCursor();
     EscapeCollapsesTheExtraCursorsFirst();

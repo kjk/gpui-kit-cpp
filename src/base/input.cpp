@@ -11454,13 +11454,14 @@ static bool ApplyIndent(InputState* s, App* app, Window* win,
 }
 
 static Str InputNextLineIndent(InputState* s, App* app, Arena* a,
+                               const CursorSelection& selection,
                                int* caretInText) {
-    *caretInText = -1;
+    if (caretInText) *caretInText = -1;
     if (s->kind != InputKind::Editor) {
         return StrL("\n");
     }
     Str all = InputValue(s);
-    int cursor = InputCursor(s);
+    int cursor = selection.Cursor();
     int lineStart = cursor;
     while (lineStart > 0 && all.s[lineStart - 1] != '\n' &&
            all.s[lineStart - 1] != '\r') {
@@ -11475,7 +11476,7 @@ static Str InputNextLineIndent(InputState* s, App* app, Arena* a,
     LanguageConfig config = InputLanguageConfig(app, s->highlighter.Language());
     bool code = InputEditingContext(s, app, cursor) == SyntaxContext::Code;
     bool split = false;
-    if (s->smartIndent && code && s->selectedRange.IsEmpty()) {
+    if (caretInText && s->smartIndent && code && selection.IsEmpty()) {
         for (int i = 0; i < config.nBrackets; i++) {
             const BracketPair& pair = config.brackets[i];
             if (pair.open && pair.close && !StrEq(pair.open, pair.close) &&
@@ -11566,6 +11567,21 @@ static Str InputNextLineIndent(InputState* s, App* app, Arena* a,
     }
     out[at] = 0;
     return Str(out, at);
+}
+
+static void InsertNewlineAtEveryCursor(InputState* s, App* app, Window* win) {
+    InputMergeOverlappingCursors(s);
+    Arena* arena = GetTempArena();
+    int count = 0;
+    const CursorSelection* cursors = AllCursors(arena, s, &count);
+    auto* ranges = (Selection*)Alloc(arena, count * (int)sizeof(Selection));
+    auto* texts = (Str*)Alloc(arena, count * (int)sizeof(Str));
+    if (!cursors || !ranges || !texts) return;
+    for (int i = 0; i < count; i++) {
+        ranges[i] = cursors[i].range;
+        texts[i] = InputNextLineIndent(s, app, arena, cursors[i], nullptr);
+    }
+    InputReplaceTextInRanges(s, app, win, ranges, texts, count);
 }
 
 // paste_target: where a paste would go right now — the document as edited so
@@ -11979,13 +11995,17 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
                                  (!s->submitOnEnter || shift);
             bool handled = false;
             if (insertNewline) {
-                int oldCursor = InputCursor(s);
-                int caretInText = -1;
-                Str newline =
-                    InputNextLineIndent(s, app, GetTempArena(), &caretInText);
                 bool wasSilent = s->silentReplace;
                 s->silentReplace = true;
-                InputReplaceTextInRange(s, app, win, nullptr, newline);
+                int oldCursor = InputCursor(s);
+                int caretInText = -1;
+                if (len(s->extraCursors) > 0 && !s->imeMarking) {
+                    InsertNewlineAtEveryCursor(s, app, win);
+                } else {
+                    Str newline = InputNextLineIndent(
+                        s, app, GetTempArena(), ActiveCursor(s), &caretInText);
+                    InputReplaceTextInRange(s, app, win, nullptr, newline);
+                }
                 s->silentReplace = wasSilent;
                 if (caretInText >= 0) {
                     s->selectedRange = SelectionAt(oldCursor + caretInText);
