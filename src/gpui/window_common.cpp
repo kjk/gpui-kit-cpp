@@ -4399,7 +4399,10 @@ void WindowDispatchInput(Window* win, const PlatformInput* input) {
                     WindowSelectionRelease(win);
                     win->sel->hasTouchEdgeDrag = false;
                     if (touch.phase == TouchPhase::Ended) {
-                        win->sel->touchMenuOpen = WindowSelectionHas(win);
+                        win->sel->touchMenuOpen =
+                            WindowSelectionHas(win) ||
+                            (win->sel->touchActive && win->sel->pendingReflow
+                                                          .owner.IsValid());
                     }
                 }
                 AppInvalidate(win);

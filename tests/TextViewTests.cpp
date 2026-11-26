@@ -9663,6 +9663,70 @@ static void FinishedMultiClickSelectionStaysVirtualized() {
     ArenaDelete(a);
 }
 
+static void FinishedTouchSelectionKeepsOnlyVisibleHandles() {
+    Arena* a = ArenaNew();
+    TswView v = TswOpen(TswParagraphs(a, 120).s, TswContainer::Scrollable);
+    const TextHit* first = HitContaining(v.win, "paragraph 0");
+    utassert(first);
+    if (first) {
+        Point start = TextHitCaretPoint(&v.win->paint, *first, 3, false);
+        utassert(WindowSelectionLongPressStart(v.win, start.x, start.y));
+        TestDraw(v.win);
+        TswReveal(v, "paragraph 60");
+        const TextHit* last = HitContaining(v.win, "paragraph 60");
+        utassert(last);
+        if (last) {
+            Point end =
+                TextHitCaretPoint(&v.win->paint, *last, len(last->text), true);
+            WindowSelectionDrag(v.win, end.x - 0.1f, end.y);
+            WindowSelectionRelease(v.win);
+            TestDraw(v.win);
+            utassert(!HitContaining(v.win, "paragraph 0"));
+            TouchSelectionSnapshot selection;
+            utassert(WindowSelectionTouchSnapshot(v.win, &selection));
+            utassert(!selection.IsEdgeVisible(SelectionEdge::Start));
+            utassert(selection.IsEdgeVisible(SelectionEdge::End));
+            utassert(StrStartsWith(StrTrimAscii(TswCopy(a, v)),
+                                   StrL("paragraph 0\n")));
+
+            v.State()->scrollY = 0;
+            TestDraw(v.win);
+            utassert(!HitContaining(v.win, "paragraph 60"));
+            utassert(WindowSelectionTouchSnapshot(v.win, &selection));
+            utassert(selection.IsEdgeVisible(SelectionEdge::Start));
+            utassert(!selection.IsEdgeVisible(SelectionEdge::End));
+            first = HitContaining(v.win, "paragraph 0");
+            utassert(first);
+            if (first) {
+                Bounds caret = selection.Edge(SelectionEdge::Start);
+                Point finger = {caret.CenterX(), caret.CenterY()};
+                PlatformInput down =
+                    InputTouchDrag(TouchPhase::Started, finger, finger);
+                WindowDispatchInput(v.win, &down);
+                utassert(v.win->sel->hasTouchEdgeDrag);
+                Point at = TextHitCaretPoint(&v.win->paint, *first, 3, false);
+                at.x += 0.1f;
+                PlatformInput move =
+                    InputTouchDrag(TouchPhase::Moved, finger, at);
+                PlatformInput up =
+                    InputTouchDrag(TouchPhase::Ended, finger, at);
+                WindowDispatchInput(v.win, &move);
+                WindowDispatchInput(v.win, &up);
+                TestDraw(v.win);
+                TestDraw(v.win);
+                Str copied = StrTrimAscii(TswCopy(a, v));
+                utassert(StrStartsWith(copied, StrL("agraph 0\n")));
+                utassert(StrEndsWith(copied, StrL("paragraph 60")));
+                utassert(!HitContaining(v.win, "paragraph 60"));
+                utassert(WindowSelectionTouchSnapshot(v.win, &selection));
+                utassert(!selection.hasDragging && selection.menuOpen);
+            }
+        }
+    }
+    TswClose(&v);
+    ArenaDelete(a);
+}
+
 static void UnicodeParagraphCopyExtendsBeforePaint() {
     Arena* built = ArenaNew();
     StrBuilder sb(built);
@@ -9848,6 +9912,7 @@ static void TestTextStateWindow() {
     ScrollingKeepsAnInlineCodeSelectionAnchor();
     SelectionStartsInAnIdleVirtualizedTextView();
     FinishedMultiClickSelectionStaysVirtualized();
+    FinishedTouchSelectionKeepsOnlyVisibleHandles();
     UnicodeParagraphCopyExtendsBeforePaint();
     ScrollableTextViewUsesTheBaseScrollbarTheme();
     TripleClickSelectsTheWholeWrappedParagraph();

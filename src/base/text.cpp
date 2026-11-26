@@ -9527,13 +9527,13 @@ El* TextView::IntoEl() {
     // can address all intervening blocks by source position.
     bool partialSelection =
         selectable && selection && !selection->selectAllOwner.IsValid() &&
-        (selection->gesture.selecting || WindowSelectionHas(cx->win));
+        (selection->gesture.selecting || WindowSelectionHas(cx->win) ||
+         (managed && selection->pendingReflow.owner == managed->self));
     const TextSelectionReflow* reflow =
         cx->win ? cx->win->paint.selectionReflow : nullptr;
     bool projectSelection =
         managed && selection && !selection->gesture.selecting &&
-        !selection->touchActive && !selection->hasAnchorCell && reflow &&
-        reflow->owner == managed->self &&
+        !selection->hasAnchorCell && reflow && reflow->owner == managed->self &&
         (!selection->unitHeld ||
          (reflow->unit[0].block >= 0 && reflow->unit[1].block >= 0)) &&
         selection->copyProjection.owner == managed->self &&

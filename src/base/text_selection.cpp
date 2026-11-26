@@ -487,6 +487,7 @@ struct SelectionScrollAnchor {
 
 static bool SelectionScrollAnchorOf(Window* win, SelectionScrollAnchor* out) {
     WindowSelection* selection = win->sel;
+    if (AwaitingSelectionReflow(selection)) return false;
     auto* participant = (TextSelectionParticipantState*)EntityGet(
         win->app, selection->anchorParticipant);
     if (participant && participant->window == win && participant->registered) {
@@ -1365,6 +1366,8 @@ bool WindowSelectionLongPressStart(Window* win, float x, float y) {
     return true;
 }
 
+static const TextViewState* RetainedSelectionView(const Window* win);
+
 bool WindowSelectionTouchSnapshot(Window* win, TouchSelectionSnapshot* out) {
     if (!out || !win || !win->sel) return false;
     WindowSelection* s = win->sel;
@@ -1374,12 +1377,19 @@ bool WindowSelectionTouchSnapshot(Window* win, TouchSelectionSnapshot* out) {
             return false;
         }
     } else {
-        if (!s->touchActive || !s->hasWindowPoints || !WindowSelectionHas(win))
+        bool pending = AwaitingSelectionReflow(s);
+        if (!s->touchActive || !s->hasWindowPoints ||
+            !(pending ? RetainedSelectionView(win) != nullptr
+                      : WindowSelectionHas(win)))
             return false;
         int start = std::min(s->anchor, s->cursor);
         int end = std::max(s->anchor, s->cursor);
         if (start == s->touchGeometryStart && end == s->touchGeometryEnd) {
             *out = s->touchGeometry;
+        } else if (pending) {
+            *out = TouchSelectionSnapshot::New({}, {})
+                       .WithEdgeVisible(SelectionEdge::Start, false)
+                       .WithEdgeVisible(SelectionEdge::End, false);
         } else {
             const float lineH = 16.f;
             bool reversed = s->cursor < s->anchor;
@@ -1425,16 +1435,31 @@ static Bounds TouchEndpointCaret(PaintCtx* paint, const TextHit& hit,
     return TextHitCaretBounds(paint, hit, local, trailing);
 }
 
+static const TextHit* RestoreSourcePoint(const PaintCtx& paint,
+                                         const TextSelectionReflow& old,
+                                         const TextSelectionSourcePoint& key,
+                                         bool trailing, int* offset);
+
 static TouchSelectionSnapshot PaintedTouchGeometry(
     PaintCtx* paint, const WindowSelection& selection, EntityId owner,
     Bounds clips[2]) {
     int offsets[] = {std::min(selection.anchor, selection.cursor),
                      std::max(selection.anchor, selection.cursor)};
+    const TextSelectionReflow* reflow = nullptr;
+    if (paint->paintVirtualSelection)
+        reflow = paint->selectionReflow;
+    else if (AwaitingSelectionReflow(&selection))
+        reflow = &selection.pendingReflow;
+    int first = selection.anchor <= selection.cursor ? 0 : 1;
     Bounds carets[2] = {};
     bool visible[2] = {};
     for (int i = 0; i < 2; i++) {
         const TextHit* hit =
-            TouchEndpointHit(paint, selection, offsets[i], i == 1);
+            reflow ? RestoreSourcePoint(
+                         *paint, *reflow,
+                         reflow->endpoints[i == 0 ? first : 1 - first], i == 1,
+                         &offsets[i])
+                   : TouchEndpointHit(paint, selection, offsets[i], i == 1);
         if (!hit || (owner.IsValid() && hit->owner != owner)) continue;
         carets[i] = TouchEndpointCaret(paint, *hit, offsets[i], i == 1);
         clips[i] = hit->contentMask;
@@ -1450,7 +1475,8 @@ void WindowSelectionPaintTouchHandles(PaintCtx* paint, EntityId owner,
     Window* win = paint->window;
     const WindowSelection* selection = win ? win->sel : nullptr;
     if (!selection || !selection->touchActive ||
-        selection->touchSource.snapshot || !WindowSelectionHas(win)) {
+        selection->touchSource.snapshot ||
+        !(WindowSelectionHas(win) || RetainedSelectionView(win))) {
         return;
     }
     Bounds clips[2] = {};
@@ -1473,7 +1499,7 @@ void WindowSelectionPaintTouchHandles(PaintCtx* paint, EntityId owner,
 
 static void RefreshTouchGeometry(Window* win, WindowSelection* selection) {
     if (!selection->touchActive || selection->touchSource.snapshot ||
-        !WindowSelectionHas(win)) {
+        !(WindowSelectionHas(win) || RetainedSelectionView(win))) {
         return;
     }
     Bounds clips[2] = {};
@@ -1509,6 +1535,12 @@ void WindowSelectionBeginTouchEdgeDrag(Window* win, SelectionEdge edge,
     // the text. It stays there as the moving caret passes it.
     bool anchorIsStart = s->anchor < s->cursor;
     if (anchorIsStart == (edge == SelectionEdge::Start)) {
+        if (AwaitingSelectionReflow(s)) {
+            auto& reflow = s->pendingReflow;
+            std::swap(reflow.offsets[0], reflow.offsets[1]);
+            std::swap(reflow.endpoints[0], reflow.endpoints[1]);
+            std::swap(reflow.bounds[0], reflow.bounds[1]);
+        }
         std::swap(s->anchor, s->cursor);
         std::swap(s->anchorPoint, s->cursorPoint);
     }
@@ -1558,9 +1590,13 @@ bool WindowSelectionTouchUiContains(const Window* win, Point at) {
     return s && s->hasTouchUi && s->touchUi.Contains(at);
 }
 
+static void DragPendingTouchEdge(Window* win, Point point);
+
 static void WindowSelectionDragAt(Window* win, float x, float y) {
     WindowSelection* s = win ? win->sel : nullptr;
-    if (!s || !s->gesture.selecting || AwaitingSelectionReflow(s)) {
+    if (!s || !s->gesture.selecting) return;
+    if (AwaitingSelectionReflow(s)) {
+        if (s->hasTouchEdgeDrag) DragPendingTouchEdge(win, {x, y});
         return;
     }
     PaintCtx* ctx = &win->paint;
@@ -1803,6 +1839,38 @@ static bool BlockPointBefore(const TextSelectionSourcePoint& a,
            (a.block == b.block && a.blockByte < b.blockByte);
 }
 
+static void DragPendingTouchEdge(Window* win, Point point) {
+    auto* selection = win->sel;
+    auto& reflow = selection->pendingReflow;
+    const auto* view = TextViewForSelectionOwner(win->app, reflow.owner);
+    if (!view || view->fullUpdateRevision != reflow.replacement ||
+        !view->CopyDocumentReady())
+        return;
+    const auto& anchor = reflow.endpoints[0];
+    if (anchor.block < 0) return;
+    int offset = TextHitOffsetIn(&win->paint, point.x, point.y, true,
+                                 reflow.scope, nullptr);
+    TextSelectionSourcePoint cursor;
+    const TextHit* hit =
+        CaptureSourcePoint(win->paint, offset, reflow.scope, false, &cursor);
+    if (!hit || hit->owner != reflow.owner || cursor.block < 0 ||
+        (anchor.block == cursor.block && anchor.blockByte == cursor
+                                                                 .blockByte) ||
+        SameSourcePoint(cursor, reflow.endpoints[1]))
+        return;
+    bool backwards = BlockPointBefore(cursor, anchor);
+    reflow.endpoints[1] = cursor;
+    reflow.bounds[1] = hit->bounds;
+    reflow.offsets[0] = selection->anchor = backwards ? 1 : 0;
+    reflow.offsets[1] = selection->cursor = backwards ? 0 : 1;
+    selection->cursorPoint = point;
+    selection->touchGeometryStart = -1;
+    selection->touchEdgeDrag
+        .edge = backwards ? SelectionEdge::Start : SelectionEdge::End;
+    ClearCopyProjection(&selection->copyProjection);
+    WindowRequestAnimationFrame(win);
+}
+
 static bool ExtendUnpaintedSelection(Window* win, Point point) {
     const TextViewState* view = RetainedSelectionView(win);
     if (!view) return false;
@@ -2026,7 +2094,7 @@ void WindowSelectionRestoreReflow(Window* win, const TextSelectionReflow& old) {
         for (int i = 0; i < 2; i++) {
             const Bounds& now = endpoints[i]->bounds;
             const Bounds& was = old.bounds[i];
-            if (remapped || now.x != was.x || now.y != was.y ||
+            if (remapped || wasPending || now.x != was.x || now.y != was.y ||
                 now.w != was.w || now.h != was.h) {
                 *points[i] =
                     TextHitCaretPoint(&win->paint, *endpoints[i],

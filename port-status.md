@@ -544,7 +544,9 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   painted line to settle the offset. Finished character, word and logical
   line selections can project onto virtual blocks and copy their retained
   ranges. Shift-click in a visible block can extend a word or logical line
-  while its anchor is offscreen. Active drags, table-cell and touch selections
+  while its anchor is offscreen. Finished touch selections project each
+  handle from its retained endpoint, so a visible handle can be dragged even
+  when the other endpoint is offscreen. Active drags and table-cell selections
   still expand the full layout to reach anchors outside the viewport.
   Rust virtualizes the blocks and resolves the same range from the document
   even when the anchor and intervening blocks have no painted runs.
