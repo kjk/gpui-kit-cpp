@@ -1096,6 +1096,65 @@ extern "C" EMSCRIPTEN_KEEPALIVE float gpui_wasm_accessibility_set_number(
     return applied;
 }
 
+// A textarea exposes CRLF as one LF, and supplementary characters as two
+// UTF-16 units. The portable selection still uses document byte offsets.
+static int BrowserTextChar(Str text, int offset, int* units) {
+    if (text.s[offset] == '\r' && offset + 1 < len(text) &&
+        text.s[offset + 1] == '\n') {
+        *units = 1;
+        return 2;
+    }
+    uint32_t code;
+    int bytes = Utf8At(text, offset, &code);
+    *units = code >= 0x10000 ? 2 : 1;
+    return bytes;
+}
+
+static int BrowserTextUnits(Str text, int stop) {
+    int units = 0;
+    for (int at = 0; at < stop;) {
+        int width;
+        at += BrowserTextChar(text, at, &width);
+        units += width;
+    }
+    return units;
+}
+
+static int BrowserTextByte(Str text, int stop, bool trailing) {
+    int at = 0;
+    for (int units = 0; at < len(text) && units < stop;) {
+        int width;
+        int bytes = BrowserTextChar(text, at, &width);
+        units += width;
+        if (units > stop && !trailing) break;
+        at += bytes;
+    }
+    return at;
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void gpui_wasm_accessibility_select_text(
+    uint32_t id, int start, int end, int reversed, uint32_t revisionLow,
+    uint32_t revisionHigh) {
+    Window* win = gWin;
+    if (!win || !win->plat || !win->plat->open || start < 0 || end < start)
+        return;
+    const AccessibilityNode* node = WindowAccessibilityNode(win, id);
+    if (!node || !node->input) return;
+    Str text = WindowAccessibilityTextValue(*node);
+    if (!text.s) return;
+    // The requested DOM range may snap back to the current GPUI range.
+    // Publish the canonical selection even when the tree hash would match.
+    win->accessibilityHash = 0;
+    uint64_t revision = ((uint64_t)revisionHigh << 32) | revisionLow;
+    if (revision != node->input->docVersion) {
+        AppInvalidate(win);
+        return;
+    }
+    int lo = BrowserTextByte(text, start, false);
+    int hi = start == end ? lo : BrowserTextByte(text, end, true);
+    WindowAccessibilitySetTextSelection(win, *node, {lo, hi}, reversed != 0);
+}
+
 // clang-format off
 
 // Canvas fallback content is focusable and exposed to assistive technology
@@ -1166,6 +1225,20 @@ EM_JS(void, GpJsAccessibilityAttach, (), {
         const node = e.target.gpuiAccessible;
         if (node?.range) setNumber(e.target, node);
     });
+    const selectText = function(e) {
+        const el = e.target;
+        const node = el.gpuiAccessible;
+        if (state.syncing || !node?.selection || node.selectionText !== el.value) return;
+        const start = el.selectionStart, end = el.selectionEnd;
+        const reversed = start !== end && el.selectionDirection === "backward";
+        if (start === node.selection[0] && end === node.selection[1] &&
+            reversed === node.selection[2]) return;
+        node.selection = [start, end, reversed];
+        _gpui_wasm_accessibility_select_text(node.id, start, end, reversed ? 1 : 0,
+                                            node.selectionRevisionLow, node.selectionRevisionHigh);
+    };
+    listen("select", selectText);
+    listen("selectionchange", selectText);
 });
 
 EM_JS(void, GpJsAccessibilityDetach, (), {
@@ -1243,6 +1316,9 @@ EM_JS(void, GpJsAccessibilityNode,
         el.readOnly = !canEdit;
         const text = read(value, valueLen) ?? "";
         if (el.value !== text) el.value = text;
+        if (field !== 3 && value) {
+            el.gpuiAccessible.selectionText = el.value;
+        }
         attr("placeholder", read(placeholder, placeholderLen));
     }
     if (flags & 16) {
@@ -1266,6 +1342,25 @@ EM_JS(void, GpJsAccessibilityNode,
                        owner.localName !== "textarea") owner.insertBefore(el, next);
     state.last.set(parent, el);
     state.seen.add(id);
+});
+
+EM_JS(void, GpJsAccessibilityTextSelection,
+      (uint32_t id, int start, int end, int reversed, int length,
+       uint32_t revisionLow, uint32_t revisionHigh), {
+    const el = globalThis.__gpui.accessibility?.nodes.get(id >>> 0);
+    const node = el?.gpuiAccessible;
+    if (!node || node.selectionText === undefined || el.value.length !== length) return;
+    const direction = reversed ? "backward" : "forward";
+    const backwards = () => el.selectionStart !== el.selectionEnd &&
+                           el.selectionDirection === "backward";
+    if (el.selectionStart !== start || el.selectionEnd !== end ||
+        backwards() !== !!reversed) {
+        el.setSelectionRange(start, end, direction);
+    }
+    // Applying the range can queue a DOM selection event after this frame.
+    node.selection = [el.selectionStart, el.selectionEnd, backwards()];
+    node.selectionRevisionLow = revisionLow;
+    node.selectionRevisionHigh = revisionHigh;
 });
 
 EM_JS(void, GpJsAccessibilityNumeric,
@@ -1511,6 +1606,19 @@ void PlatAccessibilityTreeChanged(Window* win) {
             info.hasSelected ? (int)info.selected : -1,
             info.hasExpanded ? (int)info.expanded : -1, (int)info.toggled,
             (int)info.orientation, info.hasLevel ? info.level : 0);
+        Selection selection;
+        if (node.input && value.s &&
+            WindowAccessibilityTextSelection(node, &selection)) {
+            bool backwards = selection.start < selection.end &&
+                             WindowAccessibilityTextCaret(node) == selection
+                                                                       .start;
+            GpJsAccessibilityTextSelection(
+                node.id, BrowserTextUnits(value, selection.start),
+                BrowserTextUnits(value, selection.end), backwards,
+                BrowserTextUnits(value, len(value)),
+                (uint32_t)node.input->docVersion,
+                (uint32_t)(node.input->docVersion >> 32));
+        }
         int numeric =
             (info.hasNumericValue ? 1 : 0) | (info.hasMinNumericValue ? 2 : 0) |
             (info.hasMaxNumericValue ? 4 : 0) |

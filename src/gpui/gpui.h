@@ -9263,7 +9263,8 @@ bool WindowAccessibilityTextSelection(const AccessibilityNode& node,
                                       Selection* out);
 bool WindowAccessibilitySetTextSelection(Window* win,
                                          const AccessibilityNode& node,
-                                         Selection range);
+                                         Selection range,
+                                         bool reversed = false);
 int WindowAccessibilityTextCaret(const AccessibilityNode& node);
 // Logical lines retain their newline, including CRLF. A final newline
 // leaves an empty last line for a caret at the end of the document.

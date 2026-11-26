@@ -1894,13 +1894,13 @@ bool WindowAccessibilityTextSelection(const AccessibilityNode& node,
 
 bool WindowAccessibilitySetTextSelection(Window* win,
                                          const AccessibilityNode& node,
-                                         Selection range) {
+                                         Selection range, bool reversed) {
     Str text = WindowAccessibilityTextValue(node);
     if (!win || !node.input || !text.s) return false;
     int start = node.textExcerpt.s ? node.textExcerptStart : 0;
-    InputSetSelectedRange(node.input, win->app, win,
-                          start + ClampI(range.start, 0, len(text)),
-                          start + ClampI(range.end, 0, len(text)));
+    InputSetSelectedRangeWithDirection(
+        node.input, win->app, win, start + ClampI(range.start, 0, len(text)),
+        start + ClampI(range.end, 0, len(text)), reversed);
     AppInvalidate(win);
     return true;
 }

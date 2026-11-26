@@ -796,10 +796,11 @@ static void ALongDocumentExposesOnlyTheCaretExcerpt() {
         utassert(selection.start == caret && selection.end == len(excerpt));
         utassert(caret >= 0 && caret + 4 <= len(excerpt) &&
                  StrEq(Str(excerpt.s + caret, 4), StrL("here")));
-        utassert(WindowAccessibilitySetTextSelection(f.win, *node,
-                                                     {caret + 1, caret + 3}));
+        utassert(WindowAccessibilitySetTextSelection(
+            f.win, *node, {caret + 1, caret + 3}, true));
         utassert(input.selectedRange.start == 3001 && input.selectedRange
                                                               .end == 3003);
+        utassert(InputCursor(&input) == 3001);
     }
     FreeAccessibilityFrame(&f);
 }

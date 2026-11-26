@@ -681,8 +681,9 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   no blocking `HttpGet`, browser-async HTTP subject to CORS, async image
   decode, clipboard mirror, and `sysinfo` reports the tab. The portable
   accessibility tree is mirrored into canvas fallback content for roles,
-  labels, state, focus and supported actions. Text selection stays in the
-  canvas. Bounded sliders expose a native range input and send browser value
+  labels, state, focus and supported actions. Exposed text fields mirror the
+  caret and selection in both directions, including bounded text excerpts.
+  Bounded sliders expose a native range input and send browser value
   actions through the same slider setter used by desktop bridges. The story page
   accepts `?story=slug&dark=1` for Rust's embedded story shape. Keyboard and
   paste stay scoped to its canvas, which can sit anywhere on a host page.
