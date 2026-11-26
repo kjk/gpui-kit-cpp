@@ -1694,22 +1694,15 @@ static bool TokSame(Str oldText, Str newText, Tok x, Tok y) {
     return memcmp(oldText.s + x.start, newText.s + y.start, (size_t)n) == 0;
 }
 
-static void WordTokens(Str text, Vec<Tok>* out) {
-    int i = 0;
-    while (i < len(text)) {
-        int next = TextNextUnicodeWordBoundary(text, i);
-        VecAppend(*out, Tok{i, next});
+static bool DiffTokens(Str text, DiffInlineUnit unit, Vec<Tok>* out) {
+    for (int i = 0; i < len(text);) {
+        int next = unit == DiffInlineUnit::Word
+                       ? TextNextUnicodeWordBoundary(text, i)
+                       : TextNextGraphemeBoundary(text, i);
+        if (!VecAppend(*out, Tok{i, next})) return false;
         i = next;
     }
-}
-
-static void GraphemeTokens(Str text, Vec<Tok>* out) {
-    int i = 0;
-    while (i < len(text)) {
-        int next = TextNextGraphemeBoundary(text, i);
-        VecAppend(*out, Tok{i, next});
-        i = next;
-    }
+    return true;
 }
 
 static void PushRun(Vec<DiffRun>* runs, int start, int end, Str text,
@@ -1728,104 +1721,247 @@ static void PushRun(Vec<DiffRun>* runs, int start, int end, Str text,
     VecAppend(*runs, run);
 }
 
+// The inline diff in similar 2.7.0 uses Myers' bidirectional search and then
+// compacts the edit script. Reuse the two frontiers for every recursive split.
+enum class InlineEditKind {
+    Equal,
+    Delete,
+    Insert
+};
+
+struct InlineEdit {
+    InlineEditKind kind;
+    int oldStart;
+    int newStart;
+    int count;
+};
+
+struct InlineMatcher {
+    Str oldText, newText;
+    const Vec<Tok>& oldTokens;
+    const Vec<Tok>& newTokens;
+    Vec<int> forward, backward;
+    Vec<InlineEdit> edits;
+
+    InlineMatcher(Str before, Str after, const Vec<Tok>& a, const Vec<Tok>& b)
+        : oldText(before), newText(after), oldTokens(a), newTokens(b) {}
+
+    bool Same(int oldIndex, int newIndex) const {
+        return TokSame(oldText, newText, oldTokens[oldIndex],
+                       newTokens[newIndex]);
+    }
+
+    bool FindMiddle(int oldStart, int oldEnd, int newStart, int newEnd,
+                    int* splitOld, int* splitNew) {
+        int n = oldEnd - oldStart;
+        int m = newEnd - newStart;
+        int delta = n - m;
+        bool odd = delta % 2 != 0;
+        int* fromStart = forward.els + len(forward) / 2;
+        int* fromEnd = backward.els + len(backward) / 2;
+        fromStart[1] = fromEnd[1] = 0;
+        int limit = (n + m + 1) / 2 + 1;
+        for (int d = 0; d < limit; d++) {
+            for (int k = d; k >= -d; k -= 2) {
+                int x =
+                    k == -d || (k != d && fromStart[k - 1] < fromStart[k + 1])
+                        ? fromStart[k + 1]
+                        : fromStart[k - 1] + 1;
+                int y = x - k;
+                int startX = x;
+                int startY = y;
+                while (x < n && y < m && Same(oldStart + x, newStart + y)) {
+                    x++;
+                    y++;
+                }
+                fromStart[k] = x;
+                int other = delta - k;
+                if (odd && abs(other) < d && x + fromEnd[other] >= n) {
+                    *splitOld = oldStart + startX;
+                    *splitNew = newStart + startY;
+                    return true;
+                }
+            }
+            for (int k = d; k >= -d; k -= 2) {
+                int x = k == -d || (k != d && fromEnd[k - 1] < fromEnd[k + 1])
+                            ? fromEnd[k + 1]
+                            : fromEnd[k - 1] + 1;
+                int y = x - k;
+                while (x < n && y < m && Same(oldEnd - x - 1, newEnd - y - 1)) {
+                    x++;
+                    y++;
+                }
+                fromEnd[k] = x;
+                int other = delta - k;
+                if (!odd && abs(other) <= d && x + fromStart[other] >= n) {
+                    *splitOld = oldEnd - x;
+                    *splitNew = newEnd - y;
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    bool Append(InlineEditKind kind, int a, int b, int count) {
+        return !count || VecAppend(edits, InlineEdit{kind, a, b, count});
+    }
+
+    bool Match(int oldStart, int oldEnd, int newStart, int newEnd) {
+        int prefix = 0;
+        while (oldStart + prefix < oldEnd && newStart + prefix < newEnd &&
+               Same(oldStart + prefix, newStart + prefix))
+            prefix++;
+        if (!Append(InlineEditKind::Equal, oldStart, newStart, prefix))
+            return false;
+        oldStart += prefix;
+        newStart += prefix;
+
+        int suffix = 0;
+        while (oldEnd > oldStart && newEnd > newStart &&
+               Same(oldEnd - 1, newEnd - 1)) {
+            oldEnd--;
+            newEnd--;
+            suffix++;
+        }
+        if (oldStart == oldEnd || newStart == newEnd) {
+            if (!Append(InlineEditKind::Delete, oldStart, newStart,
+                        oldEnd - oldStart) ||
+                !Append(InlineEditKind::Insert, oldStart, newStart,
+                        newEnd - newStart))
+                return false;
+        } else {
+            int splitOld, splitNew;
+            if (!FindMiddle(oldStart, oldEnd, newStart, newEnd, &splitOld,
+                            &splitNew) ||
+                !Match(oldStart, splitOld, newStart, splitNew) ||
+                !Match(splitOld, oldEnd, splitNew, newEnd))
+                return false;
+        }
+        return Append(InlineEditKind::Equal, oldEnd, newEnd, suffix);
+    }
+
+    bool Shift(int* index, int direction) {
+        while (*index + direction >= 0 && *index + direction < len(edits)) {
+            int current = *index;
+            int neighbor = current + direction;
+            InlineEdit edit = edits[current];
+            InlineEdit next = edits[neighbor];
+            if (next.kind != InlineEditKind::Equal) {
+                if (edit.kind != next.kind) {
+                    edits[neighbor] = edit;
+                    edits[current] = next;
+                    *index = neighbor;
+                } else if (direction < 0) {
+                    edits[neighbor].count += edit.count;
+                    VecRemoveAt(edits, current);
+                    *index = neighbor;
+                } else {
+                    edits[current].count += next.count;
+                    VecRemoveAt(edits, neighbor);
+                }
+                continue;
+            }
+
+            // The upstream cleanup compares the neighboring old range with
+            // the edit's new range. A deletion has an empty new range.
+            if (edit.kind == InlineEditKind::Delete) break;
+            int shared = 0;
+            if (direction < 0) {
+                while (shared < next.count && shared < edit.count &&
+                       Same(next.oldStart + next.count - 1 - shared,
+                            edit.newStart + edit.count - 1 - shared))
+                    shared++;
+            } else {
+                while (shared < next.count && shared < edit.count &&
+                       Same(next.oldStart + shared, edit.newStart + shared))
+                    shared++;
+            }
+            if (!shared) break;
+
+            InlineEdit equal{InlineEditKind::Equal, next.oldStart,
+                             edit.newStart, shared};
+            int other = current - direction;
+            bool extend = other >= 0 && other < len(edits) &&
+                          edits[other].kind == InlineEditKind::Equal;
+            if (direction < 0) {
+                equal.oldStart += next.count - shared;
+                equal.newStart += edit.count - shared;
+                if (extend) {
+                    edits[other].oldStart -= shared;
+                    edits[other].newStart -= shared;
+                    edits[other].count += shared;
+                } else if (!VecInsertAt(edits, other, equal)) {
+                    return false;
+                }
+            } else {
+                if (extend) {
+                    edits[other].count += shared;
+                } else {
+                    if (!VecInsertAt(edits, current, equal)) return false;
+                    current++;
+                    neighbor++;
+                    (*index)++;
+                }
+                edits[neighbor].oldStart += shared;
+                edits[neighbor].newStart += shared;
+            }
+            edits[current].oldStart += direction * shared;
+            edits[current].newStart += direction * shared;
+            edits[neighbor].count -= shared;
+            if (!edits[neighbor].count) {
+                VecRemoveAt(edits, neighbor);
+                if (direction < 0) (*index)--;
+            }
+        }
+        return true;
+    }
+
+    bool Compact(InlineEditKind kind) {
+        for (int i = 0; i < len(edits); i++) {
+            if (edits[i].kind == kind && (!Shift(&i, -1) || !Shift(&i, 1)))
+                return false;
+        }
+        return true;
+    }
+};
+
 void DiffChangedRuns(Str oldText, Str newText, DiffInlineUnit unit,
                      Vec<DiffRun>* oldRuns, Vec<DiffRun>* newRuns) {
     VecClear(*oldRuns);
     VecClear(*newRuns);
     if (StrEq(oldText, newText)) return;
-    Vec<Tok> a;
-    Vec<Tok> b;
-    if (unit == DiffInlineUnit::Word) {
-        WordTokens(oldText, &a);
-        WordTokens(newText, &b);
-    } else {
-        GraphemeTokens(oldText, &a);
-        GraphemeTokens(newText, &b);
-    }
-    int n = len(a);
-    int m = len(b);
-    int64_t total = (int64_t)n + m;
-    // similar's Myers takes the common prefix and the common suffix before it
-    // looks for a middle snake. A pure LCS backtrack can pair an earlier
-    // space instead, and the whitespace merge then swallows the shared tail.
-    int prefix = 0;
-    while (prefix < n && prefix < m &&
-           TokSame(oldText, newText, a[prefix], b[prefix]))
-        prefix++;
-    int suffix = 0;
-    while (suffix < n - prefix && suffix < m - prefix &&
-           TokSame(oldText, newText, a[n - 1 - suffix], b[m - 1 - suffix]))
-        suffix++;
-    int nn = n - prefix - suffix;
-    int mm = m - prefix - suffix;
-    // Bound the unmatched LCS matrix. Long common prefixes and suffixes
-    // are cheap and do not count toward this limit.
-    constexpr int kMaxCells = 401 * 401;
-    if (((int64_t)nn + 1) * ((int64_t)mm + 1) > kMaxCells) return;
-    for (int k = 0; k < nn; k++) a[k] = a[prefix + k];
-    for (int k = 0; k < mm; k++) b[k] = b[prefix + k];
-    VecResize(a, nn);
-    VecResize(b, mm);
-    n = nn;
-    m = mm;
-    Vec<int> dp;
-    if (!VecResize(dp, (n + 1) * (m + 1))) return;
-    for (int i = n - 1; i >= 0; i--) {
-        for (int j = m - 1; j >= 0; j--) {
-            bool eq = a[i].end - a[i].start == b[j].end - b[j].start &&
-                      memcmp(oldText.s + a[i].start, newText.s + b[j].start,
-                             (size_t)(a[i].end - a[i].start)) == 0;
-            int best = dp[(i + 1) * (m + 1) + j];
-            int down = dp[i * (m + 1) + (j + 1)];
-            if (down > best) best = down;
-            if (eq) {
-                int diag = dp[(i + 1) * (m + 1) + (j + 1)] + 1;
-                if (diag > best) best = diag;
-            }
-            dp[i * (m + 1) + j] = best;
-        }
+    Vec<Tok> a, b;
+    if (!DiffTokens(oldText, unit, &a) || !DiffTokens(newText, unit, &b))
+        return;
+    int64_t total = (int64_t)len(a) + len(b);
+    if (total > (INT32_MAX - 8) / 2) return;
+    InlineMatcher matcher(oldText, newText, a, b);
+    int frontierSize = 2 * ((int(total) + 1) / 2 + 1);
+    if (!VecResize(matcher.forward, frontierSize) ||
+        !VecResize(matcher.backward, frontierSize) ||
+        !matcher.Match(0, len(a), 0, len(b)) ||
+        !matcher.Compact(InlineEditKind::Delete) ||
+        !matcher.Compact(InlineEditKind::Insert))
+        return;
+
+    int64_t equal = 0;
+    for (const InlineEdit& edit : matcher.edits) {
+        if (edit.kind == InlineEditKind::Equal) equal += edit.count;
     }
     // similar's ratio counts equal tokens, regardless of their byte lengths.
     // 2 * equal / total >= 0.25, expressed without rounding.
-    if (8 * ((int64_t)prefix + suffix + dp[0]) < total) return;
-    int i = 0;
-    int j = 0;
-    struct Op {
-        int kind;
-        int start;
-        int end;
-    };
-    Vec<Op> ops;
-    while (i < n && j < m) {
-        bool eq = a[i].end - a[i].start == b[j].end - b[j].start &&
-                  memcmp(oldText.s + a[i].start, newText.s + b[j].start,
-                         (size_t)(a[i].end - a[i].start)) == 0;
-        if (eq && dp[i * (m + 1) + j] == dp[(i + 1) * (m + 1) + (j + 1)] + 1) {
-            VecAppend(ops, Op{0, a[i].start, a[i].end});
-            i++;
-            j++;
-        } else if (dp[i * (m + 1) + j] == dp[(i + 1) * (m + 1) + j]) {
-            VecAppend(ops, Op{1, a[i].start, a[i].end});
-            i++;
-        } else {
-            VecAppend(ops, Op{2, b[j].start, b[j].end});
-            j++;
-        }
-    }
-    while (i < n) {
-        VecAppend(ops, Op{1, a[i].start, a[i].end});
-        i++;
-    }
-    while (j < m) {
-        VecAppend(ops, Op{2, b[j].start, b[j].end});
-        j++;
-    }
+    if (8 * equal < total) return;
+
     bool merge = unit == DiffInlineUnit::Word;
-    for (int k = 0; k < len(ops); k++) {
-        if (ops[k].kind == 1)
-            PushRun(oldRuns, ops[k].start, ops[k].end, oldText, merge);
-        else if (ops[k].kind == 2)
-            PushRun(newRuns, ops[k].start, ops[k].end, newText, merge);
+    for (const InlineEdit& edit : matcher.edits) {
+        if (edit.kind == InlineEditKind::Delete) {
+            PushRun(oldRuns, a[edit.oldStart].start,
+                    a[edit.oldStart + edit.count - 1].end, oldText, merge);
+        } else if (edit.kind == InlineEditKind::Insert) {
+            PushRun(newRuns, b[edit.newStart].start,
+                    b[edit.newStart + edit.count - 1].end, newText, merge);
+        }
     }
 }
 

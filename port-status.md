@@ -567,7 +567,7 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   Inline emphasis and built-in syntax scanning are prepared one file at a
   time on the background executor.
   Character and word comparisons use Unicode 17 grapheme and word boundaries
-  as in Rust. The unmatched region has a bounded LCS matrix.
+  and the same Myers search and edit compaction as Rust.
   Character hover and click
   (`OnTextHover`, `OnTextClick`) use the same painted run geometry as diff
   selection. Unwrapped text remains targetable across the row height.

@@ -596,9 +596,18 @@ static void TestInlineAndRows() {
     VecClear(newRuns);
     DiffChangedRuns(StrL("a b c"), StrL("a x y c"), DiffInlineUnit::Word,
                     &oldRuns, &newRuns);
-    utassert(len(newRuns) == 1 && newRuns[0].start == 2 && newRuns[0].end == 5);
-    utassert(len(oldRuns) == 0 || (len(oldRuns) == 1 && oldRuns[0].start == 2 &&
-                                   oldRuns[0].end == 3));
+    const int replacedWord[] = {2, 3};
+    const int replacementWords[] = {2, 5};
+    utassert(RunsEq(oldRuns, 1, replacedWord));
+    utassert(RunsEq(newRuns, 1, replacementWords));
+
+    // Repeated matches admit several shortest paths. Pin similar's choice.
+    DiffChangedRuns(StrL("ABACAB"), StrL("ACABAC"), DiffInlineUnit::Character,
+                    &oldRuns, &newRuns);
+    const int repeatedOld[] = {4, 6};
+    const int repeatedNew[] = {1, 3};
+    utassert(RunsEq(oldRuns, 1, repeatedOld));
+    utassert(RunsEq(newRuns, 1, repeatedNew));
     VecClear(oldRuns);
     VecClear(newRuns);
     DiffChangedRuns(StrL("colour"), StrL("color"), DiffInlineUnit::Character,
@@ -662,6 +671,19 @@ static void TestInlineAndRows() {
     const int afterLongPrefix[] = {450, 451};
     utassert(RunsEq(oldRuns, 1, afterLongPrefix));
     utassert(RunsEq(newRuns, 1, afterLongPrefix));
+
+    // The common text lies between edits, so trimming the ends cannot
+    // reduce the comparison to a small window.
+    memset(longOld, 'a', sizeof(longOld));
+    memcpy(longNew, longOld, sizeof(longOld));
+    longOld[0] = longOld[511] = 'x';
+    longNew[0] = longNew[511] = 'y';
+    DiffChangedRuns(Str(longOld, dimofi(longOld)),
+                    Str(longNew, dimofi(longNew)), DiffInlineUnit::Character,
+                    &oldRuns, &newRuns);
+    const int ends[] = {0, 1, 511, 512};
+    utassert(RunsEq(oldRuns, 2, ends));
+    utassert(RunsEq(newRuns, 2, ends));
 
     Vec<DiffChunk> chunks;
     DiffDisplayChunks(StrL(""), &chunks);
