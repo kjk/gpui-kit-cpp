@@ -2346,6 +2346,48 @@ static void TouchHandlesExtendAndCopyTheDiffSourceRange() {
     TestAppFree(stage.app);
 }
 
+static void DiffTouchHandlesFollowRightToLeftCarets() {
+    PointerStage stage = StagePointer(false, StrL("--- /dev/null\n"
+                                                  "+++ b/file.txt\n"
+                                                  "@@ -0,0 +1 @@\n"
+                                                  "+alpha \xd7\x90\n"));
+    Bounds row;
+    utassert(DiffRunBounds(stage.win, DiffSide::Modified, 0, &row));
+    float cell = MeasureText(&stage.win->paint, StrL("a"),
+                             ThemeFontSize(stage.app), 0, false, kFontMono)
+                     .w;
+    Point at = {row.x + cell * 2.1f, row.CenterY()};
+    PlatformInput start = InputLongPress(TouchPhase::Started, at, at);
+    PlatformInput end = InputLongPress(TouchPhase::Ended, at, at);
+    WindowDispatchInput(stage.win, &start);
+    WindowDispatchInput(stage.win, &end);
+    auto* state = stage.host->state.Get(stage.app);
+    state->textSelection.anchor = len(StrL("alpha "));
+    state->textSelection.cursor = len(StrL("alpha \xd7\x90"));
+    TestDraw(stage.win);
+
+    TouchSelectionSnapshot snapshot;
+    utassert(WindowSelectionTouchSnapshot(stage.win, &snapshot) &&
+             snapshot.startVisible && snapshot.endVisible);
+    // The Node test host has no native bidi caret geometry.
+    for (const DiffCodeRunGeometry& run : state->codeRuns) {
+        float x = 0, y = 0, height = 0;
+        if (run.side == DiffSide::Modified &&
+            TextLayoutCaretPoint(run.layout, run.text,
+                                 state->textSelection.anchor, false, &x, &y,
+                                 &height)) {
+            utassert(snapshot.start.x > snapshot.end.x);
+            utassertnear(snapshot.start.x, run.bounds.x + x);
+            break;
+        }
+    }
+    char copy[16];
+    int count =
+        TextSelection::SelectedText(stage.win, stage.app, copy, sizeof(copy));
+    utassert(StrEq(Str(copy, count), "\xd7\x90"));
+    TestAppFree(stage.app);
+}
+
 static void TouchCopyMenuKeepsLargeDiffSource() {
     constexpr int lineCount = 720;
     StrBuilder patch;
@@ -3071,6 +3113,7 @@ void TestDiff() {
     DiffMeasuresWrappedLinesAndChangingAnnotations();
     AnnotationButtonPassesTheSelectedRange();
     TouchHandlesExtendAndCopyTheDiffSourceRange();
+    DiffTouchHandlesFollowRightToLeftCarets();
     TouchCopyMenuKeepsLargeDiffSource();
     DiffTouchHandleScrollsAndExtendsAtTheViewportEdge();
     AnUnclaimedTextClickFallsThroughToTheLine();

@@ -4245,21 +4245,16 @@ static bool DiffTouchCaret(const DiffState* state, int file, int sourceOffset,
         if (edge == SelectionEdge::End && offset == 0 && run.displayStart > 0) {
             continue;
         }
-        int start = trailing ? Utf8Prev(run.text, offset) : offset;
-        uint32_t cp = 0;
-        int end = trailing ? offset : offset + Utf8At(run.text, offset, &cp);
-        Bounds glyph;
-        if (!TextLayoutRangeRects(run.layout, run.text, start, end, &glyph,
-                                  1)) {
+        float x = 0, y = 0, height = 0;
+        // This run can contain multiple visual lines. Native caret geometry
+        // also distinguishes the two edges of a right-to-left glyph.
+        if (!TextLayoutPointAt(run.layout, run.text, true, offset, &x, &y,
+                               &height, trailing)) {
             continue;
         }
-        float x = run.bounds.x + (trailing ? glyph.Right() : glyph.x);
-        float y = run.bounds.y + glyph.y;
-        if (x < run.visible.x || x > run.visible.Right() ||
-            y >= run.visible.Bottom() || y + glyph.h <= run.visible.y) {
-            continue;
-        }
-        *out = {x, y, 1.f, glyph.h};
+        Bounds caret = {run.bounds.x + x, run.bounds.y + y, 1.f, height};
+        if (!TouchCaretInView(caret, run.visible)) continue;
+        *out = caret;
         return true;
     }
     return false;
