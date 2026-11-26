@@ -213,7 +213,8 @@ static const wchar_t* AccessibilityRoleName(AccessibilityRole role) {
 static bool AccessibilitySelectionItemRole(AccessibilityRole role) {
     return role == AccessibilityRole::ListBoxOption ||
            role == AccessibilityRole::RadioButton ||
-           role == AccessibilityRole::Tab;
+           role == AccessibilityRole::Tab ||
+           role == AccessibilityRole::TreeItem;
 }
 
 static bool AccessibilitySelectionContainerRole(AccessibilityRole role) {
@@ -302,6 +303,15 @@ struct WinNodeSnapshot {
     bool lazyText = false;
     uint64_t textRevision = 0;
     uint64_t selectionRevision = 0;
+    uint32_t selectionContainer = 0;
+    int selectedCount = 0;
+    uint32_t selectedChild = 0;
+
+    bool IsSelectedItem() const {
+        const auto& info = properties.info;
+        return info.hasSelected && info.selected &&
+               AccessibilitySelectionItemRole(info.role);
+    }
 };
 
 struct WinAccessibility
@@ -2503,10 +2513,17 @@ struct WinPropertyChange {
     PROPERTYID property;
     VARIANT before;
     VARIANT after;
+    bool allowRemovedNode = false;
 };
 struct WinNodeEvent {
     uint32_t id;
     EVENTID event;
+    bool allowRemovedNode = false;
+};
+struct WinSelectionDelta {
+    uint32_t container;
+    uint32_t id;
+    bool selected;
 };
 static bool WinSnapshotChanges(WinAccessibility* root,
                                Vec<WinPropertyChange>* changes,
@@ -2548,6 +2565,20 @@ static void AccessibilityRaiseNodeEvent(WinAccessibility* root, int index,
         UiaRaiseAutomationEvent(provider, event);
         provider->Release();
     }
+}
+
+// A removal can refer to an item that has already left the tree. Preserve
+// its runtime ID without reviving the provider's properties or actions.
+static IRawElementProviderSimple* WinEventProvider(WinAccessibility* root,
+                                                   uint32_t id,
+                                                   bool allowRemovedNode) {
+    IRawElementProviderSimple* provider = nullptr;
+    if (SUCCEEDED(AccessibilitySimpleAt(root, root->NodeIndex(id), &provider)))
+        return provider;
+    return allowRemovedNode && root->win
+               ? static_cast<IRawElementProviderSimple*>(
+                     new WinAccessibilityNode(root, id))
+               : nullptr;
 }
 
 static constexpr PROPERTYID kWinTrackedProperties[] = {
@@ -2611,6 +2642,78 @@ static void WinTextChanges(const WinNodeSnapshot& before,
     }
 }
 
+static void RecordWinSelectionDelta(Vec<WinSelectionDelta>& deltas,
+                                    const WinNodeSnapshot& node,
+                                    bool selected) {
+    uint32_t container =
+        node.selectionContainer ? node.selectionContainer : node.id;
+    VecAppend(deltas, WinSelectionDelta{container, node.id, selected});
+}
+
+static void QueueWinSelectionProperty(Vec<WinPropertyChange>* changes,
+                                      uint32_t id, bool selected) {
+    if (!changes) return;
+    WinPropertyChange change{
+        id, UIA_SelectionItemIsSelectedPropertyId, {}, {}, !selected};
+    change.before.vt = change.after.vt = VT_BOOL;
+    change.before.boolVal = selected ? VARIANT_FALSE : VARIANT_TRUE;
+    change.after.boolVal = selected ? VARIANT_TRUE : VARIANT_FALSE;
+    VecAppend(*changes, change);
+}
+
+static void WinSelectionEvents(Vec<WinSelectionDelta>& deltas,
+                               const Vec<WinNodeSnapshot>& next,
+                               Vec<WinPropertyChange>* changes,
+                               Vec<WinNodeEvent>* events) {
+    if (!len(deltas)) return;
+    qsort(deltas.els, (size_t)len(deltas), sizeof(deltas[0]),
+          [](const void* a, const void* b) {
+              uint32_t left = static_cast<const WinSelectionDelta*>(a)
+                                  ->container;
+              uint32_t right = static_cast<const WinSelectionDelta*>(b)
+                                   ->container;
+              return left == right ? 0 : left < right ? -1 : 1;
+          });
+    int nodeIndex = 0;
+    for (int end = 0; end < len(deltas);) {
+        int start = end++;
+        uint32_t id = deltas[start].container;
+        while (end < len(deltas) && deltas[end].container == id) end++;
+        while (nodeIndex < len(next) && next[nodeIndex].id < id) nodeIndex++;
+        if (nodeIndex == len(next) || next[nodeIndex].id != id) continue;
+        const auto& node = next[nodeIndex];
+        if (node.selectedCount == 1) {
+            VecAppend(*events,
+                      WinNodeEvent{node.selectedChild,
+                                   UIA_SelectionItem_ElementSelectedEventId});
+            QueueWinSelectionProperty(changes, node.selectedChild, true);
+            for (int i = start; i < end; i++) {
+                if (!deltas[i].selected)
+                    QueueWinSelectionProperty(changes, deltas[i].id, false);
+            }
+            continue;
+        }
+        // AccessKit's Windows adapter coalesces more than 20 item changes.
+        constexpr int kInvalidateLimit = 20;
+        if (end - start > kInvalidateLimit &&
+            AccessibilitySelectionContainerRole(node.properties.info.role)) {
+            VecAppend(*events,
+                      WinNodeEvent{id, UIA_Selection_InvalidatedEventId});
+            continue;
+        }
+        for (int i = start; i < end; i++) {
+            const auto& delta = deltas[i];
+            // The current portable containers advertise single selection.
+            EVENTID event =
+                delta.selected
+                    ? UIA_SelectionItem_ElementSelectedEventId
+                    : UIA_SelectionItem_ElementRemovedFromSelectionEventId;
+            VecAppend(*events, WinNodeEvent{delta.id, event, !delta.selected});
+            QueueWinSelectionProperty(changes, delta.id, delta.selected);
+        }
+    }
+}
+
 // Match the same provider across frames even if its siblings moved. Old
 // strings belong to this snapshot arena, and queued variants own their
 // strings so the snapshot can be published before notifying native clients.
@@ -2633,6 +2736,19 @@ static bool WinSnapshotChanges(WinAccessibility* root,
         next[i] = {node.id, parent, i, WinNodeProperties(node)};
         auto& snapshot = next[i];
         auto& info = snapshot.properties.info;
+        if (node.parent >= 0) {
+            auto& parentSnapshot = next[node.parent];
+            snapshot.selectionContainer =
+                AccessibilitySelectionContainerRole(parentSnapshot.properties
+                                                        .info.role)
+                    ? (uint32_t)node.parent + 1
+                    : parentSnapshot.selectionContainer;
+        }
+        if (snapshot.IsSelectedItem() && snapshot.selectionContainer) {
+            auto& container = next[snapshot.selectionContainer - 1];
+            container.selectedCount++;
+            container.selectedChild = node.id;
+        }
         info.label = StrDup(strings, info.label);
         info.description = StrDup(strings, info.description);
         info.value = StrDup(strings, info.value);
@@ -2655,25 +2771,46 @@ static bool WinSnapshotChanges(WinAccessibility* root,
                       WinNodeEvent{node.id, UIA_LiveRegionChangedEventId});
         }
     }
+    // Resolve container indices to stable IDs before sorting the snapshots.
+    for (auto& node : next) {
+        if (node.selectionContainer)
+            node.selectionContainer = next[node.selectionContainer - 1].id;
+    }
     if (len(next) > 1)
         qsort(next.els, (size_t)len(next), sizeof(next[0]),
               CompareWinSnapshots);
 
     bool structureChanged = len(last) != len(next);
     int beforeIndex = 0;
+    Vec<WinSelectionDelta> selectionDeltas;
     for (const auto& node : next) {
-        while (beforeIndex < len(last) && last[beforeIndex].id < node.id)
-            beforeIndex++;
+        while (beforeIndex < len(last) && last[beforeIndex].id < node.id) {
+            const auto& removed = last[beforeIndex++];
+            if (events && removed.IsSelectedItem())
+                RecordWinSelectionDelta(selectionDeltas, removed, false);
+        }
         if (beforeIndex == len(last) || last[beforeIndex].id != node.id) {
             structureChanged = true;
+            if (events && node.IsSelectedItem())
+                RecordWinSelectionDelta(selectionDeltas, node, true);
             continue;
         }
         const auto& before = last[beforeIndex++];
         structureChanged |=
             before.parent != node.parent || before.index != node.index;
         if (events) WinTextChanges(before, node, events);
+        bool selectionChanged =
+            events && before.IsSelectedItem() != node.IsSelectedItem();
+        if (selectionChanged) {
+            bool selected = node.IsSelectedItem();
+            RecordWinSelectionDelta(selectionDeltas, selected ? node : before,
+                                    selected);
+        }
         if (!changes) continue;
         for (PROPERTYID property : kWinTrackedProperties) {
+            if (selectionChanged &&
+                property == UIA_SelectionItemIsSelectedPropertyId)
+                continue;
             auto oldValue = WinSemanticProperty(before.properties, property);
             auto newValue = WinSemanticProperty(node.properties, property);
             if (oldValue.SameAs(newValue)) continue;
@@ -2682,6 +2819,14 @@ static bool WinSnapshotChanges(WinAccessibility* root,
             newValue.ToVariant(&item.after);
             if (!VecAppend(*changes, item)) ClearWinPropertyChange(&item);
         }
+    }
+    if (events) {
+        for (; beforeIndex < len(last); beforeIndex++) {
+            if (last[beforeIndex].IsSelectedItem())
+                RecordWinSelectionDelta(selectionDeltas, last[beforeIndex],
+                                        false);
+        }
+        WinSelectionEvents(selectionDeltas, next, changes, events);
     }
     root->snapshotFrame = frame;
     return structureChanged;
@@ -2705,11 +2850,8 @@ void AccessibilityWinTreeChanged(WinAccessibility* accessibility) {
                 StructureChangeType_ChildrenInvalidated, nullptr, 0);
         }
         for (auto& change : properties) {
-            IRawElementProviderSimple* provider = nullptr;
-            if (SUCCEEDED(AccessibilitySimpleAt(
-                    accessibility, accessibility->NodeIndex(change.id),
-                    &provider)) &&
-                provider) {
+            if (auto* provider = WinEventProvider(accessibility, change.id,
+                                                  change.allowRemovedNode)) {
                 UiaRaiseAutomationPropertyChangedEvent(
                     provider, change.property, change.before, change.after);
                 provider->Release();
@@ -2717,8 +2859,11 @@ void AccessibilityWinTreeChanged(WinAccessibility* accessibility) {
             ClearWinPropertyChange(&change);
         }
         for (const auto& event : events) {
-            AccessibilityRaiseNodeEvent(
-                accessibility, accessibility->NodeIndex(event.id), event.event);
+            if (auto* provider = WinEventProvider(accessibility, event.id,
+                                                  event.allowRemovedNode)) {
+                UiaRaiseAutomationEvent(provider, event.event);
+                provider->Release();
+            }
         }
     }
     accessibility->Release();
@@ -2787,6 +2932,77 @@ bool AccessibilityWinTextChangesSmokeTest() {
     win.accessibility[0].info.role = AccessibilityRole::PasswordInput;
     ok &= !WinSnapshotChanges(root, nullptr, &events) && !len(events);
     ok &= reads == 0;
+    AccessibilityWinClose(root);
+    return ok;
+}
+
+bool AccessibilityWinSelectionEventsSmokeTest() {
+    Window win;
+    AccessibilityNode list;
+    list.id = 20;
+    list.info.role = AccessibilityRole::ListBox;
+    AccessibilityNode group;
+    group.id = 10;
+    group.parent = 0;
+    group.info.role = AccessibilityRole::Group;
+    AccessibilityNode option;
+    option.id = 3;
+    option.parent = 1;
+    option.info.role = AccessibilityRole::ListBoxOption;
+    option.info.hasSelected = true;
+    option.info.selected = true;
+    VecAppend(win.accessibility, list);
+    VecAppend(win.accessibility, group);
+    VecAppend(win.accessibility, option);
+    option.id = 5;
+    option.info.selected = false;
+    VecAppend(win.accessibility, option);
+    WinAccessibility* root = AccessibilityWinNew(&win, GetDesktopWindow());
+    if (!root) return false;
+
+    Vec<WinPropertyChange> changes;
+    Vec<WinNodeEvent> events;
+    win.accessibility[2].info.selected = false;
+    win.accessibility[3].info.selected = true;
+    bool ok = !WinSnapshotChanges(root, &changes, &events) &&
+              len(events) == 1 && events[0].id == 5 &&
+              events[0].event == UIA_SelectionItem_ElementSelectedEventId &&
+              len(changes) == 2 && changes[0].id == 5 && changes[1].id == 3 &&
+              changes[0].property == UIA_SelectionItemIsSelectedPropertyId &&
+              changes[0].after.vt == VT_BOOL &&
+              changes[0].after.boolVal == VARIANT_TRUE &&
+              changes[1].after.boolVal == VARIANT_FALSE;
+    for (auto& change : changes) ClearWinPropertyChange(&change);
+    VecClear(changes);
+    VecClear(events);
+
+    VecResize(win.accessibility, 3);
+    ok &= WinSnapshotChanges(root, &changes, &events) && len(events) == 1 &&
+          events[0].id == 5 && events[0].allowRemovedNode &&
+          events[0].event ==
+              UIA_SelectionItem_ElementRemovedFromSelectionEventId &&
+          len(changes) == 1 && changes[0].id == 5 &&
+          changes[0].after.boolVal == VARIANT_FALSE;
+    IRawElementProviderSimple* removed = WinEventProvider(root, 5, true);
+    VARIANT unavailable = {};
+    ok &= removed &&
+          removed->GetPropertyValue(UIA_IsEnabledPropertyId, &unavailable) ==
+              UIA_E_ELEMENTNOTAVAILABLE;
+    if (removed) removed->Release();
+    VariantClear(&unavailable);
+    for (auto& change : changes) ClearWinPropertyChange(&change);
+    VecClear(changes);
+    VecClear(events);
+
+    option.info.selected = true;
+    for (uint32_t id = 40; id < 61; id++) {
+        option.id = id;
+        VecAppend(win.accessibility, option);
+    }
+    ok &= WinSnapshotChanges(root, &changes, &events) && len(events) == 1 &&
+          events[0].id == 20 &&
+          events[0].event == UIA_Selection_InvalidatedEventId && !len(changes);
+    for (auto& change : changes) ClearWinPropertyChange(&change);
     AccessibilityWinClose(root);
     return ok;
 }

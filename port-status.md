@@ -250,7 +250,10 @@ The current update target is
 - **Windows UIA invalidates the child list on structural changes.**
   Retained nodes report changes to their projected properties separately.
   Focus, live announcements, text edits and selections have their own events
-  (`src/gpui/accessibility_win.cpp`).
+  (`src/gpui/accessibility_win.cpp`). Item selection changes announce the
+  sole selected item, a deselection, or container invalidation above
+  AccessKit's 20-change threshold. The portable selection containers
+  currently advertise single selection.
 - **Linux invalidates a child list when its retained children reorder.**
   Insertions and removals report individual child references, and reparented
   nodes also report the new parent. Lazy document revisions invalidate their
