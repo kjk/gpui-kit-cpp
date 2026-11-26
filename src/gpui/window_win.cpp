@@ -5,6 +5,7 @@
 #include "gpui/platform.h"
 #include "base/input.h"
 #include "gpui/paint.h"
+#include "gpui/paint_backend.h"
 #include "gpui/accessibility_win.h"
 #include "sys/clock.h"
 #include "sys/executor.h"
@@ -29,6 +30,9 @@ struct WinTouchpad;
 
 struct PlatWindow {
     HWND hwnd = nullptr;
+    HWND nativeOverlay = nullptr;
+    HWND nativeOverlayInput = nullptr;
+    bool nativeOverlayWantsInput = false;
     WinTouchpad* touchpad = nullptr;
     // RegisterDragDrop holds the drop target until RevokeDragDrop.
     bool fileDrop = false;
@@ -535,6 +539,179 @@ static void MouseMove(Window* win, float x, float y) {
     bool any = PressedButton(&pressed);
     PlatformInput in = InputMouseMove(x, y, any, pressed, ModsNow());
     WindowDispatchInput(win, &in);
+}
+
+static bool IsTouchScrollMouse(Window* win);
+
+static LRESULT CALLBACK NativeOverlayProc(HWND hwnd, UINT msg, WPARAM wp,
+                                          LPARAM lp) {
+    if (msg == WM_NCCREATE) {
+        auto* cs = (CREATESTRUCTW*)lp;
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LONG_PTR)cs->lpCreateParams);
+    }
+    auto* win = (Window*)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+    HWND owner = Hwnd(win);
+    if (!owner) return DefWindowProcW(hwnd, msg, wp, lp);
+    if (msg == WM_NCHITTEST && !IsWindowEnabled(owner)) return HTTRANSPARENT;
+
+    switch (msg) {
+        case WM_MOUSEACTIVATE:
+            if (win->opts.activatable && GetActiveWindow() != owner &&
+                IsWindowEnabled(owner)) {
+                SetActiveWindow(owner);
+                win->plat->firstMouse = true;
+            }
+            return MA_NOACTIVATE;
+        case WM_MOUSEMOVE: {
+            POINT point = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+            MapWindowPoints(hwnd, owner, &point, 1);
+            win->paint.dpi = HostDpi(owner);
+            if (!IsTouchScrollMouse(win))
+                MouseMove(win, PxToDip(&win->paint, point.x),
+                          PxToDip(&win->paint, point.y));
+            TRACKMOUSEEVENT track = {sizeof(track), TME_LEAVE, hwnd, 0};
+            TrackMouseEvent(&track);
+            return 0;
+        }
+        case WM_LBUTTONDOWN:
+        case WM_LBUTTONUP:
+        case WM_LBUTTONDBLCLK:
+        case WM_RBUTTONDOWN:
+        case WM_RBUTTONUP:
+        case WM_RBUTTONDBLCLK:
+        case WM_MBUTTONDOWN:
+        case WM_MBUTTONUP:
+        case WM_MBUTTONDBLCLK:
+        case WM_XBUTTONDOWN:
+        case WM_XBUTTONUP:
+        case WM_XBUTTONDBLCLK: {
+            POINT point = {GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+            MapWindowPoints(hwnd, owner, &point, 1);
+            return SendMessageW(owner, msg, wp, MAKELPARAM(point.x, point.y));
+        }
+        case WM_SETCURSOR:
+        case WM_MOUSELEAVE:
+        case WM_MOUSEWHEEL:
+        case WM_MOUSEHWHEEL:
+        case WM_POINTERDOWN:
+        case WM_POINTERUPDATE:
+        case WM_POINTERUP:
+        case WM_POINTERCAPTURECHANGED:
+        case WM_GESTURENOTIFY:
+        case WM_GESTURE:
+            return SendMessageW(owner, msg, wp, lp);
+        default:
+            return DefWindowProcW(hwnd, msg, wp, lp);
+    }
+}
+
+void WinWindowHideNativeOverlay(Window* win) {
+    if (!win || !win->plat) return;
+    PlatWindow* plat = win->plat;
+    if (plat->nativeOverlayInput) ShowWindow(plat->nativeOverlayInput, SW_HIDE);
+    if (plat->nativeOverlay) ShowWindow(plat->nativeOverlay, SW_HIDE);
+}
+
+bool WinWindowPrepareNativeOverlay(PaintCtx* ctx) {
+    Window* win = ctx->window;
+    HWND owner = Hwnd(win);
+    if (!owner || win->plat->clickThrough || win->plat->opacity != 100)
+        return false;
+    PlatWindow* plat = win->plat;
+    static const wchar_t* name = L"GpuiNativeOverlay";
+    static ATOM type = 0;
+    HINSTANCE instance = GetModuleHandleW(nullptr);
+    if (!type) {
+        WNDCLASSEXW wc = {sizeof(wc)};
+        wc.style = CS_DBLCLKS;
+        wc.lpfnWndProc = NativeOverlayProc;
+        wc.hInstance = instance;
+        wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+        wc.lpszClassName = name;
+        type = RegisterClassExW(&wc);
+        if (!type) return false;
+    }
+    const DWORD noFocus = WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW;
+    if (!plat->nativeOverlay) {
+        plat->nativeOverlay =
+            CreateWindowExW(noFocus | WS_EX_TRANSPARENT, name, L"", WS_POPUP, 0,
+                            0, 1, 1, owner, nullptr, instance, nullptr);
+    }
+    if (!plat->nativeOverlay) return false;
+    plat->nativeOverlayWantsInput = len(ctx->nativeOverlayBounds) != 0;
+    if (!plat->nativeOverlayWantsInput) return true;
+    if (!plat->nativeOverlayInput) {
+        HWND input = CreateWindowExW(noFocus, name, L"", WS_POPUP, 0, 0, 1, 1,
+                                     owner, nullptr, instance, win);
+        // A layered window with zero alpha passes mouse input through.
+        // The input window uses the minimum nonzero alpha and a shape
+        // independent of the overlay's actual pixels.
+        if (input && !SetLayeredWindowAttributes(input, 0, 1, LWA_ALPHA)) {
+            DestroyWindow(input);
+            input = nullptr;
+        }
+        plat->nativeOverlayInput = input;
+    }
+    if (!plat->nativeOverlayInput) return false;
+    HRGN region = CreateRectRgn(0, 0, 0, 0);
+    if (!region) return false;
+    bool ok = true;
+    for (Bounds bounds : ctx->nativeOverlayBounds) {
+        HRGN rect = CreateRectRgn(
+            DipToPx(ctx, bounds.x), DipToPx(ctx, bounds.y),
+            DipToPx(ctx, bounds.Right()), DipToPx(ctx, bounds.Bottom()));
+        ok = rect && CombineRgn(region, region, rect, RGN_OR) != ERROR;
+        if (rect) DeleteObject(rect);
+        if (!ok) break;
+    }
+    if (!ok || !SetWindowRgn(plat->nativeOverlayInput, region, TRUE)) {
+        DeleteObject(region);
+        return false;
+    }
+    return true;
+}
+
+static POINT NativeOverlayOrigin(HWND owner) {
+    POINT point = {};
+    ClientToScreen(owner, &point);
+    return point;
+}
+
+bool WinWindowPresentNativeOverlay(Window* win, HDC dc, int width, int height) {
+    PlatWindow* plat = win->plat;
+    HWND owner = plat->hwnd;
+    if (!IsWindowVisible(owner) || IsIconic(owner)) {
+        WinWindowHideNativeOverlay(win);
+        return true;
+    }
+    POINT origin = NativeOverlayOrigin(owner);
+    POINT source = {};
+    SIZE size = {width, height};
+    BLENDFUNCTION blend = {AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
+    if (!UpdateLayeredWindow(plat->nativeOverlay, nullptr, &origin, &size, dc,
+                             &source, 0, &blend, ULW_ALPHA))
+        return false;
+    ShowWindow(plat->nativeOverlay, SW_SHOWNOACTIVATE);
+    HWND input = plat->nativeOverlayInput;
+    if (input) {
+        if (plat->nativeOverlayWantsInput) {
+            return SetWindowPos(
+                       input, nullptr, origin.x, origin.y, width, height,
+                       SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW) != FALSE;
+        }
+        ShowWindow(input, SW_HIDE);
+    }
+    return true;
+}
+
+static void MoveNativeOverlay(Window* win) {
+    PlatWindow* plat = win->plat;
+    if (!plat->nativeOverlay || !IsWindowVisible(plat->nativeOverlay)) return;
+    POINT p = NativeOverlayOrigin(plat->hwnd);
+    const UINT flags = SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE;
+    SetWindowPos(plat->nativeOverlay, nullptr, p.x, p.y, 0, 0, flags);
+    if (plat->nativeOverlayInput)
+        SetWindowPos(plat->nativeOverlayInput, nullptr, p.x, p.y, 0, 0, flags);
 }
 
 // GPUI_HOVER_HOLD: see WM_MOUSELEAVE. Read once, since getenv is not free and
@@ -2101,6 +2278,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
             bool sized = (wp->flags & SWP_NOSIZE) == 0;
             // DefWindowProc turns it into WM_MOVE and WM_SIZE, which paint.
             LRESULT res = DefWindowProcW(hwnd, msg, wParam, lParam);
+            if (moved) MoveNativeOverlay(win);
+            if (wp->flags & SWP_HIDEWINDOW) WinWindowHideNativeOverlay(win);
+            if (wp->flags & SWP_SHOWWINDOW)
+                InvalidateRect(hwnd, nullptr, FALSE);
             if (moved || sized || (wp->flags & SWP_SHOWWINDOW)) {
                 WindowBoundsNotify(win, WindowBoundsEvent::Changed);
             }
@@ -2400,6 +2581,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
             KillTimer(hwnd, 1);
             App* app = win->app;
             PlatWindow* plat = win->plat;
+            if (plat->nativeOverlayInput)
+                DestroyWindow(plat->nativeOverlayInput);
+            if (plat->nativeOverlay) DestroyWindow(plat->nativeOverlay);
             if (plat->touchpad) {
                 plat->touchpad->Close();
                 plat->touchpad = nullptr;
@@ -2466,6 +2650,7 @@ struct CaptureEnum {
     HWND main;
     DWORD pid;
     Vec<CaptureShot>* shots;
+    App* app;
 };
 
 static bool CaptureShotFor(HWND hwnd, bool clientOnly, CaptureShot* out) {
@@ -2491,6 +2676,12 @@ static BOOL CALLBACK CaptureEnumProc(HWND hwnd, LPARAM lp) {
     if (hwnd == e->main || pid != e->pid || !IsWindowVisible(hwnd) ||
         IsIconic(hwnd)) {
         return TRUE;
+    }
+    for (Window* win : e->app->windows) {
+        PlatWindow* plat = win->plat;
+        if (plat &&
+            (hwnd == plat->nativeOverlay || hwnd == plat->nativeOverlayInput))
+            return TRUE;
     }
     CaptureShot shot = {};
     if (CaptureShotFor(hwnd, false, &shot)) {
@@ -2579,7 +2770,7 @@ TempStr WindowCapturePngTemp(Window* win, Str path, bool allWindows) {
     VecAppend(shots, mainShot);
     if (allWindows) {
         Vec<CaptureShot> others;
-        CaptureEnum e = {main, GetCurrentProcessId(), &others};
+        CaptureEnum e = {main, GetCurrentProcessId(), &others, win->app};
         EnumWindows(CaptureEnumProc, (LPARAM)&e);
         for (int i = len(others) - 1; i >= 0; i--) {
             VecAppend(shots, others[i]);
@@ -2615,6 +2806,17 @@ TempStr WindowCapturePngTemp(Window* win, Str path, bool allWindows) {
         if (PrintWindow(s.hwnd, dc, flags)) {
             BitBlt(canvasDc, s.r.left - total.left, s.r.top - total.top, sw, sh,
                    dc, 0, 0, SRCCOPY);
+            HWND host = s.hwnd;
+            for (Window* owner : win->app->windows) {
+                if (Hwnd(owner) == host && owner->plat->nativeOverlay &&
+                    IsWindowVisible(owner->plat->nativeOverlay)) {
+                    POINT origin = NativeOverlayOrigin(host);
+                    WinPaintCaptureNativeOverlay(&owner->paint, canvasDc,
+                                                 origin.x - total.left,
+                                                 origin.y - total.top);
+                    break;
+                }
+            }
             captured++;
         }
         SelectObject(dc, old);
@@ -2911,6 +3113,10 @@ void AppWindowSetOpacity(Window* win, int percent) {
     }
     pw->opacity = percent < 20 ? 20 : percent > 100 ? 100 : percent;
     ApplyLayered(hwnd, pw);
+    if (pw->nativeOverlay) {
+        if (pw->opacity != 100) WinWindowHideNativeOverlay(win);
+        InvalidateRect(hwnd, nullptr, FALSE);
+    }
 }
 
 bool PlatWindowCanBeTransparent() {
@@ -2925,6 +3131,10 @@ void AppWindowSetClickThrough(Window* win, bool on) {
     }
     pw->clickThrough = on;
     ApplyLayered(hwnd, pw);
+    if (pw->nativeOverlay) {
+        if (on) WinWindowHideNativeOverlay(win);
+        InvalidateRect(hwnd, nullptr, FALSE);
+    }
 }
 
 void AppDrag(Window* win) {

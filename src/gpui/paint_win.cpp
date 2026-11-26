@@ -81,6 +81,16 @@ struct PaintApp {
 //
 // Only the offscreen target, which has to hand its pixels back as a DIB, still
 // uses a DC render target.
+struct OffscreenTarget {
+    HBITMAP bmp = nullptr;
+    HDC dc = nullptr;
+    HGDIOBJ oldBmp = nullptr;
+    void* bits = nullptr;
+    int w = 0;
+    int h = 0;
+    PaintTarget* painter = nullptr;
+};
+
 struct PaintTarget {
     uint64_t generation = 0;
     ID2D1DCRenderTarget* dcRt = nullptr;
@@ -106,7 +116,13 @@ struct PaintTarget {
     ID2D1Bitmap1* scrollStage = nullptr;
     int scrollStageW = 0;
     int scrollStageH = 0;
+    OffscreenTarget* nativeOverlay = nullptr;
+    bool overlayActive = false;
+    bool lastOverlay = false;
+    bool overlayFailed = false;
 };
+
+static void FreeWinDibTarget(OffscreenTarget* target);
 
 // ─── lifecycle ────────────────────────────────────────────────────────────
 
@@ -260,6 +276,10 @@ void PaintTargetFree(PaintCtx* ctx) {
     }
     if (!ctx || !ctx->rt) {
         return;
+    }
+    if (ctx->rt->nativeOverlay) {
+        FreeWinDibTarget(ctx->rt->nativeOverlay);
+        delete ctx->rt->nativeOverlay;
     }
     Rel(&ctx->rt->dcompVisual);
     Rel(&ctx->rt->dcompTarget);
@@ -529,14 +549,6 @@ bool PaintTargetBegin(PaintCtx* ctx, void* native, int pxW, int pxH) {
 // The offscreen target, which the window target is not: a DIB the render
 // target draws into with its alpha kept, so what comes out can be blended
 // over whatever the OS puts behind it.
-struct OffscreenTarget {
-    HBITMAP bmp = nullptr;
-    HDC dc = nullptr;
-    HGDIOBJ oldBmp = nullptr;
-    void* bits = nullptr;
-    int w = 0;
-    int h = 0;
-};
 static OffscreenTarget gOffscreen;
 
 // An offscreen target is not the window's frame, so the recorder steps aside
@@ -551,66 +563,70 @@ static bool OffscreenBeginFailed() {
     return false;
 }
 
-bool PaintTargetBeginOffscreen(PaintCtx* ctx, int pxW, int pxH) {
-    gOffscreenWasRecording = scene::SuspendBegin();
-    if (!ctx || !ctx->pa || pxW <= 0 || pxH <= 0) {
-        return OffscreenBeginFailed();
+static void FreeWinDibTarget(OffscreenTarget* target) {
+    if (PaintTarget* painter = target->painter) {
+        Rel(&painter->brush);
+        Rel(&painter->dcRt);
+        delete painter;
     }
-    void* bits = nullptr;
-    HBITMAP bmp = WinDib32New(pxW, pxH, &bits);
-    if (!bmp) {
-        return OffscreenBeginFailed();
+    if (target->dc) {
+        if (target->oldBmp) SelectObject(target->dc, target->oldBmp);
+        DeleteDC(target->dc);
     }
-    memset(bits, 0, (size_t)pxW * (size_t)pxH * 4);
-    HDC dc = CreateCompatibleDC(nullptr);
-    if (!dc) {
-        DeleteObject(bmp);
-        return OffscreenBeginFailed();
-    }
-    HGDIOBJ oldBmp = SelectObject(dc, bmp);
+    if (target->bmp) DeleteObject(target->bmp);
+    *target = {};
+}
 
+static bool CreateWinDibTarget(PaintApp* app, OffscreenTarget* target,
+                               int width, int height) {
+    target->bmp = WinDib32New(width, height, &target->bits);
+    target->dc = target->bmp ? CreateCompatibleDC(nullptr) : nullptr;
+    if (!target->dc) {
+        FreeWinDibTarget(target);
+        return false;
+    }
+    target->oldBmp = SelectObject(target->dc, target->bmp);
     // A target of its own: the window's ignores alpha, and this one must not.
-    PaintTargetFree(ctx);
     auto* t = new PaintTarget();
+    target->painter = t;
     t->generation = PaintResourceGenerationNew();
     D2D1_RENDER_TARGET_PROPERTIES rtp = D2D1::RenderTargetProperties(
         D2D1_RENDER_TARGET_TYPE_DEFAULT,
         D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,
                           D2D1_ALPHA_MODE_PREMULTIPLIED),
         96.f, 96.f);
-    HRESULT hr = ctx->pa->d2d->CreateDCRenderTarget(&rtp, &t->dcRt);
+    HRESULT hr = app->d2d->CreateDCRenderTarget(&rtp, &t->dcRt);
     if (SUCCEEDED(hr)) {
         t->rt = t->dcRt;
         hr = t->rt->CreateSolidColorBrush(D2D1::ColorF(1, 1, 1), &t->brush);
     }
+    RECT rc = {0, 0, width, height};
+    if (SUCCEEDED(hr)) hr = t->dcRt->BindDC(target->dc, &rc);
     if (FAILED(hr)) {
-        Rel(&t->brush);
-        Rel(&t->dcRt);
-        delete t;
-        SelectObject(dc, oldBmp);
-        DeleteDC(dc);
-        DeleteObject(bmp);
-        return OffscreenBeginFailed();
+        FreeWinDibTarget(target);
+        return false;
     }
-    ctx->rt = t;
-    RECT rc = {0, 0, pxW, pxH};
-    hr = t->dcRt->BindDC(dc, &rc);
-    if (FAILED(hr)) {
-        PaintTargetFree(ctx);
-        SelectObject(dc, oldBmp);
-        DeleteDC(dc);
-        DeleteObject(bmp);
+    target->w = width;
+    target->h = height;
+    return true;
+}
+
+static void BeginWinDibDraw(OffscreenTarget* target, float dpi) {
+    ID2D1RenderTarget* rt = target->painter->rt;
+    rt->SetDpi(dpi, dpi);
+    rt->BeginDraw();
+    rt->SetTransform(D2D1::Matrix3x2F::Identity());
+    rt->Clear(D2D1::ColorF(0, 0.f));
+}
+
+bool PaintTargetBeginOffscreen(PaintCtx* ctx, int pxW, int pxH) {
+    gOffscreenWasRecording = scene::SuspendBegin();
+    if (!ctx || !ctx->pa || pxW <= 0 || pxH <= 0 ||
+        !CreateWinDibTarget(ctx->pa, &gOffscreen, pxW, pxH))
         return OffscreenBeginFailed();
-    }
-    gOffscreen.bmp = bmp;
-    gOffscreen.dc = dc;
-    gOffscreen.oldBmp = oldBmp;
-    gOffscreen.bits = bits;
-    gOffscreen.w = pxW;
-    gOffscreen.h = pxH;
-    t->rt->BeginDraw();
-    t->rt->SetTransform(D2D1::Matrix3x2F::Identity());
-    t->rt->Clear(D2D1::ColorF(0, 0.f));
+    PaintTargetFree(ctx);
+    ctx->rt = gOffscreen.painter;
+    BeginWinDibDraw(&gOffscreen, 96.f);
     return true;
 }
 
@@ -629,19 +645,55 @@ bool PaintTargetEndOffscreen(PaintCtx* ctx, uint8_t* outBgra) {
                (size_t)gOffscreen.w * (size_t)gOffscreen.h * 4);
     }
     PaintTargetFree(ctx);
-    SelectObject(gOffscreen.dc, gOffscreen.oldBmp);
-    DeleteDC(gOffscreen.dc);
-    DeleteObject(gOffscreen.bmp);
-    gOffscreen = OffscreenTarget{};
+    gOffscreen.painter = nullptr;
+    FreeWinDibTarget(&gOffscreen);
     return ok;
 }
 
+bool PaintEnableNativeOverlay(PaintCtx* ctx) {
+    if (!ctx || !ctx->rt || !ctx->rt->hwnd || !scene::Recording()) return false;
+    PaintTarget* target = ctx->rt;
+    if (target->overlayActive) return true;
+    if (target->overlayFailed || !WinWindowPrepareNativeOverlay(ctx))
+        return false;
+    if (!target->nativeOverlay) target->nativeOverlay = new OffscreenTarget();
+    OffscreenTarget* overlay = target->nativeOverlay;
+    if (overlay->w != target->pxW || overlay->h != target->pxH) {
+        FreeWinDibTarget(overlay);
+        if (!CreateWinDibTarget(ctx->pa, overlay, target->pxW, target->pxH))
+            return false;
+    }
+    BeginWinDibDraw(overlay, ctx->dpi > 0 ? ctx->dpi : 96.f);
+    target->overlayActive = true;
+    return true;
+}
+
 bool PaintTargetEnd(PaintCtx* ctx) {
-    PaintSceneFinish(ctx, false);
     if (!ctx || !ctx->rt) {
         return false;
     }
-    HRESULT hr = ctx->rt->rt->EndDraw();
+    PaintTarget* target = ctx->rt;
+    bool split = target->overlayActive;
+    bool forcePresent = split || target->lastOverlay;
+    OffscreenTarget* overlay = split ? target->nativeOverlay : nullptr;
+    if (forcePresent && scene::Recording()) {
+        if (split != target->lastOverlay) scene::Invalidate(ctx);
+        scene::FrameEnd(ctx, nullptr);
+        scene::Replay(
+            ctx, nullptr,
+            split ? scene::ReplayLayers::Tree : scene::ReplayLayers::All);
+    } else {
+        PaintSceneFinish(ctx, false);
+    }
+    HRESULT overlayResult = S_OK;
+    if (overlay) {
+        ctx->rt = overlay->painter;
+        scene::Replay(ctx, nullptr, scene::ReplayLayers::Deferred);
+        ctx->rt = target;
+        overlayResult = overlay->painter->rt->EndDraw();
+    }
+    target->overlayActive = false;
+    HRESULT hr = target->rt->EndDraw();
     if (hr == D2DERR_RECREATE_TARGET) {
         // The device context sits on the shared device, so this is the
         // device gone, not just the target: keeping `pa->d3d` would have
@@ -653,7 +705,8 @@ bool PaintTargetEnd(PaintCtx* ctx) {
     // A frame the scene found identical to the last one is not presented:
     // what is on screen is already it, and presenting would rotate the
     // buffers under the damage rectangles.
-    if (SUCCEEDED(hr) && ctx->rt->swap && !scene::SkipPresent(ctx)) {
+    if (SUCCEEDED(hr) && target->swap &&
+        (forcePresent || !scene::SkipPresent(ctx))) {
         // Sync interval 0, the way GPUI's renderer presents. On a flip-model
         // chain that hands the frame straight to DWM, which composites it at
         // the next vblank anyway, so nothing tears — but the draw is not held
@@ -665,7 +718,28 @@ bool PaintTargetEnd(PaintCtx* ctx) {
             return false;
         }
     }
+    target->lastOverlay = split;
+    if (split && SUCCEEDED(hr) && SUCCEEDED(overlayResult)) {
+        GdiFlush();
+        if (WinWindowPresentNativeOverlay(ctx->window, overlay->dc, overlay->w,
+                                          overlay->h))
+            return true;
+    }
+    WinWindowHideNativeOverlay(ctx->window);
+    if (split) {
+        target->overlayFailed = true;
+        AppInvalidate(ctx->window);
+    }
     return true;
+}
+
+void WinPaintCaptureNativeOverlay(PaintCtx* ctx, HDC dc, int x, int y) {
+    PaintTarget* target = ctx->rt;
+    if (!target || !target->lastOverlay || target->overlayFailed) return;
+    OffscreenTarget* overlay = target->nativeOverlay;
+    BLENDFUNCTION blend = {AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
+    GdiAlphaBlend(dc, x, y, overlay->w, overlay->h, overlay->dc, 0, 0,
+                  overlay->w, overlay->h, blend);
 }
 
 // ─── canvas ───────────────────────────────────────────────────────────────

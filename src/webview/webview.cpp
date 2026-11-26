@@ -530,7 +530,7 @@ static void FinishNativeWebView(void* user, const Bounds* overlays, int count) {
     bool changed = self->visibleRegionNeedsUpdate ||
                    self->hasVisibleRegion != shaped ||
                    (shaped && len(region) != len(self->visibleRegion));
-#if GPUI_WRY_INPUT_REGION
+#if GPUI_WEBVIEW_LIVE_OVERLAY
     PaintCtx* paint = self->window ? &self->window->paint : nullptr;
     // Shadows and borders can reach the page without an input cutout.
     bool liveOverlay =
@@ -543,11 +543,12 @@ static void FinishNativeWebView(void* user, const Bounds* overlays, int count) {
     if (changed) {
 #if GPUI_WEBVIEW_NATIVE_CLIP
         Bounds empty = {};
-        bool applied = WebViewNativeVisibleRegionSet(self, raw,
-                                                     !shaped       ? nullptr
-                                                     : len(region) ? region.els
-                                                                   : &empty,
-                                                     len(region));
+        bool applied =
+            WebViewNativeVisibleRegionSet(self, raw,
+                                          liveOverlay || !shaped ? nullptr
+                                          : len(region)          ? region.els
+                                                                 : &empty,
+                                          liveOverlay ? 0 : len(region));
 #else
         Vec<wry::Rect> pieces;
         if (shaped) {
@@ -577,12 +578,12 @@ static void FinishNativeWebView(void* user, const Bounds* overlays, int count) {
         self->visibleRegion = region;
         self->hasVisibleRegion = shaped;
         self->visibleRegionNeedsUpdate = false;
-#if GPUI_WRY_INPUT_REGION
+#if GPUI_WEBVIEW_LIVE_OVERLAY
         self->liveOverlay = liveOverlay;
 #endif
     }
     ShowNative(self, raw);
-#if GPUI_WRY_INPUT_REGION
+#if GPUI_WEBVIEW_LIVE_OVERLAY
     if (liveOverlay) {
         DropWebViewBackdrop(self);
         return;

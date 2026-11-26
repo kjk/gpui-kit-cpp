@@ -36,9 +36,16 @@ uint64_t PaintResourceGenerationNew();
 // left unpainted would flash).
 bool PaintSceneFinish(PaintCtx* ctx, bool replayUnchanged);
 
-#if GPUI_OS_MAC || (GPUI_OS_LINUX && defined(GPUI_HAVE_X11_NATIVE_OVERLAY))
+#if GPUI_OS_WINDOWS || GPUI_OS_MAC || \
+    (GPUI_OS_LINUX && defined(GPUI_HAVE_X11_NATIVE_OVERLAY))
 // Route the next replay's deferred layers above the window's native children.
 bool PaintEnableNativeOverlay(PaintCtx* ctx);
+#endif
+#if GPUI_OS_WINDOWS
+bool WinWindowPrepareNativeOverlay(PaintCtx* ctx);
+bool WinWindowPresentNativeOverlay(Window* win, HDC dc, int width, int height);
+void WinWindowHideNativeOverlay(Window* win);
+void WinPaintCaptureNativeOverlay(PaintCtx* ctx, HDC dc, int x, int y);
 #endif
 #if GPUI_OS_MAC
 void MacWindowPresentNativeOverlay(Window* win, void* image);
