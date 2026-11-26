@@ -80,6 +80,10 @@ PopupMenu* PopupMenu::Menu(Str label, component::Icon* icon) {
     if (it) {
         it->label = label;
         MenuItemSetIcon(it, icon);
+        if (icon) {
+            it->iconSize = icon->size;
+            it->hasIconSize = icon->hasSize;
+        }
     }
     return this;
 }
@@ -159,7 +163,11 @@ PopupMenu* PopupMenu::Checked(bool v) {
 }
 PopupMenu* PopupMenu::Icon(IconName v) {
     if (len(items) > 0) {
-        items[len(items) - 1].icon = v;
+        MenuItem& it = items[len(items) - 1];
+        it.icon = v;
+        it.iconPath = {};
+        it.iconSvg = {};
+        it.hasIconSize = false;
     }
     return this;
 }
@@ -261,6 +269,15 @@ static void OnPopupLinkClick(PopupMenuState* state, Ctx* cx, const ClickEvent*,
     PopupMenuDismissAll(state, cx);
 }
 
+static bool PopupMenuHasIcon(const MenuItem& item) {
+    return item.icon != IconName::None || item.iconSvg.s || item.iconPath.s ||
+           item.hasIconSize;
+}
+
+static float PopupMenuItemIconSize(const MenuItem& item, float fallback) {
+    return item.hasIconSize ? item.iconSize : fallback;
+}
+
 // The width IntoEl assigns, which is also the width a submenu is measured
 // by before it has been drawn (popup_menu.rs update_submenu_menu_anchor).
 static float PopupMenuWidth(Ctx* cx, PopupMenu* menu) {
@@ -269,7 +286,7 @@ static float PopupMenuWidth(Ctx* cx, PopupMenu* menu) {
     }
     bool leftGutter = false;
     for (const MenuItem& it : menu->items) {
-        if (it.icon != IconName::None ||
+        if (PopupMenuHasIcon(it) ||
             (SideIsLeft(menu->checkSide) && it.checked)) {
             leftGutter = true;
         }
@@ -290,7 +307,7 @@ static float PopupMenuWidth(Ctx* cx, PopupMenu* menu) {
                 MeasureText(&cx->win->paint, it.label, Rems(cx, 0.875f), 0);
             float need = 2 + Rems(cx, 0.5f) + Rems(cx, 1.f) + label.w;
             if (leftGutter) {
-                need += icon + gap;
+                need += PopupMenuItemIconSize(it, icon) + gap;
             }
             if (it.kbd.s) {
                 Size key =
@@ -390,8 +407,7 @@ El* PopupMenu::IntoEl() {
     // of plain labels is not indented for nothing.
     bool leftGutter = false;
     for (const MenuItem& it : items) {
-        if (it.icon != IconName::None ||
-            (SideIsLeft(checkSide) && it.checked)) {
+        if (PopupMenuHasIcon(it) || (SideIsLeft(checkSide) && it.checked)) {
             leftGutter = true;
         }
     }
@@ -402,8 +418,7 @@ El* PopupMenu::IntoEl() {
     // `min_w(rems(8.))` unless the caller set one.
     // The rem lengths the rows below are built from: the icon and the gap
     // after it, and the kbd's padding and floor.
-    // Every icon a row shows -- its own, the check, the submenu's chevron --
-    // is `.xsmall()`, size_3.
+    // Unsized icons, checks and submenu chevrons use `.xsmall()`, size_3.
     float menuW = PopupMenuWidth(cx, this);
     float icon = UiIconPx(cx, UiSize::XSmall);
     float gap = Rems(cx, 0.25f);
@@ -623,10 +638,9 @@ El* PopupMenu::IntoEl() {
         El* left =
             Div(a)->FlexRowDir(cx->app)->Flex1()->Gap(gap)->ItemsCenter();
         if (leftGutter) {
-            // The gutter is the icon's, or the check's, or empty — but it is
-            // always the same width, so the labels line up.
-            if (it.icon != IconName::None || it.iconSvg.s || it.iconPath.s) {
-                El* ic = IconEl(a, it.icon, icon)->Fg(fg);
+            if (PopupMenuHasIcon(it)) {
+                El* ic = IconEl(a, it.icon, PopupMenuItemIconSize(it, icon))
+                             ->Fg(fg);
                 if (it.iconSvg.s) {
                     ic->iconSvg = it.iconSvg;
                 } else if (it.iconPath.s) {

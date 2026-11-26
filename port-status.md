@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f807c1b2c49ef25ddfbe73e465e33b8a5fa5632e` (2026-11-26,
-speech: Add SystemRecognizer::expected_phrases to favor names and terms (#4143)).
-System speech recognition passes phrase hints to macOS and Windows. The
-speech example accepts one phrase per line for the system recognizer.
+Processed through `2a6a1ba3cbf6eb2308552fd6808b709c33335801` (2026-11-26,
+menu: Draw an item's icon at the size it was given (#4150)).
+Popup menu icons keep their explicit size, and the story shows a medium
+icon beside the default extra-small version.
 The current update target is
-`f807c1b2c49ef25ddfbe73e465e33b8a5fa5632e`.
+`75b682a951b7f269de08cdfecef4894af9f980b7`.
 
 ## Known gaps vs Rust
 

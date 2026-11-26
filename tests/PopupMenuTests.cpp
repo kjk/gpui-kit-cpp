@@ -1359,6 +1359,31 @@ static El* MenuItemNamed(El* e, const char* label) {
     return nullptr;
 }
 
+// popup_menu.rs an_item_icon_keeps_the_size_it_was_given.
+static void AnItemIconKeepsTheSizeItWasGiven() {
+    App* app = TestAppNew();
+    Arena* a = ArenaNew();
+    Ctx cx = {app, nullptr, a, {}};
+    El* menu = PopupMenu::New(&cx, StrL("icon-menu"))
+                   ->Menu(StrL("Medium"), Icon::New(&cx, IconName::Search)
+                                              ->Size(UiSize::Medium))
+                   ->Menu(StrL("Styled"), Icon::New(&cx, IconName::Search)
+                                              ->Size(Rems(&cx, 1.25f)))
+                   ->Menu(StrL("Default"), IconName::Search)
+                   ->IntoEl();
+    const char* names[] = {"Medium", "Styled", "Default"};
+    const float sizes[] = {16, 20, 12};
+    for (int i = 0; i < 3; i++) {
+        El* row = MenuItemNamed(menu, names[i]);
+        El* icon = row && row->first ? row->first->first : nullptr;
+        utassert(icon && icon->kind == ElKind::Icon &&
+                 icon->style.width == sizes[i] &&
+                 icon->style.height == sizes[i]);
+    }
+    ArenaDelete(a);
+    TestAppFree(app);
+}
+
 // menu.rs a_checked_menu_item_reports_its_check. The check mark is drawn
 // beside the row; the node has to say it is toggled or a screen reader
 // cannot tell which option is chosen. An option left unchecked says so,
@@ -1691,6 +1716,7 @@ static void AnEmptyContextMenuLeavesFocusWhereItWas() {
 }
 
 void TestPopupMenu() {
+    AnItemIconKeepsTheSizeItWasGiven();
     TheBindingsAreTheOnesRustBinds();
     AScrollableMenuOpensOnItsCheckedItem();
     AScrollableMenuFitsHalfTheWindowByDefault();

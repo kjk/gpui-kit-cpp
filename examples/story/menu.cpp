@@ -182,6 +182,10 @@ static component::PopupMenu* PopupStoryMenu(MenuStory* self, Ctx* cx) {
             ->Separator()
             ->MenuWithAction(StrL("Search"), input::Search())
             ->Icon(IconName::Search)
+            ->Menu(StrL("Search (medium icon)"),
+                   component::Icon::New(cx, IconName::Search)
+                       ->Size(UiSize::Medium))
+            ->Action(input::Search())
             ->Separator();
 
     El* custom = Div(a)->FlexCol();

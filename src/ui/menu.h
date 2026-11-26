@@ -32,6 +32,8 @@ struct MenuItem {
     // asset path, or SVG source (`Icon::data`), which wins over both.
     Str iconPath = {};
     Str iconSvg = {};
+    float iconSize = 0;
+    bool hasIconSize = false;
     // The keystroke shown on the right. Rust derives it from the item's
     // action rather than storing one — `Kbd::binding_for_action_in` — and so
     // does a row that names an action; this is what a row that names none
