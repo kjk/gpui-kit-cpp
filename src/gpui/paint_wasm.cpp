@@ -960,6 +960,8 @@ EM_JS(int, GpJsTextNew,
         lines: lines, starts: starts, wrapped: wrapped, dx: dx, cover: cover,
         parts: parts, widths: widths,
         font: font,
+        direction: c.direction === "inherit" && c.canvas && c.canvas.isConnected
+            ? getComputedStyle(c.canvas).direction : c.direction,
         px: fontSize, box: box, natural: natural, asc: fm.asc,
         underline: underline, strike: strike,
         wrapW: (wrap && maxW > 0) ? maxW : maxLine
@@ -981,6 +983,88 @@ EM_JS(double, GpJsTextBaseline, (int id), {
         return 0;
     }
     return e.asc + (e.box - e.natural) * 0.5;
+});
+
+EM_JS(int, GpJsTextClusterWidths, (int id, int byteLen, float* out), {
+    const G = globalThis.__gpui;
+    const e = G.texts[id];
+    if (!e || e.lines.length !== 1 || typeof Intl.Segmenter !== "function") {
+        return 0;
+    }
+    if (!e.clusterWidths) {
+        const line = e.lines[0];
+        if (!line.length || G.u8len(line) !== byteLen) return 0;
+        if (!G.graphemes) G.graphemes = new Intl.Segmenter("und", {granularity: "grapheme"});
+        if (typeof document !== "undefined" && !G.clusterText) {
+            // Measure in isolation so page styles cannot change the shaping
+            // of content painted into the canvas.
+            const host = document.createElement("div");
+            host.style.cssText = "all:initial;position:fixed;left:0;top:0;visibility:hidden;contain:strict;pointer-events:none";
+            host.setAttribute("aria-hidden", "true");
+            const shadow = host.attachShadow({mode: "closed"});
+            const span = document.createElement("span");
+            span.style.cssText = "display:inline-block;white-space:pre";
+            span.appendChild(document.createTextNode(""));
+            shadow.appendChild(span);
+            (document.body || document.documentElement).appendChild(host);
+            G.clusterText = span;
+            G.clusterRange = document.createRange();
+        }
+        const span = G.clusterText;
+        const range = G.clusterRange;
+        const c = span ? null : G.measurer();
+        const previous = c && c.font;
+        const widths = new Float32Array(byteLen);
+        const parts = e.parts ? e.parts[0] :
+            [{start: 0, end: line.length, font: e.font, width: e.widths[0]}];
+        let byte = 0;
+        for (const part of parts) {
+            const text = line.slice(part.start, part.end);
+            if (span) {
+                span.style.font = part.font;
+                span.style.direction = e.direction === "rtl" ? "rtl" : "ltr";
+                // Canvas normalizes ASCII whitespace to spaces. Replacing
+                // it also leaves all UTF-16 range endpoints unchanged.
+                span.firstChild.data = Array.from(text, function(ch) {
+                    const code = ch.charCodeAt(0);
+                    return code >= 9 && code <= 13 ? " " : ch;
+                }).join("");
+            } else {
+                c.font = part.font;
+            }
+            const start = byte;
+            let total = 0;
+            for (const g of G.graphemes.segment(text)) {
+                let width;
+                if (span) {
+                    range.setStart(span.firstChild, g.index);
+                    range.setEnd(span.firstChild, g.index + g.segment.length);
+                    width = 0;
+                    for (const rect of range.getClientRects()) width += rect.width;
+                } else {
+                    // The headless Node backend has additive font metrics.
+                    width = c.measureText(g.segment).width;
+                }
+                widths[byte] = width;
+                byte += G.u8len(g.segment);
+                total += width;
+            }
+            if (total > 0) {
+                // DOM ranges supply in-context widths even in RTL runs.
+                // Keep the sum equal to the Canvas width used for painting.
+                const scale = part.width / total;
+                for (let i = start; i < byte; i++) widths[i] *= scale;
+            } else if (part.width > 0) {
+                widths[start] = part.width;
+            }
+        }
+        if (span) span.firstChild.data = "";
+        if (c) c.font = previous;
+        if (byte !== byteLen) return 0;
+        e.clusterWidths = widths;
+    }
+    HEAPF32.set(e.clusterWidths, out >> 2);
+    return 1;
 });
 
 EM_JS(void, GpJsTextDraw, (int id, float x, float y, int color, int clip), {
@@ -1617,6 +1701,10 @@ int TextLayoutRangeRects(TextLayout* tl, Str s, int u8a, int u8b, Bounds* out,
     static_assert(sizeof(Bounds) == 4 * sizeof(float),
                   "Bounds must be four floats for GpJsTextRangeRects");
     return GpJsTextRangeRects(tl->js, u8a, u8b, (float*)out, max);
+}
+
+bool TextLayoutClusterWidths(TextLayout* tl, Str s, float* widths) {
+    return tl && tl->js && GpJsTextClusterWidths(tl->js, len(s), widths);
 }
 
 } // namespace gpui

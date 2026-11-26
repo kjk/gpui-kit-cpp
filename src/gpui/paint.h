@@ -383,7 +383,7 @@ int TextLayoutRangeRects(TextLayout* tl, Str s, int u8a, int u8b, Bounds* out,
 // `widths`, indexed by the UTF-8 start of each shaped cluster. Unlike
 // differences of caret positions, these widths follow logical text order
 // even when the glyphs are displayed in a different order.
-#if GPUI_OS_WINDOWS || GPUI_OS_LINUX || GPUI_OS_MAC
+#if GPUI_OS_WINDOWS || GPUI_OS_LINUX || GPUI_OS_MAC || GPUI_OS_WASM
 #define GPUI_PAINT_CLUSTER_WIDTHS 1
 bool TextLayoutClusterWidths(TextLayout* tl, Str s, float* widths);
 #else

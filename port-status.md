@@ -35,8 +35,9 @@ The current update target is
   shaped advances and paint geometry across font, link and source-style
   ranges on each hard line, including mark backgrounds and strikethrough.
   Inline code keeps its own inset and font-size layout. Desktop wrapping
-  uses the shaped cluster advances in logical order. Browser and mobile
-  host layouts use caret geometry or isolated word widths
+  uses the shaped cluster advances in logical order. The browser measures
+  in-context grapheme ranges and uses Canvas widths for each styled span.
+  Mobile host layouts use caret geometry or isolated word widths
   (`src/base/text.cpp`, `src/gpui/gpui.cpp`).
 
 - **Windows additionally handles touch-screen pinch.** DirectManipulation
