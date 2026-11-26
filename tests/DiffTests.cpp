@@ -2652,6 +2652,45 @@ static void DiffShiftClickKeepsTheSelectedWordOrLineUnit() {
     TestAppFree(stage.app);
 }
 
+// selection.rs line_distance checks the line band, then the vertical
+// distance to its center, even when the pointer is past the text.
+static void DiffDragPrefersTheClosestLineCenter() {
+    PointerStage stage = StagePointer(false, StrL("--- /dev/null\n"
+                                                  "+++ b/words\n"
+                                                  "@@ -0,0 +1,3 @@\n"
+                                                  "+anchor\n"
+                                                  "+second\n"
+                                                  "+third line\n"));
+    auto* state = stage.host->state.Get(stage.app);
+    Bounds first, third;
+    utassert(DiffRunBounds(stage.win, DiffSide::Modified, 0, &first));
+    utassert(DiffRunBounds(stage.win, DiffSide::Modified, 2, &third));
+    Point start{first.CenterX(), first.CenterY()};
+    Point end{third.Right() + 40, third.CenterY()};
+    TestSimulateMouseDown(stage.win, start, MouseButton::Left, {}, 3);
+    // Model a tall wrapped run above the pointer and a short clipped run
+    // below it. The second line has the nearer edge but the third line has
+    // the nearer center.
+    for (auto& run : state->codeRuns) {
+        if (run.side != DiffSide::Modified) continue;
+        if (run.line == 1) {
+            run.visible.y = end.y - 40;
+            run.visible.h = 39;
+        } else if (run.line == 2) {
+            run.visible.y = end.y + 4;
+            run.visible.h = 6;
+        }
+    }
+    TestSimulateMouseMove(stage.win, end, true);
+    TestSimulateMouseUp(stage.win, end, MouseButton::Left, {}, 3);
+    Arena* a = ArenaNew();
+    utassert(StrEq(state->SelectedText(a), "anchor\nsecond\nthird line"));
+    TestSimulateKeystrokes(stage.win, "secondary-c");
+    utassert(StrEq(TestReadFromClipboard(a), "anchor\nsecond\nthird line"));
+    ArenaDelete(a);
+    TestAppFree(stage.app);
+}
+
 static PointerStage StageTwoFiles(Bounds (&rows)[2]) {
     PointerStage stage = StagePointer(false, StrL("diff --git a/a.txt b/a.txt\n"
                                                   "--- /dev/null\n"
@@ -3168,6 +3207,7 @@ void TestDiff() {
     AClaimedTextClickKeepsTheLineHandlerQuiet();
     CodeSelectionCopiesCharactersAndWords();
     DiffShiftClickKeepsTheSelectedWordOrLineUnit();
+    DiffDragPrefersTheClosestLineCenter();
     DiffDragAcrossFilesKeepsTheAnchorWithoutCopyingTheWrongFile();
     DiffTouchHandlesKeepBothEndpointsAcrossFiles();
     SplitCodeSelectionKeepsTheSourceSideAndTabs();

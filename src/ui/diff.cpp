@@ -4145,27 +4145,29 @@ struct DiffTextRun {
     int ix = 0;
 };
 
-// Find the nearest visible source run on the anchor side. Compare row
-// distance first so a long or heavily indented line cannot steal the hit
-// from a shorter line placed directly under the pointer.
+// selection.rs run_at: prefer the half-open row band, then its center.
+// Horizontal position only breaks ties between runs at that row distance.
 static const DiffCodeRunGeometry* DiffSelectionRun(const DiffState* self,
                                                    Point at, int file,
                                                    DiffSide side) {
     const DiffCodeRunGeometry* best = nullptr;
     float bestY = 0;
-    float bestX = 0;
+    float bestDistance = 0;
     bool bestRow = false;
     for (const DiffCodeRunGeometry& run : self->codeRuns) {
         if ((file >= 0 && run.file != file) || run.side != side) continue;
         Bounds b = run.visible;
         bool inRow = at.y >= b.y && at.y < b.Bottom();
-        float y = std::max(0.f, std::max(b.y - at.y, at.y - b.Bottom()));
-        float x = std::max(0.f, std::max(b.x - at.x, at.x - b.Right()));
+        float y = fabsf(at.y - b.CenterY());
+        float dx = std::max(0.f, std::max(b.x - at.x, at.x - b.Right()));
+        float dy = std::max(0.f, std::max(b.y - at.y, at.y - b.Bottom()));
+        float distance = dx * dx + dy * dy;
         if (!best || (inRow && !bestRow) ||
-            (inRow == bestRow && (y < bestY || (y == bestY && x < bestX)))) {
+            (inRow == bestRow &&
+             (y < bestY || (y == bestY && distance < bestDistance)))) {
             best = &run;
             bestY = y;
-            bestX = x;
+            bestDistance = distance;
             bestRow = inRow;
         }
     }
