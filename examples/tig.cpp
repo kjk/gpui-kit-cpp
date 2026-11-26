@@ -822,6 +822,16 @@ El* Tig::Navigation(Ctx* cx, Tig* self, bool history) {
             ->PathId(history ? StrL("history-list") : StrL("file-list"))
             ->TabStop(true)
             ->TrackFocus(history ? self->historyFocus : self->filesFocus)
+            ->OnMouseDown(Listen(
+                cx,
+                +[](Tig* view, Ctx* cx, const MouseDownEvent* event,
+                    int64_t history) {
+                    if (event->button != MouseButton::Left) return;
+                    FocusHandleFocus(cx->win, history ? view->historyFocus
+                                                      : view->filesFocus);
+                    Notify(cx);
+                },
+                history))
             ->KeyContext(history ? StrL("TigHistory") : StrL("TigFiles"))
             ->Role(AccessibilityRole::List)
             ->AriaLabel(history ? StrL("Commit history")
