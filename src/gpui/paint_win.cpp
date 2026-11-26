@@ -2038,6 +2038,7 @@ static void ApplyLineHeight(IDWriteTextLayout* layout, float fontSize,
 struct TextLayout {
     TextLayoutHead head;
     IDWriteTextLayout* layout = nullptr;
+    bool bidiGeometry = false;
 };
 
 static IDWriteTextLayout* Dw(TextLayout* tl) {
@@ -2199,6 +2200,7 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
     auto* tl = new TextLayout();
     tl->head.textLen = len(s);
     tl->layout = layout;
+    tl->bidiGeometry = rtl || m.maxBidiReorderingDepth > 1;
     tl->head.generation = PaintResourceGenerationNew();
     return tl;
 }
@@ -2327,6 +2329,24 @@ int TextLayoutHitPoint(TextLayout* tl, Str s, float relX, float relY) {
     return WideOffToUtf8(s, wpos);
 }
 
+bool TextLayoutCaretPoint(TextLayout* tl, Str text, int offset, bool trailing,
+                          float* x, float* y, float* height) {
+    if (!tl || !tl->bidiGeometry) return false;
+    offset = ClampI(offset, 0, len(text));
+    trailing = trailing && offset > 0;
+    int at = trailing ? Utf8Prev(text, offset) : offset;
+    FLOAT px = 0, py = 0;
+    DWRITE_HIT_TEST_METRICS hit = {};
+    if (FAILED(Dw(tl)->HitTestTextPosition((UINT32)Utf8OffToWide(text, at),
+                                           trailing, &px, &py, &hit))) {
+        return false;
+    }
+    *x = px;
+    *y = hit.top;
+    *height = hit.height;
+    return true;
+}
+
 float TextLayoutBaseline(TextLayout* tl) {
     if (!tl) {
         return 0;
@@ -2337,6 +2357,50 @@ float TextLayoutBaseline(TextLayout* tl) {
         return 0;
     }
     return (float)line.baseline;
+}
+
+static int DwriteBidiRangeRects(IDWriteTextLayout* layout, int lo, int hi,
+                                float top, float height, float extendRight,
+                                Bounds* out, int max) {
+    DWRITE_HIT_TEST_METRICS local[16];
+    auto* ranges = local;
+    UINT32 count = 0;
+    UINT32 capacity = dimofi(local);
+    HRESULT hr =
+        layout->HitTestTextRange(lo, hi - lo, 0, 0, ranges, capacity, &count);
+    Vec<DWRITE_HIT_TEST_METRICS> overflow;
+    if (hr == HRESULT_FROM_WIN32(ERROR_INSUFFICIENT_BUFFER) &&
+        count <= INT_MAX / sizeof(*ranges)) {
+        capacity = count;
+        ranges = VecAppendBlanks(overflow, (int)count);
+        if (!ranges) return -1;
+        hr = layout->HitTestTextRange(lo, hi - lo, 0, 0, ranges, capacity,
+                                      &count);
+    }
+    if (FAILED(hr) || count > capacity) return -1;
+    // Hit testing returns logical runs. Emit visual ranges from left to
+    // right, merging only where the runs touch.
+    if (count > 1) {
+        qsort(ranges, count, sizeof(*ranges), [](const void* a, const void* b) {
+            float left = static_cast<const DWRITE_HIT_TEST_METRICS*>(a)->left;
+            float right = static_cast<const DWRITE_HIT_TEST_METRICS*>(b)->left;
+            return (left > right) - (left < right);
+        });
+    }
+    int n = 0;
+    for (UINT32 i = 0; i < count && n < max;) {
+        float left = ranges[i].left;
+        float right = left + ranges[i].width;
+        ++i;
+        while (i < count && ranges[i].left <= right) {
+            right = std::max(right, ranges[i].left + ranges[i].width);
+            ++i;
+        }
+        if (i == count && extendRight > 0.f)
+            right = std::max(right, extendRight);
+        out[n++] = {left, top, right - left, height};
+    }
+    return n;
 }
 
 int TextLayoutRangeRects(TextLayout* tl, Str s, int u8a, int u8b, Bounds* out,
@@ -2353,7 +2417,7 @@ int TextLayoutRangeRects(TextLayout* tl, Str s, int u8a, int u8b, Bounds* out,
         wb = t;
     }
     DWRITE_TEXT_METRICS tm = {};
-    layout->GetMetrics(&tm);
+    if (FAILED(layout->GetMetrics(&tm))) return 0;
     UINT32 lineCount = tm.lineCount;
     if (lineCount == 0) {
         return 0;
@@ -2394,6 +2458,15 @@ int TextLayoutRangeRects(TextLayout* tl, Str s, int u8a, int u8b, Bounds* out,
         int hi = wb < visEnd ? wb : visEnd;
         if (lo >= hi) {
             continue;
+        }
+        if (tl->bidiGeometry) {
+            float extendRight = wb > visEnd ? tm.layoutWidth : 0.f;
+            int got = DwriteBidiRangeRects(layout, lo, hi, top, lines[i].height,
+                                           extendRight, out + n, max - n);
+            if (got >= 0) {
+                n += got;
+                continue;
+            }
         }
         FLOAT x0 = 0, y0 = 0, x1 = 0, y1 = 0;
         DWRITE_HIT_TEST_METRICS a = {}, b = {};

@@ -7233,6 +7233,9 @@ uint8_t FontWeightBits(FontWeight weight, uint8_t unknown);
 // flags when no weight is set; `unset` when neither.
 uint16_t StyleFontWeightBits(const Style& s, uint16_t unset);
 
+// Width of a shaped hard line, including trailing spaces.
+bool TextMeasureAdvance(PaintCtx* ctx, Str text, float fontSize, uint16_t font,
+                        float* out);
 bool TextPointAt(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
                  int off, float* outX, float* outY, float* outH,
                  uint16_t font = 0, float lineHeight = 0,

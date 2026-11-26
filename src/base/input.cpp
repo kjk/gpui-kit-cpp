@@ -512,19 +512,12 @@ struct WrapMeasure {
     int numericDigits = 0;
 };
 
-// The advance of `bytes` on their own, in the map's font: where a caret after
-// them stands, which counts a trailing space the way a width would not.
+// Shape these bytes in the wrap-map font, including trailing spaces.
 static bool WrapAdvance(const WrapMeasure* wm, Str bytes, float* out) {
     const InputWrapMap* m = wm->map;
-    float x = 0, y = 0, h = 0;
-    if (!wm->ctx ||
-        !TextPointAt(wm->ctx, TextNoLineBreaks(GetTempArena(), bytes),
-                     m->fontSize, 0, false, len(bytes), &x, &y, &h,
-                     m->fontWord)) {
-        return false;
-    }
-    *out = x;
-    return true;
+    return wm->ctx &&
+           TextMeasureAdvance(wm->ctx, TextNoLineBreaks(GetTempArena(), bytes),
+                              m->fontSize, m->fontWord, out);
 }
 
 // The slot holding `c`, or the empty one where it belongs. Null with no table.
@@ -1208,9 +1201,9 @@ struct TabSliceMeasure {
 static float TabSliceWidth(void* user, Str text) {
     TabSliceMeasure* m = (TabSliceMeasure*)user;
     if (m->ctx && len(text) > 0) {
-        float x = 0, y = 0, h = 0;
-        if (TextPointAt(m->ctx, TextNoLineBreaks(GetTempArena(), text), m->font,
-                        0, false, len(text), &x, &y, &h, m->word)) {
+        float x = 0;
+        if (TextMeasureAdvance(m->ctx, TextNoLineBreaks(GetTempArena(), text),
+                               m->font, m->word, &x)) {
             return x;
         }
     }
@@ -10496,10 +10489,10 @@ static float WrapTextAdvance(PaintCtx* ctx, const InputState* s, Str text) {
         return TabExpandedWidth(text, space * (float)tabSize, &TabSliceWidth,
                                 &measure);
     }
-    float x = 0, y = 0, h = 0;
+    float x = 0;
     if (len(text) > 0 && ctx) {
-        TextPointAt(ctx, TextNoLineBreaks(GetTempArena(), text), WrapFontOf(s),
-                    0, false, len(text), &x, &y, &h, s->lastFontWord);
+        TextMeasureAdvance(ctx, TextNoLineBreaks(GetTempArena(), text),
+                           WrapFontOf(s), s->lastFontWord, &x);
     }
     return x;
 }

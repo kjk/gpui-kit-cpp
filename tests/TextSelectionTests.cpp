@@ -2899,7 +2899,7 @@ static void SelectableTextRevealsOnlyWhenItsValidRangeChanges() {
     TestAppFree(app);
 }
 
-#if GPUI_OS_LINUX
+#if GPUI_OS_LINUX || GPUI_OS_WINDOWS
 static void MixedDirectionSelectionKeepsVisualGaps() {
     SelectionFixture fixture;
     Str text = StrL("abc \xd7\x90\xd7\x91\xd7\x92 xyz");
@@ -2921,6 +2921,17 @@ static void MixedDirectionSelectionKeepsVisualGaps() {
     utassertnear(selection[1].x, rest.Right());
     utassertnear(selection[1].x, alef.x);
     utassertnear(selection[1].w, alef.w);
+#if GPUI_OS_WINDOWS
+    // The same source boundary touches the Latin run's trailing edge and
+    // the Hebrew run's leading edge, which are separated on screen.
+    float x = 0, y = 0, h = 0;
+    utassert(TextLayoutPointAt(layout, text, false, 4, &x, &y, &h, true));
+    utassertnear(x, latin.Right());
+    utassert(TextLayoutPointAt(layout, text, false, 4, &x, &y, &h, false));
+    utassertnear(x, alef.Right());
+    utassert(TextLayoutPointAt(layout, text, false, 10, &x, &y, &h, true));
+    utassertnear(x, rest.x);
+#endif
     TextLayoutRelease(layout);
 }
 #endif
@@ -2928,7 +2939,7 @@ static void MixedDirectionSelectionKeepsVisualGaps() {
 void TestTextSelection() {
     SelectableTextRevealsOnlyWhenItsValidRangeChanges();
     TestSuite("text_selection");
-#if GPUI_OS_LINUX
+#if GPUI_OS_LINUX || GPUI_OS_WINDOWS
     MixedDirectionSelectionKeepsVisualGaps();
 #endif
     PaintDoesNotResolveWindowSelectedText();

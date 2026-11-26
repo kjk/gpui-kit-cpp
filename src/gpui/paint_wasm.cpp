@@ -2066,8 +2066,8 @@ bool TextLayoutClusterWidths(TextLayout* tl, Str s, float* widths) {
     return tl && tl->js && GpJsTextClusterWidths(tl->js, len(s), widths);
 }
 
-bool TextLayoutCaretPoint(TextLayout* tl, int offset, bool trailing, float* x,
-                          float* y, float* height) {
+bool TextLayoutCaretPoint(TextLayout* tl, Str, int offset, bool trailing,
+                          float* x, float* y, float* height) {
     float point[3];
     if (!tl || !tl->js || !GpJsTextCaret(tl->js, offset, trailing, point))
         return false;

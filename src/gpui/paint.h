@@ -397,11 +397,11 @@ inline bool TextLayoutClusterWidths(TextLayout*, Str, float*) {
 // grapheme starts. Returns false when the rectangles do not cover the line.
 bool TextLayoutRangeClusterWidths(TextLayout* tl, Str s, float* widths);
 // Positioned caret when the backend exposes both edges of a bidi boundary.
-#if GPUI_OS_WASM
-bool TextLayoutCaretPoint(TextLayout* tl, int offset, bool trailing, float* x,
-                          float* y, float* height);
+#if GPUI_OS_WINDOWS || GPUI_OS_WASM
+bool TextLayoutCaretPoint(TextLayout* tl, Str text, int offset, bool trailing,
+                          float* x, float* y, float* height);
 #else
-inline bool TextLayoutCaretPoint(TextLayout*, int, bool, float*, float*,
+inline bool TextLayoutCaretPoint(TextLayout*, Str, int, bool, float*, float*,
                                  float*) {
     return false;
 }
