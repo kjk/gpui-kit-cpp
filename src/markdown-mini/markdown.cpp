@@ -504,29 +504,20 @@ static void MiniInline(MiniParser* p, Node* parent, Str text) {
 
         if (c == '\n' || c == '\r') {
             int32_t textEnd = at;
-            bool hard = false;
             if (p->options->constructs.hardBreakTrailing) {
-                int32_t spaces = 0;
                 while (textEnd > plain && text.s[textEnd - 1] == ' ') {
                     textEnd--;
-                    spaces++;
-                }
-                hard = spaces >= 2;
-                if (!hard) {
-                    textEnd = at;
                 }
             }
-            if (textEnd > plain) {
-                MiniText(p, parent, MiniSlice(text, plain, textEnd));
-            }
-            if (hard) {
-                MiniNode(p, NodeKind::Break, parent);
-            } else {
-                MiniText(p, parent, StrL(" "));
-            }
+            bool hard = at - textEnd >= 2;
             at += c == '\r' && at + 1 < len(text) && text.s[at + 1] == '\n' ? 2
                                                                             : 1;
-            plain = at;
+            // Keep soft breaks inside the text value, as the full parser does.
+            if (hard) {
+                MiniText(p, parent, MiniSlice(text, plain, textEnd));
+                MiniNode(p, NodeKind::Break, parent);
+                plain = at;
+            }
             continue;
         }
         at++;
