@@ -3381,27 +3381,27 @@ bool DiffState::HasLine(DiffLinePosition position) const {
                                 ->LineIndex(position.side, position.line) >= 0;
 }
 
+static int ExpandDiffLine(DiffState* state, DiffLinePosition position) {
+    int row = SourceRow(state, position);
+    if (row >= 0 && state->rows[row].kind == DiffRowKind::Fold) {
+        const DiffRow& fold = state->rows[row];
+        state->ExpandFold(fold.file, fold.pairsStart, fold.pairsEnd,
+                          DiffFoldExpansion::All, nullptr);
+        row = SourceRow(state, position);
+    }
+    return row;
+}
+
 void DiffState::ScrollToLine(DiffLinePosition position, Ctx* cx) {
-    if (FileIx(this, position.path) < 0) return;
-    if (files[FileIx(this, position.path)]
-            ->LineIndex(position.side, position.line) < 0)
-        return;
+    if (!HasLine(position)) return;
     if (UpdateFileCollapsed(this, position.path, false)) {
         Rebuild(this, false);
     }
-    int row = SourceRow(this, position);
-    if (row >= 0 && rows[row].kind == DiffRowKind::Fold) {
-        DiffFoldRange range;
-        range.file = rows[row].file;
-        range.start = rows[row].pairsStart;
-        range.end = rows[row].pairsEnd;
-        VecAppend(expanded, range);
-        Rebuild(this, false);
-        row = SourceRow(this, position);
-    }
+    int row = ExpandDiffLine(this, position);
     if (row >= 0) {
         scrollItem = row;
-        VirtualListScrollToItemDeferred(&listScroll, row, ScrollStrategy::Top);
+        VirtualListScrollToItemDeferred(&listScroll, row,
+                                        ScrollStrategy::Start);
         if (cx) Notify(cx);
     }
 }
@@ -3411,7 +3411,7 @@ void DiffState::ScrollToFile(Str path, Ctx* cx) {
     if (file < 0 || file >= len(headerRows)) return;
     scrollItem = headerRows[file];
     VirtualListScrollToItemDeferred(&listScroll, scrollItem,
-                                    ScrollStrategy::Top);
+                                    ScrollStrategy::Start);
     if (cx) Notify(cx);
 }
 
@@ -5270,7 +5270,15 @@ static void OnDiffAction(DiffState* self, Ctx* cx, const ActionEvent* ev) {
         }
         event.kind = DiffEventKind::SelectionEnded;
         Emit(self, cx, event);
-        if (!all) self->ScrollToLine(cursor, cx);
+        if (!all) {
+            int row = ExpandDiffLine(self, cursor);
+            if (row >= 0) {
+                self->scrollItem = row;
+                VirtualListScrollToItemDeferred(&self->listScroll, row,
+                                                ScrollStrategy::Top);
+                Notify(cx);
+            }
+        }
         return;
     }
     if (ev->action == input::Copy()) {

@@ -1232,6 +1232,51 @@ static void OpenLongDiff(App** appOut, Window** winOut, DiffState** stateOut,
     *stateOut = self ? self->state.Get(app) : nullptr;
 }
 
+// Rust scroll_to_line and scroll_to_file align to the viewport start.
+static void ExplicitDiffJumpsAlignVisibleTargets() {
+    App* app = nullptr;
+    Window* win = nullptr;
+    DiffState* state = nullptr;
+    OpenLongDiff(&app, &win, &state);
+    state->SetMode(DiffMode::Split, nullptr);
+    TestDraw(win);
+    TestFocus(win, state->focus);
+    TestSimulateKeystrokes(win, "shift-down");
+    TestDraw(win);
+    utassert(state->HasSelectedLines());
+    utassert(TestNear(state->listScroll.offset, 0.f));
+
+    auto line = DiffLinePosition::New(StrL("long.txt"), DiffSide::Modified, 2);
+    state->ScrollToLine(line, nullptr);
+    float lineTop = state->ScrollItem() * 24.f;
+    utassert(lineTop > 0.f && lineTop + 24.f <= state->listScroll.viewport);
+    TestDraw(win);
+    utassert(TestNear(state->listScroll.offset, lineTop));
+
+    Vec<DiffFile*> longFiles = state->TakeFiles();
+    Vec<DiffFile*> files;
+    bool parsed = DiffFile::Parse(
+        StrL("--- a/first.txt\n+++ b/first.txt\n@@ -1 +1 @@\n-old\n+new\n"),
+        &files, nullptr);
+    utassert(parsed && len(longFiles) == 1);
+    if (parsed && len(longFiles) == 1) {
+        VecAppend(files, longFiles[0]);
+        state->SetFiles(files.els, len(files), nullptr);
+        TestDraw(win);
+        utassert(TestNear(state->listScroll.offset, 0.f));
+        state->ScrollToFile(StrL("long.txt"), nullptr);
+        float headerTop = state->ScrollItem() * 24.f;
+        utassert(headerTop > 0.f && headerTop + 24.f <= state->listScroll
+                                                            .viewport);
+        TestDraw(win);
+        utassert(TestNear(state->listScroll.offset, headerTop));
+    } else {
+        for (int i = 0; i < len(files); i++) delete files[i];
+        for (int i = 0; i < len(longFiles); i++) delete longFiles[i];
+    }
+    TestAppFree(app);
+}
+
 static void TheWholePatchKeepsItsHeightAfterTheFirstLayout() {
     App* app = nullptr;
     Window* win = nullptr;
@@ -2648,6 +2693,7 @@ void TestDiff() {
     SplitCodeSelectionKeepsTheSourceSideAndTabs();
     DiffKeyboardSelectsAndExtendsSourceLines();
     DiffKeyboardScrollsBothAxesAndReachesEitherEnd();
+    ExplicitDiffJumpsAlignVisibleTargets();
     DiffMeasuresWrappedLinesAndChangingAnnotations();
     AnnotationButtonPassesTheSelectedRange();
     TouchHandlesExtendAndCopyTheDiffSourceRange();
