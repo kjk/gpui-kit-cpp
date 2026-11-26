@@ -253,8 +253,14 @@ static void AHostLongPressTimerSelectsAWord() {
 // test platform's simulated clock reaches it: a finger held still becomes a
 // long press when the clock is advanced, with no poll by hand.
 struct TouchHostPage {
-    static El* Render(TouchHostPage*, Ctx* cx) {
-        return Div(cx->a)->W(200)->H(200);
+    bool selectable = false;
+    static El* Render(TouchHostPage* self, Ctx* cx) {
+        El* root = Div(cx->a)->W(200)->H(200);
+        if (self->selectable) {
+            root->Pad(20)->Child(TextEl(cx->a, StrL("quick select value"))
+                                     ->Selectable());
+        }
+        return root;
     }
 };
 
@@ -275,25 +281,69 @@ static void AHostLongPressFiresOnTheSimulatedClock() {
 }
 
 static void AHostHandleDragStartsOnTheSelectionHandle() {
-    Window win;
-    AddRun(&win, 0, "quick select value", 0);
-    WindowTouchBegin(&win, 25, 5);
-    WindowTouchPoll(&win, TimeNow() + 1);
-    WindowTouchEnd(&win, 25, 5);
+    App* app = TestAppNew();
+    auto page = EntityNew<TouchHostPage>(app);
+    page.Get(app)->selectable = true;
+    Window* win = TestWindowOpen(app, page, 200, 200);
+    TestDraw(win);
+    const TextHit* hit = len(win->paint.texts) ? &win->paint.texts[0] : nullptr;
+    utassert(hit);
+    if (!hit) {
+        TestAppFree(app);
+        return;
+    }
+    Bounds line = hit->bounds;
+    Point word = {line.x + 4.f, line.CenterY()};
+    WindowTouchBegin(win, word.x, word.y);
+    WindowTouchPoll(win, TimeNow() + 1);
+    WindowTouchEnd(win, word.x, word.y);
     TouchSelectionSnapshot snap = {};
-    utassert(WindowSelectionTouchSnapshot(&win, &snap) && snap.menuOpen);
+    bool selected = WindowSelectionTouchSnapshot(win, &snap);
+    utassert(selected && snap.menuOpen);
+    if (!selected) {
+        TestAppFree(app);
+        return;
+    }
 
-    WindowTouchBegin(&win, 25, 5);
-    utassert(win.touchHost == TouchHostKind::HandleDrag);
-    utassert(win.sel && win.sel->hasTouchEdgeDrag);
-    utassert(win.sel && !win.sel->touchMenuOpen);
+    WindowSelection* selection = win->sel;
+    int fixed = selection->cursor;
+    int originalStart = selection->anchor;
+    Bounds knob = TouchHandle::KnobBounds(SelectionEdge::Start, snap.start);
+    Point finger = {knob.CenterX(), knob.CenterY()};
+    WindowTouchBegin(win, finger.x, finger.y);
+    utassert(win->touchHost == TouchHostKind::HandleDrag);
+    utassert(selection->hasTouchEdgeDrag);
+    utassert(!selection->touchMenuOpen);
 
-    WindowTouchMove(&win, 80, 5);
-    WindowTouchEnd(&win, 80, 5);
-    utassert(win.touchHost == TouchHostKind::None);
-    utassert(win.sel && !win.sel->hasTouchEdgeDrag);
-    utassert(WindowSelectionTouchSnapshot(&win, &snap) && snap.menuOpen);
-    WindowSelectionFree(&win);
+    utassert(selection->gesture.selecting && selection->anchor == fixed &&
+             selection->cursor == originalStart);
+    Point shift = selection->touchEdgeDrag.offset;
+    float y = line.CenterY();
+    bool reachedFixed = false;
+    for (float x = line.x; x < line.Right(); x += 0.5f) {
+        if (TextHitOffsetIn(&win->paint, x, y, true, 0, nullptr) == fixed) {
+            WindowTouchMove(win, x - shift.x, y - shift.y);
+            reachedFixed = true;
+            break;
+        }
+    }
+    utassert(reachedFixed && selection->anchor == fixed &&
+             selection->cursor == originalStart);
+    Point otherSide = {line.Right() - shift.x, y - shift.y};
+    WindowTouchMove(win, otherSide.x, otherSide.y);
+    utassert(selection->anchor == fixed && selection->cursor > fixed &&
+             selection->touchEdgeDrag.edge == SelectionEdge::End);
+    WindowTouchEnd(win, otherSide.x, otherSide.y);
+    utassert(win->touchHost == TouchHostKind::None);
+    utassert(!selection->hasTouchEdgeDrag);
+    utassert(WindowSelectionTouchSnapshot(win, &snap) && snap.menuOpen);
+    char text[64];
+    int size = WindowSelectionText(win, text, dimofi(text));
+    Str expected = hit->text;
+    utassert(size > 0 &&
+             StrEq(Str(text, size),
+                   Str(expected.s + fixed, selection->cursor - fixed)));
+    TestAppFree(app);
 }
 
 static void ADoubleTapOnReadOnlyTextSelectsNothing() {

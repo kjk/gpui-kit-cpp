@@ -4270,10 +4270,8 @@ void WindowDispatchInput(Window* win, const PlatformInput* input) {
                             if (!hit.Contains(touch.position)) {
                                 continue;
                             }
-                            win->sel->hasTouchEdgeDrag = true;
-                            win->sel->touchEdgeDrag = TouchEdgeDrag::Begin(
-                                which, snap.Edge(which), touch.position);
-                            win->sel->touchMenuOpen = false;
+                            WindowSelectionBeginTouchEdgeDrag(
+                                win, which, snap.Edge(which), touch.position);
                             break;
                         }
                     }

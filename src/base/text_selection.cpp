@@ -6,6 +6,8 @@
 #include "gpui/paint.h"
 #include "gpui/platform.h"
 
+#include <utility>
+
 namespace gpui {
 
 struct TextSelectionParticipantState {
@@ -1046,6 +1048,7 @@ void WindowSelectionClear(Window* win) {
     s->scope = 0;
     s->hasWindowPoints = false;
     s->hasAnchorCell = false;
+    s->touchActive = false;
     s->touchMenuOpen = false;
     s->hasTouchEdgeDrag = false;
     s->unitHeld = false;
@@ -1334,6 +1337,7 @@ bool WindowSelectionLongPressStart(Window* win, float x, float y) {
     selection->unitHeld = false;
     selection->gesture.selecting = true;
     selection->gesture.didHitText = true;
+    selection->touchActive = true;
     selection->touchMenuOpen = false;
     selection->hasTouchEdgeDrag = false;
     return true;
@@ -1348,17 +1352,47 @@ bool WindowSelectionTouchSnapshot(Window* win, TouchSelectionSnapshot* out) {
             return false;
         }
     } else {
-        if (!s->hasWindowPoints || !WindowSelectionHas(win)) return false;
+        if (!s->touchActive || !s->hasWindowPoints || !WindowSelectionHas(win))
+            return false;
         const float lineH = 16.f;
+        bool reversed = s->cursor < s->anchor;
         *out = TouchSelectionSnapshot::New(
-            TouchCaretLineBox(s->anchorPoint, lineH),
-            TouchCaretLineBox(s->cursorPoint, lineH));
+            TouchCaretLineBox(reversed ? s->cursorPoint : s->anchorPoint,
+                              lineH),
+            TouchCaretLineBox(reversed ? s->anchorPoint : s->cursorPoint,
+                              lineH));
     }
     if (s->hasTouchEdgeDrag) {
         *out = out->WithDragging(s->touchEdgeDrag.edge);
     }
     *out = out->WithMenuOpen(s->touchMenuOpen && !s->hasTouchEdgeDrag);
     return true;
+}
+
+void WindowSelectionBeginTouchEdgeDrag(Window* win, SelectionEdge edge,
+                                       Bounds caret, Point finger) {
+    WindowSelection* s = win ? win->sel : nullptr;
+    if (!s) return;
+    s->hasTouchEdgeDrag = true;
+    s->touchEdgeDrag = TouchEdgeDrag::Begin(edge, caret, finger);
+    s->touchMenuOpen = false;
+    if (s->touchSource.extend) return;
+
+    // The gesture's anchor is the held end, even when that end is later in
+    // the text. It stays there as the moving caret passes it.
+    bool anchorIsStart = s->anchor < s->cursor;
+    if (anchorIsStart == (edge == SelectionEdge::Start)) {
+        std::swap(s->anchor, s->cursor);
+        std::swap(s->anchorPoint, s->cursorPoint);
+    }
+    s->anchorParticipant = {};
+    ParticipantAt(win, s->anchorPoint, &s->anchorParticipant);
+    s->anchorInsideText = true;
+    s->selectAllOwner = {};
+    s->unitHeld = false;
+    TextSelectionBegin(&s->gesture, true);
+    WindowSelectionPublish(win);
+    WindowSelectionApply(win);
 }
 
 void WindowSelectionAttachTouchSource(Window* win,
@@ -1418,10 +1452,14 @@ static void WindowSelectionDragAt(Window* win, float x, float y) {
                                          0, cell) >= 0);
         int off =
             TextHitOffsetIn(ctx, qx, qy, true, s->scope, nullptr, 0, cell);
-        if (off >= 0) {
+        if (off >= 0 && (!s->hasTouchEdgeDrag || off != s->anchor)) {
             s->cursor = off;
             s->cursorPoint = {qx, qy};
             s->hasWindowPoints = true;
+            if (s->hasTouchEdgeDrag) {
+                s->touchEdgeDrag.edge =
+                    off < s->anchor ? SelectionEdge::Start : SelectionEdge::End;
+            }
         }
     }
 }
@@ -2097,6 +2135,7 @@ void WindowSelectionFinishFrame(Window* win) {
         selection->autoScrollRelayout = false;
         Point at = selection->autoScrollPointer;
         WindowSelectionDragAt(win, at.x, at.y);
+        WindowSelectionApply(win);
     }
     if (selection->autoScroll.IsActive()) WindowRequestAnimationFrame(win);
     // Rust collects stale ids before clearing their entities. Event and

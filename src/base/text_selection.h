@@ -375,6 +375,7 @@ struct WindowSelection {
     SelectionFormat format = SelectionFormat::Plain;
     // The selection a long press left: handles and an edit menu. Cleared
     // when the selection is moved by anything other than the gesture.
+    bool touchActive = false;
     bool touchMenuOpen = false;
     TouchEdgeDrag touchEdgeDrag = {};
     bool hasTouchEdgeDrag = false;
@@ -397,6 +398,8 @@ struct WindowSelection {
 // The live touch selection, for handles and the edit menu. False when there
 // is no touch selection (pointer selection, or nothing selected).
 bool WindowSelectionTouchSnapshot(Window* win, TouchSelectionSnapshot* out);
+void WindowSelectionBeginTouchEdgeDrag(Window* win, SelectionEdge edge,
+                                       Bounds caret, Point finger);
 void WindowSelectionAttachTouchSource(Window* win, TouchSelectionSource source);
 void WindowSelectionTouchSourcePainted(Window* win, EntityId source);
 void WindowSelectionCloseEditMenu(Window* win);
