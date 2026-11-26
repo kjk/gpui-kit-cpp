@@ -2258,18 +2258,25 @@ static int SelectedCount(const LinuxAccessible& object) {
     return count;
 }
 
-static bool LinuxSelectChild(const LinuxAccessible& object, int child) {
+static bool LinuxSetItemSelected(const LinuxAccessible& object, int index,
+                                 bool selected) {
+    if (index < 0) return false;
+    const auto& node = object.win->accessibility[index];
+    return node.info.hasSelected &&
+           (node.info.selected == selected ||
+            (!node.info.disabled &&
+             WindowAccessibilityPerform(object.win, node.id,
+                                        AccessibilityAction::Default)));
+}
+
+static bool LinuxSetChildSelected(const LinuxAccessible& object, int child,
+                                  bool selected) {
     int wi = -1;
     int ni = -1;
     if (!ChildAt(object, child, &wi, &ni) || wi != object.windowIndex) {
         return false;
     }
-    const auto& node = object.win->accessibility[ni];
-    return node.info.hasSelected &&
-           (node.info.selected ||
-            (!node.info.disabled &&
-             WindowAccessibilityPerform(object.win, node.id,
-                                        AccessibilityAction::Default)));
+    return LinuxSetItemSelected(object, ni, selected);
 }
 
 static bool HandleSelection(const Incoming& in, const LinuxAccessible& object) {
@@ -2295,9 +2302,16 @@ static bool HandleSelection(const Incoming& in, const LinuxAccessible& object) {
             PutNullObjectRef(&body);
         }
         signature = "(so)";
-    } else if (StrIs(in.member, "SelectChild")) {
+    } else if (StrIs(in.member, "SelectChild") ||
+               StrIs(in.member, "DeselectChild")) {
         int child = (int)ReadU32(in.body, in.bodyLen, &at);
-        PutBool(&body, LinuxSelectChild(object, child));
+        PutBool(&body, LinuxSetChildSelected(object, child,
+                                             StrIs(in.member, "SelectChild")));
+        signature = "b";
+    } else if (StrIs(in.member, "DeselectSelectedChild")) {
+        int child = (int)ReadU32(in.body, in.bodyLen, &at);
+        PutBool(&body,
+                LinuxSetItemSelected(object, SelectedAt(object, child), false));
         signature = "b";
     } else if (StrIs(in.member, "IsChildSelected")) {
         int wi = -1;
@@ -2309,9 +2323,7 @@ static bool HandleSelection(const Incoming& in, const LinuxAccessible& object) {
         PutBool(&body, selected);
         signature = "b";
     } else if (StrIs(in.member, "SelectAll") ||
-               StrIs(in.member, "ClearSelection") ||
-               StrIs(in.member, "DeselectChild") ||
-               StrIs(in.member, "DeselectSelectedChild")) {
+               StrIs(in.member, "ClearSelection")) {
         PutBool(&body, false);
         signature = "b";
     } else {
@@ -3554,14 +3566,24 @@ static bool LinuxSmokeSelectionChanges(Window* win, int fd) {
     cell.onClick = MkFunc0(+[](int* count) { ++*count; }, &clicks);
     const LinuxAccessible list{win, 0, 0};
     const LinuxAccessible grid{win, 0, 4};
-    ok = !LinuxSelectChild(list, 0) && !LinuxSelectChild(grid, 2) &&
-         LinuxSelectChild(grid, 0) && clicks == 1 && ok;
+    ok = !LinuxSetChildSelected(list, 0, true) &&
+         !LinuxSetChildSelected(grid, 2, true) &&
+         LinuxSetChildSelected(grid, 0, false) && clicks == 0 &&
+         LinuxSetChildSelected(grid, 0, true) && clicks == 1 && ok;
 
     win->accessibility[2].info.selected = false;
     win->accessibility[3].info.selected = true;
     cell.info.selected = true;
-    ok = LinuxSelectChild(grid, 0) && clicks == 1 && SelectedAt(grid, 0) == 5 &&
-         SelectedAt(list, 0) == 3 && SelectedAt(list, 1) == -1 && ok;
+    ok = LinuxSetChildSelected(grid, 0, true) && clicks == 1 &&
+         SelectedAt(grid, 0) == 5 && SelectedAt(list, 0) == 3 &&
+         SelectedAt(list, 1) == -1 && ok;
+    ok = LinuxSetChildSelected(grid, 0, false) &&
+         LinuxSetItemSelected(grid, SelectedAt(grid, 0), false) &&
+         !LinuxSetItemSelected(grid, SelectedAt(grid, 1), false) &&
+         clicks == 3 && ok;
+    cell.info.disabled = true;
+    ok = !LinuxSetChildSelected(grid, 0, false) && clicks == 3 && ok;
+    cell.info.disabled = false;
     DbusWriter property;
     int at = 0;
     ok = PutPropertyVariant(&property, grid, Str(kSelection),
