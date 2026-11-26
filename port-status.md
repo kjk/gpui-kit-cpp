@@ -34,8 +34,10 @@ The current update target is
   Markdown copy boundaries in one layout. Prose beside inline objects shares
   shaped advances and paint geometry across font, link and source-style
   ranges on each hard line, including mark backgrounds and strikethrough.
-  Inline code keeps its own inset and font-size layout. Bidi runs shape in
-  visual order after wrapping with isolated word widths (`src/base/text.cpp`).
+  Inline code keeps its own inset and font-size layout. Desktop wrapping
+  uses the shaped cluster advances in logical order. Browser and mobile
+  host layouts use caret geometry or isolated word widths
+  (`src/base/text.cpp`, `src/gpui/gpui.cpp`).
 
 - **Windows additionally handles touch-screen pinch.** DirectManipulation
   supplies precision-touchpad pinch and two-finger scroll with inertia as in

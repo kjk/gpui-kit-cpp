@@ -6872,6 +6872,28 @@ static void InlineObjectsKeepBidiRunsTogether() {
     const TextHit* hit = HitContaining(v.win, phrase.s);
     utassert(hit != nullptr);
     if (hit) {
+        if (GPUI_PAINT_CLUSTER_WIDTHS) {
+            const El* el = hit->highlightedElement;
+            const auto* fragment = el && el->lifecycle
+                                       ? el->lifecycle->inlineTextFragment
+                                       : nullptr;
+            const auto* advance = fragment ? fragment->advances : nullptr;
+            utassert(advance && advance->positions);
+            if (advance && advance->positions) {
+                PaintCtx& paint = v.win->paint;
+                auto previousFonts = paint.textFontRanges;
+                paint.textFontRanges = advance->fonts;
+                Size native;
+                TextLayout* layout = TextLayoutNew(
+                    &paint, advance->text, hit->font, 0.f, false,
+                    ElTextWeight(el), el->style.lineHeight, &native);
+                paint.textFontRanges = previousFonts;
+                utassert(layout &&
+                         fabsf(advance->positions[len(advance->text)] -
+                               native.w) <= 1.f);
+                TextLayoutRelease(layout);
+            }
+        }
         char output[64];
         int count = CopyTextHitsIn(
             &v.win->paint, hit->docOff, hit->docOff + len(phrase), hit->scope,

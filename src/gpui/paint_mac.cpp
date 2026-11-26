@@ -776,6 +776,47 @@ struct TextLayout {
     float strikeThick = 1;
 };
 
+bool TextLayoutClusterWidths(TextLayout* tl, Str s, float* widths) {
+    if (!tl || tl->nLines != 1) return false;
+    const MacLine& line = tl->lines[0];
+    Vec<float> byUtf16;
+    if (!VecAppendBlanks(byUtf16, line.len)) return false;
+    memset(byUtf16.els, 0, (size_t)line.len * sizeof(float));
+    CFArrayRef runs = CTLineGetGlyphRuns(line.line);
+    Vec<CFIndex> indices;
+    Vec<CGSize> advances;
+    for (CFIndex i = 0; i < CFArrayGetCount(runs); i++) {
+        auto run = (CTRunRef)CFArrayGetValueAtIndex(runs, i);
+        CFIndex count = CTRunGetGlyphCount(run);
+        if (!count) continue;
+        VecClear(indices);
+        VecClear(advances);
+        if (!VecAppendBlanks(indices, (int)count) ||
+            !VecAppendBlanks(advances, (int)count))
+            return false;
+        CFRange range = CFRangeMake(0, count);
+        CTRunGetStringIndices(run, range, indices.els);
+        CTRunGetAdvances(run, range, advances.els);
+        for (int g = 0; g < len(indices); g++) {
+            CFIndex at = indices[g] - line.start;
+            if (at < 0 || at >= line.len) return false;
+            byUtf16[(int)at] += (float)advances[g].width;
+        }
+    }
+    int utf16 = 0;
+    for (int at = 0; at < len(s);) {
+        uint32_t codepoint;
+        int size = Utf8At(s, at, &codepoint);
+        int units = codepoint > 0xffff ? 2 : 1;
+        if (utf16 + units > line.len) return false;
+        widths[at] = byUtf16[utf16];
+        if (units == 2) widths[at] += byUtf16[utf16 + 1];
+        utf16 += units;
+        at += size;
+    }
+    return utf16 == line.len;
+}
+
 static NSFontWeight WeightFor(uint16_t weight, float fontSize) {
     switch (weight & kFontWeightMask) {
         case kFontWeightThin:

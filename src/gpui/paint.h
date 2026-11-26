@@ -371,6 +371,19 @@ int TextLayoutHitPoint(TextLayout* tl, Str s, float relX, float relY);
 // many were written.
 int TextLayoutRangeRects(TextLayout* tl, Str s, int u8a, int u8b, Bounds* out,
                          int max);
+// Add the advances of an unconstrained hard line to the zeroed array
+// `widths`, indexed by the UTF-8 start of each shaped cluster. Unlike
+// differences of caret positions, these widths follow logical text order
+// even when the glyphs are displayed in a different order.
+#if GPUI_OS_WINDOWS || GPUI_OS_LINUX || GPUI_OS_MAC
+#define GPUI_PAINT_CLUSTER_WIDTHS 1
+bool TextLayoutClusterWidths(TextLayout* tl, Str s, float* widths);
+#else
+#define GPUI_PAINT_CLUSTER_WIDTHS 0
+inline bool TextLayoutClusterWidths(TextLayout*, Str, float*) {
+    return false;
+}
+#endif
 // Where the baseline sits inside a line box, measured from the line's top.
 // The first line's, which is the one a decoration under a run needs: an
 // input method composes one line at a time.

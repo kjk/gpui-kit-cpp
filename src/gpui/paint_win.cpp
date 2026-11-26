@@ -1823,6 +1823,38 @@ static IDWriteTextLayout* Dw(TextLayout* tl) {
     return tl ? tl->layout : nullptr;
 }
 
+bool TextLayoutClusterWidths(TextLayout* tl, Str s, float* widths) {
+    if (!tl) return false;
+    UINT32 count = 0;
+    DWRITE_CLUSTER_METRICS local[128];
+    auto* metrics = local;
+    UINT32 capacity = dimofi(local);
+    Vec<DWRITE_CLUSTER_METRICS> overflow;
+    HRESULT hr = Dw(tl)->GetClusterMetrics(metrics, capacity, &count);
+    if (hr == HRESULT_FROM_WIN32(ERROR_INSUFFICIENT_BUFFER) &&
+        count <= (UINT32)len(s)) {
+        capacity = count;
+        metrics = VecAppendBlanks(overflow, (int)capacity);
+        if (!metrics) return false;
+        hr = Dw(tl)->GetClusterMetrics(metrics, capacity, &count);
+    }
+    if (FAILED(hr) || count > capacity) return false;
+    int byte = 0;
+    int utf16 = 0;
+    int end = 0;
+    for (UINT32 i = 0; i < count && byte < len(s); i++) {
+        widths[byte] = metrics[i].width;
+        end += metrics[i].length;
+        while (byte < len(s) && utf16 < end) {
+            uint32_t codepoint;
+            int size = Utf8At(s, byte, &codepoint);
+            utf16 += codepoint > 0xffff ? 2 : 1;
+            byte += size;
+        }
+    }
+    return byte == len(s) && utf16 == end;
+}
+
 TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
                           bool wrap, uint16_t weight, float lineH,
                           Size* outSize, TextAlign align) {

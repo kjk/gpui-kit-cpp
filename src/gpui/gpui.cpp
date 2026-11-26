@@ -4747,9 +4747,41 @@ static void ResolveImageReplacement(PaintCtx* ctx, El* e) {
     }
 }
 
-// The style refinement, the inspector's live edit, the inherited font and the
-// inherited color, resolved once per element before anything is measured.
-// The old engine did this on the way down its own recursion.
+static float* InlineTextPositions(Arena* arena, TextLayout* layout, Str text) {
+    int n = len(text);
+    if (n >= INT_MAX / (int)sizeof(float)) return nullptr;
+    int bytes = (n + 1) * (int)sizeof(float);
+    auto* positions = (float*)Alloc(arena, bytes);
+    if (!positions) return nullptr;
+    memset(positions, 0, (size_t)bytes);
+    if (TextLayoutClusterWidths(layout, text, positions)) {
+        // Each cluster contributes its in-context advance in logical order,
+        // independent of the visual caret positions around bidi boundaries.
+        float x = 0.f;
+        for (int i = 0; i < n; i++) {
+            float width = positions[i];
+            positions[i] = x;
+            x += width;
+        }
+        positions[n] = x;
+        return positions;
+    }
+    // Hosts without cluster metrics can still use an unambiguous sequence
+    // of left-to-right caret positions.
+    Vec<TextGlyphBox> glyphs;
+    TextGlyphBoxes(layout, text, &glyphs);
+    for (int i = 0; i <= n; i++) positions[i] = -1.f;
+    positions[0] = 0.f;
+    float previous = 0.f;
+    for (const TextGlyphBox& glyph : glyphs) {
+        if (glyph.left < previous) return nullptr;
+        previous = glyph.left;
+        positions[glyph.lo] = glyph.left;
+    }
+    positions[n] = TextLayoutSize(layout).w;
+    return positions;
+}
+
 static void PrepareInlineTextFragment(PaintCtx* ctx, El* element) {
     if (!element->lifecycle || !element->lifecycle->inlineTextFragment ||
         element->style.wrap || element->style.truncate)
@@ -4764,40 +4796,14 @@ static void PrepareInlineTextFragment(PaintCtx* ctx, El* element) {
                            ElTextWeight(element), element->style.lineHeight,
                            nullptr, nullptr, TextAlign::Left, advances.fonts);
         if (!layout) return;
-        Vec<TextGlyphBox> glyphs;
-        TextGlyphBoxes(layout, advances.text, &glyphs);
-        float width = TextLayoutSize(layout).w;
+        advances.positions =
+            InlineTextPositions(element->arena, layout, advances.text);
         TextLayoutRelease(layout);
-        // A logical boundary can have distinct visual positions in a bidi
-        // run. Use isolated word widths for wrapping in that case. Prepaint
-        // still shapes each contiguous slice in its visual order.
-        float previous = 0.f;
-        bool monotone = true;
-        for (const TextGlyphBox& glyph : glyphs) {
-            if (glyph.left < previous) {
-                monotone = false;
-                break;
-            }
-            previous = glyph.left;
-        }
-        if (monotone) {
-            auto* positions = (float*)Alloc(
-                element->arena, (len(advances.text) + 1) * (int)sizeof(float));
-            if (positions) {
-                for (int i = 0; i <= len(advances.text); i++)
-                    positions[i] = -1.f;
-                positions[0] = 0.f;
-                for (const TextGlyphBox& glyph : glyphs)
-                    positions[glyph.lo] = glyph.left;
-                positions[len(advances.text)] = width;
-                advances.positions = positions;
-            }
-        }
     }
     if (advances.positions) {
         float start = advances.positions[fragment.start];
         float end = advances.positions[fragment.end];
-        if (start >= 0 && end > start) {
+        if (start >= 0 && end >= start) {
             element->style.width = end - start;
             return;
         }
@@ -4811,6 +4817,8 @@ static void PrepareInlineTextFragment(PaintCtx* ctx, El* element) {
     if (size.w > 0) element->style.width = size.w;
 }
 
+// Resolve style refinements, inspector edits and inherited typography before
+// measuring the element.
 static void PrepareEl(PaintCtx* ctx, El* e, float inheritFont, Rgba inheritFg,
                       uint64_t path, bool groups) {
     // The element's own refinement first — a semantic state, which is meant

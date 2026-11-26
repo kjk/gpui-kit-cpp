@@ -881,6 +881,28 @@ struct TextLayout {
     int width = -1;
 };
 
+bool TextLayoutClusterWidths(TextLayout* tl, Str s, float* widths) {
+    if (!tl || !tl->layout || tl->lines != 1) return false;
+    PangoLayoutLine* line = pango_layout_get_line_readonly(tl->layout, 0);
+    if (!line || line->length != len(s)) return false;
+    for (GSList* each = line->runs; each; each = each->next) {
+        auto* run = static_cast<PangoGlyphItem*>(each->data);
+        bool rtl = (run->item->analysis.level & 1) != 0;
+        PangoGlyphItemIter cluster;
+        for (bool valid = pango_glyph_item_iter_init_start(&cluster, run, s.s);
+             valid; valid = pango_glyph_item_iter_next_cluster(&cluster)) {
+            int first = rtl ? cluster.end_glyph + 1 : cluster.start_glyph;
+            int end = rtl ? cluster.start_glyph + 1 : cluster.end_glyph;
+            int advance = 0;
+            for (int g = first; g < end; g++) {
+                advance += run->glyphs->glyphs[g].geometry.width;
+            }
+            widths[cluster.start_index] += (float)advance / PANGO_SCALE;
+        }
+    }
+    return true;
+}
+
 // DirectWrite gets "Segoe UI" and "Consolas"; fontconfig resolves these two
 // generic families to whatever the distro ships.
 static const char* kSans = "Sans";
