@@ -8721,20 +8721,15 @@ El* TextView::Block(MdNode* n, int depth, bool inList, bool isLast) {
         El* content = renderer && renderer->fn
                           ? renderer->fn(cx, &n->custom, renderer->data)
                           : nullptr;
+        if (!content && n->custom.text.s) {
+            content = TextEl(a, n->custom.text)->Font(baseFont)->Wrap();
+        }
         if (content) {
             content =
                 MarkBlockPlugin(content, n->custom.text, n->custom.markdown,
                                 n->custom.hasSpan, n->custom.span);
             if (surfaceDepth > 0) {
                 HookSurfaceCustom(this, content, n);
-            }
-        }
-        if (!content && n->custom.text.s) {
-            SrcOpen({}, {});
-            content = TextEl(a, n->custom.text)->Font(baseFont)->Wrap();
-            if (selectable) {
-                content->Selectable()->GlyphSelection();
-                SrcMark(content, 0);
             }
         }
         return content ? Div(a)->W(kFill)->PadB(pad)->Child(content) : nullptr;

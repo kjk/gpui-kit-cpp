@@ -7578,6 +7578,34 @@ static void CustomBlocksConvertWhole() {
     ArenaDelete(ext);
 }
 
+// node.rs wraps fallback content in CustomBlockElement when a parser
+// claims a block and supplies no renderer.
+static void CustomBlockFallbackKeepsAtomicSelection() {
+    TswView v = TswOpen("$TSLA.US", TswContainer::Window);
+    Arena* ext = ArenaNew();
+    MarkdownExtensions extensions;
+    extensions.BlockParser(ext, &ParseTicker);
+    v.Root()->extensions = &extensions;
+    TswFlush(v);
+    TestRunUntilParked(v.app);
+
+    const TextHit* hit = HitContaining(v.win, "$TSLA.US");
+    utassert(hit && hit->blockPlugin && hit->map && hit->map->atomic);
+    if (hit) {
+        char copy[64];
+        int n = CopyTextHitsIn(&v.win->paint, hit->docOff, hit->docOff + 1,
+                               hit->scope, copy, dimofi(copy),
+                               SelectionFormat::Source);
+        utassert(StrEq(Str(copy, n), "$TSLA.US"));
+        n = CopyTextHitsIn(&v.win->paint, hit->docOff, hit->docOff + 1,
+                           hit->scope, copy, dimofi(copy),
+                           SelectionFormat::Plain);
+        utassert(StrEq(Str(copy, n), "$TSLA.US\n"));
+    }
+    TswClose(&v);
+    ArenaDelete(ext);
+}
+
 // `leaf_nodes`: the blocks holding text, the way the index builder walks
 // them.
 static void RfsLeafNodes(const MdNode* n, Vec<const MdNode*>& leaves) {
@@ -9209,6 +9237,7 @@ static void TestTextStateWindow() {
     AnImageBetweenTextsKeepsTheRangeContiguous();
     HtmlTextConvertsNothing();
     CustomBlocksConvertWhole();
+    CustomBlockFallbackKeepsAtomicSelection();
     SelectionsRoundTripThroughSourceRanges();
     SourceRangesHighlightTheTextRenderedFromThem();
     SelectAllConvertsToEveryRenderedCharacter();
