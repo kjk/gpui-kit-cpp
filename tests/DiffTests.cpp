@@ -3059,6 +3059,59 @@ static void AModifierAloneReportsTheCharacterAgain() {
     TestAppFree(stage.app);
 }
 
+// Rust dispatches source clicks after a pointer move of up to three DIPs.
+static void AShortMoveAcrossACaretBoundaryStillDispatchesTheClick() {
+    PointerStage stage = StagePointer(true);
+    DiffState* state = stage.host->state.Get(stage.app);
+    Point down = {};
+    Point up = {};
+    bool found = false;
+    for (const auto& run : state->codeRuns) {
+        if (run.side != DiffSide::Modified || run.line != 1 || !run.layout)
+            continue;
+        float y = run.visible.CenterY();
+        for (float x = run.visible.x + 1.f; x + 1.f < run.visible.Right();
+             x += 1.f) {
+            float local = x - run.bounds.x;
+            float localY = y - run.bounds.y;
+            if (TextLayoutHitPoint(run.layout, run.text, local, localY) ==
+                TextLayoutHitPoint(run.layout, run.text, local + 1.f, localY))
+                continue;
+            down = {x, y};
+            up = {x + 1.f, y};
+            found = true;
+            break;
+        }
+        if (found) break;
+    }
+    utassert(found);
+    if (found) {
+        TestSimulateMouseDown(stage.win, down);
+        TestSimulateMouseMove(stage.win, up, true);
+        TestSimulateMouseUp(stage.win, up);
+        utassert(state->textSelection.HasSourceRange());
+        utassert(stage.host->textClickCount == 1);
+        utassert(stage.host->lineClickCount == 0);
+
+        uint32_t nodeId = 0;
+        for (const auto& node : stage.win->accessibility) {
+            if (node.info.role == AccessibilityRole::Label &&
+                StrEq(node.info.value, "fn other() {}")) {
+                nodeId = node.id;
+                break;
+            }
+        }
+        utassert(nodeId != 0);
+        if (nodeId) {
+            utassert(WindowAccessibilityPerform(stage.win, nodeId,
+                                                AccessibilityAction::Default));
+            utassert(stage.host->textClickCount == 1);
+            utassert(stage.host->lineClickCount == 1);
+        }
+    }
+    TestAppFree(stage.app);
+}
+
 // pointer_tests.rs a_claimed_text_click_keeps_the_line_handler_quiet.
 static void AClaimedTextClickKeepsTheLineHandlerQuiet() {
     PointerStage stage = StagePointer(true);
@@ -3222,6 +3275,7 @@ void TestDiff() {
     TextHitsUsePaintedSyntaxRunsAndSourceOffsets();
     AModifierAloneReportsTheCharacterAgain();
     AClaimedTextClickKeepsTheLineHandlerQuiet();
+    AShortMoveAcrossACaretBoundaryStillDispatchesTheClick();
     CodeSelectionCopiesCharactersAndWords();
     DiffShiftClickKeepsTheSelectedWordOrLineUnit();
     DiffDragPrefersTheClosestLineCenter();

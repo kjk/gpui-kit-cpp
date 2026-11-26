@@ -4692,8 +4692,6 @@ static void OnDiffModifiersChanged(DiffState* self, Ctx* cx,
 
 static void OnDiffTextClick(DiffState* self, Ctx* cx, const ClickEvent* ev,
                             int64_t arg) {
-    const DiffTextSelection& selection = self->textSelection;
-    if (ev->clickCount == 1 && selection.HasSourceRange()) return;
     const auto* run = (const DiffTextRun*)(intptr_t)arg;
     if (!run || run->file < 0 || run->file >= len(self->files)) return;
     const DiffFile* file = self->files[run->file];
@@ -4701,7 +4699,7 @@ static void OnDiffTextClick(DiffState* self, Ctx* cx, const ClickEvent* ev,
     if (run->ix < 0 || run->ix >= len(source->lines)) return;
     const Diff* diff = run->diff;
     if (!ev->keyboard) {
-        // A drag selects text; only a stationary press is a click.
+        // Match Rust's three-DIP tolerance for movement during a click.
         if (cx->win && (fabsf(ev->x - cx->win->pressedX) > 3.f ||
                         fabsf(ev->y - cx->win->pressedY) > 3.f))
             return;
