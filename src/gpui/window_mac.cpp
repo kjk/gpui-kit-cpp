@@ -388,6 +388,34 @@ static bool GpuiAccessibilitySelectionItem(gpui::AccessibilityRole role) {
     }
 }
 
+static NSArray* GpuiAccessibilityRows(GpuiAccessibilityElement* element,
+                                      bool selectedOnly) {
+    gpui::Window* win = element->gpuiWindow;
+    int index = gpui::WindowAccessibilityNodeIndex(win, element->gpuiNodeId);
+    if (index < 0) return nil;
+    const auto& nodes = win->accessibility;
+    gpui::AccessibilityRole role = nodes[index].info.role;
+    if (!gpui::AccessibilityRoleIsSelectionContainer(role) ||
+        role == gpui::AccessibilityRole::TabList) {
+        return nil;
+    }
+    NSMutableArray* rows = [[NSMutableArray alloc] init];
+    for (int i = index + 1; i < len(nodes); i++) {
+        const auto& node = nodes[i];
+        int parent = node.parent;
+        while (parent > index &&
+               !GpuiAccessibilitySelectionItem(nodes[parent].info.role)) {
+            parent = nodes[parent].parent;
+        }
+        if (parent < index) break;
+        if (parent == index && GpuiAccessibilitySelectionItem(node.info.role) &&
+            (!selectedOnly || (node.info.hasSelected && node.info.selected))) {
+            [rows addObject:GpuiAccessibilityElementFor(win, node.id)];
+        }
+    }
+    return rows;
+}
+
 @implementation GpuiAccessibilityElement
 
 - (BOOL)isAccessibilityElement {
@@ -515,31 +543,14 @@ static bool GpuiAccessibilitySelectionItem(gpui::AccessibilityRole role) {
                                   partCount:(NSUInteger)count]
                      : children;
 }
+- (NSArray*)accessibilityRows {
+    return GpuiAccessibilityRows(self, false);
+}
+- (NSArray*)accessibilitySelectedRows {
+    return GpuiAccessibilityRows(self, true);
+}
 - (NSArray*)accessibilitySelectedChildren {
-    int index = gpui::WindowAccessibilityNodeIndex(gpuiWindow, gpuiNodeId);
-    if (index < 0) return nil;
-    const auto& nodes = gpuiWindow->accessibility;
-    gpui::AccessibilityRole role = nodes[index].info.role;
-    if (!gpui::AccessibilityRoleIsSelectionContainer(role) ||
-        role == gpui::AccessibilityRole::TabList) {
-        return nil;
-    }
-    NSMutableArray* selected = [[NSMutableArray alloc] init];
-    for (int i = index + 1; i < len(nodes); i++) {
-        const auto& node = nodes[i];
-        int parent = node.parent;
-        while (parent > index &&
-               !GpuiAccessibilitySelectionItem(nodes[parent].info.role)) {
-            parent = nodes[parent].parent;
-        }
-        if (parent < index) break;
-        if (parent == index && GpuiAccessibilitySelectionItem(node.info.role) &&
-            node.info.hasSelected && node.info.selected) {
-            [selected
-                addObject:GpuiAccessibilityElementFor(gpuiWindow, node.id)];
-        }
-    }
-    return selected;
+    return GpuiAccessibilityRows(self, true);
 }
 - (NSArray*)accessibilityTabs {
     int index = gpui::WindowAccessibilityNodeIndex(gpuiWindow, gpuiNodeId);
@@ -2756,16 +2767,25 @@ bool AccessibilityMacSelectionSmokeTest() {
         auto* list = GpuiAccessibilityElementFor(&win, 1);
         auto* tabList = GpuiAccessibilityElementFor(&win, 6);
         NSArray* selected = [list accessibilitySelectedChildren];
+        NSArray* rows = [list accessibilityRows];
         NSArray* tabs = [tabList accessibilityTabs];
         bool ok =
             selected.count == 1 &&
             selected.firstObject == GpuiAccessibilityElementFor(&win, 3) &&
+            [selected isEqualToArray:[list accessibilitySelectedRows]] &&
+            rows.count == 2 &&
+            rows.firstObject == GpuiAccessibilityElementFor(&win, 3) &&
+            rows.lastObject == GpuiAccessibilityElementFor(&win, 5) &&
             ![list accessibilityTabs] && tabs.count == 2 &&
             tabs.firstObject == GpuiAccessibilityElementFor(&win, 7) &&
             tabs.lastObject == GpuiAccessibilityElementFor(&win, 8) &&
-            ![tabList accessibilitySelectedChildren];
+            ![tabList accessibilitySelectedChildren] &&
+            ![tabList accessibilityRows] &&
+            ![tabList accessibilitySelectedRows];
         win.accessibility[2].info.selected = false;
-        ok &= [[list accessibilitySelectedChildren] count] == 0;
+        ok &= [[list accessibilitySelectedChildren] count] == 0 &&
+              [[list accessibilitySelectedRows] count] == 0 &&
+              [[list accessibilityRows] count] == 2;
         VecReset(win.accessibility);
         return ok;
     }
