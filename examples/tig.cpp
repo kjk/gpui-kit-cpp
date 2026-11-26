@@ -207,8 +207,8 @@ struct TigJob {
         if (!Git(patch, dimofi(patch), &text)) return;
         DiffParseError parse;
         if (!DiffFile::Parse(text, &files, &parse)) {
-            error = StrDup(
-                fmt("Git returned an invalid patch at line %d.", parse.line));
+            error =
+                StrDup(fmt("patch line %d: %s", parse.Line(), parse.Message()));
         }
         StrFree(text);
     }
