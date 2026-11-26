@@ -1056,28 +1056,22 @@ static const AccessibilityNode* LinuxWindowRoot(const Window* win) {
                : nullptr;
 }
 
-static const AccessibilityNode* LinuxFocusedElement(const Window* win) {
-    if (!win->focusId) return nullptr;
-    for (const auto& node : win->accessibility) {
-        if (node.focusId == win->focusId) return &node;
-    }
-    return nullptr;
+static int LinuxFocusedIndex(const Window* win) {
+    if (!AccessibilityLinuxWindowFocused(win)) return -1;
+    int index = WindowAccessibilityFocusIndex(win);
+    return index < 0 && LinuxWindowRoot(win) ? 0 : index;
 }
 
-static uint64_t LinuxNodeStates(Window* win, const AccessibilityNode& node) {
+static uint64_t LinuxNodeStates(Window* win, const AccessibilityNode& node,
+                                bool focused) {
     uint64_t states = AtspiBit(kAtspiVisible) | AtspiBit(kAtspiShowing);
     if (!node.info.disabled)
         states |= AtspiBit(kAtspiEnabled) | AtspiBit(kAtspiSensitive);
     if (node.actions & AccessibilityActionFocus)
         states |= AtspiBit(kAtspiFocusable);
-    if (AccessibilityLinuxWindowFocused(win)) {
-        if (&node == LinuxWindowRoot(win)) {
-            states |= AtspiBit(kAtspiActive);
-            if (!LinuxFocusedElement(win)) states |= AtspiBit(kAtspiFocused);
-        } else if (node.focusId && node.focusId == win->focusId) {
-            states |= AtspiBit(kAtspiFocused);
-        }
-    }
+    if (focused) states |= AtspiBit(kAtspiFocused);
+    if (&node == LinuxWindowRoot(win) && AccessibilityLinuxWindowFocused(win))
+        states |= AtspiBit(kAtspiActive);
     if (node.info.toggled != AccessibilityToggled::Unset)
         states |= AtspiBit(kAtspiCheckable);
     if (node.info.toggled == AccessibilityToggled::True)
@@ -1123,7 +1117,7 @@ static bool PartShowing(const LinuxAccessible& object) {
            b.Bottom() > doc.y;
 }
 
-static void PutStates(DbusWriter* body, const LinuxAccessible& object) {
+static uint64_t LinuxObjectStates(const LinuxAccessible& object) {
     uint64_t state = AtspiBit(kAtspiVisible);
     if (object.root) {
         state |= AtspiBit(kAtspiEnabled) | AtspiBit(kAtspiShowing);
@@ -1132,8 +1126,14 @@ static void PutStates(DbusWriter* body, const LinuxAccessible& object) {
                  AtspiBit(kAtspiReadOnly);
         if (PartShowing(object)) state |= AtspiBit(kAtspiShowing);
     } else if (const auto* node = ElementNode(object)) {
-        state = LinuxNodeStates(object.win, *node);
+        state =
+            LinuxNodeStates(object.win, *node,
+                            object.nodeIndex == LinuxFocusedIndex(object.win));
     }
+    return state;
+}
+
+static void PutStates(DbusWriter* body, uint64_t state) {
     int lengthAt = 0;
     int contentsAt = 0;
     ArrayBegin(body, 4, &lengthAt, &contentsAt);
@@ -1468,7 +1468,8 @@ static bool SendHandledReply(const Incoming& in, const char* signature,
 }
 
 static void PutCacheItem(DbusWriter* body, const LinuxAccessible& object,
-                         int index, int children, uint8_t interfaces) {
+                         int index, int children, uint8_t interfaces,
+                         uint64_t state) {
     Str path = object.root
                    ? Str(kRootPath)
                    : (Str)ElementPathForTemp(object.win, object.windowIndex,
@@ -1485,7 +1486,7 @@ static void PutCacheItem(DbusWriter* body, const LinuxAccessible& object,
     PutString(body, ObjectName(object));
     PutU32(body, node ? AtspiRole(node->info.role) : 75);
     PutString(body, node ? LinuxNodeDescription(node->info) : Str{});
-    PutStates(body, object);
+    PutStates(body, state);
 }
 
 static bool HandleLinuxCache(const Incoming& in) {
@@ -1504,7 +1505,7 @@ static bool HandleLinuxCache(const Incoming& in) {
         }
         LinuxAccessible root;
         root.root = true;
-        PutCacheItem(&body, root, -1, rootChildren, 0);
+        PutCacheItem(&body, root, -1, rootChildren, 0, LinuxObjectStates(root));
         Vec<int> childCounts;
         Vec<int> siblingIndices;
         int rootIndex = 0;
@@ -1525,10 +1526,13 @@ static bool HandleLinuxCache(const Incoming& in) {
                 siblingIndices[i] =
                     parent < 0 ? rootIndex++ : childCounts[parent]++;
             }
+            int focused = LinuxFocusedIndex(win);
             for (int i = 0; i < count; i++) {
                 LinuxAccessible object{win, wi, i};
+                const auto& node = win->accessibility[i];
                 PutCacheItem(&body, object, siblingIndices[i], childCounts[i],
-                             LinuxNodeInterfaces(win->accessibility[i]));
+                             LinuxNodeInterfaces(node),
+                             LinuxNodeStates(win, node, i == focused));
             }
         }
         ArrayEnd(&body, lengthAt, contentsAt);
@@ -1594,7 +1598,7 @@ static bool HandleAccessible(const Incoming& in,
         PutString(&body, AtspiRoleName(role));
         signature = "s";
     } else if (StrIs(in.member, "GetState")) {
-        PutStates(&body, object);
+        PutStates(&body, LinuxObjectStates(object));
         signature = "au";
     } else if (StrIs(in.member, "GetInterfaces")) {
         PutInterfaces(&body, object, node ? LinuxNodeInterfaces(*node) : 0);
@@ -2657,7 +2661,7 @@ static void SendTextEdit(Window* win, uint32_t id, Str before, Str after) {
 }
 
 static void TrackLinuxText(Window* win, const AccessibilityNode& node,
-                           int previouslyFocused) {
+                           bool stillFocused) {
     // A lazy document advertises revisions; observing its changes must not
     // eagerly call the application's text provider or duplicate its text.
     if (node.document.text ||
@@ -2704,8 +2708,7 @@ static void TrackLinuxText(Window* win, const AccessibilityNode& node,
     } else if (changed) {
         SendTextEdit(win, node.id, previous->text, text);
     }
-    if (node.focusId && node.focusId == previouslyFocused &&
-        node.focusId == win->focusId && AccessibilityLinuxWindowFocused(win)) {
+    if (stillFocused) {
         if (previous->selection.start != selection.start ||
             previous->selection.end != selection.end)
             SendEvent(win, node.id, "TextSelectionChanged", "", 0);
@@ -2911,7 +2914,7 @@ static void SendLinuxCacheChanges(Window* win, int wi,
         DbusWriter body;
         LinuxAccessible object{win, wi, node.index};
         PutCacheItem(&body, object, node.siblingIndex,
-                     history.childCounts[index], node.interfaces);
+                     history.childCounts[index], node.interfaces, node.state);
         SendCacheSignal("AddAccessible", GPUI_ATSPI_CACHE_ITEM, &body);
     }
 }
@@ -2950,7 +2953,7 @@ static void SendLinuxSelectionChanges(Window* win,
     }
 }
 
-static void TrackLinuxNodes(Window* win) {
+static void TrackLinuxNodes(Window* win, int focused) {
     int windowIndex = 0;
     if (!gA11y.app) return;
     while (windowIndex < len(gA11y.app->windows) &&
@@ -2991,7 +2994,7 @@ static void TrackLinuxNodes(Window* win) {
                    i,
                    -1,
                    AtspiRole(info.role),
-                   LinuxNodeStates(win, node),
+                   LinuxNodeStates(win, node, i == focused),
                    LinuxPropertyHash(info.PlatformName()),
                    LinuxPropertyHash(LinuxNodeDescription(info)),
                    info.numericValue,
@@ -3044,13 +3047,16 @@ static void TrackLinuxNodes(Window* win) {
 
 void AccessibilityLinuxTreeChanged(Window* win) {
     if (!win || !gA11y.ready) return;
-    TrackLinuxNodes(win);
+    int focused = LinuxFocusedIndex(win);
+    TrackLinuxNodes(win, focused);
     const auto* history = LinuxHistory(win);
-    int previouslyFocused = history ? history->focusedHandle : 0;
+    uint32_t previouslyFocused = history ? history->focusedNode : 0;
     ++gA11y.textRevision;
     for (int i = 0; i < len(win->accessibility); i++) {
         const auto& node = win->accessibility[i];
-        TrackLinuxText(win, node, previouslyFocused);
+        TrackLinuxText(win, node,
+                       i == focused && previouslyFocused &&
+                           LinuxWireId(win, node.id) == previouslyFocused);
         // A revision invalidates the source without specifying an edit span.
         if (node.documentTextChanged) {
             SendEvent(win, node.id, "VisibleDataChanged", "", 0);
@@ -3098,9 +3104,8 @@ void AccessibilityLinuxFocusChanged(Window* win) {
                           AtspiEventValue::Object(activeWindow));
         }
     }
-    const AccessibilityNode* focused =
-        active ? LinuxFocusedElement(win) : nullptr;
-    if (active && !focused) focused = root;
+    int index = LinuxFocusedIndex(win);
+    const auto* focused = index >= 0 ? &win->accessibility[index] : nullptr;
     uint32_t next = focused ? LinuxWireId(win, focused->id) : 0;
     int handle = focused ? focused->focusId : 0;
     uint32_t prior = history->focusedNode;
@@ -3114,7 +3119,8 @@ void AccessibilityLinuxFocusChanged(Window* win) {
         SendWireEvent(win, next, "StateChanged", "focused", 1, zero);
         // A logical focus gain includes the current selection and caret.
         // Lazy document providers are queried only on request.
-        if (priorHandle != handle && !focused->document.text) {
+        if ((priorHandle != handle || prior != next) && !focused->document
+                                                             .text) {
             Str text = WindowAccessibilityTextValue(*focused);
             Selection selection;
             if (text.s &&
@@ -3611,7 +3617,7 @@ static bool LinuxSmokeWindowActivation(Window* win, int fd) {
     win->active = true;
     AccessibilityLinuxFocusChanged(win);
     ok = LinuxSmokeEvents(fd, activated, dimofi(activated)) && ok;
-    ok = (LinuxNodeStates(win, win->accessibility[0]) & activeAndFocused) ==
+    ok = (LinuxObjectStates({win, 0, 0}) & activeAndFocused) ==
              activeAndFocused &&
          ok;
     AccessibilityLinuxFocusChanged(win);
@@ -3625,8 +3631,7 @@ static bool LinuxSmokeWindowActivation(Window* win, int fd) {
     win->active = false;
     AccessibilityLinuxFocusChanged(win);
     ok = LinuxSmokeEvents(fd, deactivated, dimofi(deactivated)) && ok;
-    ok =
-        !(LinuxNodeStates(win, win->accessibility[0]) & activeAndFocused) && ok;
+    ok = !(LinuxObjectStates({win, 0, 0}) & activeAndFocused) && ok;
     AccessibilityLinuxForgetWindow(win);
     return LinuxSmokeEvents(fd, nullptr, 0) && ok;
 }
@@ -3720,9 +3725,7 @@ bool AccessibilityLinuxEventSmokeTest() {
     AccessibilityLinuxFocusChanged(&win);
     ok = LinuxSmokeEvents(fds[0], editableBlur, dimofi(editableBlur)) &&
          win.focusId == 7 &&
-         !(LinuxNodeStates(&win, win.accessibility[0]) &
-           AtspiBit(kAtspiFocused)) &&
-         ok;
+         !(LinuxObjectStates({&win, 0, 0}) & AtspiBit(kAtspiFocused)) && ok;
     win.active = true;
     AccessibilityLinuxFocusChanged(&win);
     ok = LinuxSmokeEvents(fds[0], editableFocus, dimofi(editableFocus)) && ok;

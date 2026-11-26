@@ -1798,6 +1798,51 @@ static void GeometryOnlyChangesRefreshLinuxAccessibility() {
 }
 #endif
 
+// gpui-pre window/a11y.rs active-descendant focus tests.
+static void ActiveDescendantFollowsItsFocusedAncestor() {
+    struct Host {
+        FocusHandle grid;
+        FocusHandle outside;
+        bool next = false;
+        static El* Render(Host* self, Ctx* cx) {
+            auto* row = Div(cx->a)
+                            ->Role(AccessibilityRole::Row)
+                            ->Child(Div(cx->a)
+                                        ->Role(AccessibilityRole::GridCell)
+                                        ->AriaActiveDescendant(!self->next))
+                            ->Child(Div(cx->a)
+                                        ->Role(AccessibilityRole::GridCell)
+                                        ->AriaActiveDescendant(self->next));
+            return Div(cx->a)
+                ->Child(Div(cx->a)
+                            ->Role(AccessibilityRole::Grid)
+                            ->TrackFocus(self->grid)
+                            ->Child(row))
+                ->Child(Div(cx->a)
+                            ->Role(AccessibilityRole::Button)
+                            ->TrackFocus(self->outside));
+        }
+    };
+    App* app = TestAppNew();
+    auto view = EntityNew<Host>(app);
+    Host* host = view.Get(app);
+    host->grid = FocusHandleNew(app);
+    host->outside = FocusHandleNew(app);
+    Window* win = TestWindowOpen(app, view, 240, 140);
+    utassert(WindowAccessibilityFocusIndex(win) == -1);
+    WindowSetFocusId(win, host->grid.id);
+    utassert(WindowAccessibilityFocusIndex(win) == 2);
+    uint64_t original = win->accessibilityHash;
+    host->next = true;
+    TestDraw(win);
+    utassert(win->accessibilityHash != original);
+    utassert(WindowAccessibilityFocusIndex(win) == 3);
+    utassert(win->focusId == host->grid.id);
+    WindowSetFocusId(win, host->outside.id);
+    utassert(WindowAccessibilityFocusIndex(win) == 4);
+    TestAppFree(app);
+}
+
 void TestAccessibility() {
     TextViewPublishesItsRenderedBodyToAccessibility();
     ButtonExposesOptionalDisclosureState();
@@ -1847,4 +1892,5 @@ void TestAccessibility() {
     ADocumentSourceEnumeratesItsPartsOnDemand();
     LiveRegionAnnouncesChangesAndKeepsTheSameNodeIdentity();
     RetainedAccessibilityActionsFollowNamedControls();
+    ActiveDescendantFollowsItsFocusedAncestor();
 }

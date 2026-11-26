@@ -282,6 +282,10 @@ The current update target is
   Each native window has a named frame beneath the application root, and
   its controls are children of that frame. Window activation reports the
   active frame. When no control has focus, the active frame holds focus.
+- **Active descendants receive desktop accessibility focus.** A focused
+  semantic container can keep keyboard focus while UIA, AppKit and AT-SPI
+  report its active row, cell or option. Changes take effect when the
+  updated tree is published.
   AT-SPI object paths survive recollection for nodes with a unique element
   path. Nodes that share a path are matched by their collection position.
   Focus follows X11 activation and the retained widget focus handle. An

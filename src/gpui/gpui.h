@@ -9221,6 +9221,9 @@ const AccessibilityNode* WindowAccessibilityNode(const Window* win,
 // Where node `nodeId` sits in `win->accessibility`; -1 when it is not
 // there.
 int WindowAccessibilityNodeIndex(const Window* win, uint32_t nodeId);
+// The semantic focus reported to assistive technology. A widget may
+// delegate it to an active descendant while keeping keyboard focus.
+int WindowAccessibilityFocusIndex(const Window* win);
 // A null string means the input does not expose its text. An exposed empty
 // field still has a caret and supports text queries.
 Str WindowAccessibilityTextValue(const AccessibilityNode& node);

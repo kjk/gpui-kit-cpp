@@ -59,6 +59,7 @@ struct PlatWindow {
     NSMutableDictionary<NSNumber*, GpuiAccessibilityElement*>*
         accessibilityElements = nil;
     bool accessibilityAsked = false;
+    uint32_t accessibilityFocusedId = 0;
     // Monotonic deadline for the next tick; 0 when the timer is off.
     double nextTick = 0;
     // Shown only after the first paint. Ordering front at creation puts an
@@ -440,7 +441,8 @@ static NSArray* GpuiAccessibilityChildren(gpui::Window* win, int parent) {
 }
 - (BOOL)isAccessibilityFocused {
     const gpui::AccessibilityNode* node = GpuiAccessibilityNode(self);
-    return node && node->focusId && node->focusId == gpuiWindow->focusId;
+    int index = gpui::WindowAccessibilityFocusIndex(gpuiWindow);
+    return node && index >= 0 && node == &gpuiWindow->accessibility[index];
 }
 - (void)setAccessibilityFocused:(BOOL)focused {
     if (focused && gpuiWindow) {
@@ -805,12 +807,9 @@ static void GpuiAccessibilityActivate(gpui::Window* win) {
         return self;
     }
     GpuiAccessibilityActivate(win);
-    for (int i = 0; i < win->accessibility.len; i++) {
-        const gpui::AccessibilityNode& node = win->accessibility[i];
-        if (node.focusId && node.focusId == win->focusId) {
-            return GpuiAccessibilityElementFor(win, node.id);
-        }
-    }
+    int index = gpui::WindowAccessibilityFocusIndex(win);
+    if (index >= 0)
+        return GpuiAccessibilityElementFor(win, win->accessibility[index].id);
     return self;
 }
 
@@ -2746,25 +2745,20 @@ void PlatAccessibilityTreeChanged(Window* win) {
                 NSAccessibilityPriorityKey : @(priority)
             });
     }
+    PlatAccessibilityFocusChanged(win, win->focusId);
 }
 
-void PlatAccessibilityFocusChanged(Window* win, int focusId) {
-    if (!win || !win->plat || !focusId) {
-        return;
-    }
-    for (int i = 0; i < win->accessibility.len; i++) {
-        const AccessibilityNode& node = win->accessibility[i];
-        if (node.focusId == focusId) {
-            GpuiAccessibilityElement* element =
-                GpuiAccessibilityElementFor(win, node.id);
-            if (element) {
-                NSAccessibilityPostNotification(
-                    element,
-                    NSAccessibilityFocusedUIElementChangedNotification);
-            }
-            return;
-        }
-    }
+void PlatAccessibilityFocusChanged(Window* win, int) {
+    if (!win || !win->plat) return;
+    int index = WindowAccessibilityFocusIndex(win);
+    uint32_t focused = index >= 0 ? win->accessibility[index].id : 0;
+    if (win->plat->accessibilityFocusedId == focused) return;
+    win->plat->accessibilityFocusedId = focused;
+    id element = win->plat->view;
+    if (focused) element = GpuiAccessibilityElementFor(win, focused);
+    if (element)
+        NSAccessibilityPostNotification(
+            element, NSAccessibilityFocusedUIElementChangedNotification);
 }
 
 // VoiceOver queries NSAccessibility without announcing itself first.

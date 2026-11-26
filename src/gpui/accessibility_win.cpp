@@ -369,6 +369,7 @@ struct WinAccessibility
     Vec<WinNodeSnapshot> snapshots[2];
     Arena* snapshotStrings[2] = {};
     int snapshotFrame = 0;
+    uint32_t focusedNode = 0;
 
     WinAccessibility(Window* window, HWND handle) : win(window), hwnd(handle) {}
     ~WinAccessibility() override {
@@ -1047,13 +1048,8 @@ HRESULT WinAccessibility::GetFocus(IRawElementProviderFragment** out) {
     if (!win) {
         return UIA_E_ELEMENTNOTAVAILABLE;
     }
-    for (int i = 0; i < len(win->accessibility); i++) {
-        const AccessibilityNode& node = win->accessibility[i];
-        if (node.focusId && node.focusId == win->focusId) {
-            *out = NewNode(i);
-            break;
-        }
-    }
+    int index = WindowAccessibilityFocusIndex(win);
+    if (index >= 0) *out = NewNode(index);
     return S_OK;
 }
 
@@ -1266,7 +1262,9 @@ HRESULT WinAccessibilityNode::GetPropertyValue(PROPERTYID property,
     const AccessibilityNode* node = Node();
     if (!node) return UIA_E_ELEMENTNOTAVAILABLE;
     if (property == UIA_HasKeyboardFocusPropertyId) {
-        VariantBool(out, node->focusId && node->focusId == root->win->focusId);
+        int index = WindowAccessibilityFocusIndex(root->win);
+        VariantBool(out, index >= 0 && node == &root->win
+                                                    ->accessibility[index]);
     } else if (property == UIA_IsOffscreenPropertyId && root->hwnd) {
         RECT client = {};
         GetClientRect(root->hwnd, &client);
@@ -3000,24 +2998,22 @@ void AccessibilityWinTreeChanged(WinAccessibility* accessibility) {
                 provider->Release();
             }
         }
+        AccessibilityWinFocusChanged(accessibility);
     }
     accessibility->Release();
 }
 
-void AccessibilityWinFocusChanged(WinAccessibility* accessibility,
-                                  int focusId) {
-    if (!accessibility || !accessibility->win || !focusId ||
-        !UiaClientsAreListening()) {
+void AccessibilityWinFocusChanged(WinAccessibility* accessibility) {
+    if (!accessibility || !accessibility->win || !UiaClientsAreListening())
         return;
-    }
-    for (int i = 0; i < len(accessibility->win->accessibility); i++) {
-        if (accessibility->win->accessibility[i].focusId != focusId) {
-            continue;
-        }
-        AccessibilityRaiseNodeEvent(accessibility, i,
+    int index = WindowAccessibilityFocusIndex(accessibility->win);
+    uint32_t focused =
+        index >= 0 ? accessibility->win->accessibility[index].id : 0;
+    if (accessibility->focusedNode == focused) return;
+    accessibility->focusedNode = focused;
+    if (focused)
+        AccessibilityRaiseNodeEvent(accessibility, index,
                                     UIA_AutomationFocusChangedEventId);
-        break;
-    }
 }
 
 // Linked only by the repository test runner (it is deliberately absent from

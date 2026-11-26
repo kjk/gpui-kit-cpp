@@ -3440,9 +3440,9 @@ void PlatAccessibilityTreeChanged(Window* win) {
     }
 }
 
-void PlatAccessibilityFocusChanged(Window* win, int focusId) {
+void PlatAccessibilityFocusChanged(Window* win, int) {
     if (win && win->plat) {
-        AccessibilityWinFocusChanged(win->plat->accessibility, focusId);
+        AccessibilityWinFocusChanged(win->plat->accessibility);
     }
 }
 

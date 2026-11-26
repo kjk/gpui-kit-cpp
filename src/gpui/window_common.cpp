@@ -482,6 +482,7 @@ static uint64_t AccessibilityTreeHash(const Vec<AccessibilityNode>& nodes) {
         GPUI_A11Y_HASH(info.hasSelected);
         GPUI_A11Y_HASH(info.expanded);
         GPUI_A11Y_HASH(info.hasExpanded);
+        GPUI_A11Y_HASH(info.activeDescendant);
         GPUI_A11Y_HASH(info.disabled);
         GPUI_A11Y_HASH(info.zeroBasedGridIndices);
     }
@@ -1772,6 +1773,22 @@ int WindowAccessibilityNodeIndex(const Window* win, uint32_t nodeId) {
         if (win->accessibility[i].id == nodeId) {
             return i;
         }
+    }
+    return -1;
+}
+
+int WindowAccessibilityFocusIndex(const Window* win) {
+    if (!win || !win->focusId) return -1;
+    const auto& nodes = win->accessibility;
+    for (int i = 0; i < len(nodes); i++) {
+        if (nodes[i].focusId != win->focusId) continue;
+        int focused = i;
+        // The tree is in preorder. Only descendants of the keyboard-focused
+        // semantic node can claim focus, and the last eligible claim wins.
+        for (int j = i + 1; j < len(nodes) && nodes[j].parent >= i; j++) {
+            if (nodes[j].info.activeDescendant) focused = j;
+        }
+        return focused;
     }
     return -1;
 }
