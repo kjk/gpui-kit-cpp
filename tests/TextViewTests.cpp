@@ -9673,6 +9673,72 @@ static void CrossViewSelectionKeepsItsEndpointsAfterEarlierTextAppears() {
     TestAppFree(app);
 }
 
+static void LocalSelectionKeepsTheNeighborVirtualizedUntilTheDragReachesIt() {
+    struct View {
+        Entity<TextViewState> first;
+        Entity<TextViewState> neighbor;
+
+        static El* Render(View* self, Ctx* cx) {
+            return Div(cx->a)
+                ->FlexCol()
+                ->Child(TextView::New(cx, self->first)->Selectable()->IntoEl())
+                ->Child(Div(cx->a)->W(220)->H(90)->Child(
+                    TextView::New(cx, self->neighbor)
+                        ->Selectable()
+                        ->Scrollable()
+                        ->IntoEl()));
+        }
+    };
+    App* app = TestAppNew();
+    Arena* arena = ArenaNew();
+    auto view = EntityNew<View>(app);
+    View* host = view.Get(app);
+    host->first = TextViewState::Markdown(app, StrL("start local text"));
+    host->neighbor = TextViewState::Markdown(
+        app, TswJoin(arena, "neighbor %03d", 120, "\n\n"));
+    Window* win = TestWindowOpen(app, view, 320, 200);
+    TestRunUntilParked(app);
+    TestDraw(win);
+    const TextHit* first = HitContaining(win, "start local text");
+    utassert(first && !HitContaining(win, "neighbor 119"));
+    if (first) {
+        Point start = TextHitCaretPoint(&win->paint, *first, 0, false);
+        Point localEnd = TextHitCaretPoint(&win->paint, *first, 5, true);
+        start.x += 0.1f;
+        localEnd.x -= 0.1f;
+        RawMouse(win, PlatformInputKind::MouseDown, start, false);
+        TestDraw(win);
+        utassert(!HitContaining(win, "neighbor 119"));
+        RawMouse(win, PlatformInputKind::MouseMove, localEnd, true);
+        TestDraw(win);
+        utassert(!HitContaining(win, "neighbor 119"));
+        char text[128];
+        int count = WindowSelectionText(win, text, dimofi(text));
+        utassert(StrEq(StrTrimAscii(Str(text, count)), StrL("start")));
+        RawMouse(win, PlatformInputKind::MouseUp, localEnd, false);
+        TestDraw(win);
+        utassert(!HitContaining(win, "neighbor 119"));
+
+        RawMouse(win, PlatformInputKind::MouseDown, start, false);
+        TestDraw(win);
+        const TextHit* neighbor = HitContaining(win, "neighbor 000");
+        utassert(neighbor);
+        if (neighbor) {
+            Point end = TextHitCaretPoint(&win->paint, *neighbor,
+                                          len(neighbor->text), true);
+            end.x -= 0.1f;
+            RawMouse(win, PlatformInputKind::MouseMove, end, true);
+            TestDraw(win);
+            count = WindowSelectionText(win, text, dimofi(text));
+            utassert(StrEq(StrTrimAscii(Str(text, count)),
+                           StrL("start local text\nneighbor 000")));
+            RawMouse(win, PlatformInputKind::MouseUp, end, false);
+        }
+    }
+    ArenaDelete(arena);
+    TestAppFree(app);
+}
+
 static void SelectionStartsInAnIdleVirtualizedTextView() {
     Arena* a = ArenaNew();
     TswView view = TswOpen(TswParagraphs(a, 120).s, TswContainer::Scrollable);
@@ -10094,6 +10160,7 @@ static void TestTextStateWindow() {
     BackwardWordDragKeepsAnOffscreenAnchor();
     SelectionStartsInAnIdleVirtualizedTextView();
     CrossViewSelectionKeepsItsEndpointsAfterEarlierTextAppears();
+    LocalSelectionKeepsTheNeighborVirtualizedUntilTheDragReachesIt();
     DragAfterViewportShrinksRestoresItsAnchor();
     FinishedMultiClickSelectionStaysVirtualized();
     FinishedTouchSelectionKeepsOnlyVisibleHandles();

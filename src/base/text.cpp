@@ -9570,17 +9570,25 @@ El* TextView::IntoEl() {
     const TextSelectionReflow* reflow =
         cx->win ? cx->win->paint.selectionReflow : nullptr;
     bool dragging = selection && selection->gesture.selecting;
-    bool projectSelection =
-        managed && selection && reflow &&
+    // CaptureSelectionCopy only keeps a projection if all selected hits
+    // belong to that document. Other views can keep their virtual layout
+    // until the gesture reaches them.
+    bool localSelection =
+        selection && reflow && reflow->owner.IsValid() &&
         reflow->deferredGesture == TextSelectionDeferredGesture::None &&
-        reflow->owner == managed->self && !reflow->cursorOwner.IsValid() &&
+        !reflow->cursorOwner.IsValid() &&
+        (selection->copyProjection.owner == reflow->owner ||
+         (dragging && selection->anchor == selection->cursor));
+    bool unrelatedView =
+        managed && localSelection && reflow->owner != managed->self;
+    bool projectSelection =
+        managed && localSelection && reflow->owner == managed->self &&
         (!selection->unitHeld ||
          (reflow->unit[0].block >= 0 && reflow->unit[1].block >= 0)) &&
-        (selection->copyProjection.owner == managed->self ||
-         (dragging && selection->anchor == selection->cursor)) &&
         reflow->replacement == managed->fullUpdateRevision &&
         reflow->endpoints[0].block >= 0 && reflow->endpoints[1].block >= 0;
-    if (scrollable && (!partialSelection || projectSelection) &&
+    if (scrollable &&
+        (!partialSelection || projectSelection || unrelatedView) &&
         !inheritedBuilder && cx->win && managed) {
         virtualList = VirtualBlocks(
             managed, doc, TextViewScrollKey(state),
