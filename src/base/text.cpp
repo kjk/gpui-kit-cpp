@@ -5240,6 +5240,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
     // word starts: what the word's source map is measured from.
     MdRun* wordRun = nullptr;
     int wordStart = 0;
+    bool startsAtBreak = false;
     // Leaf byte where the word being gathered starts. Custom objects and
     // images occupy one U+FFFC, not the fallback text's length.
     int wordLeaf = 0;
@@ -5270,6 +5271,12 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
     auto breaks = unicode_linebreak::LineBreaks(flowSource);
     unicode_linebreak::LineBreak nextBreak;
     bool hasBreak = breaks.Next(&nextBreak);
+    auto atBreak = [&](int offset) {
+        while (hasBreak && nextBreak.offset < offset) {
+            hasBreak = breaks.Next(&nextBreak);
+        }
+        return hasBreak && nextBreak.offset == offset;
+    };
     auto appendPending = [&]() {
         row->Child(pending);
         pending = nullptr;
@@ -5320,10 +5327,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
                 SliceInlineFonts(a, advances->fonts, start, start + wordLen);
         }
         reportPiece(w, wordLeaf, wordLeaf + wordLen, false);
-        while (hasBreak && nextBreak.offset < wordLeaf) {
-            hasBreak = breaks.Next(&nextBreak);
-        }
-        bool joinsWord = pending && (!hasBreak || nextBreak.offset != wordLeaf);
+        bool joinsWord = pending && !startsAtBreak;
         if (hanging || joinsWord) {
             // A style boundary does not introduce a Unicode line break.
             // Keep the fragments separate for paint and source selection.
@@ -5487,6 +5491,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             if (wordLen == 0) {
                 wordStart = i;
                 wordLeaf = leafAt + i;
+                startsAtBreak = atBreak(wordLeaf);
                 if (shapeAroundObjects && !advances && CanShareObjectProse(r)) {
                     advanceStart = wordLeaf;
                     advances = ObjectProseAdvances(a, r, i, flowSource,
@@ -5513,7 +5518,11 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             word[wordLen++] = c;
             if (i + 1 == hanging) {
                 flush(true);
-            } else if (i >= hanging && c == ' ' && !(marks & MdCode)) {
+            } else if (i >= hanging && !(marks & MdCode) &&
+                       (c == ' ' ||
+                        (shapeAroundObjects && atBreak(leafAt + i + 1)))) {
+                // A mixed flow uses the wrapper's Unicode opportunities
+                // even when its prose has no ASCII spaces.
                 flush();
             }
         }

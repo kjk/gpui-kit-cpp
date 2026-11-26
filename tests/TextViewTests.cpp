@@ -6881,6 +6881,40 @@ static void InlineObjectsKeepBidiRunsTogether() {
     TswClose(&v);
 }
 
+static void InlineObjectsWrapProseAtUnicodeBreaks() {
+    constexpr Str prose = StrL(
+        "漢字漢字漢字漢字漢字漢字漢字漢字"
+        "漢字漢字漢字漢字漢字漢字漢字漢字");
+    TswView v = TswOpen(fmt("**%s** ![icon](assets/icons/heart.svg)", prose).s,
+                        TswContainer::Narrow);
+    float firstY = -1.f;
+    bool wraps = false;
+    int rendered = 0;
+    int start = 0;
+    int end = 0;
+    int scope = 0;
+    for (const TextHit& hit : v.win->paint.texts) {
+        if (rendered == len(prose)) break;
+        if (!len(hit.text)) continue;
+        if (!rendered) {
+            start = hit.docOff;
+            scope = hit.scope;
+        }
+        int count = std::min(len(hit.text), len(prose) - rendered);
+        utassert(StrEq(Str(hit.text.s, count), Str(prose.s + rendered, count)));
+        end = hit.docOff + count;
+        rendered += count;
+        if (firstY < 0) firstY = hit.bounds.y;
+        if (hit.bounds.y > firstY) wraps = true;
+    }
+    utassert(rendered == len(prose) && wraps);
+    char copy[128];
+    int copied = CopyTextHitsIn(&v.win->paint, start, end, scope, copy,
+                                (int)sizeof(copy), SelectionFormat::Plain);
+    utassert(StrEq(Str(copy, copied), prose));
+    TswClose(&v);
+}
+
 static void MixedObjectStrikesStayInsideTheSharedProse() {
     if (!TestMarkdownIsFull()) return;
     TswView v =
@@ -9049,6 +9083,7 @@ static void TestTextStateWindow() {
     InlineObjectsShareRowsWithShapedProse();
     MixedObjectProseSharesFontsLinksAndSourceRanges();
     InlineObjectsKeepBidiRunsTogether();
+    InlineObjectsWrapProseAtUnicodeBreaks();
     MixedObjectStrikesStayInsideTheSharedProse();
     MixedObjectMarkFollowsItsGlyphRange();
     RevealingProseBesideAnInlineObjectKeepsTheShapedRun();
