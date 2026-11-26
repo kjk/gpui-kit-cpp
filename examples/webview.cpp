@@ -27,14 +27,14 @@ struct Example {
     }
 
     static void OnBack(Example* self, Ctx* cx, const ClickEvent*) {
-        if (WebView* web = self->web.Get(cx->app)) {
-            WebViewBack(web);
+        if (!WebViewBack(self->web.Get(cx->app))) {
+            logf("webview: back navigation could not start\n");
         }
     }
 
     static void OnForward(Example* self, Ctx* cx, const ClickEvent*) {
-        if (WebView* web = self->web.Get(cx->app)) {
-            WebViewForward(web);
+        if (!WebViewForward(self->web.Get(cx->app))) {
+            logf("webview: forward navigation could not start\n");
         }
     }
 

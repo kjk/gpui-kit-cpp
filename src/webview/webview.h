@@ -177,11 +177,12 @@ bool WebViewSetGeometry(WebView* self, Bounds document, Bounds clip);
 FocusHandle WebViewFocusHandle(const WebView* self);
 /** `WebView::load_url`. */
 void WebViewLoadUrl(WebView* self, Str url);
-/** `WebView::back` — `history.back()` evaluated in the page, which is what
-    Rust does rather than asking the webview to go back. */
-void WebViewBack(WebView* self);
-/** `WebView::forward` — `history.forward()`, the same way as `back`. */
-void WebViewForward(WebView* self);
+/** `WebView::back`: returns whether the engine accepted the request to
+    evaluate `history.back()` in the page. */
+bool WebViewBack(WebView* self);
+/** `WebView::forward`: returns whether the engine accepted the request to
+    evaluate `history.forward()` in the page. */
+bool WebViewForward(WebView* self);
 /** `WebView::set_zoom` / `zoom`. The engine keeps the factor across
     navigations. On Linux it multiplies the scale match. */
 bool WebViewSetPageZoom(WebView* self, double zoom);

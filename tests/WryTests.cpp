@@ -49,6 +49,8 @@ static void MissingNativeWebViewLeavesThePointerTargetReachable() {
         web, {wry::LogicalPosition(15, 10), wry::LogicalSize(180, 80)}));
     utassert(!WebViewSetGeometry(web, {15, 10, 180, 80}, {0, 0, 100, 50}));
     utassert(!WebViewSetVisible(web, false));
+    utassert(!WebViewBack(web));
+    utassert(!WebViewForward(web));
     utassert(WebViewVisible(web));
     // Even a logically visible element needs a native surface to block.
     TestSimulateClick(win, {20, 20});

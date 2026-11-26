@@ -277,16 +277,14 @@ void WebViewLoadUrl(WebView* self, Str url) {
     }
 }
 
-void WebViewBack(WebView* self) {
-    if (wry::WebView* raw = WebViewRaw(self)) {
-        wry::WebViewEval(raw, StrL("history.back();"));
-    }
+bool WebViewBack(WebView* self) {
+    wry::WebView* raw = WebViewRaw(self);
+    return raw && wry::WebViewEval(raw, StrL("history.back();"));
 }
 
-void WebViewForward(WebView* self) {
-    if (wry::WebView* raw = WebViewRaw(self)) {
-        wry::WebViewEval(raw, StrL("history.forward();"));
-    }
+bool WebViewForward(WebView* self) {
+    wry::WebView* raw = WebViewRaw(self);
+    return raw && wry::WebViewEval(raw, StrL("history.forward();"));
 }
 
 bool WebViewSetPageZoom(WebView* self, double zoom) {
