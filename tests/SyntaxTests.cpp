@@ -95,6 +95,31 @@ static void TestSyntaxRust() {
     // capsAreTypes: Rust spells its types with a capital, so Vec is one.
     utassert(TokAt(rust, src, "Vec") == SyntaxTok::Type);
     utassert(TokAt(rust, src, "true") == SyntaxTok::Boolean);
+    utassert(TokAt(rust, src, "vec") == SyntaxTok::Function);
+}
+
+static void TestRustLiteralAndCommentBoundaries() {
+    SyntaxLang rust = SyntaxLangFor(StrL("rust"));
+    const char* src =
+        "fn get<'a>(v: &'a str) -> &'a str { return v; }\n"
+        "let r#type = r##\"raw \"# quote\nstays raw\"##;\n"
+        "let bytes = br#\"raw bytes\"#; let cstr = cr\"raw c\";\n"
+        "let byte = b'x'; let mark = '\\n'; let wide = \"two\nlines\";\n"
+        "/* outside /* inside */ still a comment */\n"
+        "'outer: loop { break 'outer; }\n";
+    utassert(Partitions(rust, src));
+    utassert(TokAt(rust, src, "return") == SyntaxTok::Keyword);
+    utassert(TokAt(rust, src, "str)") == SyntaxTok::Type);
+    utassert(TokAt(rust, src, "type =") == SyntaxTok::Text);
+    utassert(TokAt(rust, src, "stays raw") == SyntaxTok::String);
+    utassert(TokAt(rust, src, "br#\"") == SyntaxTok::String);
+    utassert(TokAt(rust, src, "cr\"") == SyntaxTok::String);
+    utassert(TokAt(rust, src, "b'x'") == SyntaxTok::String);
+    utassert(TokAt(rust, src, "'\\n'") == SyntaxTok::String);
+    utassert(TokAt(rust, src, "lines\"") == SyntaxTok::String);
+    utassert(TokAt(rust, src, "still a comment") == SyntaxTok::Comment);
+    utassert(TokAt(rust, src, "loop") == SyntaxTok::Keyword);
+    utassert(TokAt(rust, "Type != other", "Type") == SyntaxTok::Type);
 }
 
 static void TestSyntaxPython() {
@@ -313,6 +338,13 @@ static void FoldCandidatesCoverTheirLastLineWhenItCanBeHidden() {
         {"sql", "SELECT 1;\n", {}, 0},
         {"json", "{\n  \"a\": 1,\n  \"b\": 2\n}", {{0, 3}}, 1},
         {"rust", "fn main() {\n    let x = 1;\n}\n", {{0, 2}}, 1},
+        {"rust",
+         "fn sample<'a>(s: &'a str) {\n"
+         "    let raw = r#\"{ \" }\"#;\n"
+         "    /* outer /* inner */ } */\n"
+         "}\n",
+         {{0, 3}},
+         1},
     };
     App* app = TestAppNew();
     component::Init(app);
@@ -412,6 +444,7 @@ void TestSyntax() {
     TestSyntaxLangFor();
     TestSyntaxCpp();
     TestSyntaxRust();
+    TestRustLiteralAndCommentBoundaries();
     TestSyntaxPython();
     TestSyntaxJson();
     TestSyntaxMarkup();

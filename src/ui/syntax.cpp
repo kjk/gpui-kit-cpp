@@ -42,6 +42,8 @@ struct SyntaxLangDef {
     // were written rather than each growing a `false` — gcc's
     // missing-field-initializers is what asks for one or the other.
     bool markdown = false;
+    // Rust's raw strings, lifetime tokens and nested block comments.
+    bool rust = false;
 };
 
 // clang-format off
@@ -66,7 +68,8 @@ static const SyntaxLangDef kLangs[] = {
      "struct super trait true type unsafe use where while",
      "bool char f32 f64 i8 i16 i32 i64 i128 isize str u8 u16 u32 u64 u128 "
      "usize",
-     "//", true, false, false, false, true, false, false, false, false, false},
+     "//", true, false, false, false, true, false, false, false, false, false,
+     false, true},
 
     {"js jsx mjs cjs javascript ts tsx typescript",
      "as async await break case catch class const continue debugger default "
@@ -289,7 +292,8 @@ static bool SyntaxAt(const SyntaxLexer* lx, int at, const char* s) {
 
 // A quoted run, to its closing quote. `escapes` is whether a backslash
 // escapes the next byte — a shell's '..' and a raw string's do not.
-static void SyntaxScanString(SyntaxLexer* lx, char quote, bool escapes) {
+static void SyntaxScanString(SyntaxLexer* lx, char quote, bool escapes,
+                             bool multiline = false) {
     lx->at++; // the opening quote
     while (lx->at < len(lx->src)) {
         char c = lx->src.s[lx->at];
@@ -303,8 +307,85 @@ static void SyntaxScanString(SyntaxLexer* lx, char quote, bool escapes) {
         }
         // An unterminated string ends at the line, so one stray quote does
         // not paint the rest of the block.
-        if (c == '\n' && quote != '`') {
+        if (c == '\n' && quote != '`' && !multiline) {
             return;
+        }
+    }
+}
+
+static bool SyntaxNextRustPrefix(SyntaxLexer* lx, int start) {
+    Str src = lx->src;
+    char first = src.s[start];
+    int at = start;
+    if ((first == 'b' || first == 'c') && at + 1 < len(src)) {
+        at++;
+        char quote = src.s[at];
+        if (quote == '"' || (quote == '\'' && first == 'b')) {
+            lx->at = at;
+            SyntaxScanString(lx, quote, true, quote == '"');
+            SyntaxEmit(lx, start, SyntaxTok::String);
+            return true;
+        }
+    }
+    if (src.s[at] == 'r') {
+        int hashes = 0;
+        while (++at < len(src) && src.s[at] == '#') hashes++;
+        if (at < len(src) && src.s[at] == '"') {
+            while (++at < len(src)) {
+                if (src.s[at] != '"') continue;
+                int end = at + 1;
+                while (end < len(src) && end - at <= hashes &&
+                       src.s[end] == '#')
+                    end++;
+                if (end - at > hashes) {
+                    at = end;
+                    break;
+                }
+            }
+            lx->at = at;
+            SyntaxEmit(lx, start, SyntaxTok::String);
+            return true;
+        }
+        // r#type is an identifier even if its spelling is a keyword.
+        if (first == 'r' && hashes == 1 && at < len(src) &&
+            SyntaxIsIdentStart(src.s[at])) {
+            while (++at < len(src) && SyntaxIsIdent(src.s[at])) {
+            }
+            lx->at = at;
+            SyntaxEmit(lx, start, SyntaxTok::Text);
+            return true;
+        }
+    }
+    if (first == '\'' && start + 1 < len(src) &&
+        SyntaxIsIdentStart(src.s[start + 1])) {
+        at = start + 1;
+        if (SyntaxAt(lx, at, "r#") && at + 2 < len(src) &&
+            SyntaxIsIdentStart(src.s[at + 2]))
+            at += 2;
+        while (++at < len(src) && SyntaxIsIdent(src.s[at])) {
+        }
+        if (at == len(src) || src.s[at] != '\'') {
+            // Lifetimes and loop labels leave the following code visible.
+            lx->at = at;
+            SyntaxEmit(lx, start, SyntaxTok::Text);
+            return true;
+        }
+    }
+    return false;
+}
+
+static void SyntaxScanBlockComment(SyntaxLexer* lx, bool nested) {
+    int depth = 1;
+    lx->at += 2;
+    while (lx->at < len(lx->src) && depth > 0) {
+        if (SyntaxAt(lx, lx->at, "*/")) {
+            depth--;
+            lx->at += 2;
+        } else if (nested && SyntaxAt(lx, lx->at, "/*")) {
+            depth++;
+            lx->at += 2;
+        } else {
+            lx->at++;
         }
     }
 }
@@ -629,14 +710,11 @@ bool SyntaxLexNext(SyntaxLexer* lx) {
         return true;
     }
     if (d->blockComment && SyntaxAt(lx, lx->at, "/*")) {
-        lx->at += 2;
-        while (lx->at < len(lx->src) && !SyntaxAt(lx, lx->at, "*/")) {
-            lx->at++;
-        }
-        lx->at = lx->at < len(lx->src) ? lx->at + 2 : len(lx->src);
+        SyntaxScanBlockComment(lx, d->rust);
         SyntaxEmit(lx, start, SyntaxTok::Comment);
         return true;
     }
+    if (d->rust && SyntaxNextRustPrefix(lx, start)) return true;
     if (d->htmlComment && SyntaxAt(lx, lx->at, "<!--")) {
         SyntaxScanHtmlComment(lx, start);
         return true;
@@ -650,7 +728,8 @@ bool SyntaxLexNext(SyntaxLexer* lx) {
     if (c == '"' || c == '\'' || (c == '`' && d->backtickString)) {
         // A shell's '..' takes no escapes; everything else does.
         SyntaxScanString(
-            lx, c, !(c == '\'' && d->lineComment && d->lineComment[0] == '#'));
+            lx, c, !(c == '\'' && d->lineComment && d->lineComment[0] == '#'),
+            d->rust && c == '"');
         SyntaxTok tok = SyntaxTok::String;
         if (d->stringKeyProperty) {
             // JSON: a string before a ':' is the object's key, which the
@@ -707,7 +786,15 @@ bool SyntaxLexNext(SyntaxLexer* lx) {
         } else {
             int next = SyntaxSkipSpace(lx, lx->at);
             char after = next < len(lx->src) ? lx->src.s[next] : 0;
-            if (after == '(') {
+            bool invocation = after == '(';
+            if (d->rust && after == '!') {
+                int delimiter = SyntaxSkipSpace(lx, next + 1);
+                if (delimiter < len(lx->src)) {
+                    char open = lx->src.s[delimiter];
+                    invocation = open == '(' || open == '[' || open == '{';
+                }
+            }
+            if (invocation) {
                 tok = SyntaxTok::Function;
             } else if (d->identProperty && (after == ':' || after == '=')) {
                 tok = SyntaxTok::Property;
