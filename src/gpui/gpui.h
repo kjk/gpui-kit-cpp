@@ -7392,11 +7392,8 @@ bool LayoutInScratchPass();
 LayoutCache* LayoutRowCache(PaintCtx* ctx, uint64_t list, int index);
 void LayoutRowCachesFree(Window* win);
 void PaintEl(PaintCtx* ctx, El* e);
-// Where the bytes [lo, hi) of a laid-out text run landed, one rectangle per
-// visual line, in window coordinates — ShapedLine::x_for_index over each
-// wrapped row, for a caller that paints over a run from outside it (an
-// editor's range decorations, which span rows). Returns how many were
-// written.
+// Where the bytes [lo, hi) of a laid-out text run landed in window
+// coordinates. A bidirectional visual line can have several rectangles.
 Bounds ElTextContentBounds(const El* e);
 TextLayout* ElTextLayout(PaintCtx* ctx, const El* e);
 Bounds ElTextRangeBounds(PaintCtx* ctx, const El* e, int lo, int hi);
@@ -7404,6 +7401,9 @@ Point ElTextCaretPoint(PaintCtx* ctx, const El* e, int offset,
                        bool lineEndAffinity);
 int ElTextRangeRects(PaintCtx* ctx, const El* e, int lo, int hi, Bounds* out,
                      int cap);
+// In-place conversion of line-ordered text rectangles into code boxes.
+// Zero leaves a single-line span's own box in use.
+int InlineCodeLineBoxes(Bounds* rects, int count, Bounds box, Bounds content);
 // A link inside a shaped text run uses its painted glyph ranges for input.
 void PaintInlineLinkHit(PaintCtx* ctx, const El* link, Bounds bounds,
                         uint32_t path);

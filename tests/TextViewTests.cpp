@@ -3280,6 +3280,24 @@ static void OversizedInlineCodeWrapsWithOneInsetPerSide() {
     TestAppFree(app);
 }
 
+// inline_flow.rs positions one CodeBox for each visual-line fragment.
+static void InlineCodePaintsOneBoxPerBidiLine() {
+    Bounds box = {10, 10, 100, 47};
+    Bounds content = {14, 13, 89, 40};
+    // Backends can return the same visual line in separate x intervals.
+    Bounds glyphs[] = {
+        {49, 13, 20, 20}, {14, 13, 31, 20}, {25, 33, 20, 20}, {14, 33, 8, 20}};
+    utassert(InlineCodeLineBoxes(glyphs, dimofi(glyphs), box, content) == 2);
+    utassert(glyphs[0].x == 10 && glyphs[0].y == 10 && glyphs[0].w == 66 &&
+             glyphs[0].h == 23);
+    utassert(glyphs[1].x == 10 && glyphs[1].y == 33 && glyphs[1].w == 42 &&
+             glyphs[1].h == 24);
+
+    Bounds singleLine[] = {{49, 13, 20, 20}, {14, 13, 31, 20}};
+    utassert(
+        InlineCodeLineBoxes(singleLine, dimofi(singleLine), box, content) == 0);
+}
+
 struct HangingInlineCodeView {
     Str source;
     float width;
@@ -12177,6 +12195,7 @@ void TestTextView() {
     InlineCodeRefinesItsFontAndDecorations();
     InlineCodeLineIsAsTallAsAPlainLine();
     OversizedInlineCodeWrapsWithOneInsetPerSide();
+    InlineCodePaintsOneBoxPerBidiLine();
     ClosingMarkAndSpaceStayWithInlineCode();
     FittedListsKeepTheirBodyWidth();
     TestStatelessMarkdownSettles();

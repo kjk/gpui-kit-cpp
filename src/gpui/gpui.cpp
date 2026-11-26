@@ -8733,6 +8733,40 @@ static void PaintElBorder(PaintCtx* ctx, El* e, Bounds box) {
     e->style.borderColor = savedBorder;
 }
 
+int InlineCodeLineBoxes(Bounds* rects, int count, Bounds box, Bounds content) {
+    // Range geometry can split a bidi line into several visual intervals.
+    // The code span paints a single box for that line.
+    int lines = 0;
+    for (int i = 0; i < count; i++) {
+        Bounds rect = rects[i];
+        if (lines > 0 && rects[lines - 1].y == rect.y) {
+            Bounds& line = rects[lines - 1];
+            float end = std::max(line.Right(), rect.Right());
+            line.x = std::min(line.x, rect.x);
+            line.w = end - line.x;
+            line.h = std::max(line.h, rect.h);
+        } else {
+            rects[lines++] = rect;
+        }
+    }
+    if (lines <= 1) return 0;
+
+    float left = content.x - box.x;
+    float right = box.Right() - content.Right();
+    for (int i = 0; i < lines; i++) {
+        Bounds& line = rects[i];
+        float x = std::max(box.x, line.x - left);
+        float end = std::min(box.Right(), line.Right() + right);
+        line.x = x;
+        line.w = std::max(0.f, end - x);
+    }
+    rects[0].h += rects[0].y - box.y;
+    rects[0].y = box.y;
+    Bounds& last = rects[lines - 1];
+    last.h = std::max(last.h, box.Bottom() - last.y);
+    return lines;
+}
+
 static int InlineCodeQuads(PaintCtx* ctx, const El* e, Vec<Bounds>& quads) {
     if (!e->lifecycle || !e->lifecycle->inlineCodeBox || !e->style.wrap ||
         len(e->text) < 2) {
@@ -8747,24 +8781,8 @@ static int InlineCodeQuads(PaintCtx* ctx, const El* e, Vec<Bounds>& quads) {
         if (count < capacity || capacity == len(e->text)) break;
         capacity += std::min(capacity, len(e->text) - capacity);
     }
-    if (count <= 1) return 0;
-
-    Bounds box = e->Bounds();
-    Bounds content = ElTextContentBounds(e);
-    float left = content.x - box.x;
-    float right = box.Right() - content.Right();
-    for (int i = 0; i < count; i++) {
-        Bounds& line = quads.els[i];
-        float x = std::max(box.x, line.x - left);
-        float end = std::min(box.Right(), line.Right() + right);
-        line.x = x;
-        line.w = std::max(0.f, end - x);
-    }
-    quads.els[0].h += quads.els[0].y - box.y;
-    quads.els[0].y = box.y;
-    Bounds& last = quads.els[count - 1];
-    last.h = std::max(last.h, box.Bottom() - last.y);
-    return count;
+    return InlineCodeLineBoxes(quads.els, count, e->Bounds(),
+                               ElTextContentBounds(e));
 }
 
 static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay);
