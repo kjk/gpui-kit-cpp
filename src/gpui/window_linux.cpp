@@ -2147,6 +2147,7 @@ static void DestroyPlatWindow(Window* win) {
     }
     // While the PlatWindow is still there to give the grab back.
     WindowModalRelease(win);
+    AccessibilityLinuxForgetWindow(win);
 #if defined(GPUI_HAVE_X11_NATIVE_OVERLAY)
     DestroyNativeOverlay(pw->nativeOverlay);
 #endif

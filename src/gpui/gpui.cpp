@@ -11409,9 +11409,7 @@ static void AccessibilityCollectNode(El* e, Vec<AccessibilityNode>* out,
         node.parent = semanticParent;
         node.bounds = e->Bounds();
         node.info = e->accessibility;
-        if (node.info.live != AccessibilityLive::Off) {
-            node.livePath = e->pathId;
-        }
+        node.elementPath = e->pathId;
         node.input = e->input;
         if (!node.input && node.info.role != AccessibilityRole::Document) {
             node.input = AccessibilityInput(e);

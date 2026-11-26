@@ -16,6 +16,7 @@ bool AccessibilityWinPartsSmokeTest(Window* win, uint32_t nodeId);
 namespace gpui {
 // Drives the AT-SPI handlers over a socketpair; beside the adapter too.
 bool AccessibilityLinuxPartsSmokeTest(Window* win, uint32_t nodeId);
+bool AccessibilityLinuxTextEventsSmokeTest();
 } // namespace gpui
 #endif
 #if GPUI_OS_MAC
@@ -1646,11 +1647,11 @@ static void LiveRegionAnnouncesChangesAndKeepsTheSameNodeIdentity() {
     utassert(StrEq(status().info.label, host->text));
     utassert(StrEq(status().info.value, host->text));
     utassert(status().liveChanged && !win->focusId);
-    uint32_t path = status().livePath;
+    uint32_t path = status().elementPath;
     host->sibling = true;
     TestDraw(win);
     utassert(len(win->accessibility) == 2 && !status().liveChanged);
-    utassert(status().livePath == path);
+    utassert(status().elementPath == path);
     host->text = StrL("Could not save");
     TestDraw(win);
     utassert(status().liveChanged);
@@ -1663,7 +1664,7 @@ static void LiveRegionAnnouncesChangesAndKeepsTheSameNodeIdentity() {
     utassert(status().liveChanged);
     host->id = StrL("new-status");
     TestDraw(win);
-    utassert(status().livePath != path && status().liveChanged);
+    utassert(status().elementPath != path && status().liveChanged);
     host->show = false;
     TestDraw(win);
     utassert(len(win->accessibility) == 1);
@@ -1692,6 +1693,9 @@ void TestAccessibility() {
     SliderActionsUseTheSlidersOwnStep();
     SliderAccessibilityLabelsFollowTheExistingNodes();
     EditableTextOffersSetValueAndReadOnlyTextDoesNot();
+#if GPUI_OS_LINUX
+    utassert(AccessibilityLinuxTextEventsSmokeTest());
+#endif
     SetValuePreservesExactEditorText();
     SelectionContainersExposeTheirSelectedItems();
     ExplicitSemanticListenersAreInvoked();

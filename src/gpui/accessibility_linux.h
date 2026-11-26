@@ -14,6 +14,7 @@ int AccessibilityLinuxFd();
 void AccessibilityLinuxPump();
 bool AccessibilityLinuxReady();
 void AccessibilityLinuxTreeChanged(Window* win);
+void AccessibilityLinuxForgetWindow(Window* win);
 void AccessibilityLinuxFocusChanged(Window* win, int focusId);
 // The adapter keeps its geometry in window coordinates. X11 owns the one
 // platform-specific conversion needed for AT-SPI's screen coordinates.

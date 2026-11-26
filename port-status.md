@@ -237,16 +237,18 @@ The current update target is
   AccessKit a tree every frame. Here a frame walks the element tree for
   accessibility nodes only while `PlatAccessibilityWanted` says something
   reads it: on Windows a UIA client is listening or has asked the window
-  (WM_GETOBJECT); macOS and Linux always collect; wasm never; a headless
-  test window always does. An idle frame otherwise paid that walk and its
-  hash for nobody (`src/gpui/window_common.cpp`).
+  (WM_GETOBJECT); on Linux the AT-SPI bridge is ready; macOS and headless
+  test windows always collect; wasm never does (`src/gpui/window_common.cpp`).
 - **A document's text can be read on demand.** Local addition for large
   read-only documents (a PDF viewer's pages): `El::AccessibilityDocument`
   gives a Document node text and selection callbacks that the bridge calls
   only when a client reads them, plus revisions that enter the tree hash.
   Windows and macOS post text/value and selection events on the document.
   Linux posts TextSelectionChanged for selection revisions and
-  VisibleDataChanged for text revisions, since the source has no edit span.
+  VisibleDataChanged for text revisions, since the lazy source has no edit
+  span. Exposed inputs and eager documents send AT-SPI text edits and
+  caret and selection changes in character offsets. An input whose excerpt
+  moves sends VisibleDataChanged for the new excerpt.
 - **A document's parts are enumerated on demand.** Local addition: an
   `AccessibilityDocumentSource` may list parts (a PDF's pages) with a name,
   text, bounds and text range each, read only when asked, so a large

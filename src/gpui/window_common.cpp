@@ -329,7 +329,7 @@ static bool AccessibilityTrackLiveRegions(Window* win) {
         if (node.info.live == AccessibilityLive::Off || len(text) == 0) {
             continue;
         }
-        uint32_t path = node.livePath ? node.livePath : node.id;
+        uint32_t path = node.elementPath ? node.elementPath : node.id;
         uint64_t textHash = AccessibilityHashStr(0xcbf29ce484222325ull, text);
         node.liveChanged = true;
         for (int j = 0; j < len(last); j++) {
@@ -382,11 +382,23 @@ static uint64_t AccessibilityTreeHash(const Vec<AccessibilityNode>& nodes) {
         const AccessibilityNode& node = nodes[i];
         const AccessibilityInfo& info = node.info;
         GPUI_A11Y_HASH(node.id);
+        GPUI_A11Y_HASH(node.elementPath);
         GPUI_A11Y_HASH(node.parent);
         GPUI_A11Y_HASH(node.actions);
         GPUI_A11Y_HASH(node.focusId);
         GPUI_A11Y_HASH(node.textSelectionStart);
         GPUI_A11Y_HASH(node.textSelectionEnd);
+        if (node.input && !node.document.text &&
+            WindowAccessibilityHasText(node)) {
+            Selection selection;
+            if (WindowAccessibilityTextSelection(node, &selection)) {
+                GPUI_A11Y_HASH(selection.start);
+                GPUI_A11Y_HASH(selection.end);
+            }
+            GPUI_A11Y_HASH(WindowAccessibilityTextCaret(node));
+        }
+        GPUI_A11Y_HASH(node.textExcerptStart);
+        hash = AccessibilityHashStr(hash, node.textExcerpt);
         GPUI_A11Y_HASH(node.document.text != nullptr);
         GPUI_A11Y_HASH(node.document.textRevision);
         GPUI_A11Y_HASH(node.document.selectionRevision);

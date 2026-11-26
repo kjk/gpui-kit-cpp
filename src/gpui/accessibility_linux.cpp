@@ -144,6 +144,19 @@ static void PutHeaderU32(DbusWriter* fields, uint8_t code, uint32_t value) {
     PutVariantU32(fields, value);
 }
 
+struct LinuxTextSnapshot {
+    Window* window;
+    const InputState* input;
+    uint32_t path;
+    AccessibilityRole role;
+    Str text;
+    Selection selection;
+    int caret;
+    int excerptStart;
+    bool excerpt;
+    uint64_t revision;
+};
+
 struct AccessibilityLinuxState {
     App* app = nullptr;
     int fd = -1;
@@ -153,6 +166,8 @@ struct AccessibilityLinuxState {
     Str busName = {};
     Str busAddress = {};
     Vec<uint8_t> rx;
+    Vec<LinuxTextSnapshot> text;
+    uint64_t textRevision = 0;
     int32_t applicationId = 0;
     bool ready = false;
 };
@@ -2161,6 +2176,16 @@ void AccessibilityLinuxShutdown() {
     StrFree(gA11y.busAddress);
     gA11y.busAddress = {};
     VecReset(gA11y.rx);
+    for (const auto& snapshot : gA11y.text) StrFree(snapshot.text);
+    VecReset(gA11y.text);
+}
+
+void AccessibilityLinuxForgetWindow(Window* win) {
+    for (int i = len(gA11y.text) - 1; i >= 0; i--) {
+        if (gA11y.text[i].window != win) continue;
+        StrFree(gA11y.text[i].text);
+        VecRemoveAtFast(gA11y.text, i);
+    }
 }
 
 int AccessibilityLinuxFd() {
@@ -2190,7 +2215,8 @@ void AccessibilityLinuxPump() {
 }
 
 static void SendEvent(Window* win, uint32_t nodeId, const char* member,
-                      const char* detail, int detail1, Str payload = {}) {
+                      const char* detail, int detail1, Str payload = {},
+                      int detail2 = 0) {
     if (!gA11y.ready || !win || !gA11y.app) return;
     int wi = -1;
     for (int i = 0; i < len(gA11y.app->windows); i++) {
@@ -2209,7 +2235,7 @@ static void SendEvent(Window* win, uint32_t nodeId, const char* member,
     PutHeaderString(&fields, 8, "g", Str("siiva{sv}"));
     PutString(&body, detail);
     PutI32(&body, detail1);
-    PutI32(&body, 0);
+    PutI32(&body, detail2);
     PutVariantString(&body, "s", payload);
     PutEmptyStringDict(&body);
     SendMessage(4, 0, &fields, &body);
@@ -2217,11 +2243,114 @@ static void SendEvent(Window* win, uint32_t nodeId, const char* member,
     VecReset(body.bytes);
 }
 
+static void SendTextEdit(Window* win, uint32_t id, Str before, Str after) {
+    int prefix = 0;
+    int common = std::min(len(before), len(after));
+    while (prefix < common && before.s[prefix] == after.s[prefix]) prefix++;
+    // Two different UTF-8 scalars can share their leading byte(s).
+    while (!Utf8IsCharBoundary(before, prefix) ||
+           !Utf8IsCharBoundary(after, prefix))
+        prefix--;
+    int oldEnd = len(before);
+    int newEnd = len(after);
+    while (oldEnd > prefix && newEnd > prefix) {
+        int oldStart = Utf8Prev(before, oldEnd);
+        int newStart = Utf8Prev(after, newEnd);
+        if (oldStart < prefix || newStart < prefix ||
+            !StrEq(Str(before.s + oldStart, oldEnd - oldStart),
+                   Str(after.s + newStart, newEnd - newStart)))
+            break;
+        oldEnd = oldStart;
+        newEnd = newStart;
+    }
+    Str removed(before.s + prefix, oldEnd - prefix);
+    Str added(after.s + prefix, newEnd - prefix);
+    if ((len(removed) && memchr(removed.s, 0, len(removed))) ||
+        (len(added) && memchr(added.s, 0, len(added)))) {
+        // D-Bus strings cannot contain a NUL.
+        SendEvent(win, id, "VisibleDataChanged", "", 0);
+        return;
+    }
+    int offset = Utf8CharacterForByte(before, prefix);
+    if (len(removed))
+        SendEvent(win, id, "TextChanged", "delete", offset, removed,
+                  Utf8CharCount(removed));
+    if (len(added))
+        SendEvent(win, id, "TextChanged", "insert", offset, added,
+                  Utf8CharCount(added));
+}
+
+static void TrackLinuxText(Window* win, const AccessibilityNode& node) {
+    // A lazy document advertises revisions; observing its changes must not
+    // eagerly call the application's text provider or duplicate its text.
+    if (node.document.text ||
+        (!node.input && node.info.role != AccessibilityRole::Document))
+        return;
+    Str text = WindowAccessibilityTextValue(node);
+    if (!text.s) return;
+    uint32_t path = node.elementPath ? node.elementPath : node.id;
+    LinuxTextSnapshot* previous = nullptr;
+    for (auto& snapshot : gA11y.text) {
+        if (snapshot.window == win && snapshot.path == path &&
+            snapshot.input == node.input && snapshot.role == node.info.role) {
+            previous = &snapshot;
+            break;
+        }
+    }
+
+    Selection selection = {-1, -1};
+    Selection bytes;
+    if (WindowAccessibilityTextSelection(node, &bytes) &&
+        bytes.start != bytes.end) {
+        selection.start =
+            Utf8CharacterForByte(text, std::min(bytes.start, bytes.end));
+        selection
+            .end = Utf8CharacterForByte(text, std::max(bytes.start, bytes.end));
+    }
+    int caret = Utf8CharacterForByte(text, WindowAccessibilityTextCaret(node));
+    bool excerpt = node.textExcerpt.s != nullptr;
+    LinuxTextSnapshot current{
+        win,     node.input,        path,  node.info.role,
+        {},      selection,         caret, node.textExcerptStart,
+        excerpt, gA11y.textRevision};
+    if (!previous) {
+        current.text = StrDup(text);
+        if (current.text.s && !VecAppend(gA11y.text, current))
+            StrFree(current.text);
+        return;
+    }
+    bool changed = !StrEq(previous->text, text);
+    if (previous->excerpt != excerpt ||
+        previous->excerptStart != node.textExcerptStart) {
+        // Moving the excerpt's origin changes the coordinate system.
+        SendEvent(win, node.id, "VisibleDataChanged", "", 0);
+    } else if (changed) {
+        SendTextEdit(win, node.id, previous->text, text);
+    }
+    if (node.focusId && node.focusId == win->focusId) {
+        if (previous->selection.start != selection.start ||
+            previous->selection.end != selection.end)
+            SendEvent(win, node.id, "TextSelectionChanged", "", 0);
+        if (previous->caret != caret)
+            SendEvent(win, node.id, "TextCaretMoved", "", caret);
+    }
+    if (changed) {
+        current.text = StrDup(text);
+        if (!current.text.s) return;
+        StrFree(previous->text);
+    } else {
+        current.text = previous->text;
+    }
+    *previous = current;
+}
+
 void AccessibilityLinuxTreeChanged(Window* win) {
+    if (!win || !gA11y.ready) return;
     SendEvent(win, 0, "ChildrenChanged", "invalidate", 0);
-    if (!win) return;
+    ++gA11y.textRevision;
     for (int i = 0; i < len(win->accessibility); i++) {
         const auto& node = win->accessibility[i];
+        TrackLinuxText(win, node);
         // A revision invalidates the source without specifying an edit span.
         if (node.documentTextChanged) {
             SendEvent(win, node.id, "VisibleDataChanged", "", 0);
@@ -2233,6 +2362,13 @@ void AccessibilityLinuxTreeChanged(Window* win) {
             SendEvent(win, node.id, "Announcement", "", (int)node.info.live,
                       node.info.label);
         }
+    }
+    for (int i = len(gA11y.text) - 1; i >= 0; i--) {
+        if (gA11y.text[i].window != win ||
+            gA11y.text[i].revision == gA11y.textRevision)
+            continue;
+        StrFree(gA11y.text[i].text);
+        VecRemoveAtFast(gA11y.text, i);
     }
 }
 
@@ -2452,6 +2588,102 @@ bool AccessibilityLinuxPartsSmokeTest(Window* win, uint32_t nodeId) {
     VecRemoveLast(win->app->windows);
     win->plat = plat;
     VecReset(gA11y.rx);
+    gA11y = saved;
+    return ok;
+}
+
+struct SmokeTextEvent {
+    const char* member;
+    const char* detail;
+    int offset;
+    int count;
+    Str payload;
+};
+
+static bool SmokeTextEvents(int fd, const SmokeTextEvent* expected, int count) {
+    uint8_t buffer[4096];
+    int size = (int)recv(fd, buffer, sizeof(buffer), MSG_DONTWAIT);
+    int seen = 0;
+    for (int offset = 0; offset < size;) {
+        int bytes = 0;
+        Incoming in;
+        if (!ParseIncoming(buffer + offset, size - offset, &in, &bytes) ||
+            in.type != 4 || !StrIs(in.signature, "siiva{sv}"))
+            return false;
+        offset += bytes;
+        if (StrIs(in.member, "ChildrenChanged")) continue;
+        if (seen >= count) return false;
+        const auto& event = expected[seen++];
+        int at = 0;
+        Str detail = ReadString(in.body, in.bodyLen, &at);
+        int pos = ReadI32(in.body, in.bodyLen, &at);
+        int lenText = ReadI32(in.body, in.bodyLen, &at);
+        Str payloadKind = ReadSignature(in.body, in.bodyLen, &at);
+        Str payload = ReadString(in.body, in.bodyLen, &at);
+        if (!StrIs(in.member, event.member) || !StrIs(detail, event.detail) ||
+            pos != event.offset || lenText != event.count ||
+            !StrIs(payloadKind, "s") || !StrEq(payload, event.payload))
+            return false;
+    }
+    return seen == count;
+}
+
+bool AccessibilityLinuxTextEventsSmokeTest() {
+    int fds[2] = {-1, -1};
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, fds) != 0) return false;
+    AccessibilityLinuxState saved = gA11y;
+    gA11y = AccessibilityLinuxState();
+    App app;
+    Window win;
+    win.app = &app;
+    VecAppend(app.windows, &win);
+    gA11y.app = &app;
+    gA11y.fd = fds[1];
+    gA11y.ready = true;
+    InputState input;
+    AccessibilityNode node;
+    node.id = 1;
+    node.elementPath = 55;
+    node.focusId = win.focusId = 7;
+    node.info.role = AccessibilityRole::TextInput;
+    node.info.value = StrL("");
+    node.input = &input;
+    VecAppend(win.accessibility, node);
+
+    InputSetValue(&input, StrL("a\xc3\xa9!"));
+    input.selectedRange = {3, 3};
+    AccessibilityLinuxTreeChanged(&win);
+    bool ok = SmokeTextEvents(fds[0], nullptr, 0);
+
+    InputSetValue(&input, StrL("a\xc3\xaa\xf0\x9f\x92\xbb!"));
+    input.selectedRange = {1, 7};
+    win.accessibility[0].id = 2; // the semantic path survives renumbering
+    AccessibilityLinuxTreeChanged(&win);
+    const SmokeTextEvent replacement[] = {
+        {"TextChanged", "delete", 1, 1, StrL("\xc3\xa9")},
+        {"TextChanged", "insert", 1, 2, StrL("\xc3\xaa\xf0\x9f\x92\xbb")},
+        {"TextSelectionChanged", "", 0, 0, {}},
+        {"TextCaretMoved", "", 3, 0, {}},
+    };
+    ok = SmokeTextEvents(fds[0], replacement, dimofi(replacement)) && ok;
+
+    input.selectedRange = {1, 1};
+    AccessibilityLinuxTreeChanged(&win);
+    const SmokeTextEvent caret[] = {
+        {"TextSelectionChanged", "", 0, 0, {}},
+        {"TextCaretMoved", "", 1, 0, {}},
+    };
+    ok = SmokeTextEvents(fds[0], caret, dimofi(caret)) && ok;
+    AccessibilityLinuxTreeChanged(&win);
+    ok = SmokeTextEvents(fds[0], nullptr, 0) && ok;
+
+    input.masked = true;
+    InputSetValue(&input, StrL("secret"));
+    AccessibilityLinuxTreeChanged(&win);
+    ok = SmokeTextEvents(fds[0], nullptr, 0) && !len(gA11y.text) && ok;
+    AccessibilityLinuxForgetWindow(&win);
+    close(fds[0]);
+    close(fds[1]);
     gA11y = saved;
     return ok;
 }

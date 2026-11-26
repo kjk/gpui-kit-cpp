@@ -3974,7 +3974,7 @@ struct HitRect {
 // frame copy of the element behavior so an OS adapter can invoke it later.
 struct AccessibilityNode {
     uint32_t id = 0;
-    uint32_t livePath = 0;
+    uint32_t elementPath = 0;
     bool liveChanged = false;
     int parent = -1;
     Bounds bounds = {};
