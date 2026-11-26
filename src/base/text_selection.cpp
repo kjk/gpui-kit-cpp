@@ -1797,23 +1797,54 @@ static const TextHit* CaptureSourcePoint(const PaintCtx& paint, int offset,
     return out->block >= 0 ? candidate : nullptr;
 }
 
+static bool BlockPointBefore(const TextSelectionSourcePoint& a,
+                             const TextSelectionSourcePoint& b) {
+    return a.block < b.block ||
+           (a.block == b.block && a.blockByte < b.blockByte);
+}
+
 static bool ExtendUnpaintedSelection(Window* win, Point point) {
     const TextViewState* view = RetainedSelectionView(win);
     if (!view) return false;
     WindowSelection* selection = win->sel;
     TextSelectionReflow reflow = selection->pendingReflow;
-    const auto& anchor = reflow.endpoints[0];
-    if (anchor.block < 0 || selection->hasAnchorCell || selection->unitHeld)
-        return false;
+    auto anchor = reflow.endpoints[0];
+    if (anchor.block < 0 || selection->hasAnchorCell) return false;
     int offset = TextHitOffsetIn(&win->paint, point.x, point.y, true,
                                  reflow.scope, nullptr);
     TextSelectionSourcePoint cursor;
     const TextHit* hit =
         CaptureSourcePoint(win->paint, offset, reflow.scope, false, &cursor);
     if (!hit || hit->owner != view->self || cursor.block < 0) return false;
-    bool backwards =
-        cursor.block < anchor.block ||
-        (cursor.block == anchor.block && cursor.blockByte < anchor.blockByte);
+    bool unitHeld = selection->unitHeld;
+    int unitClickCount = selection->unitClickCount;
+    if (unitHeld) {
+        const auto& first = reflow.unit[0];
+        const auto& last = reflow.unit[1];
+        if (first.block < 0 || last.block < 0) return false;
+        bool before = BlockPointBefore(cursor, first);
+        anchor = before ? last : first;
+        if (!before && BlockPointBefore(cursor, last)) {
+            cursor = last;
+        } else {
+            int start = 0;
+            int end = 0;
+            if (TextMultiClickRangeIn(&win->paint, point.x, point.y,
+                                      unitClickCount, reflow.scope, &start,
+                                      &end, nullptr)) {
+                TextSelectionSourcePoint snapped;
+                const TextHit* edge =
+                    CaptureSourcePoint(win->paint, before ? start : end,
+                                       reflow.scope, !before, &snapped);
+                if (edge && edge->owner == view->self && snapped.block >= 0) {
+                    hit = edge;
+                    cursor = snapped;
+                }
+            }
+        }
+    }
+    bool backwards = BlockPointBefore(cursor, anchor);
+    reflow.endpoints[0] = anchor;
     reflow.endpoints[1] = cursor;
     reflow.bounds[1] = hit->bounds;
     // The real offsets are assigned when both blocks next lay out. Until
@@ -1829,6 +1860,8 @@ static bool ExtendUnpaintedSelection(Window* win, Point point) {
     selection->cursorPoint = point;
     selection->hasWindowPoints = true;
     selection->anchorInsideText = true;
+    selection->unitHeld = unitHeld;
+    selection->unitClickCount = unitClickCount;
     selection->pendingReflow = reflow;
     TextSelectionBegin(&selection->gesture, true);
     WindowRequestAnimationFrame(win);
@@ -2002,7 +2035,7 @@ void WindowSelectionRestoreReflow(Window* win, const TextSelectionReflow& old) {
             }
         }
     }
-    if (remapped && s->unitHeld) {
+    if ((remapped || wasPending) && s->unitHeld) {
         s->unitHeld =
             (old.unit[0].source >= 0 || old.unit[0].block >= 0) &&
             RestoreSourcePoint(win->paint, old, old.unit[0], false,

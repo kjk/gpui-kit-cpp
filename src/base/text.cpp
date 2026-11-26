@@ -9532,8 +9532,10 @@ El* TextView::IntoEl() {
         cx->win ? cx->win->paint.selectionReflow : nullptr;
     bool projectSelection =
         managed && selection && !selection->gesture.selecting &&
-        !selection->touchActive && !selection->hasAnchorCell &&
-        !selection->unitHeld && reflow && reflow->owner == managed->self &&
+        !selection->touchActive && !selection->hasAnchorCell && reflow &&
+        reflow->owner == managed->self &&
+        (!selection->unitHeld ||
+         (reflow->unit[0].block >= 0 && reflow->unit[1].block >= 0)) &&
         selection->copyProjection.owner == managed->self &&
         reflow->replacement == managed->fullUpdateRevision &&
         reflow->endpoints[0].block >= 0 && reflow->endpoints[1].block >= 0;

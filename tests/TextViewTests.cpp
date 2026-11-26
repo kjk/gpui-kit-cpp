@@ -9621,6 +9621,48 @@ static void SelectionStartsInAnIdleVirtualizedTextView() {
     ArenaDelete(a);
 }
 
+static void FinishedMultiClickSelectionStaysVirtualized() {
+    Arena* a = ArenaNew();
+    Str paragraphs = TswParagraphs(a, 120);
+    for (int clicks = 2; clicks <= 3; clicks++) {
+        TswView v = TswOpen(paragraphs.s, TswContainer::Scrollable);
+        TswReveal(v, "paragraph 60");
+        const TextHit* hit = HitContaining(v.win, "paragraph 60");
+        utassert(hit);
+        if (hit) {
+            Point start = TextHitCaretPoint(&v.win->paint, *hit, 3, false);
+            TestSimulateMouseDown(v.win, start, MouseButton::Left, {}, clicks);
+            TestSimulateMouseUp(v.win, start, MouseButton::Left, {}, clicks);
+            TestDraw(v.win);
+            utassert(!HitContaining(v.win, "paragraph 119"));
+            Str unit = clicks == 2 ? StrL("paragraph") : StrL("paragraph 60");
+            utassert(StrEq(StrTrimAscii(TswCopy(a, v)), unit));
+
+            v.State()->scrollY = 0;
+            TestDraw(v.win);
+            utassert(!HitContaining(v.win, "paragraph 60"));
+            utassert(StrEq(StrTrimAscii(TswCopy(a, v)), unit));
+            const TextHit* first = HitContaining(v.win, "paragraph 0");
+            utassert(first);
+            if (first) {
+                Point at = TextHitCaretPoint(&v.win->paint, *first, 10, false);
+                WindowSelectionPress(v.win, at.x + 0.1f, at.y, 1, true);
+                TestDraw(v.win);
+                WindowSelectionRelease(v.win);
+                TestDraw(v.win);
+                Str extended = StrTrimAscii(TswCopy(a, v));
+                Str prefix = clicks == 2 ? StrL("0\nparagraph 1")
+                                         : StrL("paragraph 0\nparagraph 1");
+                utassert(StrStartsWith(extended, prefix));
+                utassert(StrEndsWith(extended, unit));
+                utassert(!HitContaining(v.win, "paragraph 60"));
+            }
+        }
+        TswClose(&v);
+    }
+    ArenaDelete(a);
+}
+
 static void UnicodeParagraphCopyExtendsBeforePaint() {
     Arena* built = ArenaNew();
     StrBuilder sb(built);
@@ -9805,6 +9847,7 @@ static void TestTextStateWindow() {
     ScrollingBeforePaintKeepsTheCompletedFrame();
     ScrollingKeepsAnInlineCodeSelectionAnchor();
     SelectionStartsInAnIdleVirtualizedTextView();
+    FinishedMultiClickSelectionStaysVirtualized();
     UnicodeParagraphCopyExtendsBeforePaint();
     ScrollableTextViewUsesTheBaseScrollbarTheme();
     TripleClickSelectsTheWholeWrappedParagraph();
