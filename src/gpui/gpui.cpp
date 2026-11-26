@@ -10235,8 +10235,8 @@ static int TextHitLocal(PaintCtx* ctx, const TextHit* h, Point rel) {
     return local;
 }
 
-Point TextHitCaretPoint(PaintCtx* ctx, const TextHit& hit, int offset,
-                        bool trailing) {
+Bounds TextHitCaretBounds(PaintCtx* ctx, const TextHit& hit, int offset,
+                          bool trailing) {
     TextLayout* layout =
         hit.highlightedElement
             ? ElTextLayout(ctx, hit.highlightedElement)
@@ -10248,9 +10248,16 @@ Point TextHitCaretPoint(PaintCtx* ctx, const TextHit& hit, int offset,
         layout && TextLayoutPointAt(layout, hit.text, hit.wrap, offset, &x, &y,
                                     &height, trailing);
     if (layout) TextLayoutRelease(layout);
-    if (measured) return {hit.bounds.x + x, hit.bounds.y + y + height * 0.5f};
+    if (measured) return {hit.bounds.x + x, hit.bounds.y + y, 0, height};
     float fraction = len(hit.text) ? (float)offset / len(hit.text) : 0;
-    return {hit.bounds.x + fraction * hit.bounds.w, hit.bounds.CenterY()};
+    return {hit.bounds.x + fraction * hit.bounds.w, hit.bounds.y, 0,
+            hit.bounds.h};
+}
+
+Point TextHitCaretPoint(PaintCtx* ctx, const TextHit& hit, int offset,
+                        bool trailing) {
+    Bounds caret = TextHitCaretBounds(ctx, hit, offset, trailing);
+    return {caret.x, caret.CenterY()};
 }
 
 bool TextTableCellAt(const PaintCtx* ctx, float x, float y, Bounds* out) {

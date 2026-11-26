@@ -545,7 +545,8 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   takes its focus trap as its scope, which is what confines a dialog's text:
   the dialogs name no scope of their own (`src/base/text_selection.cpp`,
   `ElSelectionScope` in `src/gpui/gpui.cpp`).
-  TextView still needs to paint its touch handles in place.
+  TextView paints touch handles at the shaped selection endpoints and clips
+  them to the same content mask as the selected text.
 - **A chart's tooltip datum is what `Data(..)` gave it.** The charts hold
   numbers rather than mapping a `data: Vec<T>`, so the datum the tooltip
   closures receive is an item of what `Data(..)` gave the chart, or the

@@ -1049,6 +1049,8 @@ void WindowSelectionClear(Window* win) {
     s->hasWindowPoints = false;
     s->hasAnchorCell = false;
     s->touchActive = false;
+    s->touchGeometryStart = -1;
+    s->touchGeometryEnd = -1;
     s->touchMenuOpen = false;
     s->hasTouchEdgeDrag = false;
     s->unitHeld = false;
@@ -1354,19 +1356,124 @@ bool WindowSelectionTouchSnapshot(Window* win, TouchSelectionSnapshot* out) {
     } else {
         if (!s->touchActive || !s->hasWindowPoints || !WindowSelectionHas(win))
             return false;
-        const float lineH = 16.f;
-        bool reversed = s->cursor < s->anchor;
-        *out = TouchSelectionSnapshot::New(
-            TouchCaretLineBox(reversed ? s->cursorPoint : s->anchorPoint,
-                              lineH),
-            TouchCaretLineBox(reversed ? s->anchorPoint : s->cursorPoint,
-                              lineH));
+        int start = std::min(s->anchor, s->cursor);
+        int end = std::max(s->anchor, s->cursor);
+        if (start == s->touchGeometryStart && end == s->touchGeometryEnd) {
+            *out = s->touchGeometry;
+        } else {
+            const float lineH = 16.f;
+            bool reversed = s->cursor < s->anchor;
+            *out = TouchSelectionSnapshot::New(
+                TouchCaretLineBox(reversed ? s->cursorPoint : s->anchorPoint,
+                                  lineH),
+                TouchCaretLineBox(reversed ? s->anchorPoint : s->cursorPoint,
+                                  lineH));
+        }
     }
     if (s->hasTouchEdgeDrag) {
         *out = out->WithDragging(s->touchEdgeDrag.edge);
     }
     *out = out->WithMenuOpen(s->touchMenuOpen && !s->hasTouchEdgeDrag);
     return true;
+}
+
+static const TextHit* TouchEndpointHit(const PaintCtx* paint,
+                                       const WindowSelection& selection,
+                                       int offset, bool trailing) {
+    const TextHit* adjacent = nullptr;
+    for (int i = 0; i < len(paint->texts); i++) {
+        const TextHit& hit = paint->texts[i];
+        int local = offset - hit.docOff;
+        if (local < 0) break;
+        if (hit.scope != selection.scope || hit.atom || hit.blockPlugin ||
+            !len(hit.text) || local > len(hit.text)) {
+            continue;
+        }
+        if (trailing ? local > 0 : local < len(hit.text)) return &hit;
+        adjacent = &hit;
+    }
+    return adjacent;
+}
+
+static Bounds TouchEndpointCaret(PaintCtx* paint, const TextHit& hit,
+                                 int offset, bool trailing) {
+    int local = offset - hit.docOff;
+    if (hit.inlinePlugin) {
+        float x = local ? hit.bounds.Right() : hit.bounds.x;
+        return TouchCaretLineBox({x, hit.bounds.y}, hit.bounds.h);
+    }
+    return TextHitCaretBounds(paint, hit, local, trailing);
+}
+
+static TouchSelectionSnapshot PaintedTouchGeometry(
+    PaintCtx* paint, const WindowSelection& selection, EntityId owner,
+    Bounds clips[2]) {
+    int offsets[] = {std::min(selection.anchor, selection.cursor),
+                     std::max(selection.anchor, selection.cursor)};
+    Bounds carets[2] = {};
+    bool visible[2] = {};
+    for (int i = 0; i < 2; i++) {
+        const TextHit* hit =
+            TouchEndpointHit(paint, selection, offsets[i], i == 1);
+        if (!hit || (owner.IsValid() && hit->owner != owner)) continue;
+        carets[i] = TouchEndpointCaret(paint, *hit, offsets[i], i == 1);
+        clips[i] = hit->contentMask;
+        visible[i] = TouchCaretInView(carets[i], clips[i]);
+    }
+    return TouchSelectionSnapshot::New(carets[0], carets[1])
+        .WithEdgeVisible(SelectionEdge::Start, visible[0])
+        .WithEdgeVisible(SelectionEdge::End, visible[1]);
+}
+
+void WindowSelectionPaintTouchHandles(PaintCtx* paint, EntityId owner,
+                                      Rgba color) {
+    Window* win = paint->window;
+    const WindowSelection* selection = win ? win->sel : nullptr;
+    if (!selection || !selection->touchActive ||
+        selection->touchSource.snapshot || !WindowSelectionHas(win)) {
+        return;
+    }
+    Bounds clips[2] = {};
+    TouchSelectionSnapshot snapshot =
+        PaintedTouchGeometry(paint, *selection, owner, clips);
+    color.a = 255;
+    for (int i = 0; i < 2; i++) {
+        SelectionEdge edge = i == 0 ? SelectionEdge::Start : SelectionEdge::End;
+        if (!snapshot.IsEdgeVisible(edge)) continue;
+        const Bounds& clip = clips[i];
+        CanvasPushClip(paint, clip.x, clip.y, clip.w, clip.h);
+        PaintTouchHandles(
+            paint,
+            snapshot.WithEdgeVisible(
+                i == 0 ? SelectionEdge::End : SelectionEdge::Start, false),
+            color);
+        CanvasPopClip(paint);
+    }
+}
+
+static void RefreshTouchGeometry(Window* win, WindowSelection* selection) {
+    if (!selection->touchActive || selection->touchSource.snapshot ||
+        !WindowSelectionHas(win)) {
+        return;
+    }
+    Bounds clips[2] = {};
+    TouchSelectionSnapshot snapshot =
+        PaintedTouchGeometry(&win->paint, *selection, {}, clips);
+    bool changed = false;
+    for (int i = 0; i < 2; i++) {
+        SelectionEdge edge = i == 0 ? SelectionEdge::Start : SelectionEdge::End;
+        bool visible = snapshot.IsEdgeVisible(edge);
+        Bounds a = snapshot.Edge(edge);
+        Bounds b = selection->touchGeometry.Edge(edge);
+        changed |= visible != selection->touchGeometry.IsEdgeVisible(edge) ||
+                   (visible && (a.x != b.x || a.y != b.y || a.h != b.h));
+    }
+    selection->touchGeometry = snapshot;
+    selection
+        ->touchGeometryStart = std::min(selection->anchor, selection->cursor);
+    selection
+        ->touchGeometryEnd = std::max(selection->anchor, selection->cursor);
+    if (changed && selection->touchMenuOpen) WindowRequestAnimationFrame(win);
 }
 
 void WindowSelectionBeginTouchEdgeDrag(Window* win, SelectionEdge edge,
@@ -2192,6 +2299,7 @@ void WindowSelectionFinishFrame(Window* win) {
     }
     VecReset(participants);
     selection->frameGeneration++;
+    RefreshTouchGeometry(win, selection);
     WindowSelectionPublish(win);
 }
 } // namespace gpui

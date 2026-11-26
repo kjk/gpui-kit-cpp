@@ -8412,6 +8412,10 @@ void TextView::RevealPainted(PaintCtx* ctx, El* element, void* data) {
     if (selection && selection->selectAllOwner == managed->self) {
         managed->SelectAll(ctx->window, ctx->app);
     }
+    if (view->selectable) {
+        WindowSelectionPaintTouchHandles(ctx, managed->self,
+                                         view->textViewStyle.selection);
+    }
     if (!managed->reveal.pending) return;
     TextViewReveal& reveal = managed->reveal;
     Bounds line = reveal.line;

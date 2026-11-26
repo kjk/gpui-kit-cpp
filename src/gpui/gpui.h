@@ -7422,6 +7422,8 @@ int TextHitOffsetAt(PaintCtx* ctx, float x, float y, bool nearest);
 int TextHitOffsetIn(PaintCtx* ctx, float x, float y, bool nearest, int scope,
                     int* outScope, int minLayer = 0,
                     const Bounds* cell = nullptr);
+Bounds TextHitCaretBounds(PaintCtx* ctx, const TextHit& hit, int offset,
+                          bool trailing);
 Point TextHitCaretPoint(PaintCtx* ctx, const TextHit& hit, int offset,
                         bool trailing);
 // The table cell painted around `x, y`, if the point is inside one.

@@ -6744,6 +6744,45 @@ static bool TswSelectedTextIs(const TswView& v, const char* want) {
 static Str Trimmed(char* buf, int n);
 static const TextHit* HitContaining(Window* win, const char* text);
 
+static void RichTextTouchHandlesUseShapedCarets() {
+    TswView v = TswOpen("**quick** select value", TswContainer::Window);
+    const TextHit* hit = HitContaining(v.win, "quick");
+    utassert(hit);
+    if (hit) {
+        Bounds caret = TextHitCaretBounds(&v.win->paint, *hit, 2, false);
+        Point at = {caret.x, caret.CenterY()};
+        PlatformInput press = InputLongPress(TouchPhase::Started, at, at);
+        WindowDispatchInput(v.win, &press);
+        PlatformInput release = InputLongPress(TouchPhase::Ended, at, at);
+        WindowDispatchInput(v.win, &release);
+
+        auto draw = [&]() {
+            Bounds damage;
+            scene::FrameBegin(&v.win->paint);
+            TestDraw(v.win);
+            scene::FrameEnd(&v.win->paint, &damage);
+            return scene::Stats(&v.win->paint).prims;
+        };
+        int withHandles = draw();
+        TouchSelectionSnapshot snapshot;
+        bool hasTouch = WindowSelectionTouchSnapshot(v.win, &snapshot);
+        utassert(hasTouch);
+        hit = HitContaining(v.win, "quick");
+        if (hasTouch && hit) {
+            Bounds start = TextHitCaretBounds(&v.win->paint, *hit, 0, false);
+            utassert(snapshot.IsEdgeVisible(SelectionEdge::Start));
+            utassert(snapshot.IsEdgeVisible(SelectionEdge::End));
+            utassertnear(snapshot.Edge(SelectionEdge::Start).y, start.y);
+            utassertnear(snapshot.Edge(SelectionEdge::Start).h, start.h);
+        }
+        if (v.win->sel) {
+            v.win->sel->touchActive = false;
+            utassert(withHandles == draw() + 4);
+        }
+    }
+    TswClose(&v);
+}
+
 static El* RenderSummaryPanel(Ctx* cx, void*) {
     return Div(cx->a)
         ->Bg(Rgba{10, 20, 30, 255})
@@ -12058,6 +12097,7 @@ void TestTextView() {
     ClosingMarkAndSpaceStayWithInlineCode();
     FittedListsKeepTheirBodyWidth();
     TestStatelessMarkdownSettles();
+    RichTextTouchHandlesUseShapedCarets();
     if (TestMarkdownIsFull()) TestStreamFadeTracksRenderedAppends();
     StreamFadeUnitsAreWordsOrCjkCharacters();
     FadesLayerOverHighlightsInsideTheirRange();
