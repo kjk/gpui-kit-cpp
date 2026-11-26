@@ -2740,6 +2740,12 @@ enum class AccessibilityLive : uint8_t {
     Assertive,
 };
 
+struct AccessibilityAnnouncement {
+    uint32_t nodeId = 0;
+    Str text;
+    AccessibilityLive priority = AccessibilityLive::Off;
+};
+
 struct AccessibilityInfo {
     AccessibilityRole role = AccessibilityRole::None;
     // Beside the role, in the padding before the first pointer.
@@ -7933,6 +7939,8 @@ struct Window {
     uint64_t accessibilityNextId = 1;
     Vec<AccessibilityLiveSnapshot> accessibilityLive[2];
     int accessibilityLiveFrame = 0;
+    Listener onAccessibilityAnnouncement;
+    bool accessibilityAnnouncementInitial = false;
     Vec<AccessibilityDocumentRevision> accessibilityDocuments[2];
     int accessibilityDocumentFrame = 0;
     bool hasLiveRegions = false;
@@ -9253,6 +9261,14 @@ void IdsCollectChildren(El* e);
 void AccessibilityCollect(El* root, Vec<AccessibilityNode>* out);
 // Whether controls should compute their accessibility-only labels this frame.
 bool WindowAccessibilityActive(Window* win);
+// Subscribe to live-region announcements, for hosts that deliver native
+// accessibility events. The text is borrowed for the listener call. A new
+// listener receives the current nonempty regions on the next frame.
+void WindowOnAccessibilityAnnouncement(Window* win, Listener listener);
+#if GPUI_OS_IOS
+// A UIKit host can call this from its announcement listener on the UI thread.
+void IosPostAccessibilityAnnouncement(const AccessibilityAnnouncement& event);
+#endif
 const AccessibilityNode* WindowAccessibilityNode(const Window* win,
                                                  uint32_t nodeId);
 // Where node `nodeId` sits in `win->accessibility`; -1 when it is not

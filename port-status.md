@@ -25,10 +25,12 @@ The current update target is
 
 ## Known gaps vs Rust
 
-- **Mobile LiveRegion announcements use the host accessibility adapter.**
-  The portable tree exposes the status role, text and priority. Native
-  announcement delivery is implemented by the Windows, macOS, Linux and web
-  hosts.
+- **Mobile LiveRegion announcements use a window listener.**
+  `WindowOnAccessibilityAnnouncement` delivers nonempty changes with the
+  status node ID and priority. UIKit hosts can forward these events through
+  `IosPostAccessibilityAnnouncement`. Android hosts deliver the notification
+  through their native accessibility adapter. Windows, macOS, Linux and web
+  windows deliver announcements through their existing native bridges.
 
 - **Inline objects are atomic.** A paragraph can shape its links and retain
   Markdown copy boundaries in one layout. Prose beside inline objects shares

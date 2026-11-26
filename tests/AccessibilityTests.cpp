@@ -1661,6 +1661,20 @@ static void LiveRegionAnnouncesChangesAndKeepsTheSameNodeIdentity() {
         bool sibling = false;
         Str id = StrL("status");
         Str text = StrL("Saved 3 files");
+        int announcements = 0;
+        uint32_t announcedNode = 0;
+        AccessibilityLive priority = AccessibilityLive::Off;
+        char announcedText[64] = {};
+
+        static void OnAnnouncement(Host* self, Ctx*,
+                                   const AccessibilityAnnouncement* event) {
+            self->announcements++;
+            self->announcedNode = event->nodeId;
+            self->priority = event->priority;
+            StrCopyCapped(self->announcedText, dimofi(self->announcedText),
+                          event->text);
+        }
+
         static El* Render(Host* self, Ctx* cx) {
             El* root = Div(cx->a);
             if (self->sibling) {
@@ -1689,30 +1703,49 @@ static void LiveRegionAnnouncesChangesAndKeepsTheSameNodeIdentity() {
     utassert(status().liveChanged && !win->focusId);
     uint32_t path = status().elementPath;
     uint32_t id = status().id;
+    Listener announce = ListenTo(view, &Host::OnAnnouncement);
+    WindowOnAccessibilityAnnouncement(win, announce);
+    TestDraw(win);
+    utassert(host->announcements == 1 && host->announcedNode == id);
+    utassert(host->priority == AccessibilityLive::Assertive);
+    utassert(StrEq(Str(host->announcedText), host->text));
+    // Reinstalling the same listener and moving siblings are silent.
+    WindowOnAccessibilityAnnouncement(win, announce);
     host->sibling = true;
     TestDraw(win);
     utassert(len(win->accessibility) == 2 && !status().liveChanged);
     utassert(status().elementPath == path && status().id == id);
+    utassert(host->announcements == 1);
     host->text = StrL("Could not save");
     TestDraw(win);
     utassert(status().liveChanged);
+    utassert(host->announcements == 2 &&
+             StrEq(Str(host->announcedText), host->text));
     host->text = {};
     TestDraw(win);
     utassert(!status().liveChanged && len(status().info.label) == 0 &&
              len(status().info.value) == 0);
+    utassert(host->announcements == 2);
     host->text = StrL("Could not save");
     TestDraw(win);
     utassert(status().liveChanged);
+    utassert(host->announcements == 3);
     host->id = StrL("new-status");
     TestDraw(win);
     utassert(status().elementPath != path && status().id != id &&
              status().liveChanged);
+    utassert(host->announcements == 4 && host->announcedNode == status().id);
     host->show = false;
     TestDraw(win);
     utassert(len(win->accessibility) == 1);
     host->show = true;
     TestDraw(win);
     utassert(status().liveChanged && !win->focusId);
+    utassert(host->announcements == 5);
+    WindowOnAccessibilityAnnouncement(win, {});
+    host->text = StrL("Saved again");
+    TestDraw(win);
+    utassert(host->announcements == 5);
     TestAppFree(app);
 }
 

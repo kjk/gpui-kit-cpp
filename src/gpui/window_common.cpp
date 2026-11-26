@@ -377,6 +377,31 @@ static bool AccessibilityTrackLiveRegions(Window* win) {
     return announce;
 }
 
+static bool SameAnnouncementListener(const Listener& a, const Listener& b) {
+    return a.fn == b.fn && a.view == b.view && a.arg == b.arg;
+}
+
+static void AccessibilityDispatchAnnouncements(Window* win, bool changed) {
+    const Listener listener = win->onAccessibilityAnnouncement;
+    if (!listener.IsValid()) return;
+    bool initial = win->accessibilityAnnouncementInitial;
+    if (!initial && !changed) return;
+    win->accessibilityAnnouncementInitial = false;
+    for (const auto& node : win->accessibility) {
+        if (node.info.live == AccessibilityLive::Off || !len(node.info.label) ||
+            (!initial && !node.liveChanged)) {
+            continue;
+        }
+        AccessibilityAnnouncement event{node.id, node.info.label,
+                                        node.info.live};
+        ListenerCall(win->app, win, listener, &event);
+        if (!SameAnnouncementListener(listener,
+                                      win->onAccessibilityAnnouncement)) {
+            break;
+        }
+    }
+}
+
 static void AccessibilityTrackDocuments(Window* win) {
     int previous = win->accessibilityDocumentFrame;
     win->accessibilityDocumentFrame = 1 - previous;
@@ -493,7 +518,13 @@ static uint64_t AccessibilityTreeHash(const Vec<AccessibilityNode>& nodes) {
 static void AccessibilityProject(Window* win, El* root, bool headless) {
     // Tests and native readers see the tree after layout. Retain only the
     // numeric identities across arena resets, never frame-owned callbacks.
-    if (headless || PlatAccessibilityWanted(win)) {
+    if (win->onAccessibilityAnnouncement.IsValid() &&
+        !EntityGet(win->app, win->onAccessibilityAnnouncement.view)) {
+        win->onAccessibilityAnnouncement = {};
+        win->accessibilityAnnouncementInitial = false;
+    }
+    if (headless || PlatAccessibilityWanted(win) ||
+        win->onAccessibilityAnnouncement.IsValid()) {
         AccessibilityCollect(root, &win->accessibility);
         if (!headless) PlatAccessibilityAddWindowRoot(win);
         AccessibilityRetainIds(win);
@@ -504,6 +535,7 @@ static void AccessibilityProject(Window* win, El* root, bool headless) {
             win->accessibilityHash = hash;
             PlatAccessibilityTreeChanged(win);
         }
+        AccessibilityDispatchAnnouncements(win, announce);
         return;
     }
     win->accessibilityHash = 0;
@@ -1766,7 +1798,18 @@ static void SliderEmitStep(Window* win, const SliderState* s) {
 }
 
 bool WindowAccessibilityActive(Window* win) {
-    return win && (win->paint.headless || PlatAccessibilityLabelsWanted(win));
+    return win &&
+           (win->paint.headless || win->onAccessibilityAnnouncement.IsValid() ||
+            PlatAccessibilityLabelsWanted(win));
+}
+
+void WindowOnAccessibilityAnnouncement(Window* win, Listener listener) {
+    if (!win ||
+        SameAnnouncementListener(win->onAccessibilityAnnouncement, listener))
+        return;
+    win->onAccessibilityAnnouncement = listener;
+    win->accessibilityAnnouncementInitial = listener.IsValid();
+    AppInvalidate(win);
 }
 
 const AccessibilityNode* WindowAccessibilityNode(const Window* win,
