@@ -5,6 +5,7 @@
 #include "base/scrollbar.h"
 #include "gpui/image.h"
 #include "gpui/paint.h"
+#include "gpui/paint_backend.h"
 #include "gpui/scene.h"
 #include "gpui/platform.h"
 #include "base/positioner.h"
@@ -8522,6 +8523,12 @@ void PaintEl(PaintCtx* ctx, El* e) {
         }
         overlays[at] = entry;
     }
+#if GPUI_PAINT_NATIVE_OVERLAY
+    PaintTarget* tree = nullptr;
+    if (!SceneOn() && len(overlays) && len(ctx->nativeSurfacePaints)) {
+        tree = PaintBeginDirectNativeOverlay(ctx);
+    }
+#endif
     for (const auto& entry : overlays) {
         El* overlay = entry.element;
         ctx->paintLayer = overlay->style.deferredLayer
@@ -8533,6 +8540,9 @@ void PaintEl(PaintCtx* ctx, El* e) {
         PaintElNode(ctx, overlay, false);
         scene::ContextPop(ctx, parent);
     }
+#if GPUI_PAINT_NATIVE_OVERLAY
+    if (tree) PaintEndDirectNativeOverlay(ctx, tree);
+#endif
     for (const auto& surface : ctx->nativeSurfacePaints) {
         const int count = len(ctx->nativeOverlayBounds) - surface.firstOverlay;
         const Bounds* boxes =

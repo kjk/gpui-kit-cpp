@@ -143,6 +143,8 @@ struct PaintTarget {
     OffscreenTarget* nativeOverlay = nullptr;
     WinOverlayComposition* overlayComposition = nullptr;
     bool overlayActive = false;
+    bool overlayInputReady = false;
+    bool overlayDirect = false;
     bool overlayInComposition = false;
     bool lastOverlay = false;
     int overlayRetryDelayMs = 0;
@@ -761,10 +763,9 @@ static bool PresentWinOverlayComposition(WinOverlayComposition* layer,
            SUCCEEDED(layer->device->Commit());
 }
 
-bool PaintEnableNativeOverlay(PaintCtx* ctx) {
-    if (!ctx || !ctx->rt || !ctx->rt->hwnd || !scene::Recording()) return false;
+static bool PrepareNativeOverlayTarget(PaintCtx* ctx) {
+    if (!ctx || !ctx->rt || !ctx->rt->hwnd) return false;
     PaintTarget* target = ctx->rt;
-    if (target->overlayActive) return true;
     bool useComposition = WinWindowNativeOverlayUsesComposition(ctx->window);
     if (target->overlayRetryAt > TimeNow() ||
         !WinWindowPrepareNativeOverlay(ctx, useComposition) ||
@@ -779,8 +780,30 @@ bool PaintEnableNativeOverlay(PaintCtx* ctx) {
     }
     BeginWinDibDraw(overlay, ctx->dpi > 0 ? ctx->dpi : 96.f);
     target->overlayActive = true;
+    target->overlayInputReady = true;
     target->overlayInComposition = useComposition;
     return true;
+}
+
+bool PaintEnableNativeOverlay(PaintCtx* ctx) {
+    PaintTarget* target = ctx ? ctx->rt : nullptr;
+    if (target && target->overlayActive) return target->overlayInputReady;
+    return scene::Recording() && PrepareNativeOverlayTarget(ctx);
+}
+
+PaintTarget* PaintBeginDirectNativeOverlay(PaintCtx* ctx) {
+    if (!PrepareNativeOverlayTarget(ctx)) return nullptr;
+    PaintTarget* tree = ctx->rt;
+    tree->overlayDirect = true;
+    ctx->rt = tree->nativeOverlay->painter;
+    return tree;
+}
+
+void PaintEndDirectNativeOverlay(PaintCtx* ctx, PaintTarget* tree) {
+    ctx->rt = tree;
+    // The immediate pass has now registered the actual input shape.
+    tree->overlayInputReady =
+        WinWindowPrepareNativeOverlay(ctx, tree->overlayInComposition);
 }
 
 bool PaintTargetEnd(PaintCtx* ctx) {
@@ -807,12 +830,15 @@ bool PaintTargetEnd(PaintCtx* ctx) {
     }
     HRESULT overlayResult = S_OK;
     if (overlay) {
-        ctx->rt = overlay->painter;
-        scene::Replay(ctx, nullptr, scene::ReplayLayers::Deferred);
-        ctx->rt = target;
+        if (!target->overlayDirect) {
+            ctx->rt = overlay->painter;
+            scene::Replay(ctx, nullptr, scene::ReplayLayers::Deferred);
+            ctx->rt = target;
+        }
         overlayResult = overlay->painter->rt->EndDraw();
     }
     target->overlayActive = false;
+    target->overlayDirect = false;
     HRESULT hr = target->rt->EndDraw();
     if (hr == D2DERR_RECREATE_TARGET) {
         // The device context sits on the shared device, so this is the
@@ -839,7 +865,8 @@ bool PaintTargetEnd(PaintCtx* ctx) {
         }
     }
     target->lastOverlay = split;
-    if (split && SUCCEEDED(hr) && SUCCEEDED(overlayResult)) {
+    if (split && target->overlayInputReady && SUCCEEDED(hr) &&
+        SUCCEEDED(overlayResult)) {
         GdiFlush();
         bool visualReady =
             !composition ||

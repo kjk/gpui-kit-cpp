@@ -40,6 +40,7 @@ struct PaintApp {
 struct PaintTarget {
     CGContextRef cg = nullptr;
     CGContextRef overlay = nullptr;
+    bool overlayDirect = false;
     int pxW = 0;
     int pxH = 0;
 };
@@ -180,9 +181,9 @@ bool PaintTargetEndOffscreen(PaintCtx* ctx, uint8_t* outBgra) {
     return true;
 }
 
-bool PaintEnableNativeOverlay(PaintCtx* ctx) {
-    if (!ctx || !ctx->window || !ctx->rt || !scene::Recording() ||
-        ctx->viewW <= 0.f || ctx->viewH <= 0.f)
+static bool PrepareNativeOverlayTarget(PaintCtx* ctx) {
+    if (!ctx || !ctx->window || !ctx->rt || ctx->viewW <= 0.f ||
+        ctx->viewH <= 0.f)
         return false;
     PaintTarget* target = ctx->rt;
     if (target->overlay) return true;
@@ -196,6 +197,23 @@ bool PaintEnableNativeOverlay(PaintCtx* ctx) {
     return true;
 }
 
+bool PaintEnableNativeOverlay(PaintCtx* ctx) {
+    if (ctx && ctx->rt && ctx->rt->overlay) return true;
+    return scene::Recording() && PrepareNativeOverlayTarget(ctx);
+}
+
+PaintTarget* PaintBeginDirectNativeOverlay(PaintCtx* ctx) {
+    if (!PrepareNativeOverlayTarget(ctx)) return nullptr;
+    auto* tree = ctx->rt;
+    tree->overlayDirect = true;
+    std::swap(tree->cg, tree->overlay);
+    return tree;
+}
+
+void PaintEndDirectNativeOverlay(PaintCtx*, PaintTarget* tree) {
+    std::swap(tree->cg, tree->overlay);
+}
+
 bool PaintTargetEnd(PaintCtx* ctx) {
     // Skip means "the last present is still on screen". This context is the
     // window itself, and AppKit may already have cleared it, so an identical
@@ -206,12 +224,13 @@ bool PaintTargetEnd(PaintCtx* ctx) {
     CGImageRef overlay = nullptr;
     PaintTarget* target = ctx->rt;
     if (target->overlay) {
-        scene::FrameEnd(ctx, nullptr);
-        scene::Replay(ctx, nullptr, scene::ReplayLayers::Tree);
-        CGContextRef base = target->cg;
-        target->cg = target->overlay;
-        scene::Replay(ctx, nullptr, scene::ReplayLayers::Deferred);
-        target->cg = base;
+        if (!target->overlayDirect) {
+            scene::FrameEnd(ctx, nullptr);
+            scene::Replay(ctx, nullptr, scene::ReplayLayers::Tree);
+            std::swap(target->cg, target->overlay);
+            scene::Replay(ctx, nullptr, scene::ReplayLayers::Deferred);
+            std::swap(target->cg, target->overlay);
+        }
         overlay = CGBitmapContextCreateImage(target->overlay);
     } else {
         PaintSceneFinish(ctx, true);

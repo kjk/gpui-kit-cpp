@@ -738,6 +738,7 @@ bool WinWindowPresentNativeOverlay(Window* win, HDC dc, int width, int height) {
 
 static void MoveNativeOverlay(Window* win) {
     PlatWindow* plat = win->plat;
+    if (!plat->nativeOverlay && !plat->nativeOverlayInput) return;
     POINT p = NativeOverlayOrigin(plat->hwnd);
     const UINT flags = SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE;
     if (plat->nativeOverlay && IsWindowVisible(plat->nativeOverlay))

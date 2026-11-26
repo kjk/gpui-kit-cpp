@@ -28,6 +28,7 @@ struct PaintTarget {
     cairo_t* cr = nullptr;
 #if defined(GPUI_HAVE_X11_NATIVE_OVERLAY)
     cairo_t* overlay = nullptr;
+    bool overlayDirect = false;
 #endif
 };
 
@@ -179,8 +180,8 @@ bool PaintTargetEndOffscreen(PaintCtx* ctx, uint8_t* outBgra) {
 }
 
 #if defined(GPUI_HAVE_X11_NATIVE_OVERLAY)
-bool PaintEnableNativeOverlay(PaintCtx* ctx) {
-    if (!ctx || !ctx->rt || !scene::Recording()) return false;
+static bool PrepareNativeOverlayTarget(PaintCtx* ctx) {
+    if (!ctx || !ctx->rt) return false;
     PaintTarget* target = ctx->rt;
     if (target->overlay) return true;
     cairo_surface_t* surface = LinuxWindowNativeOverlay(ctx->window);
@@ -190,8 +191,28 @@ bool PaintEnableNativeOverlay(PaintCtx* ctx) {
         cairo_destroy(overlay);
         return false;
     }
+    cairo_set_operator(overlay, CAIRO_OPERATOR_CLEAR);
+    cairo_paint(overlay);
+    cairo_set_operator(overlay, CAIRO_OPERATOR_OVER);
     target->overlay = overlay;
     return true;
+}
+
+bool PaintEnableNativeOverlay(PaintCtx* ctx) {
+    if (ctx && ctx->rt && ctx->rt->overlay) return true;
+    return scene::Recording() && PrepareNativeOverlayTarget(ctx);
+}
+
+PaintTarget* PaintBeginDirectNativeOverlay(PaintCtx* ctx) {
+    if (!PrepareNativeOverlayTarget(ctx)) return nullptr;
+    auto* tree = ctx->rt;
+    tree->overlayDirect = true;
+    std::swap(tree->cr, tree->overlay);
+    return tree;
+}
+
+void PaintEndDirectNativeOverlay(PaintCtx*, PaintTarget* tree) {
+    std::swap(tree->cr, tree->overlay);
 }
 #endif
 
@@ -200,16 +221,15 @@ bool PaintTargetEnd(PaintCtx* ctx) {
         return false;
     }
 #if defined(GPUI_HAVE_X11_NATIVE_OVERLAY)
-    if (cairo_t* overlay = ctx->rt->overlay) {
-        scene::FrameEnd(ctx, nullptr);
-        scene::Replay(ctx, nullptr, scene::ReplayLayers::Tree);
-        cairo_set_operator(overlay, CAIRO_OPERATOR_CLEAR);
-        cairo_paint(overlay);
-        cairo_set_operator(overlay, CAIRO_OPERATOR_OVER);
-        cairo_t* tree = ctx->rt->cr;
-        ctx->rt->cr = overlay;
-        scene::Replay(ctx, nullptr, scene::ReplayLayers::Deferred);
-        ctx->rt->cr = tree;
+    auto* target = ctx->rt;
+    if (cairo_t* overlay = target->overlay) {
+        if (!target->overlayDirect) {
+            scene::FrameEnd(ctx, nullptr);
+            scene::Replay(ctx, nullptr, scene::ReplayLayers::Tree);
+            std::swap(target->cr, target->overlay);
+            scene::Replay(ctx, nullptr, scene::ReplayLayers::Deferred);
+            std::swap(target->cr, target->overlay);
+        }
         cairo_surface_flush(cairo_get_target(overlay));
         LinuxWindowNativeOverlayReady(ctx->window);
     } else {

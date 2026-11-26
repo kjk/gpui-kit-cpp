@@ -38,8 +38,15 @@ bool PaintSceneFinish(PaintCtx* ctx, bool replayUnchanged);
 
 #if GPUI_OS_WINDOWS || GPUI_OS_MAC || \
     (GPUI_OS_LINUX && defined(GPUI_HAVE_X11_NATIVE_OVERLAY))
-// Route the next replay's deferred layers above the window's native children.
+#define GPUI_PAINT_NATIVE_OVERLAY 1
+// Route deferred layers above the window's native children.
 bool PaintEnableNativeOverlay(PaintCtx* ctx);
+// In direct paint mode, temporarily point Paint.h at that layer while the
+// deferred elements paint and collect their hit boxes.
+PaintTarget* PaintBeginDirectNativeOverlay(PaintCtx* ctx);
+void PaintEndDirectNativeOverlay(PaintCtx* ctx, PaintTarget* tree);
+#else
+#define GPUI_PAINT_NATIVE_OVERLAY 0
 #endif
 #if GPUI_OS_WINDOWS
 bool WinWindowNativeOverlayUsesComposition(Window* win);

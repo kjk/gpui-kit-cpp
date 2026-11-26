@@ -660,8 +660,9 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   blends them in an ARGB X11 window when a compositor is available.
   Windows uses a layered overlay above WebView2 and a DirectComposition
   layer when the host is translucent. Both use a separate input region.
-  Uncomposited X11 and windows with scene recording disabled use drawing
-  and input cutouts with asynchronous snapshots (`src/webview/webview.cpp`).
+  The same native layers are used when scene recording is disabled.
+  Uncomposited X11 uses drawing and input cutouts with asynchronous
+  snapshots (`src/webview/webview.cpp`).
 - **Linux webview bounds stay logical.** Upstream `device_bounds` passes
   physical pixels because Wry then scales by GDK. `WebViewSetBounds`
   in `wry_linux.cpp` already multiplies a logical rect by that factor
