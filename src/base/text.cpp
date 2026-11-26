@@ -8183,6 +8183,59 @@ void TextView::RevealFrame(TextViewState* managed) {
     revealOut = &reveal.line;
 }
 
+static bool RevealVisible(Bounds line, Bounds visible, bool block) {
+    return block ? line.Bottom() > visible.y && line.y < visible.Bottom()
+                 : line.y >= visible.y - 0.5f &&
+                       line.Bottom() <= visible.Bottom() + 0.5f;
+}
+
+static float RevealScrollOffset(El* element, Bounds line, Bounds visible) {
+    float delta = line.y < visible.y ? line.y - visible.y
+                                     : line.Bottom() - visible.Bottom();
+    return std::min(std::max(element->scrollY + delta, 0.f),
+                    std::max(element->contentH - element->h, 0.f));
+}
+
+static El* FindArrangedReveal(El* element, const Bounds* report) {
+    if (element->rangeOut == report || element->boundsOut == report)
+        return element;
+    for (El* child = element->first; child; child = child->next) {
+        if (child->style.fixed) continue;
+        if (El* found = FindArrangedReveal(child, report)) return found;
+    }
+    return nullptr;
+}
+
+void TextView::RevealArranged(PaintCtx* ctx, El* element, void* data) {
+    if (!ctx || !ctx->window || LayoutInScratchPass()) return;
+    auto* view = (TextView*)data;
+    TextViewState* managed = view->state.Get(ctx->app);
+    if (!managed || !managed->reveal.pending) return;
+    // A fit-content view is laid out inside a virtual list's viewport mask.
+    // Other parents can still act through OnReveal after painting.
+    if (!view->scrollable && !ctx->hasHitMask) return;
+    TextViewReveal& reveal = managed->reveal;
+    El* target = FindArrangedReveal(element, &reveal.line);
+    if (!target) return;
+    Bounds line = target->rangeOut == &reveal.line
+                      ? ElTextRangeBounds(ctx, target, target->rangeOutLo,
+                                          target->rangeOutHi)
+                      : target->Bounds();
+    if (line.w <= 0 && line.h <= 0) return;
+    Bounds visible = view->scrollable ? element->Bounds() : ctx->hitMask;
+    if (view->scrollable && ctx->hasHitMask)
+        visible = BoundsIntersect(visible, ctx->hitMask);
+    if (visible.h <= 0 || RevealVisible(line, visible, reveal.block)) return;
+    if (view->scrollable) {
+        float offset = RevealScrollOffset(element, line, visible);
+        LayoutSetScrollY(element, offset);
+        managed->scrollY = offset;
+        if (view->revealBounceOffset) *view->revealBounceOffset = offset;
+    } else {
+        WindowRequestAutoscroll(ctx->window, line);
+    }
+}
+
 void TextView::RevealPainted(PaintCtx* ctx, El* element, void* data) {
     TextView* view = (TextView*)data;
     TextViewState* managed = view->state.Get(ctx->app);
@@ -8206,24 +8259,13 @@ void TextView::RevealPainted(PaintCtx* ctx, El* element, void* data) {
     Bounds visible = reveal.hasMask    ? reveal.mask
                      : ctx->hasHitMask ? ctx->hitMask
                                        : Bounds{0, 0, size.dipW, size.dipH};
-    bool shown =
-        reveal.block
-            ? line.y + line.h > visible.y && line.y < visible.y + visible.h
-            : line.y >= visible.y - 0.5f &&
-                  line.y + line.h <= visible.y + visible.h + 0.5f;
-    if (shown) {
+    if (RevealVisible(line, visible, reveal.block)) {
         reveal.pending = false;
         return;
     }
     reveal.attempts++;
     if (view->scrollable) {
-        float y = managed->scrollY;
-        if (line.y < visible.y)
-            y -= visible.y - line.y;
-        else
-            y += line.y + line.h - (visible.y + visible.h);
-        managed->scrollY = std::min(
-            std::max(y, 0.f), std::max(element->contentH - element->h, 0.f));
+        managed->scrollY = RevealScrollOffset(element, line, visible);
     } else {
         WindowRequestAutoscroll(ctx->window, line);
         if (view->onReveal.IsValid()) {
@@ -8835,6 +8877,12 @@ void TextView::PrepareInheritedColor(PaintCtx*, El* element, Rgba inherited,
     // Rebuild palette-dependent descendants, keeping the root's identity,
     // listeners and any sizing chained onto IntoEl's result.
     El* resolved = view->IntoEl();
+    // When the callback belongs to the scroll box, take its counterpart
+    // inside the rebuilt bounce wrapper. Nesting it would scroll twice.
+    if (view->scrollable && resolved->scrollId != element->scrollId &&
+        resolved->first && resolved->first->scrollId == element->scrollId) {
+        resolved = resolved->first;
+    }
     element->first = resolved->first;
     element->last = resolved->last;
     IdsCollectChildren(element);
@@ -9020,6 +9068,7 @@ El* TextView::IntoEl() {
     rangeHighlights = nullptr;
     revealTarget = nullptr;
     revealOut = nullptr;
+    revealBounceOffset = nullptr;
     blockDepth = 0;
     streamFades = nullptr;
     nStreamFades = 0;
@@ -9091,6 +9140,7 @@ El* TextView::IntoEl() {
         ScrollBounceMetrics* m = met.Get(cx);
         if (m) {
             m->offset = managed->scrollY;
+            revealBounceOffset = &m->offset;
             element =
                 ScrollBounce::New(cx, StrL("text-view-bounce"),
                                   PositiveScrollHandle(&m->slot), scrollBox)
@@ -9125,6 +9175,8 @@ El* TextView::IntoEl() {
     El* revealed = scrollBox ? scrollBox : element;
     revealed = RevealReportView(revealed, managed);
     revealed->lifecycle = ArenaNew<ElLifecycle>(a);
+    if (revealTarget)
+        revealed->lifecycle->afterLayout = &TextView::RevealArranged;
     revealed->lifecycle->afterPaint = &TextView::RevealPainted;
     revealed->lifecycle->user = this;
     if (inheritedBuilder) {

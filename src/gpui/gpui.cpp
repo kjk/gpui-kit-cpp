@@ -5445,6 +5445,16 @@ static void WriteBackChildren(LayoutCache* lc, PaintCtx* ctx, El* e) {
     }
 }
 
+void LayoutSetScrollY(El* e, float offset) {
+    float delta = e->scrollY - offset;
+    if (delta == 0) return;
+    e->scrollY = offset;
+    for (El* child = e->first; child; child = child->next) {
+        if (!child->style.fixed && !child->style.absolute)
+            MoveEl(child, child->x, child->y + delta);
+    }
+}
+
 // Padding, margin and gap that were relative(f) become the DIPs taffy
 // resolved them to, so what reads the box after layout — anchored overlays
 // and inputs read its padding — reads pixels. Taffy reports padding and
@@ -5647,6 +5657,9 @@ static void WriteBackEl(LayoutCache* lc, PaintCtx* ctx, El* e, float originX,
     // rows here from the laid-out viewport, as layout_as_root / prepaint_at.
     if (e->prePaint) {
         e->prePaint(ctx, e, e->customUser);
+    }
+    if (e->lifecycle && e->lifecycle->afterLayout) {
+        e->lifecycle->afterLayout(ctx, e, e->lifecycle->user);
     }
     // After prepaint, so a column that rebuilds its rows there (soft wrap)
     // has already written the caret run back. Fixed menus are written back
@@ -8010,7 +8023,7 @@ bool LineSafeClipBottom(const LineSpan* spans, int count, float boxBottom,
     return true;
 }
 
-static Bounds BoundsIntersect(Bounds a, Bounds b) {
+Bounds BoundsIntersect(Bounds a, Bounds b) {
     float x = a.x > b.x ? a.x : b.x;
     float y = a.y > b.y ? a.y : b.y;
     float right = a.Right() < b.Right() ? a.Right() : b.Right();
@@ -8098,6 +8111,17 @@ TextLayout* ElTextLayout(PaintCtx* ctx, const El* e) {
                           e->laidMaxW > 0 ? e->laidMaxW : e->w, e->style.wrap,
                           ElTextWeight(e), e->style.lineHeight, nullptr,
                           nullptr, ElTextAlign(e), ElTextFontRanges(e));
+}
+
+Bounds ElTextRangeBounds(PaintCtx* ctx, const El* e, int lo, int hi) {
+    Bounds rects[8];
+    TextLayout* layout = ElTextLayout(ctx, e);
+    if (!layout) return {};
+    int count = TextLayoutRangeRects(layout, e->text, lo, hi, rects, 8);
+    TextLayoutRelease(layout);
+    if (count <= 0) return {};
+    const Bounds& first = rects[0];
+    return {e->x + first.x, e->y + first.y, first.w, first.h};
 }
 
 static void PaintHighlightWash(PaintCtx* ctx, const El* e, TextLayout* layout,
@@ -9404,18 +9428,8 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         // range_to_bounds: where a named run of this text landed, for a
         // caller that hit-tests against it on a later frame.
         if (e->rangeOut && e->rangeOutHi > e->rangeOutLo) {
-            *e->rangeOut = Bounds{};
-            TextLayout* tl = ElTextLayout(ctx, e);
-            if (tl) {
-                Bounds r[8] = {};
-                int n = TextLayoutRangeRects(tl, e->text, e->rangeOutLo,
-                                             e->rangeOutHi, r, 8);
-                if (n > 0) {
-                    *e->rangeOut = {e->x + r[0].x, e->y + r[0].y, r[0].w,
-                                    r[0].h};
-                }
-                TextLayoutRelease(tl);
-            }
+            *e->rangeOut =
+                ElTextRangeBounds(ctx, e, e->rangeOutLo, e->rangeOutHi);
         }
         // A script's UnderlineStyle, under the whole run in the text's own
         // colour: its thickness, and a wave three thicknesses tall.

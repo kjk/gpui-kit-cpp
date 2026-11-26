@@ -397,8 +397,19 @@ static void VirtualListPlace(PaintCtx* ctx, El* e, El* made, Axis axis,
     // Each row keeps its taffy nodes from one frame to the next, by index, so
     // a row still on screen is reconciled rather than laid out from nothing
     // — and a price ticking in one of its cells does not lay it out at all.
+    Bounds savedMask = ctx ? ctx->hitMask : Bounds{};
+    bool hadMask = ctx && ctx->hasHitMask;
+    if (ctx) {
+        ctx->hitMask =
+            hadMask ? BoundsIntersect(savedMask, e->Bounds()) : e->Bounds();
+        ctx->hasHitMask = true;
+    }
     LayoutEl(ctx, made, x, y, w, h, e->laidFont, e->style.color,
              LayoutRowCache(ctx, layoutKey, ix));
+    if (ctx) {
+        ctx->hitMask = savedMask;
+        ctx->hasHitMask = hadMask;
+    }
     e->Child(made);
 }
 

@@ -1542,6 +1542,7 @@ struct TextView {
     // marked text or block reports itself. Null when there is none.
     const TextViewReveal* revealTarget = nullptr;
     Bounds* revealOut = nullptr;
+    float* revealBounceOffset = nullptr;
     // text_view.rs reveal_handler.
     Listener onReveal;
 
@@ -1786,11 +1787,13 @@ struct TextView {
     El* RangeWashes(El* t, const MdNode* leaf, int lo, int hi,
                     bool markOver = false, bool fadeCodeBox = false);
     // Start this frame's reveal, dropping a clamped or expired request.
-    // RevealPainted settles the report while the live content mask is active.
+    // Arrange scrolls a built-in viewport or requests a list to reposition.
+    // Paint settles the report while the final content mask is active.
     void RevealFrame(TextViewState* managed);
     static void PrepareInheritedColor(PaintCtx* ctx, El* element,
                                       Rgba inherited, void* data);
     static void RevealPainted(PaintCtx* ctx, El* element, void* data);
+    static void RevealArranged(PaintCtx* ctx, El* element, void* data);
     // Inline::reveal: whether the pending reveal starts in `leaf`'s text,
     // and at which offset of it.
     bool RevealIn(const MdNode* leaf, int* offset) const;

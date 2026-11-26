@@ -8235,13 +8235,24 @@ static void AnAppendAddingBlocksKeepsTheScrollPositionInAWindow() {
 // state.rs a_scrollable_view_scrolls_to_a_line_inside_a_long_paragraph
 static void AScrollableViewScrollsToALineInsideALongParagraph() {
     Arena* a = ArenaNew();
-    TswView v = TswOpen(TswWords(a, 400).s, TswContainer::Scrollable);
-    TswReveal(v, "w390");
-    utassert(!TswPending(v));
-    TswScrollTop top = TswScrollTopOf(v);
-    utassert(top.itemIx == 0);
-    utassert(top.offsetInItem > 100.f);
-    TswClose(&v);
+    Str words = TswWords(a, 400);
+    for (bool inheritColor : {false, true}) {
+        TswView v = TswOpen(words.s, TswContainer::Scrollable);
+        TextViewDefaults::New()
+            .WithInheritTextColor(inheritColor)
+            .Install(v.app);
+        Span target = TswFind(v, "w390");
+        TswRequestRange(v, target);
+        TestDraw(v.win);
+        utassert(!TswPending(v));
+        TswScrollTop top = TswScrollTopOf(v);
+        utassert(top.itemIx == 0);
+        utassert(top.offsetInItem > 100.f);
+        TswRequestRange(v, target);
+        TestDraw(v.win);
+        utassert(TswUnmoved(v, top));
+        TswClose(&v);
+    }
     ArenaDelete(a);
 }
 
@@ -8267,7 +8278,8 @@ static void RevealingAVisibleLineDoesNotScroll() {
 static void AnEnclosingListScrollsToALineOfAFitContentView() {
     Arena* a = ArenaNew();
     TswView v = TswOpen(TswWords(a, 400).s, TswContainer::List);
-    TswReveal(v, "w390");
+    TswRequestRange(v, TswFind(v, "w390"));
+    TestDraw(v.win);
     utassert(!TswPending(v));
     TswRoot* root = v.Root();
     int item = 0;

@@ -2897,6 +2897,7 @@ struct InlineTextFragment {
 struct ElLifecycle {
     void (*prepareStyle)(PaintCtx* ctx, El* e, Rgba inherited,
                          void* user) = nullptr;
+    void (*afterLayout)(PaintCtx* ctx, El* e, void* user) = nullptr;
     void (*afterPaint)(PaintCtx* ctx, El* e, void* user) = nullptr;
     void* user = nullptr;
     const LinkTooltipTarget* linkTooltip = nullptr;
@@ -7318,6 +7319,9 @@ void LayoutScratchFree();
 void LayoutEl(PaintCtx* ctx, El* e, float x, float y, float availW,
               float availH, float inheritFont, Rgba inheritFg,
               LayoutCache* lc = nullptr);
+// Update an arranged scroller's offset and its in-flow children's positions.
+void LayoutSetScrollY(El* e, float offset);
+Bounds BoundsIntersect(Bounds a, Bounds b);
 // AnyElement::layout_as_root(size(MinContent, MinContent)): what one element
 // wants to be, laid out on its own and away from the tree it will go into.
 // A virtualized list measures a row this way and then places every row at
@@ -7355,6 +7359,7 @@ void PaintEl(PaintCtx* ctx, El* e);
 // written.
 Bounds ElTextContentBounds(const El* e);
 TextLayout* ElTextLayout(PaintCtx* ctx, const El* e);
+Bounds ElTextRangeBounds(PaintCtx* ctx, const El* e, int lo, int hi);
 Point ElTextCaretPoint(PaintCtx* ctx, const El* e, int offset,
                        bool lineEndAffinity);
 int ElTextRangeRects(PaintCtx* ctx, const El* e, int lo, int hi, Bounds* out,

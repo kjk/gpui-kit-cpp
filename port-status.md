@@ -464,12 +464,11 @@ The current update target is
 Scroll` on `style.code_block`. A refinement here names no overflow field,
   so they are `TextView::TableScroll()` and `TextView::CodeBlockScroll()`;
   the max height still comes from the `code_block` refinement.
-- **TextView reveal scrolling settles on the following layout.** The root
-  checks the current frame's line against the active content mask and invokes
-  `OnReveal` during that paint. Its own scroll offset, or an enclosing
-  VirtualList's scroll handle, is updated then and laid out on the next frame;
-  Rust can scroll and prepaint the line again within the same frame
-  (`src/base/text.cpp`, `src/base/virtual_list.cpp`).
+- **TextView `OnReveal` lets application-owned containers scroll.** A built-in
+  TextView or an enclosing pixel-scrolled VirtualList can reveal the laid-out
+  line before paint. An application handling `OnReveal` during paint applies
+  its own offset on the following layout (`src/base/text.cpp`,
+  `src/base/virtual_list.cpp`).
 - **A default `<mark>` paints near-black ink.** Rust leaves the foreground
   alone (`html.rs`). `#fef08a` disappears on the dark theme's near-white
   text, so that default wash pins the ink to `#0a0a0a` (`src/base/text.cpp`).
