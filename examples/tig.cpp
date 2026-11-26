@@ -397,29 +397,31 @@ struct Tig {
                 return;
             }
             VecClear(job->files);
+            Str startupFile = self->initialFile;
+            size_t startupLine = self->initialLine;
+            self->initialFile = {};
+            self->initialLine = 0;
             int index = 0;
-            for (int i = 0; i < len(self->files); i++) {
-                if (StrEq(self->files[i]->Path(), self->initialFile)) {
-                    index = i;
-                    break;
+            if (startupFile.s) {
+                while (index < len(self->files) &&
+                       !StrEq(self->files[index]->Path(), startupFile)) {
+                    index++;
+                }
+                if (index == len(self->files)) {
+                    self->error = StrDup(fmt(
+                        "File %s is not changed in this commit.", startupFile));
+                    Notify(&cx);
+                    delete job;
+                    return;
                 }
             }
             self->SelectFile(&cx, index);
-            if (self->initialLine && self->fileIx >= 0 &&
-                StrEq(self->File(self->fileIx, &cx)->Path(),
-                      self->initialFile)) {
-                auto* file = self->File(self->fileIx, &cx);
-                auto side =
-                    file->LineIndex(DiffSide::Modified, self->initialLine) >= 0
-                        ? DiffSide::Modified
-                        : DiffSide::Original;
-                self->diff.Get(&cx)
-                    ->ScrollToLine(DiffLinePosition::New(file->Path(), side,
-                                                         self->initialLine),
-                                   &cx);
+            if (startupLine && self->fileIx >= 0) {
+                self->diff.Get(&cx)->ScrollToLine(
+                    DiffLinePosition::New(startupFile, DiffSide::Modified,
+                                          startupLine),
+                    &cx);
             }
-            self->initialFile = {};
-            self->initialLine = 0;
         }
         Notify(&cx);
         delete job;
