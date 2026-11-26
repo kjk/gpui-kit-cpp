@@ -3986,7 +3986,6 @@ static void RecordDiffCodeRun(PaintCtx* paint, El* el, void* data) {
     DiffCodeRunGeometry run = *frame;
     run.bounds = b;
     run.visible = visible;
-    run.text = el->text;
     run.layout = el->laidLayout;
     if (run.layout)
         TextLayoutAddRef(run.layout);
@@ -4060,6 +4059,7 @@ static El* CodeTextRuns(Ctx* cx, const DiffState* state, int fileIx,
         geometry->side = side;
         geometry->line = ix;
         geometry->displayStart = lo;
+        geometry->text = text;
         bit->SelectionOwner(state->self.id);
         bit->lifecycle = ArenaNew<ElLifecycle>(cx->a);
         bit->lifecycle->afterPaint = &RecordDiffCodeRun;
@@ -4305,12 +4305,10 @@ static SelectionEdge ExtendDiffTouch(void* user, Window* win,
     return moving < fixed ? SelectionEdge::Start : SelectionEdge::End;
 }
 
-static int CopyDiffTouch(void* user, Window* win, char* out, int capacity) {
+static Str CopyDiffTouch(void* user, Window* win, Arena* arena) {
     auto* state = static_cast<DiffState*>(user);
-    Str selected = DiffTouchSnapshot(state, win, nullptr)
-                       ? state->SelectedText(GetTempArena())
-                       : Str{};
-    return StrCopyCapped(out, capacity, selected);
+    return DiffTouchSnapshot(state, win, nullptr) ? state->SelectedText(arena)
+                                                  : Str{};
 }
 
 static void ClearDiffTouch(void* user, Window* win) {
@@ -5576,6 +5574,10 @@ static void MeasureDiffCode(Ctx* cx, DiffState* state, float font) {
 
 static void RecordDiffScrollRange(PaintCtx* paint, El* box, void* data) {
     auto* state = (DiffState*)data;
+    // The window builds its touch menu after rendering the diff and before
+    // paint. Keep the previous geometry until then. The run strings borrow
+    // the file's display storage, which survives the frame arena reset.
+    ClearDiffCodeRuns(state);
     state->selectionViewport = box->Bounds();
     WindowSelectionTouchSourcePainted(paint->window, state->self.id);
     if (len(state->rowHeights) && state->rowMeasureWidth != box->w) {
@@ -5655,7 +5657,6 @@ El* Diff::IntoEl() {
     DiffInitKeys();
     DiffState* st = state.Get(cx);
     if (!st) return Div(a);
-    ClearDiffCodeRuns(st);
     st->EnsureSyntax();
     st->EnsureFilePresentation(true);
     st->listScroll.itemsCount = len(st->rows);

@@ -325,7 +325,7 @@ struct TouchSelectionSource {
     bool (*snapshot)(void*, const Window*, TouchSelectionSnapshot*);
     SelectionEdge (*extend)(void*, Window*, SelectionEdge, Point);
     void (*clear)(void*, Window*);
-    int (*copy)(void*, Window*, char*, int);
+    Str (*copy)(void*, Window*, Arena*);
 };
 
 //
@@ -449,7 +449,7 @@ SelectionFormat WindowSelectionFormat(Window* win);
 // The window's copy: the selection to the clipboard. False when there is
 // nothing selected, which is what lets a Ctrl+C fall through to whatever
 // else wants it.
-bool WindowSelectionCopy(Window* win);
+bool WindowSelectionCopy(Window* win, bool trim = false);
 
 // Preserve Markdown caret positions across a frame that regroups paint runs.
 struct TextSelectionSourcePoint {

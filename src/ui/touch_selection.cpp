@@ -122,17 +122,7 @@ static void OnCopy(void*, Ctx* cx, const ClickEvent*) {
     if (!cx || !cx->win) {
         return;
     }
-    const int kCap = 64 * 1024;
-    char* buf = (char*)Alloc(nullptr, kCap);
-    if (!buf) {
-        return;
-    }
-    int n = WindowSelectionText(cx->win, buf, kCap);
-    Str text = StrTrimAscii(Str(buf, n));
-    if (len(text) > 0) {
-        ClipboardSetText(cx->win, text);
-    }
-    Free(nullptr, buf);
+    WindowSelectionCopy(cx->win, true);
     WindowSelectionCloseEditMenu(cx->win);
     Notify(cx);
 }

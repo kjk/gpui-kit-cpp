@@ -2161,6 +2161,7 @@ struct PointerHost {
     DiffAnnotation annotation = {};
     float annotationHeight = 0;
     bool enableAddAnnotation = false;
+    bool showTouchMenu = false;
     int annotationPresses = 0;
     DiffLineRange annotationRange = {};
 
@@ -2205,7 +2206,7 @@ struct PointerHost {
             self->lineClicks[self->lineClickCount++] = position->Line();
     }
     static El* Render(PointerHost* self, Ctx* cx) {
-        return Div(cx->a)->W(600)->H(400)->Child(
+        El* root = Div(cx->a)->W(600)->H(400)->Child(
             Diff::New(cx, self->state)
                 ->SoftWrap(self->softWrap)
                 ->Annotations(&self->annotation, self->annotation.hasPosition)
@@ -2219,6 +2220,10 @@ struct PointerHost {
                 ->OnTextClick(&PointerHost::OnTextClick, self)
                 ->OnLineClick(&PointerHost::OnLineClick, self)
                 ->IntoEl());
+        if (self->showTouchMenu) {
+            if (El* menu = WindowTouchSelectionOverlay(cx)) root->Child(menu);
+        }
+        return root;
     }
 };
 
@@ -2324,6 +2329,68 @@ static void TouchHandlesExtendAndCopyTheDiffSourceRange() {
         TestDraw(stage.win);
     }
     utassert(!WindowSelectionTouchSnapshot(stage.win, &snapshot));
+    TestAppFree(stage.app);
+}
+
+static void TouchCopyMenuKeepsLargeDiffSource() {
+    constexpr int lineCount = 720;
+    StrBuilder patch;
+    patch.Append(StrL("--- a/file.rs\n+++ b/file.rs\n"));
+    patch.Append(fmt("@@ -1,%d +1,%d @@\n", lineCount, lineCount));
+    patch.Append(StrL("-  fn old() {}\r\n+  fn first() {}\r\n"));
+    for (int i = 1; i < lineCount; i++) {
+        patch
+            .Append(StrL("     0123456789012345678901234567890123456789"
+                         "0123456789012345678901234567890123456789"
+                         "01234567890123456789 \u03b2\r\n"));
+    }
+    PointerStage stage = StagePointer(false, Str(patch.els, len(patch)));
+    stage.host->showTouchMenu = true;
+    Bounds row;
+    bool found = DiffRunBounds(stage.win, DiffSide::Modified, 0, &row);
+    utassert(found);
+    if (found) {
+        float cell = MeasureText(&stage.win->paint, StrL("f"),
+                                 ThemeFontSize(stage.app), 0, false, kFontMono)
+                         .w;
+        Point word = {row.x + 3.f * cell, row.CenterY()};
+        PlatformInput press = InputLongPress(TouchPhase::Started, word, word);
+        WindowDispatchInput(stage.win, &press);
+        TestDraw(stage.win);
+        PlatformInput release = InputLongPress(TouchPhase::Ended, word, word);
+        WindowDispatchInput(stage.win, &release);
+        DiffState* state = stage.host->state.Get(stage.app);
+        Str source = state->files[0]->Source(DiffSide::Modified);
+        utassert(len(source) > 64 * 1024);
+        // Model a drag that reached the end of the file before scrolling
+        // back. Only the first endpoint is painted in this viewport.
+        state->textSelection.anchor = 0;
+        state->textSelection.cursor = len(source);
+        TestDraw(stage.win);
+        TouchSelectionSnapshot snapshot;
+        utassert(WindowSelectionTouchSnapshot(stage.win, &snapshot) &&
+                 snapshot.startVisible && !snapshot.endVisible &&
+                 snapshot.menuOpen);
+        uint32_t copy = 0;
+        for (const auto& node : stage.win->accessibility) {
+            if (node.info.role == AccessibilityRole::Button &&
+                StrEq(node.info.PlatformName(), Tr("Input.Copy"))) {
+                copy = node.id;
+                break;
+            }
+        }
+        utassert(copy != 0);
+        if (copy) {
+            utassert(WindowAccessibilityPerform(stage.win, copy,
+                                                AccessibilityAction::Default));
+            utassert(
+                StrEq(TestReadFromClipboard(GetTempArena()), StrTrim(source)));
+            utassert(WindowSelectionTouchSnapshot(stage.win, &snapshot) &&
+                     !snapshot.menuOpen);
+            utassert(WindowSelectionCopy(stage.win));
+            utassert(StrEq(TestReadFromClipboard(GetTempArena()), source));
+        }
+    }
     TestAppFree(stage.app);
 }
 
@@ -2769,6 +2836,7 @@ void TestDiff() {
     DiffMeasuresWrappedLinesAndChangingAnnotations();
     AnnotationButtonPassesTheSelectedRange();
     TouchHandlesExtendAndCopyTheDiffSourceRange();
+    TouchCopyMenuKeepsLargeDiffSource();
     AnUnclaimedTextClickFallsThroughToTheLine();
     DiffPointerReportsLargeLineNumbers();
     HasLineCountsFoldedLinesButNotAbsentOnes();

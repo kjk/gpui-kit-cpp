@@ -1667,7 +1667,8 @@ int WindowSelectionTextAs(Window* win, char* out, int cap,
     if (win && win->sel && win->sel->touchSource.copy && out && cap > 0) {
         const TouchSelectionSource& source = win->sel->touchSource;
         if (void* receiver = EntityGet(win->app, source.entity)) {
-            return source.copy(receiver, win, out, cap);
+            return StrCopyCapped(out, cap,
+                                 source.copy(receiver, win, GetTempArena()));
         }
     }
     if (const TextViewState* view = SelectAllTextView(win)) {
@@ -1993,20 +1994,28 @@ SelectionFormat WindowSelectionFormat(Window* win) {
     return s->format;
 }
 
-bool WindowSelectionCopy(Window* win) {
+bool WindowSelectionCopy(Window* win, bool trim) {
     if (!TextSelection::HasSelection(win, win ? win->app : nullptr)) {
         return false;
     }
-    if (const TextViewState* view = SelectAllTextView(win)) {
-        Str text = view->SelectAllText(view->selectionFormat);
+    auto write = [&](Str text) {
+        if (trim) text = StrTrim(text);
         if (!len(text)) return false;
         ClipboardSetText(win, text);
         return true;
-    }
-    // Participant and touch copy callbacks use the bounded copy API.
+    };
     const WindowSelection* selection = win->sel;
-    bool usesCallbacks =
-        len(selection->participants) > 0 || selection->touchSource.copy;
+    if (selection->touchSource.copy) {
+        TouchSelectionSource source = selection->touchSource;
+        if (void* receiver = EntityGet(win->app, source.entity)) {
+            return write(source.copy(receiver, win, GetTempArena()));
+        }
+    }
+    if (const TextViewState* view = SelectAllTextView(win)) {
+        return write(view->SelectAllText(view->selectionFormat));
+    }
+    // Participant copy callbacks still use the bounded copy API.
+    bool usesCallbacks = len(selection->participants) > 0;
     int cap = usesCallbacks ? 64 * 1024 : 1;
     char scratch[1];
     char* buf = usesCallbacks ? (char*)Alloc(nullptr, cap) : scratch;
@@ -2015,11 +2024,10 @@ bool WindowSelectionCopy(Window* win) {
     }
     StrBuilder paintedText;
     int n = SelectedTextInto(win, win->app, buf, cap, &paintedText);
-    if (n > 0) {
-        ClipboardSetText(win, Str(len(paintedText) ? paintedText.els : buf, n));
-    }
+    bool copied =
+        n > 0 && write(Str(len(paintedText) ? paintedText.els : buf, n));
     if (usesCallbacks) Free(nullptr, buf);
-    return n > 0;
+    return copied;
 }
 
 void WindowSelectionApply(Window* win) {
