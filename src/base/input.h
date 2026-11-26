@@ -168,10 +168,8 @@ struct InputEditorStyle {
     // did.
     Rgba matchBg = {0, 0, 0, 0};
     Rgba currentMatchBg = {0, 0, 0, 0};
-    // The editor's own surface, which an inline suggestion's second line and
-    // beyond is drawn on: it covers the row under it rather than pushing it
-    // down. Transparent means the rows show through, which is what a field
-    // that never suggests anything gets.
+    // The editor surface covers the existing text underneath the first line
+    // of an inline completion. The base theme supplies the default surface.
     Rgba background = {0, 0, 0, 0};
     Rgba border = {0, 0, 0, 0};
     // The colour a symbol takes while the shortcut modifier is held over it

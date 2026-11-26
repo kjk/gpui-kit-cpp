@@ -1570,6 +1570,7 @@ El* Textarea::IntoEl() {
     InputEditorStyle editor;
     editor.foreground = th.foreground;
     editor.mutedForeground = th.mutedFg;
+    editor.background = th.inputBg;
     editor.caret = th.caret;
     editor.selection = RgbaOpacity(th.selection, 0.4f);
     editor.fontSize = font;

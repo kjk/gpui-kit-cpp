@@ -3087,6 +3087,20 @@ static Point ShapedInputRowCaretPoint(PaintCtx* ctx,
     return {row.text->x, row.text->y};
 }
 
+struct InlineCompletionAnchor {
+    const RangeDecorationRow* row;
+    int offset;
+    bool lineEndAffinity;
+};
+
+static void PositionInlineCompletion(PaintCtx* ctx, El* suffix, void* user) {
+    const auto* anchor = static_cast<const InlineCompletionAnchor*>(user);
+    Point caret = ShapedInputRowCaretPoint(ctx, *anchor->row, anchor->offset,
+                                           anchor->lineEndAffinity);
+    suffix->PaintOffset(caret.x + base::PlatCaretWidth() - suffix->x,
+                        anchor->row->text->y - suffix->y);
+}
+
 static bool InputTokenRangeEdges(PaintCtx* ctx, const RangeDecorationRow& row,
                                  int start, int end, float* left,
                                  float* right) {
@@ -4547,6 +4561,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     }
     Str previewFirstLine;
     Str previewContinuation;
+    const RangeDecorationRow* previewRow = nullptr;
     if (preview.layoutLine >= 0) {
         int newline = StrFind(preview.text, StrL("\n"));
         previewFirstLine =
@@ -4844,6 +4859,9 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                 state->cursorLineEndAffinity) {
                 caretHere = false;
             }
+            if (caretHere && row == preview.layoutLine) {
+                previewRow = paintedRow;
+            }
             if (!tokenLine && caretFolded) {
                 if (row == caretRow && firstSeg) {
                     el->Caret(0, style.caret);
@@ -5089,21 +5107,25 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         }
     }
 
-    // The first line starts at the caret on the existing visual row.
-    if (len(previewFirstLine) > 0 && preview.layoutLine >= firstRow &&
-        preview.layoutLine < endRow) {
-        float gx = len(text) == 0 ? textOriginOffset
-                                  : state->caretWinX - state->contentBox.x;
-        float gy = (float)(InputOffsetDisplayY(state, cursor, lineH) -
-                           state->layoutOriginY);
-        El* ghost = Div(a)->Absolute()->Left(gx)->Top(gy)->H(lineH);
-        El* run = TextEl(a, previewFirstLine)
-                      ->Font(font)
-                      ->LineHeight(lineMult)
-                      ->Fg(ghostFg);
-        InputFace(run, style);
-        MaskEditorText(ghost, underlay);
-        col->Child(ghost->Child(run));
+    // element.rs paints the suffix after the current caret and covers the
+    // existing text underneath it with the editor background.
+    if (len(previewFirstLine) > 0 && previewRow) {
+        auto* anchor = ArenaNew<InlineCompletionAnchor>(a);
+        if (anchor) {
+            *anchor = {previewRow, cursor, state->cursorLineEndAffinity};
+            El* ghost =
+                Div(a)->Absolute()->Left(0)->Top(0)->H(lineH)->PadR(4.f)->Bg(
+                    style.background);
+            ghost->prePaint = &PositionInlineCompletion;
+            ghost->customUser = anchor;
+            El* run = TextEl(a, previewFirstLine)
+                          ->Font(font)
+                          ->LineHeight(lineMult)
+                          ->Fg(ghostFg);
+            InputFace(run, style);
+            MaskEditorText(ghost, underlay);
+            col->Child(ghost->Child(run));
+        }
     }
     // Bars and boundary pills use the same preview displacement as the rows.
     if (InputGutterStripWidth(state) > 0.f && lineH > 0.f) {

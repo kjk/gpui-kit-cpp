@@ -13198,6 +13198,76 @@ static void GutterDecorationsReserveAStripAndMarkLinesAndBoundaries() {
     TestAppFree(d.app);
 }
 
+struct InlineCompletionRoot {
+    InputState input;
+    El* rendered = nullptr;
+
+    static El* Render(InlineCompletionRoot* self, Ctx* cx) {
+        self->rendered = InputStateFrame(cx, &self->input);
+        return self->rendered;
+    }
+};
+
+static El* FindInlineCompletionSuffix(El* el, Str text) {
+    for (El* child = el->first; child; child = child->next) {
+        if (child->kind == ElKind::Text && StrEq(child->text, text)) return el;
+        if (El* suffix = FindInlineCompletionSuffix(child, text)) return suffix;
+    }
+    return nullptr;
+}
+
+// element.rs paints the suffix at the current caret's right edge, with a
+// background wide enough to cover the original text below it.
+static void InlineCompletionSuffixFollowsTheCurrentWrappedCaret() {
+    App* app = TestAppNew();
+    auto root = EntityNew<InlineCompletionRoot>(app);
+    auto* view = root.Get(app);
+    InputState* s = &view->input;
+    MakeCodeEditor(s);
+    s->softWrap = true;
+    Str text = StrL(
+        "alpha beta gamma delta epsilon zeta eta theta iota kappa "
+        "lambda mu nu xi omicron pi rho sigma tau upsilon");
+    InputSetValue(s, text);
+    Window* win = TestWindowOpen(app, root, 240, 140);
+    InputFocus(s, app, win);
+    TestDraw(win);
+
+    InputPaintedVisualRow rows[8];
+    int count = InputLastVisualRows(s, win, rows, dimofi(rows));
+    utassert(count > 1 && rows[1].lineStart == 0);
+    if (count > 1) {
+        int boundary = rows[1].start;
+        Str preview = StrL(" completion");
+        for (bool endOfLine : {false, true}) {
+            InputMoveToWithAffinity(s, app, win, boundary, endOfLine);
+            s->inlineCompletion.text = preview;
+            s->inlineCompletion.at = boundary;
+            s->inlineCompletion.asked = true;
+            s->caretWinX = -1000.f;
+            TestDraw(win);
+
+            El* suffix = FindInlineCompletionSuffix(view->rendered, preview);
+            utassert(suffix && suffix->first);
+            if (!suffix || !suffix->first) continue;
+            Point caret = {};
+            utassert(InputLastCaretPoint(s, win, boundary, &caret));
+            utassertnear(suffix->x + suffix->paintDx,
+                         caret.x + base::PlatCaretWidth());
+            utassertnear(suffix->y + suffix->paintDy, rows[endOfLine ? 0 : 1]
+                                                          .text.y);
+            utassert(suffix->style.bg.color.a > 0);
+            TextLayout* layout = ElTextLayout(&win->paint, suffix->first);
+            utassert(layout);
+            if (layout) {
+                utassertnear(suffix->w, TextLayoutSize(layout).w + 4.f);
+                TextLayoutRelease(layout);
+            }
+        }
+    }
+    TestAppFree(app);
+}
+
 // element.rs lays out completion rows before subsequent document decorations.
 static void InlineCompletionMovesDocumentRowsAndGutterMarks() {
     DecorationEditor d = DecorationEditorOpen("alpha\nnext\nend", false);
@@ -13563,6 +13633,7 @@ static void RunElementWindowTests() {
     GutterQueryKeepsIndexOrderAfterInsertingAtMixedRanges();
     DefaultDecorationCollectionsAddressNoEditor();
     GutterDecorationsReserveAStripAndMarkLinesAndBoundaries();
+    InlineCompletionSuffixFollowsTheCurrentWrappedCaret();
     InlineCompletionMovesDocumentRowsAndGutterMarks();
     CodeActionMenuBlocksInlineCompletionAtTheDeadline();
     EditorTextOriginOffsetFollowsTheLaidOutGutter();
