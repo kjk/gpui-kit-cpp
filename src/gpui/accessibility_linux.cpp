@@ -197,6 +197,8 @@ struct AccessibilityLinuxState {
     uint32_t embedSerial = 0;
     Str busName = {};
     Str busAddress = {};
+    Str desktopBusName = {};
+    Str desktopPath = {};
     Vec<uint8_t> rx;
     Vec<LinuxTextSnapshot> text;
     Vec<LinuxNodeHistory*> nodes;
@@ -531,16 +533,18 @@ static const AccessibilityNode& PartOwner(const LinuxAccessible& object) {
     return object.win->accessibility[object.nodeIndex];
 }
 
-static void PutObjectRef(DbusWriter* body, Str path) {
+static void PutObjectRef(DbusWriter* body, Str busName, Str path) {
     PutAlign(body, 8);
-    PutString(body, gA11y.busName);
+    PutString(body, busName);
     PutString(body, path);
 }
 
+static void PutObjectRef(DbusWriter* body, Str path) {
+    PutObjectRef(body, gA11y.busName, path);
+}
+
 static void PutNullObjectRef(DbusWriter* body) {
-    PutAlign(body, 8);
-    PutString(body, "");
-    PutString(body, kNullPath);
+    PutObjectRef(body, StrL(""), Str(kNullPath));
 }
 
 static int ChildCount(const LinuxAccessible& object) {
@@ -1100,7 +1104,11 @@ static void PutEmptyRelations(DbusWriter* body) {
 
 static void PutParent(DbusWriter* body, const LinuxAccessible& object) {
     if (object.root) {
-        PutNullObjectRef(body);
+        if (gA11y.desktopPath.s) {
+            PutObjectRef(body, gA11y.desktopBusName, gA11y.desktopPath);
+        } else {
+            PutNullObjectRef(body);
+        }
         return;
     }
     const AccessibilityNode& node = object.win->accessibility[object.nodeIndex];
@@ -2185,7 +2193,14 @@ static void HandleReply(const Incoming& in) {
             gA11y.busName = StrDup(name);
             SendEmbed();
         }
-    } else if (in.replySerial == gA11y.embedSerial) {
+    } else if (in.replySerial == gA11y.embedSerial && !gA11y.ready &&
+               StrIs(in.signature, "(so)")) {
+        int at = 0;
+        Str desktopBusName = ReadString(in.body, in.bodyLen, &at);
+        Str desktopPath = ReadString(in.body, in.bodyLen, &at);
+        if (!len(desktopBusName) || !len(desktopPath)) return;
+        gA11y.desktopBusName = StrDup(desktopBusName);
+        gA11y.desktopPath = StrDup(desktopPath);
         gA11y.ready = true;
         if (gA11y.app) {
             for (int i = 0; i < len(gA11y.app->windows); i++) {
@@ -2292,6 +2307,10 @@ void AccessibilityLinuxShutdown() {
     gA11y.busName = {};
     StrFree(gA11y.busAddress);
     gA11y.busAddress = {};
+    StrFree(gA11y.desktopBusName);
+    gA11y.desktopBusName = {};
+    StrFree(gA11y.desktopPath);
+    gA11y.desktopPath = {};
     VecReset(gA11y.rx);
     for (const auto& snapshot : gA11y.text) StrFree(snapshot.text);
     VecReset(gA11y.text);
