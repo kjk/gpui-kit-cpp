@@ -501,9 +501,13 @@ void Tig::Action(Ctx* cx, TigAction action) {
             sidebar = true;
             FocusHandleFocus(cx->win, historyFocus);
             break;
-        case TigRefresh:
-            Start(cx, true, Commit() ? Commit()->hash : Str{});
+        case TigRefresh: {
+            Str previous = Commit() ? Commit()->hash : Str{};
+            SelectCommit(cx, -1);
+            VecClear(commits);
+            Start(cx, true, previous);
             break;
+        }
         case TigCopy:
             if (Commit()) ClipboardSetText(cx->win, Commit()->hash);
             break;
