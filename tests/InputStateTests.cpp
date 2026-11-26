@@ -15363,6 +15363,120 @@ static void TextareaStartsEachParagraphAtItsReadingEdge() {
     TestAppFree(app);
 }
 
+// element.rs deferred_horizontal_scroll_moves_every_caret.
+static void DeferredScrollMovesBothAxesAndEveryCaret() {
+    InputView view = InputViewBuildWith(InputKind::Editor, nullptr, 240, 140);
+    InputState* s = view.input;
+    s->softWrap = false;
+    Str row = RepeatChar('W', 90);
+    StrBuilder content;
+    for (int i = 0; i < 20; ++i) {
+        content.Append(row);
+        content.AppendChar('\n');
+    }
+    StrFree(row);
+    InputSetValue(s, Str(content.els, len(content)));
+    TestDraw(view.win);
+    InputFocus(s, view.app, view.win);
+    const int offsets[] = {3, 6, 9};
+    InputSetSelectedRange(s, view.app, view.win, offsets[0], offsets[0]);
+    InputAddCursorAt(s, view.app, view.win, offsets[1]);
+    InputAddCursorAt(s, view.app, view.win, offsets[2]);
+    InputSetScrollOffset(s, view.app, view.win, {});
+    TestDraw(view.win);
+    Point original[dimofi(offsets)] = {};
+    for (int i = 0; i < dimofi(offsets); ++i) {
+        utassert(InputLastCaretPoint(s, view.win, offsets[i], &original[i]));
+    }
+
+    InputSetScrollOffset(s, view.app, view.win, {32.25f, 5.f});
+    InputSetScrollYF64(s, view.app, view.win, 5.5);
+    Point settled = InputScrollOffset(s);
+    utassert(settled.x == 0.f && settled.y == 0.f);
+    TestDraw(view.win);
+    settled = InputScrollOffset(s);
+    utassert(settled.x == 32.25f && settled.y == 5.5f);
+    for (int i = 0; i < dimofi(offsets); ++i) {
+        Point moved = {};
+        utassert(InputLastCaretPoint(s, view.win, offsets[i], &moved));
+        utassertnear(moved.x, original[i].x - settled.x);
+        utassertnear(moved.y, original[i].y - settled.y);
+    }
+    s->softWrap = true;
+    InputSetScrollOffset(s, view.app, view.win, {100.f, 10.f});
+    TestDraw(view.win);
+    settled = InputScrollOffset(s);
+    utassert(settled.x == 0.f && settled.y == 10.f);
+    InputViewFree(&view);
+}
+
+static void DeferredScrollClampsToTheNewSingleLineWidth() {
+    InputView view = InputViewBuildWith(InputKind::Input, nullptr, 160, 50);
+    InputState* s = view.input;
+    InputFocus(s, view.app, view.win);
+    InputSetValue(s, StrL("short"));
+    TestDraw(view.win);
+    Str wide = RepeatChar('W', 90);
+    InputSetValue(s, wide);
+    StrFree(wide);
+    InputSetScrollOffset(s, view.app, view.win, {40.f, 30.f});
+    InputSetSelectedRange(s, view.app, view.win, 0, 0);
+    TestDraw(view.win);
+    Point settled = InputScrollOffset(s);
+    utassert(settled.x == 40.f && settled.y == 0.f);
+    Point start = {};
+    utassert(InputLastCaretPoint(s, view.win, 0, &start));
+    utassertnear(start.x, s->inputBounds.x - settled.x);
+    InputSetValue(s, StrL("short"));
+    InputSetScrollOffset(s, view.app, view.win, {40.f, 30.f});
+    TestDraw(view.win);
+    settled = InputScrollOffset(s);
+    utassert(settled.x == 0.f && settled.y == 0.f);
+    InputViewFree(&view);
+}
+
+static void DeferredScrollUsesWidthFromTheRebuiltRowBand() {
+    struct View {
+        InputState input;
+        float viewportH = 60;
+
+        static El* Render(View* self, Ctx* cx) {
+            return Div(cx->a)
+                ->W(240)
+                ->H(self->viewportH)
+                ->Child(InputStateFrame(cx, &self->input));
+        }
+    };
+    App* app = TestAppNew();
+    auto entity = EntityNew<View>(app);
+    View* view = entity.Get(app);
+    view->input.kind = InputKind::Textarea;
+    view->input.softWrap = false;
+    Window* win = TestWindowOpen(app, entity, 280, 320);
+    TestDraw(win);
+    StrBuilder content;
+    content.AppendChar('e');
+    for (int i = 0; i < 150; ++i) content.Append(StrL("\xCC\x81"));
+    for (int i = 0; i < 7; ++i) content.Append(StrL("\nshort"));
+    content.AppendChar('\n');
+    int wideStart = len(content);
+    Str wide = RepeatChar('W', 90);
+    content.Append(wide);
+    StrFree(wide);
+    InputSetValue(&view->input, Str(content.els, len(content)));
+    TestDraw(win);
+    utassert(view->input.contentW - view->input.viewW < 15.f);
+
+    view->viewportH = 240;
+    InputSetScrollOffset(&view->input, app, win, {60.f, 0.f});
+    TestDraw(win);
+    utassertnear(InputScrollOffset(&view->input).x, 60.f);
+    Point start = {};
+    utassert(InputLastCaretPoint(&view->input, win, wideStart, &start));
+    utassertnear(start.x, view->input.inputBounds.x - 60.f);
+    TestAppFree(app);
+}
+
 // element.rs resolves an explicit offset against the viewport and text
 // measured in that prepaint, and the request takes priority over the caret.
 static void DeferredScrollUsesTheResizedTextareaViewport() {
@@ -15664,6 +15778,9 @@ void TestInputState() {
     EditorHoverScrollsInsideTheWindow();
     LosingFocusEndsImeComposition();
     ForwardWordDeletionStopsAtWhitespaceAndLineBreaks();
+    DeferredScrollMovesBothAxesAndEveryCaret();
+    DeferredScrollClampsToTheNewSingleLineWidth();
+    DeferredScrollUsesWidthFromTheRebuiltRowBand();
     DeferredScrollUsesTheResizedTextareaViewport();
     LargeEditorKeepsViewportLocalRowGeometry();
     TextareaStartsEachParagraphAtItsReadingEdge();

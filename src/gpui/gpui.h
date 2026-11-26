@@ -6320,7 +6320,8 @@ struct InputState {
     // document, so a physical float never carries the full document Y.
     double layoutOriginY = 0;
     double deferredScrollY = 0;
-    bool hasDeferredScrollY = false;
+    float deferredScrollX = 0;
+    bool hasDeferredScroll = false;
     float viewW = 0;
     float viewH = 0;
     // Where the caret last landed, in window coordinates: the bottom of the
@@ -6473,8 +6474,11 @@ float InputClampVerticalScrollOffset(float scroll, float scrollHeight,
 // past nine digits shows as 999,999,999 rather than widening the gutter.
 int InputLineNumberLen(int totalLines);
 int InputDisplayedLineNumber(int number);
-// Vertical input state uses positive-down DIPs. Setting an absolute
-// offset defers clamping until the next layout measures the document.
+// Input offsets use positive-right/down DIPs. Read the current offset, or
+// request one to be clamped and applied by the next layout.
+Point InputScrollOffset(const InputState* s);
+void InputSetScrollOffset(InputState* s, App* app, Window* win, Point offset);
+// Keep the horizontal offset and avoid float quantization on the Y axis.
 double InputScrollYF64(const InputState* s);
 double InputContentHeightF64(const InputState* s);
 void InputSetScrollYF64(InputState* s, App* app, Window* win, double y);

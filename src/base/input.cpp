@@ -2636,9 +2636,12 @@ static void InputSingleLinePrepaint(PaintCtx* ctx, El* row, void* data) {
     if (!text || !s || row->w <= 0) return;
     auto* cursor = (SingleLineCaret*)data;
     float caretWidth = base::PlatCaretWidth();
-    s->contentW = cursor ? text->w + caretWidth : 0.f;
+    bool aligned = row->style.justify == Justify::Center ||
+                   row->style.justify == Justify::End;
+    s->contentW = cursor ? text->w + (aligned ? 0.f : caretWidth) : 0.f;
     float maxScroll = std::max(0.f, s->contentW - row->w);
-    s->scrollX = std::min(s->scrollX, maxScroll);
+    s->scrollX = InputClampHorizontalScrollOffset(s->scrollX, s->contentW,
+                                                  row->w, aligned);
     if (s->revealSingleLineCaret && cursor && maxScroll > 0) {
         float x = 0, y = 0, h = 0;
         if (s->chipLine) {
@@ -2653,13 +2656,20 @@ static void InputSingleLinePrepaint(PaintCtx* ctx, El* row, void* data) {
         } else if (x + caretWidth > s->scrollX + row->w) {
             s->scrollX = x + caretWidth - row->w;
         }
-        s->scrollX = std::min(std::max(s->scrollX, 0.f), maxScroll);
+        s->scrollX = InputClampHorizontalScrollOffset(s->scrollX, s->contentW,
+                                                      row->w, aligned);
     }
     s->revealSingleLineCaret = false;
+    if (s->hasDeferredScroll) {
+        s->scrollX = InputClampHorizontalScrollOffset(
+            s->deferredScrollX, s->contentW, row->w, aligned);
+    }
     // Aligned text uses its natural alignment while it fits. Long content
     // scrolls from the leading edge of the row.
     if (maxScroll > 0) {
         text->PaintOffset(row->x - text->x - s->scrollX, 0);
+    } else if (s->scrollX > 0.f) {
+        text->PaintOffset(-s->scrollX, 0);
     }
 }
 
@@ -3527,6 +3537,16 @@ static void LayoutEditorColumn(PaintCtx* ctx, El* e, void* user) {
     e->last = fresh->last;
     e->customPaint = fresh->customPaint;
     e->customUser = fresh->customUser;
+    // A band rebuilt for a taller viewport can discover a wider line.
+    // Resolve X again before positioning the new runs and their carets.
+    if (!s->softWrap && fresh->style.minW > e->w) {
+        e->style.minW = fresh->style.minW;
+        s->contentW = std::max(s->contentW, fresh->style.minW);
+        float oldX = s->scrollX;
+        s->scrollX = InputClampHorizontalScrollOffset(
+            s->deferredScrollX, s->contentW, s->viewW, s->align != 0);
+        e->x += oldX - s->scrollX;
+    }
     IdsCollectChildren(e);
     e->y += oldScroll - InputLayoutScrollY(s);
     LayoutEl(ctx, e, e->x, e->y, e->w, 0, e->laidFont, e->style.color);
@@ -3823,6 +3843,24 @@ float InputLayoutScrollY(const InputState* s) {
     return s ? (float)std::max(0., s->scrollY - s->layoutOriginY) : 0.f;
 }
 
+Point InputScrollOffset(const InputState* s) {
+    return s ? Point{s->scrollX, (float)s->scrollY} : Point{};
+}
+
+static void InputDeferScrollOffset(InputState* s, App* app, Window* win,
+                                   float x, double y) {
+    s->deferredScrollX = std::max(0.f, x);
+    s->deferredScrollY = std::max(0., y);
+    s->hasDeferredScroll = true;
+    Notify(app, win);
+}
+
+void InputSetScrollOffset(InputState* s, App* app, Window* win, Point offset) {
+    if (!s || !isfinite(offset.x) || !isfinite(offset.y)) return;
+    InputDeferScrollOffset(s, app, win, offset.x,
+                           InputIsMultiLine(s) ? offset.y : 0.);
+}
+
 double InputScrollYF64(const InputState* s) {
     return s ? s->scrollY : 0;
 }
@@ -3833,16 +3871,14 @@ double InputContentHeightF64(const InputState* s) {
 
 void InputSetScrollYF64(InputState* s, App* app, Window* win, double y) {
     if (!s || !InputIsMultiLine(s) || !isfinite(y)) return;
-    s->deferredScrollY = std::max(0., y);
-    s->hasDeferredScrollY = true;
-    Notify(app, win);
+    float x = s->hasDeferredScroll ? s->deferredScrollX : s->scrollX;
+    InputDeferScrollOffset(s, app, win, x, y);
 }
 
 void InputScrollByYF64(InputState* s, App* app, Window* win, double deltaY) {
     if (!s || !InputIsMultiLine(s) || !isfinite(deltaY)) return;
-    if (s->hasDeferredScrollY || s->viewH <= 0 || s->contentH <= 0) {
-        double current =
-            s->hasDeferredScrollY ? s->deferredScrollY : s->scrollY;
+    if (s->hasDeferredScroll || s->viewH <= 0 || s->contentH <= 0) {
+        double current = s->hasDeferredScroll ? s->deferredScrollY : s->scrollY;
         InputSetScrollYF64(s, app, win, current + deltaY);
     } else {
         InputApplyScrollOffset(s, app, win, s->scrollX, s->scrollY + deltaY);
@@ -4187,7 +4223,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     state->contentH += ghostHeight + emptyBottom;
     double scrollHeight = InputFitContentHeightF64(state->contentH, vh, dpi);
     double requested =
-        state->hasDeferredScrollY ? state->deferredScrollY : state->scrollY;
+        state->hasDeferredScroll ? state->deferredScrollY : state->scrollY;
     state->scrollY =
         InputClampVerticalScrollOffsetF64(requested, scrollHeight, vh);
     int firstRow = 0;
@@ -4551,7 +4587,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         }
         col->customPaint = &PaintEditorUnderlay;
         col->customUser = underlay;
-        if (state->hasDeferredScrollY && !state->wrap.buildingRows) {
+        if (state->hasDeferredScroll && !state->wrap.buildingRows) {
             underlay->layoutViewH = vh;
             col->prePaint = &LayoutEditorColumn;
         }
@@ -6651,7 +6687,7 @@ bool InputRevealCaretOnResize(InputState* s, float newViewW, float newViewH,
     if (!s) {
         return false;
     }
-    if (s->hasDeferredScrollY) {
+    if (s->hasDeferredScroll) {
         s->resizeRevealOwned = false;
         return false;
     }
@@ -6859,15 +6895,15 @@ void InputScrollToCursor(InputState* s, InputMoveDir dir) {
     InputScrollToCaretF64(s, s->caretX, caretY, dir);
 }
 
-float InputClampHorizontalScrollOffset(const InputState* s, float offset,
-                                       float contentW, float viewW) {
+float InputClampHorizontalScrollOffset(float offset, float contentW,
+                                       float viewW, bool aligned) {
     // Rust keeps the offset negative-down on its ScrollHandle; the state here
     // keeps it positive, so each range is Rust's negated.
     // A right- or centre-aligned run keeps a caret's width spare on the
     // right, which the left edge does not need.
     // blink_cursor.rs CURSOR_WIDTH: one logical pixel on every platform.
     // Paint snaps that width onto the device pixel grid.
-    float safeX = s->align == 0 ? 0.f : base::PlatCaretWidth();
+    float safeX = aligned ? base::PlatCaretWidth() : 0.f;
     float mostX = std::max(0.f, contentW - viewW) + safeX;
     return std::max(0.f, std::min(offset, mostX));
 }
@@ -6877,7 +6913,8 @@ static bool InputApplyScrollOffset(InputState* s, App* app, Window* win,
     double y = InputIsSingleLine(s) ? 0.
                                     : InputClampVerticalScrollOffsetF64(
                                           wantY, s->contentH, s->viewH);
-    float x = InputClampHorizontalScrollOffset(s, wantX, s->contentW, s->viewW);
+    float x = InputClampHorizontalScrollOffset(wantX, s->contentW, s->viewW,
+                                               s->align != 0);
     if (x == s->scrollX && y == s->scrollY) {
         return false;
     }

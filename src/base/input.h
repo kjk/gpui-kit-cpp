@@ -56,8 +56,8 @@ float InputCeilToDevicePixel(float height, float dpi);
 float InputFitContentHeight(float content, float viewport, float dpi);
 double InputFitContentHeightF64(double content, float viewport, float dpi);
 float InputLayoutScrollY(const InputState* s);
-float InputClampHorizontalScrollOffset(const InputState* s, float offset,
-                                       float contentW, float viewW);
+float InputClampHorizontalScrollOffset(float offset, float contentW,
+                                       float viewW, bool aligned);
 
 // `InputBase::new(id)`: the frame is a stateful element, so its click and
 // focus ids are the fold of the name down from the root rather than a hash of

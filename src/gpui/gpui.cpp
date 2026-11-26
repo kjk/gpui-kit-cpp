@@ -5741,7 +5741,7 @@ static void WriteBackEl(LayoutCache* lc, PaintCtx* ctx, El* e, float originX,
 
     // The virtualized column chooses its rows in prepaint. Give an explicit
     // scroll request the final viewport, including for a relative height.
-    bool inputScrollRequested = e->input && e->input->hasDeferredScrollY &&
+    bool inputScrollRequested = e->input && e->input->hasDeferredScroll &&
                                 e->style.overflowY == Overflow::Scroll &&
                                 !LayoutInScratchPass();
     if (inputScrollRequested) {
@@ -5750,15 +5750,23 @@ static void WriteBackEl(LayoutCache* lc, PaintCtx* ctx, El* e, float originX,
 
     // Use the new scroll extent before positioning rows and carets. A stale
     // offset can point beyond the last glyph after an edit or a resize.
-    if (e->input && e->style.overflowX == Overflow::Scroll &&
-        InputIsMultiLine(e->input) && !LayoutInScratchPass()) {
+    bool hasScrollX = e->style.overflowX == Overflow::Scroll;
+    if (e->input && InputIsMultiLine(e->input) && !LayoutInScratchPass() &&
+        (hasScrollX ||
+         (e->input->softWrap && e->style.overflowY == Overflow::Scroll))) {
         float padding = e->style.pad.HorizontalAxisSum();
         float viewW = e->w - padding;
-        float contentW = e->contentW - padding;
-        e->scrollX = InputClampHorizontalScrollOffset(e->input, e->scrollX,
-                                                      contentW, viewW);
+        float contentW = hasScrollX ? e->contentW - padding : viewW;
+        float wantX = e->input->hasDeferredScroll ? e->input->deferredScrollX
+                      : hasScrollX                ? e->scrollX
+                                                  : e->input->scrollX;
+        e->scrollX = InputClampHorizontalScrollOffset(wantX, contentW, viewW,
+                                                      e->input->align != 0);
         e->input->contentW = contentW;
         e->input->scrollX = e->scrollX;
+        if (inputScrollRequested) {
+            e->input->viewW = viewW;
+        }
     }
 
     // The shaped run paint wants, taken from the text cache at the size
@@ -5789,6 +5797,10 @@ static void WriteBackEl(LayoutCache* lc, PaintCtx* ctx, El* e, float originX,
     WriteBackChildren(lc, ctx, e);
     if (inputScrollRequested) {
         e->scrollY = InputLayoutScrollY(e->input);
+        e->scrollX = e->input->scrollX;
+        if (hasScrollX) {
+            e->contentW = e->input->contentW + e->style.pad.HorizontalAxisSum();
+        }
     }
     // GPUI Element::prepaint: the box is final. A virtual list binds visible
     // rows here from the laid-out viewport, as layout_as_root / prepaint_at.
@@ -9403,7 +9415,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
                 e->input->viewH = viewH;
             }
             InputRememberCaretGeometry(e->input);
-            e->input->hasDeferredScrollY = false;
+            e->input->hasDeferredScroll = false;
             // The scroll rect was recorded before this viewport existed.
             // A padded field's range is the document inside that viewport;
             // the bar stays on the padded track.

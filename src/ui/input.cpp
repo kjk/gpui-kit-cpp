@@ -1617,6 +1617,7 @@ El* Textarea::IntoEl() {
     // Presentational frame. The rows carry the text role.
     El* box = InputBase::New(cx, id, interactive, AccessibilityRole::None)
                   ->BindInput(interactive ? state : nullptr)
+                  ->BindInputText(state)
                   ->W(kFill)
                   ->H(h)
                   ->PadX(padX)
