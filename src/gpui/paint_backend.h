@@ -42,7 +42,8 @@ bool PaintSceneFinish(PaintCtx* ctx, bool replayUnchanged);
 bool PaintEnableNativeOverlay(PaintCtx* ctx);
 #endif
 #if GPUI_OS_WINDOWS
-bool WinWindowPrepareNativeOverlay(PaintCtx* ctx);
+bool WinWindowNativeOverlayUsesComposition(Window* win);
+bool WinWindowPrepareNativeOverlay(PaintCtx* ctx, bool composition);
 bool WinWindowPresentNativeOverlay(Window* win, HDC dc, int width, int height);
 void WinWindowHideNativeOverlay(Window* win);
 void WinWindowScheduleNativeOverlayRetry(Window* win, int delayMs);

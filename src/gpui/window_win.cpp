@@ -632,10 +632,14 @@ void WinWindowScheduleNativeOverlayRetry(Window* win, int delayMs) {
     SetTimer(hwnd, kWinNativeOverlayRetryTimer, (UINT)delayMs, nullptr);
 }
 
-bool WinWindowPrepareNativeOverlay(PaintCtx* ctx) {
+bool WinWindowNativeOverlayUsesComposition(Window* win) {
+    return win && win->plat && win->plat->opacity != 100;
+}
+
+bool WinWindowPrepareNativeOverlay(PaintCtx* ctx, bool composition) {
     Window* win = ctx->window;
     HWND owner = Hwnd(win);
-    if (!owner || win->plat->opacity != 100) return false;
+    if (!owner) return false;
     PlatWindow* plat = win->plat;
     static const wchar_t* name = L"GpuiNativeOverlay";
     static ATOM type = 0;
@@ -651,12 +655,12 @@ bool WinWindowPrepareNativeOverlay(PaintCtx* ctx) {
         if (!type) return false;
     }
     const DWORD noFocus = WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW;
-    if (!plat->nativeOverlay) {
+    if (!composition && !plat->nativeOverlay) {
         plat->nativeOverlay =
             CreateWindowExW(noFocus | WS_EX_TRANSPARENT, name, L"", WS_POPUP, 0,
                             0, 1, 1, owner, nullptr, instance, nullptr);
     }
-    if (!plat->nativeOverlay) return false;
+    if (!composition && !plat->nativeOverlay) return false;
     // The visual HWND is already layered and hit-transparent. Click-through
     // only suppresses the companion HWND that receives GPUI overlay input.
     plat->nativeOverlayWantsInput =
@@ -707,13 +711,19 @@ bool WinWindowPresentNativeOverlay(Window* win, HDC dc, int width, int height) {
         return true;
     }
     POINT origin = NativeOverlayOrigin(owner);
-    POINT source = {};
-    SIZE size = {width, height};
-    BLENDFUNCTION blend = {AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
-    if (!UpdateLayeredWindow(plat->nativeOverlay, nullptr, &origin, &size, dc,
-                             &source, 0, &blend, ULW_ALPHA))
-        return false;
-    ShowWindow(plat->nativeOverlay, SW_SHOWNOACTIVATE);
+    if (dc) {
+        POINT source = {};
+        SIZE size = {width, height};
+        BLENDFUNCTION blend = {AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
+        if (!UpdateLayeredWindow(plat->nativeOverlay, nullptr, &origin, &size,
+                                 dc, &source, 0, &blend, ULW_ALPHA))
+            return false;
+        ShowWindow(plat->nativeOverlay, SW_SHOWNOACTIVATE);
+    } else if (plat->nativeOverlay) {
+        // A DirectComposition overlay already belongs to the host's
+        // visual tree. Only the separate input region is needed here.
+        ShowWindow(plat->nativeOverlay, SW_HIDE);
+    }
     HWND input = plat->nativeOverlayInput;
     if (input) {
         if (!plat->clickThrough && plat->nativeOverlayWantsInput) {
@@ -728,11 +738,11 @@ bool WinWindowPresentNativeOverlay(Window* win, HDC dc, int width, int height) {
 
 static void MoveNativeOverlay(Window* win) {
     PlatWindow* plat = win->plat;
-    if (!plat->nativeOverlay || !IsWindowVisible(plat->nativeOverlay)) return;
     POINT p = NativeOverlayOrigin(plat->hwnd);
     const UINT flags = SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE;
-    SetWindowPos(plat->nativeOverlay, nullptr, p.x, p.y, 0, 0, flags);
-    if (plat->nativeOverlayInput)
+    if (plat->nativeOverlay && IsWindowVisible(plat->nativeOverlay))
+        SetWindowPos(plat->nativeOverlay, nullptr, p.x, p.y, 0, 0, flags);
+    if (plat->nativeOverlayInput && IsWindowVisible(plat->nativeOverlayInput))
         SetWindowPos(plat->nativeOverlayInput, nullptr, p.x, p.y, 0, 0, flags);
 }
 
@@ -3136,12 +3146,13 @@ void AppWindowSetOpacity(Window* win, int percent) {
     if (!hwnd || !pw) {
         return;
     }
-    pw->opacity = percent < 20 ? 20 : percent > 100 ? 100 : percent;
+    int opacity = percent < 20 ? 20 : percent > 100 ? 100 : percent;
+    if (pw->opacity == opacity) return;
+    pw->opacity = opacity;
     ApplyLayered(hwnd, pw);
-    if (pw->nativeOverlay) {
-        if (pw->opacity != 100) WinWindowHideNativeOverlay(win);
-        InvalidateRect(hwnd, nullptr, FALSE);
-    }
+    if (pw->nativeOverlay && opacity != 100)
+        ShowWindow(pw->nativeOverlay, SW_HIDE);
+    InvalidateRect(hwnd, nullptr, FALSE);
 }
 
 bool PlatWindowCanBeTransparent() {
@@ -3154,13 +3165,12 @@ void AppWindowSetClickThrough(Window* win, bool on) {
     if (!hwnd || !pw) {
         return;
     }
+    if (pw->clickThrough == on) return;
     pw->clickThrough = on;
     if (on && pw->nativeOverlayInput)
         ShowWindow(pw->nativeOverlayInput, SW_HIDE);
     ApplyLayered(hwnd, pw);
-    if (pw->nativeOverlay) {
-        InvalidateRect(hwnd, nullptr, FALSE);
-    }
+    InvalidateRect(hwnd, nullptr, FALSE);
 }
 
 void AppDrag(Window* win) {

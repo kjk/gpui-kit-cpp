@@ -94,6 +94,27 @@ struct OffscreenTarget {
     PaintTarget* painter = nullptr;
 };
 
+struct WinOverlayComposition {
+    IDCompositionDevice* device = nullptr;
+    IDCompositionTarget* target = nullptr;
+    IDCompositionVisual* visual = nullptr;
+    IDCompositionSurface* surface = nullptr;
+    ID2D1DeviceContext* draw = nullptr;
+    ID2D1Bitmap1* upload = nullptr;
+    int w = 0;
+    int h = 0;
+
+    ~WinOverlayComposition() {
+        if (target && SUCCEEDED(target->SetRoot(nullptr))) device->Commit();
+        Rel(&upload);
+        Rel(&draw);
+        Rel(&surface);
+        Rel(&visual);
+        Rel(&target);
+        Rel(&device);
+    }
+};
+
 struct PaintTarget {
     uint64_t generation = 0;
     ID2D1DCRenderTarget* dcRt = nullptr;
@@ -120,7 +141,9 @@ struct PaintTarget {
     int scrollStageW = 0;
     int scrollStageH = 0;
     OffscreenTarget* nativeOverlay = nullptr;
+    WinOverlayComposition* overlayComposition = nullptr;
     bool overlayActive = false;
+    bool overlayInComposition = false;
     bool lastOverlay = false;
     int overlayRetryDelayMs = 0;
     double overlayRetryAt = 0;
@@ -286,6 +309,7 @@ void PaintTargetFree(PaintCtx* ctx) {
         FreeWinDibTarget(ctx->rt->nativeOverlay);
         delete ctx->rt->nativeOverlay;
     }
+    delete ctx->rt->overlayComposition;
     Rel(&ctx->rt->dcompVisual);
     Rel(&ctx->rt->dcompTarget);
     Rel(&ctx->rt->dcomp);
@@ -464,7 +488,8 @@ bool PaintTargetBegin(PaintCtx* ctx, void* native, int pxW, int pxH) {
                                               (void**)&t->dcomp);
             }
             if (SUCCEEDED(hr)) {
-                hr = t->dcomp->CreateTargetForHwnd(hwnd, TRUE, &t->dcompTarget);
+                hr = t->dcomp
+                         ->CreateTargetForHwnd(hwnd, FALSE, &t->dcompTarget);
             }
             if (SUCCEEDED(hr)) {
                 hr = t->dcomp->CreateVisual(&t->dcompVisual);
@@ -655,12 +680,95 @@ bool PaintTargetEndOffscreen(PaintCtx* ctx, uint8_t* outBgra) {
     return ok;
 }
 
+static bool PrepareWinOverlayComposition(PaintCtx* ctx) {
+    PaintTarget* target = ctx->rt;
+    auto*& layer = target->overlayComposition;
+    if (!layer) {
+        layer = new WinOverlayComposition();
+        HRESULT hr = DCompositionCreateDevice(ctx->pa->dxgi,
+                                              IID_PPV_ARGS(&layer->device));
+        if (SUCCEEDED(hr))
+            hr = layer->device
+                     ->CreateTargetForHwnd(target->hwnd, TRUE, &layer->target);
+        if (SUCCEEDED(hr)) hr = layer->device->CreateVisual(&layer->visual);
+        if (SUCCEEDED(hr))
+            hr = ctx->pa->d2dDevice->CreateDeviceContext(
+                D2D1_DEVICE_CONTEXT_OPTIONS_NONE, &layer->draw);
+        if (SUCCEEDED(hr)) hr = layer->target->SetRoot(layer->visual);
+        if (FAILED(hr)) {
+            delete layer;
+            layer = nullptr;
+            return false;
+        }
+        layer->draw->SetUnitMode(D2D1_UNIT_MODE_PIXELS);
+        layer->draw->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_COPY);
+    }
+    if (layer->w == target->pxW && layer->h == target->pxH) return true;
+    Rel(&layer->upload);
+    Rel(&layer->surface);
+    layer->w = layer->h = 0;
+    UINT w = (UINT)target->pxW, h = (UINT)target->pxH;
+    D2D1_BITMAP_PROPERTIES1 properties = D2D1::BitmapProperties1(
+        D2D1_BITMAP_OPTIONS_NONE,
+        D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,
+                          D2D1_ALPHA_MODE_PREMULTIPLIED),
+        96.f, 96.f);
+    HRESULT hr = layer->draw->CreateBitmap(D2D1::SizeU(w, h), nullptr, 0,
+                                           &properties, &layer->upload);
+    if (SUCCEEDED(hr))
+        hr = layer->device->CreateSurface(w, h, DXGI_FORMAT_B8G8R8A8_UNORM,
+                                          DXGI_ALPHA_MODE_PREMULTIPLIED,
+                                          &layer->surface);
+    if (SUCCEEDED(hr)) hr = layer->visual->SetContent(layer->surface);
+    if (FAILED(hr)) return false;
+    layer->w = target->pxW;
+    layer->h = target->pxH;
+    return true;
+}
+
+static bool PresentWinOverlayComposition(WinOverlayComposition* layer,
+                                         const OffscreenTarget* overlay) {
+    if (FAILED(layer->upload->CopyFromMemory(nullptr, overlay->bits,
+                                             (UINT)overlay->w * 4)))
+        return false;
+    IDXGISurface* surface = nullptr;
+    POINT delta = {};
+    HRESULT hr = layer->surface
+                     ->BeginDraw(nullptr, IID_PPV_ARGS(&surface), &delta);
+    if (FAILED(hr)) return false;
+    auto properties = D2D1::BitmapProperties1(
+        D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
+        D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,
+                          D2D1_ALPHA_MODE_PREMULTIPLIED),
+        96.f, 96.f);
+    ID2D1Bitmap1* target = nullptr;
+    hr = layer->draw
+             ->CreateBitmapFromDxgiSurface(surface, &properties, &target);
+    if (SUCCEEDED(hr)) {
+        layer->draw->SetTarget(target);
+        layer->draw->BeginDraw();
+        D2D1_RECT_F rect = D2D1::RectF((float)delta.x, (float)delta.y,
+                                       (float)(delta.x + overlay->w),
+                                       (float)(delta.y + overlay->h));
+        layer->draw->DrawBitmap(layer->upload, &rect);
+        hr = layer->draw->EndDraw();
+        layer->draw->SetTarget(nullptr);
+    }
+    Rel(&target);
+    Rel(&surface);
+    HRESULT end = layer->surface->EndDraw();
+    return SUCCEEDED(hr) && SUCCEEDED(end) &&
+           SUCCEEDED(layer->device->Commit());
+}
+
 bool PaintEnableNativeOverlay(PaintCtx* ctx) {
     if (!ctx || !ctx->rt || !ctx->rt->hwnd || !scene::Recording()) return false;
     PaintTarget* target = ctx->rt;
     if (target->overlayActive) return true;
+    bool useComposition = WinWindowNativeOverlayUsesComposition(ctx->window);
     if (target->overlayRetryAt > TimeNow() ||
-        !WinWindowPrepareNativeOverlay(ctx))
+        !WinWindowPrepareNativeOverlay(ctx, useComposition) ||
+        (useComposition && !PrepareWinOverlayComposition(ctx)))
         return false;
     if (!target->nativeOverlay) target->nativeOverlay = new OffscreenTarget();
     OffscreenTarget* overlay = target->nativeOverlay;
@@ -671,6 +779,7 @@ bool PaintEnableNativeOverlay(PaintCtx* ctx) {
     }
     BeginWinDibDraw(overlay, ctx->dpi > 0 ? ctx->dpi : 96.f);
     target->overlayActive = true;
+    target->overlayInComposition = useComposition;
     return true;
 }
 
@@ -680,6 +789,11 @@ bool PaintTargetEnd(PaintCtx* ctx) {
     }
     PaintTarget* target = ctx->rt;
     bool split = target->overlayActive;
+    bool composition = split && target->overlayInComposition;
+    if (!composition) {
+        delete target->overlayComposition;
+        target->overlayComposition = nullptr;
+    }
     bool forcePresent = split || target->lastOverlay;
     OffscreenTarget* overlay = split ? target->nativeOverlay : nullptr;
     if (forcePresent && scene::Recording()) {
@@ -727,8 +841,12 @@ bool PaintTargetEnd(PaintCtx* ctx) {
     target->lastOverlay = split;
     if (split && SUCCEEDED(hr) && SUCCEEDED(overlayResult)) {
         GdiFlush();
-        if (WinWindowPresentNativeOverlay(ctx->window, overlay->dc, overlay->w,
-                                          overlay->h)) {
+        bool visualReady =
+            !composition ||
+            PresentWinOverlayComposition(target->overlayComposition, overlay);
+        if (visualReady && WinWindowPresentNativeOverlay(
+                               ctx->window, composition ? nullptr : overlay->dc,
+                               overlay->w, overlay->h)) {
             target->overlayRetryDelayMs = 0;
             target->overlayRetryAt = 0;
             return true;
@@ -736,6 +854,8 @@ bool PaintTargetEnd(PaintCtx* ctx) {
     }
     WinWindowHideNativeOverlay(ctx->window);
     if (split) {
+        delete target->overlayComposition;
+        target->overlayComposition = nullptr;
         // Present the complete scene through the clipped-child fallback
         // first. Recreate the failed overlay resources on a later frame.
         target->overlayRetryDelayMs =
