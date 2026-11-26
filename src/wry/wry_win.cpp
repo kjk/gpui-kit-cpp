@@ -37,6 +37,7 @@
 #include <ole2.h>
 #include <oleidl.h>
 #include <shellapi.h>
+#include <shobjidl.h>
 
 // SHCreateMemStream, declared rather than reached through <shlwapi.h>. That
 // header brings its string functions with it, and under UNICODE each is a
@@ -2508,10 +2509,39 @@ struct DownloadStateHandler : ComObject<ICoreWebView2StateChangedEventHandler> {
     }
 };
 
-// `DragDropTarget::iterate_filenames`. The HDROP is returned because the
-// pinned Drop arm calls DragFinish after delivering the event; DragEnter only
-// inspects it, exactly as the source does.
-static bool GetDropPaths(IDataObject* data, Vec<Str>* paths, HDROP* hdropOut) {
+static void AppendDropPath(Vec<Str>* paths, const WCHAR* path, int chars) {
+    Str owned = StrDup(WstrToUtf8Temp(path, chars));
+    if (owned.s && !VecAppend(*paths, owned)) StrFree(owned);
+}
+
+// File Explorer can fail to produce CF_HDROP for paths at or above
+// MAX_PATH. The shell item array carries those paths without that limit.
+static bool GetShellDropPaths(IDataObject* data, Vec<Str>* paths) {
+    IShellItemArray* items = nullptr;
+    if (FAILED(
+            SHCreateShellItemArrayFromDataObject(data, IID_PPV_ARGS(&items)))) {
+        return false;
+    }
+    int before = len(*paths);
+    DWORD count = 0;
+    if (SUCCEEDED(items->GetCount(&count))) {
+        for (DWORD i = 0; i < count; i++) {
+            IShellItem* item = nullptr;
+            if (FAILED(items->GetItemAt(i, &item))) continue;
+            PWSTR name = nullptr;
+            if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &name))) {
+                AppendDropPath(paths, name, -1);
+                CoTaskMemFree(name);
+            }
+            item->Release();
+        }
+    }
+    items->Release();
+    return len(*paths) > before;
+}
+
+// DragDropTarget::iterate_filenames in webview2/drag_drop.rs.
+static bool GetDropPaths(IDataObject* data, Vec<Str>* paths) {
     if (!data || !paths) {
         return false;
     }
@@ -2522,7 +2552,7 @@ static bool GetDropPaths(IDataObject* data, Vec<Str>* paths, HDROP* hdropOut) {
     format.tymed = TYMED_HGLOBAL;
     STGMEDIUM medium = {};
     if (FAILED(data->GetData(&format, &medium))) {
-        return false;
+        return GetShellDropPaths(data, paths);
     }
 
     HDROP hdrop = (HDROP)medium.hGlobal;
@@ -2531,13 +2561,13 @@ static bool GetDropPaths(IDataObject* data, Vec<Str>* paths, HDROP* hdropOut) {
         UINT charCount = DragQueryFileW(hdrop, i, nullptr, 0);
         WCHAR* path = new WCHAR[(size_t)charCount + 1];
         if (DragQueryFileW(hdrop, i, path, charCount + 1) == charCount) {
-            VecAppend(*paths, StrDup(WstrToUtf8Temp(path, (int)charCount)));
+            AppendDropPath(paths, path, (int)charCount);
         }
         delete[] path;
     }
-    if (hdropOut) {
-        *hdropOut = hdrop;
-    }
+    // Each GetData transfers a medium, including during DragEnter. Let
+    // OLE release it through pUnkForRelease when the source supplies one.
+    ReleaseStgMedium(&medium);
     return true;
 }
 
@@ -2572,7 +2602,7 @@ struct DragDropTarget : ComObject<IDropTarget> {
         // Every entry decides both afresh, as wry does: an entry with no
         // files must not keep the copy cursor the previous drag left.
         Vec<Str> paths;
-        enterIsValid = GetDropPaths(data, &paths, nullptr);
+        enterIsValid = GetDropPaths(data, &paths);
         cursorEffect = enterIsValid ? DROPEFFECT_COPY : DROPEFFECT_NONE;
         if (enterIsValid) {
             Emit(DragDropKind::Enter, &paths, point);
@@ -2608,13 +2638,9 @@ struct DragDropTarget : ComObject<IDropTarget> {
                                    DWORD*) override {
         if (enterIsValid) {
             Vec<Str> paths;
-            HDROP hdrop = nullptr;
-            GetDropPaths(data, &paths, &hdrop);
+            GetDropPaths(data, &paths);
             Emit(DragDropKind::Drop, &paths, point);
             StrVecFree(&paths);
-            if (hdrop) {
-                DragFinish(hdrop);
-            }
         }
         enterIsValid = false;
         cursorEffect = DROPEFFECT_NONE;

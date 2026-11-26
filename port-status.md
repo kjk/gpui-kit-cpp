@@ -686,6 +686,10 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   and its webviews. XDamage refreshes the blended overlay without a GPUI frame.
   Servers without the required extensions use drawing and input cutouts
   with asynchronous snapshots (`src/webview/webview.cpp`).
+- **WebView2 file drops release the OLE storage medium after each read.**
+  Windows uses the Shell item array when `CF_HDROP` is unavailable, including
+  for long paths, and copies the paths before releasing their native storage
+  (`src/wry/wry_win.cpp`).
 - **Linux webview bounds stay logical.** Upstream `device_bounds` passes
   physical pixels because Wry then scales by GDK. `WebViewSetBounds`
   in `wry_linux.cpp` already multiplies a logical rect by that factor
