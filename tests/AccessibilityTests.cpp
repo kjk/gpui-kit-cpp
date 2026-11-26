@@ -10,6 +10,7 @@ namespace gpui {
 // the published header surface.
 bool AccessibilityWinSmokeTest(Window* win, uint32_t nodeId);
 bool AccessibilityWinPartsSmokeTest(Window* win, uint32_t nodeId);
+bool AccessibilityWinAriaSmokeTest();
 bool AccessibilityWinPropertyChangesSmokeTest();
 bool AccessibilityWinFocusChangesSmokeTest();
 bool AccessibilityWinTextChangesSmokeTest();
@@ -1892,6 +1893,7 @@ void TestAccessibility() {
     AMixedCheckboxUsesTheDashAndRequestsChecked();
     TestSuite("accessibility");
 #if GPUI_OS_WINDOWS
+    utassert(AccessibilityWinAriaSmokeTest());
     utassert(AccessibilityWinPropertyChangesSmokeTest());
     utassert(AccessibilityWinFocusChangesSmokeTest());
     utassert(AccessibilityWinTextChangesSmokeTest());

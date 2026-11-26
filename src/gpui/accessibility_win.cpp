@@ -144,53 +144,139 @@ static bool AccessibilityIsDialog(AccessibilityRole role) {
            role == AccessibilityRole::AlertDialog;
 }
 
+// accesskit_windows 0.34.0, node.rs aria_role.
 static const wchar_t* AccessibilityRoleName(AccessibilityRole role) {
-    if (AccessibilityRoleIsTextField(role)) {
-        return L"textbox";
-    }
     switch (role) {
         case AccessibilityRole::Alert:
             return L"alert";
         case AccessibilityRole::AlertDialog:
             return L"alertdialog";
+        case AccessibilityRole::Application:
+            return L"application";
+        case AccessibilityRole::Article:
+            return L"article";
+        case AccessibilityRole::Banner:
+        case AccessibilityRole::Header:
+            return L"banner";
         case AccessibilityRole::Button:
+        case AccessibilityRole::DefaultButton:
             return L"button";
+        case AccessibilityRole::Blockquote:
+            return L"blockquote";
+        case AccessibilityRole::Caption:
+        case AccessibilityRole::FigureCaption:
+            return L"caption";
         case AccessibilityRole::Cell:
             return L"cell";
         case AccessibilityRole::CheckBox:
             return L"checkbox";
+        case AccessibilityRole::Code:
+            return L"code";
         case AccessibilityRole::ColumnHeader:
             return L"columnheader";
         case AccessibilityRole::ComboBox:
+        case AccessibilityRole::EditableComboBox:
             return L"combobox";
+        case AccessibilityRole::Comment:
+            return L"comment";
+        case AccessibilityRole::Complementary:
+            return L"complementary";
+        case AccessibilityRole::ContentInfo:
+        case AccessibilityRole::Footer:
+            return L"contentinfo";
+        case AccessibilityRole::Definition:
+            return L"definition";
+        case AccessibilityRole::ContentDeletion:
+            return L"deletion";
         case AccessibilityRole::Dialog:
             return L"dialog";
         case AccessibilityRole::Document:
+        case AccessibilityRole::Iframe:
+        case AccessibilityRole::WebView:
+        case AccessibilityRole::RootWebArea:
+        case AccessibilityRole::Terminal:
+        case AccessibilityRole::PdfRoot:
             return L"document";
+        case AccessibilityRole::Emphasis:
+            return L"emphasis";
+        case AccessibilityRole::Feed:
+            return L"feed";
+        case AccessibilityRole::Figure:
+            return L"figure";
+        case AccessibilityRole::Form:
+            return L"form";
+        case AccessibilityRole::GraphicsDocument:
+            return L"graphics-document";
+        case AccessibilityRole::GraphicsObject:
+            return L"graphics-object";
+        case AccessibilityRole::GraphicsSymbol:
+            return L"graphics-symbol";
         case AccessibilityRole::Grid:
+        case AccessibilityRole::ListGrid:
             return L"grid";
         case AccessibilityRole::GridCell:
             return L"gridcell";
+        case AccessibilityRole::Group:
+        case AccessibilityRole::Details:
+        case AccessibilityRole::IframePresentational:
+        case AccessibilityRole::TitleBar:
+        case AccessibilityRole::LayoutTable:
+        case AccessibilityRole::LayoutTableCell:
+        case AccessibilityRole::LayoutTableRow:
+        case AccessibilityRole::Audio:
+        case AccessibilityRole::Video:
+        case AccessibilityRole::ListMarker:
+        case AccessibilityRole::EmbeddedObject:
+        case AccessibilityRole::ImeCandidate:
+            return L"group";
         case AccessibilityRole::Heading:
             return L"heading";
+        case AccessibilityRole::Image:
+        case AccessibilityRole::Canvas:
+            return L"img";
+        case AccessibilityRole::ContentInsertion:
+            return L"insertion";
         case AccessibilityRole::Link:
             return L"link";
         case AccessibilityRole::List:
+        case AccessibilityRole::DescriptionList:
+        case AccessibilityRole::MenuListPopup:
             return L"list";
         case AccessibilityRole::ListBox:
             return L"listbox";
-        case AccessibilityRole::ListBoxOption:
-            return L"option";
         case AccessibilityRole::ListItem:
             return L"listitem";
+        case AccessibilityRole::Log:
+            return L"log";
+        case AccessibilityRole::Main:
+            return L"main";
+        case AccessibilityRole::Mark:
+            return L"marker";
+        case AccessibilityRole::Marquee:
+            return L"marquee";
+        case AccessibilityRole::Math:
+            return L"math";
         case AccessibilityRole::Menu:
             return L"menu";
         case AccessibilityRole::MenuBar:
             return L"menubar";
         case AccessibilityRole::MenuItem:
             return L"menuitem";
+        case AccessibilityRole::MenuItemCheckBox:
+            return L"menuitemcheckbox";
+        case AccessibilityRole::MenuItemRadio:
+            return L"menuitemradio";
+        case AccessibilityRole::Meter:
+            return L"meter";
         case AccessibilityRole::Navigation:
             return L"navigation";
+        case AccessibilityRole::Note:
+            return L"note";
+        case AccessibilityRole::ListBoxOption:
+        case AccessibilityRole::MenuListOption:
+            return L"option";
+        case AccessibilityRole::Paragraph:
+            return L"paragraph";
         case AccessibilityRole::ProgressIndicator:
             return L"progressbar";
         case AccessibilityRole::RadioButton:
@@ -198,17 +284,41 @@ static const wchar_t* AccessibilityRoleName(AccessibilityRole role) {
         case AccessibilityRole::RadioGroup:
             return L"radiogroup";
         case AccessibilityRole::Region:
+        case AccessibilityRole::Pane:
+        case AccessibilityRole::Window:
+        case AccessibilityRole::Keyboard:
+        case AccessibilityRole::Unknown:
+        case AccessibilityRole::ScrollView:
+        case AccessibilityRole::Caret:
             return L"region";
         case AccessibilityRole::Row:
             return L"row";
         case AccessibilityRole::RowGroup:
             return L"rowgroup";
+        case AccessibilityRole::RowHeader:
+            return L"rowheader";
+        case AccessibilityRole::ScrollBar:
+            return L"scrollbar";
+        case AccessibilityRole::Search:
+            return L"search";
+        case AccessibilityRole::SearchInput:
+            return L"searchbox";
+        case AccessibilityRole::SectionFooter:
+            return L"sectionfooter";
+        case AccessibilityRole::SectionHeader:
+            return L"sectionheader";
+        case AccessibilityRole::Splitter:
+            return L"separator";
         case AccessibilityRole::Slider:
             return L"slider";
         case AccessibilityRole::SpinButton:
             return L"spinbutton";
         case AccessibilityRole::Status:
             return L"status";
+        case AccessibilityRole::Strong:
+            return L"strong";
+        case AccessibilityRole::Suggestion:
+            return L"suggestion";
         case AccessibilityRole::Switch:
             return L"switch";
         case AccessibilityRole::Tab:
@@ -217,20 +327,40 @@ static const wchar_t* AccessibilityRoleName(AccessibilityRole role) {
             return L"table";
         case AccessibilityRole::TabList:
             return L"tablist";
+        case AccessibilityRole::TabPanel:
+            return L"tabpanel";
+        case AccessibilityRole::Term:
+            return L"term";
+        case AccessibilityRole::TextInput:
+        case AccessibilityRole::MultilineTextInput:
+        case AccessibilityRole::DateInput:
+        case AccessibilityRole::DateTimeInput:
+        case AccessibilityRole::WeekInput:
+        case AccessibilityRole::MonthInput:
+        case AccessibilityRole::TimeInput:
+        case AccessibilityRole::EmailInput:
+        case AccessibilityRole::NumberInput:
+        case AccessibilityRole::PasswordInput:
+        case AccessibilityRole::PhoneNumberInput:
+        case AccessibilityRole::UrlInput:
+        case AccessibilityRole::ColorWell:
+            return L"textbox";
+        case AccessibilityRole::Time:
+            return L"time";
+        case AccessibilityRole::Timer:
+            return L"timer";
+        case AccessibilityRole::Toolbar:
+            return L"toolbar";
+        case AccessibilityRole::Tooltip:
+            return L"tooltip";
         case AccessibilityRole::Tree:
             return L"tree";
         case AccessibilityRole::TreeGrid:
             return L"treegrid";
         case AccessibilityRole::TreeItem:
             return L"treeitem";
-        case AccessibilityRole::Toolbar:
-            return L"toolbar";
-        case AccessibilityRole::Tooltip:
-            return L"tooltip";
-        case AccessibilityRole::Group:
-        case AccessibilityRole::None:
         default:
-            return L"group";
+            return nullptr;
     }
 }
 
@@ -911,6 +1041,10 @@ HRESULT WinAccessibility::GetPropertyValue(PROPERTYID property, VARIANT* out) {
     }
     if (property == UIA_ControlTypePropertyId) {
         VariantInt(out, UIA_PaneControlTypeId);
+    } else if (property == UIA_AriaRolePropertyId) {
+        out->vt = VT_BSTR;
+        out->bstrVal =
+            SysAllocString(AccessibilityRoleName(AccessibilityRole::Window));
     } else if (property == UIA_NamePropertyId) {
         int n = GetWindowTextLengthW(hwnd);
         BSTR value = SysAllocStringLen(nullptr, (UINT)n);
@@ -1219,7 +1353,14 @@ static WinPropertyValue WinSemanticProperty(const WinNodeProperties& node,
     } else if (property == UIA_HelpTextPropertyId) {
         return info.placeholder;
     } else if (property == UIA_AriaRolePropertyId) {
-        return AccessibilityRoleName(info.role);
+        if (const auto* role = AccessibilityRoleName(info.role)) return role;
+    } else if (property == UIA_AriaPropertiesPropertyId) {
+        bool multiline = info.role == AccessibilityRole::MultilineTextInput;
+        if (info.hasLevel) {
+            return fmt("level=%d%s", info.level,
+                       multiline ? StrL(";multiline=true") : StrL(""));
+        }
+        if (multiline) return L"multiline=true";
     } else if (property == UIA_LiveSettingPropertyId) {
         return (int)info.live;
     } else if (property == UIA_IsEnabledPropertyId) {
@@ -2712,6 +2853,7 @@ static constexpr PROPERTYID kWinTrackedProperties[] = {
     UIA_FullDescriptionPropertyId,
     UIA_HelpTextPropertyId,
     UIA_AriaRolePropertyId,
+    UIA_AriaPropertiesPropertyId,
     UIA_LiveSettingPropertyId,
     UIA_IsEnabledPropertyId,
     UIA_IsKeyboardFocusablePropertyId,
@@ -3427,6 +3569,70 @@ bool AccessibilityWinDialogEventsSmokeTest() {
                        (HRESULT)UIA_E_ELEMENTNOTAVAILABLE;
     if (removed) removed->Release();
     VariantClear(&value);
+    AccessibilityWinClose(root);
+    return ok;
+}
+
+bool AccessibilityWinAriaSmokeTest() {
+    Window win;
+    AccessibilityNode node;
+    node.id = 10;
+    node.info.role = AccessibilityRole::Heading;
+    node.info.hasLevel = true;
+    node.info.level = 2;
+    VecAppend(win.accessibility, node);
+    WinAccessibility* root = AccessibilityWinNew(&win, GetDesktopWindow());
+    if (!root) return false;
+    bool ok = true;
+    {
+        WinAccessibilityNode provider(root, node.id);
+        auto equals = [](const VARIANT& value, const wchar_t* expected) {
+            return expected ? value.vt == VT_BSTR && value.bstrVal &&
+                                  wcscmp(value.bstrVal, expected) == 0
+                            : value.vt == VT_EMPTY;
+        };
+        auto check = [&](IRawElementProviderSimple* target, PROPERTYID property,
+                         const wchar_t* expected) {
+            VARIANT result = {};
+            bool matches =
+                SUCCEEDED(target->GetPropertyValue(property, &result)) &&
+                equals(result, expected);
+            VariantClear(&result);
+            return matches;
+        };
+        ok &= check(root, UIA_AriaRolePropertyId, L"region");
+        ok &= check(&provider, UIA_AriaRolePropertyId, L"heading");
+        ok &= check(&provider, UIA_AriaPropertiesPropertyId, L"level=2");
+
+        auto& info = win.accessibility[0].info;
+        info.role = AccessibilityRole::MultilineTextInput;
+        info.level = 3;
+        ok &= check(&provider, UIA_AriaRolePropertyId, L"textbox");
+        ok &= check(&provider, UIA_AriaPropertiesPropertyId,
+                    L"level=3;multiline=true");
+        Vec<WinPropertyChange> changes;
+        ok &= !WinSnapshotChanges(root, &changes);
+        bool ariaChanged = false;
+        for (auto& change : changes) {
+            if (change.id == node.id &&
+                change.property == UIA_AriaPropertiesPropertyId) {
+                ariaChanged = equals(change.before, L"level=2") &&
+                              equals(change.after, L"level=3;multiline=true");
+            }
+            ClearWinPropertyChange(&change);
+        }
+        ok &= ariaChanged;
+
+        info.hasLevel = false;
+        ok &= check(&provider, UIA_AriaPropertiesPropertyId, L"multiline=true");
+        info.role = AccessibilityRole::SearchInput;
+        ok &= check(&provider, UIA_AriaRolePropertyId, L"searchbox");
+        ok &= check(&provider, UIA_AriaPropertiesPropertyId, nullptr);
+        info.role = AccessibilityRole::MenuItemCheckBox;
+        ok &= check(&provider, UIA_AriaRolePropertyId, L"menuitemcheckbox");
+        info.role = AccessibilityRole::Label;
+        ok &= check(&provider, UIA_AriaRolePropertyId, nullptr);
+    }
     AccessibilityWinClose(root);
     return ok;
 }

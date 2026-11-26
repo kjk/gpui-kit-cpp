@@ -266,6 +266,8 @@ The current update target is
   later control at the same index (`src/gpui/window_common.cpp`).
 - **Windows UIA invalidates the child list on structural changes.**
   Retained nodes report changes to their projected properties separately.
+  The bridge uses AccessKit's ARIA role names and exports `level` and
+  `multiline` through UIA's ARIA properties.
   Dialog open and close, focus, live announcements, text edits and
   selections have their own events (`src/gpui/accessibility_win.cpp`).
   Item selection changes announce the
