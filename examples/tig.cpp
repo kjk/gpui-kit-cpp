@@ -117,25 +117,43 @@ struct TigJob {
         return ok;
     }
 
-    bool ParseHistory() {
+    Str ParseHistory() {
+        int end = len(log);
+        if (!end) return {};
+        if (log.s[end - 1] == '\0') end--;
+        int fieldCount = 1;
+        for (int i = 0; i < end; i++) {
+            if (log.s[i] == '\0') fieldCount++;
+        }
+        if (fieldCount % 5 != 0)
+            return StrL("Git returned an incomplete commit record.");
+        int count = fieldCount / 5;
+        if (!VecReserve(commits, count))
+            return StrL("Could not store Git commit history.");
+
         int at = 0;
-        while (at < len(log)) {
+        for (int i = 0; i < count; i++) {
             Str fields[5];
             for (Str& field : fields) {
                 const char* start = log.s + at;
-                const char* nul = (const char*)memchr(start, 0, len(log) - at);
-                if (!nul) return false;
-                field = Str(start, (int)(nul - start));
-                at += len(field) + 1;
+                const char* nul = (const char*)memchr(start, 0, end - at);
+                if (nul) {
+                    field = Str(start, (int)(nul - start));
+                    at += len(field) + 1;
+                } else {
+                    field = Str(start, end - at);
+                    at = end;
+                }
             }
             if ((len(fields[0]) != 40 && len(fields[0]) != 64) ||
-                !ObjectId(fields[0], 40))
-                return false;
-            if (!VecAppend(commits, TigCommit{fields[0], fields[1], fields[2],
-                                              fields[3], fields[4]}))
-                return false;
+                !ObjectId(fields[0], 40)) {
+                VecClear(commits);
+                return StrL("Git returned an invalid commit object ID.");
+            }
+            VecAppend(commits, TigCommit{fields[0], fields[1], fields[2],
+                                         fields[3], fields[4]});
         }
-        return true;
+        return {};
     }
 
     void History() {
@@ -161,8 +179,9 @@ struct TigJob {
                             StrL("--format=%H%x00%h%x00%an%x00%ad%x00%s"),
                             head,
                             StrL("--")};
-        if (Git(args, dimofi(args), &log) && !ParseHistory()) {
-            error = StrDup(StrL("Git returned an invalid commit record."));
+        if (Git(args, dimofi(args), &log)) {
+            Str parseError = ParseHistory();
+            if (parseError.s) error = StrDup(parseError);
         }
     }
 
